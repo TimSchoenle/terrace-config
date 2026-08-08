@@ -11,4 +11,4 @@
 # the `msrv` job measures at 1.94.
 [toolchain]
 channel = "nightly"
-components = ["rust-src"]
+components = ["rust-src", "clippy"]
