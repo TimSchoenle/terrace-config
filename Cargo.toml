@@ -56,11 +56,11 @@ tokio-util = { version = "0.7", optional = true }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
-figment = { version = "0.10", features = ["toml", "env", "test"] }
-serde = { version = "1", features = ["derive"] }
-secrecy = { version = "0.10", features = ["serde"] }
-tokio = { version = "1.43", features = ["macros", "rt-multi-thread", "time", "test-util"] }
-tokio-util = "0.7"
+figment = { version = "=0.10.19", features = ["toml", "env", "test"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+secrecy = { version = "=0.10.3", features = ["serde"] }
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
+tokio-util = "=0.7.19"
 
 [lints.rust]
 unsafe_code = "forbid"
