@@ -1,0 +1,63 @@
+name: update-files
+
+# Keeps the committed lockfiles in step with the manifests that produce them, and commits the
+# result to the pull request rather than failing it.
+on:
+  pull_request:
+
+# Shared with docs.yml. See the note there: both workflows commit to the pull request branch,
+# and serialising them is what keeps the second one from failing on a moved parent.
+concurrency:
+  group: branch-writes-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  lockfiles:
+    name: lockfiles
+    # Forks get no secrets, so there would be no token to commit with.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # the write happens with the App token below, not with GITHUB_TOKEN
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
+      - name: Generate Bot Token
+        id: generate_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ACTIONS_MAINTENANCE_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_MAINTENANCE_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+
+      # Both from the repository root. `fuzz/rust-toolchain.toml` pins nightly for anyone working
+      # *inside* that directory, but rustup selects on the working directory rather than on
+      # `--manifest-path`, so resolution here runs on stable — which is all dependency resolution
+      # needs, and one toolchain fewer to install.
+      - name: Resolve both lockfiles
+        run: |
+          cargo fetch
+          cargo fetch --manifest-path fuzz/Cargo.toml
+
+      - name: Commit and push if changed
+        id: auto-commit
+        uses: TimSchoenle/actions/actions/common/commit-changes@e8af15f00459da30900d926bf8fbb9dea5a56495 # tag=actions-common-commit-changes-v1.3.0
+        with:
+          commit_message: 'build: update lockfiles'
+          file_pattern: 'Cargo.lock fuzz/Cargo.lock'
+          token: ${{ steps.generate_token.outputs.token }}
