@@ -1,0 +1,2 @@
+f:auth__jwt_secret=s3cret\n
+f:database__url=postgres://real/app

@@ -1,0 +1,2 @@
+p:profile=production
+f:auth__jwt_secret=s3cret

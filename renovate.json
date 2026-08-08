@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>TimSchoenle/actions//configs/renovate/default",
+    "customManagers:githubActionsVersions"
+  ],
+  "packageRules": [
+    {
+      "description": "The Rust toolchain is a reviewed decision, not a dependency — `rust-toolchain.toml`, ci.yml and the Dockerfiles' RUST_VERSION must move together, not one at a time.",
+      "matchPackageNames": ["dtolnay/rust-toolchain"],
+      "enabled": false
+    },
+    {
+      "description": "Same lockstep from the image side: these base tags embed the Rust minor and must not move ahead of rust-toolchain.toml. Digest updates (same toolchain, rebuilt) are still wanted.",
+      "matchPackageNames": ["lukemathwalker/cargo-chef", "rust"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "enabled": false
+    }
+  ]
+}

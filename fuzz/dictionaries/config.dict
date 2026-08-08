@@ -1,0 +1,42 @@
+# libFuzzer dictionary. Tokens the mutator would otherwise have to discover a byte at a time —
+# the directive prefixes, the separators every layer is spelled with, and the names that are
+# special to one of them.
+#
+# Used with `-dict=dictionaries/config.dict`; see README.md.
+
+# The line grammar.
+"f:"
+"e:"
+"p:"
+"t:"
+"="
+"\\n"
+"\\r"
+
+# Key spelling.
+"__"
+"_FILE"
+"."
+".."
+"..data"
+
+# Names one layer treats specially.
+"CONFIG"
+"SECRETS_DIR"
+"PROFILE"
+".toml"
+".TOML"
+
+# Shapes that have broken a layer before: an all-digit value the environment layer would parse
+# into a number, and a value that is only terminators.
+"12345678"
+"\\n\\n"
+"true"
+"nan"
+
+# TOML the fragment expansion has to survive.
+"[a]"
+"[a.b]"
+"key = "
+"\"\""
+"[["

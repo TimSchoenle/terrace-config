@@ -1,0 +1,3 @@
+f:auth__jwt_secret=trailing\r\n\n
+f:keep__spaces= padded 
+f:interior=two\nlines\n

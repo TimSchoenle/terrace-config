@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Nothing granted by default: each job requests only the scopes it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every feature set is linted separately. `--all-features` alone would not catch a
+        # `reload`-only build referring to a `loader`-only item.
+        features:
+          - "--all-features"
+          - "--no-default-features --features loader"
+          - "--no-default-features --features reload"
+    steps:
+      - uses: TimSchoenle/actions/actions/rust/clippy@90667cd95bd8ee306fbd54412c2e082448fb5a40
+        with:
+          clippy_arguments: ${{ matrix.features }} --all-targets
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: TimSchoenle/actions/actions/rust/test@90667cd95bd8ee306fbd54412c2e082448fb5a40
+        with:
+          test_arguments: --all-features
+
+  # A build of each feature set on its own, with no dev-dependencies in the graph. This is the
+  # job that catches a feature only unified in by a dev-dependency — `tokio/macros` was exactly
+  # that, and `cargo test --all-features` passed while `cargo doc` did not.
+  features:
+    name: features (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - "--no-default-features"
+          - "--no-default-features --features loader"
+          - "--no-default-features --features reload"
+          - "--all-features"
+    steps:
+      - uses: TimSchoenle/actions/actions/rust/cargo-check@90667cd95bd8ee306fbd54412c2e082448fb5a40
+        with:
+          check_arguments: --lib ${{ matrix.features }}
+
+  doc:
+    name: doc
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      # Once per feature set: the crate documentation is itself feature-gated, so a broken
+      # intra-doc link can hide in a set `--all-features` never renders.
+      - run: cargo doc --all-features --no-deps
+      - run: cargo doc --no-default-features --features loader --no-deps
+      - run: cargo doc --no-default-features --features reload --no-deps
+
+  # `fuzz/` is a workspace of its own on a nightly toolchain, so none of the jobs above touch it.
+  #
+  # Two things run here. The replay suite is the gate: it re-runs every committed seed and a
+  # deterministic sweep through the oracles on a plain `cargo test`, no sanitizer involved, and a
+  # reproducer promoted into `corpus/` keeps being checked forever. The short campaign after it is
+  # a smoke test that the libFuzzer plumbing still links — not a hunt; a real hunt is a human
+  # running `cargo fuzz run` for hours.
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: nightly
+          components: clippy
+      - uses: taiki-e/install-action@2e9d707ef49c9b094d45955b60c7e5c0dfedeb14 # v2.66.5
+        with:
+          tool: cargo-fuzz
+      - name: Replay the corpus
+        working-directory: fuzz
+        env:
+          # Larger than the local default: this runs once per push, not on every `cargo test`.
+          TERRACE_FUZZ_ITERATIONS: "5000"
+        run: cargo test
+      - name: Lint the oracles
+        working-directory: fuzz
+        run: cargo clippy --all-targets
+      - name: Short campaign
+        run: |
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          for target in env_load secrets_dir toml_layers; do
+            cargo fuzz run --target "$host" "$target" \
+              "fuzz/corpus/$target" "fuzz/seeds/$target" \
+              -- -dict=fuzz/dictionaries/config.dict -max_total_time=60
+          done
+
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # Read from the manifest rather than repeated inline, so the pin cannot drift from the
+      # `rust-version` it is meant to verify.
+      - id: msrv
+        run: echo "version=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - run: cargo check --all-features --all-targets
+
+  # The single required check. It fails if any job failed and passes when jobs were skipped, so
+  # branch protection needs one entry that cannot silently stop existing.
+  ci:
+    name: ci
+    if: always()
+    needs: [fmt, clippy, test, features, doc, fuzz, deny, msrv]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail if any job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "all gates green"
