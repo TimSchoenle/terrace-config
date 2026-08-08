@@ -26,7 +26,7 @@ rebuilds the service when those files change.
 
 ```toml
 [dependencies]
-terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.1.0" }
+terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.2.0" }
 ```
 
 Pin by tag, not branch. `Cargo.lock` records the resolved revision either way, but a branch
@@ -237,7 +237,7 @@ narrow that for no benefit. Symmetrically, a service that only reads a config fi
 reason to link tokio and notify:
 
 ```toml
-terrace-config = { git = "…", tag = "v0.1.0", default-features = false, features = ["loader"] }
+terrace-config = { git = "…", tag = "v0.2.0", default-features = false, features = ["loader"] }
 ```
 
 The single line joining the halves is `impl reload::Source for Sources`, compiled only when both
