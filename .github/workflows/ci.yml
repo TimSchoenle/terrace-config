@@ -130,7 +130,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
-      - uses: taiki-e/install-action@2e9d707ef49c9b094d45955b60c7e5c0dfedeb14 # v2.66.5
+      - uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
         with:
           tool: cargo-fuzz
       - name: Replay the corpus
