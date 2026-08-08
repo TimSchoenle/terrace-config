@@ -1,0 +1,4 @@
+f:auth.jwt_secret=dotted
+f:..data=volume-marker
+f:profile=reserved
+f:config=reserved

@@ -1,0 +1,3 @@
+t:a.toml=key = "value"\n
+t:b.TOML=key = "upper-extension"\n
+t:c.txt=key = "wrong-extension"\n

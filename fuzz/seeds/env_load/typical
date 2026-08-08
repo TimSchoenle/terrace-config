@@ -1,0 +1,4 @@
+e:DATABASE__URL=postgres://u:p@localhost/db
+e:DATABASE__MAX_CONNECTIONS=32
+e:LIMITS__RATE=0.5
+e:LIMITS__BURST=10

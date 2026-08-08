@@ -1,0 +1,91 @@
+[package]
+name = "terrace-config"
+version = "0.1.0"
+edition = "2024"
+authors = ["Tim Schönle"]
+license = "MIT"
+description = "Layered figment configuration that survives mounted-secret rotation."
+repository = "https://github.com/TimSchoenle/terrace-config"
+readme = "README.md"
+keywords = ["configuration", "figment", "kubernetes", "secrets", "hot-reload"]
+categories = ["config"]
+rust-version = "1.94"
+# Distributed as a git dependency. `publish = false` prevents an accidental `cargo publish`
+# while leaving the name reservable on crates.io.
+publish = false
+
+# Two feature sets, because the two halves have entirely different dependency weight and
+# entirely different audiences.
+#
+# `loader` is the crate's name-sake: the layered figment, its three providers, and the
+# `Loaded`/`Sources` pair. It costs `figment`.
+#
+# `reload` is a supervisor that rebuilds a runtime when files change. **It does not depend on
+# `loader`, and must not be made to.** It is useful to anyone with a
+# `Fn(Arc<C>, CancellationToken) -> Future` and a way to detect change, regardless of how they
+# load configuration; requiring figment would shrink its audience for no benefit. The one line
+# joining the halves is `impl Source for Sources`, which exists only when both are on.
+#
+# The split is load-bearing in the other direction too: a service that only reads a config file
+# at boot has no reason to link tokio, notify and tracing, and with `default-features = false`
+# it does not.
+[features]
+default = ["loader"]
+loader = ["dep:figment", "dep:serde"]
+reload = [
+    "dep:notify",
+    "dep:notify-debouncer-full",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:tracing",
+]
+full = ["loader", "reload"]
+
+[dependencies]
+thiserror = "2"
+
+# --- loader ---
+figment = { version = "0.10", features = ["toml", "env"], optional = true }
+serde = { version = "1", optional = true }
+
+# --- reload ---
+notify = { version = "8.2", optional = true }
+notify-debouncer-full = { version = "0.7", optional = true }
+tokio = { version = "1.43", features = ["macros", "sync", "time"], optional = true }
+tokio-util = { version = "0.7", optional = true }
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]
+figment = { version = "0.10", features = ["toml", "env", "test"] }
+serde = { version = "1", features = ["derive"] }
+secrecy = { version = "0.10", features = ["serde"] }
+tokio = { version = "1.43", features = ["macros", "rt-multi-thread", "time", "test-util"] }
+tokio-util = "0.7"
+
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+# `#[expect(…, reason = "…")]`, never a bare `#[allow(…)]`: an `allow` goes on silently
+# forever, an `expect` warns the moment its claim stops holding.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+multiple_crate_versions = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+must_use_candidate = "allow"
+
+[lints.rustdoc]
+# A broken intra-doc link renders as literal `[`Foo`]` text — invisible to anyone reading the
+# rendered page, and this crate's doc comments are the artefact being reused.
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

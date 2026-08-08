@@ -1,0 +1,2 @@
+t:10-base.toml=[database]\nurl = "postgres://base/app"\nmax_connections = 5\n
+t:20-overrides.toml=[database]\nmax_connections = 40\n

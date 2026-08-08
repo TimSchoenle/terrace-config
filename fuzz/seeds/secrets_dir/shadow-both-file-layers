@@ -1,0 +1,2 @@
+f:auth__jwt_secret=from-the-directory
+p:AUTH__JWT_SECRET=from-the-path

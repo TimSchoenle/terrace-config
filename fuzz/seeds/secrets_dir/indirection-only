@@ -1,0 +1,2 @@
+p:auth__jwt_secret=from-the-path
+e:OTHER=plain

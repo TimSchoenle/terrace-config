@@ -1,0 +1,94 @@
+# A workspace of its own, on purpose. `libfuzzer-sys` compiles the crate under test with
+# `-Z sanitizer=address`, which is nightly-only, while this repository's `msrv` job pins 1.94.
+# As a member it would drag nightly into `cargo fmt --all` and `cargo clippy --workspace`.
+[workspace]
+
+[package]
+name = "terrace-config-fuzz"
+version = "0.0.0"
+edition = "2024"
+authors = ["Tim Schönle"]
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# The oracles live in a library, not in the target binaries. `cargo fuzz` needs
+# `-Z sanitizer=address`, which is nightly-only and on Windows needs a runtime that ships with
+# Visual Studio rather than with rustup — an oracle that can only run under that toolchain is an
+# oracle nobody checks. With the bodies here, `tests/seeds.rs` replays the whole committed corpus
+# on a plain `cargo test`, anywhere, and the fuzzer's job is to find new inputs to add to it.
+[lib]
+name = "terrace_config_fuzz"
+path = "src/lib.rs"
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# `full`, because `secrets_dir` reaches the file layers and `env_load` compares `load` against
+# `load_watched`. The supervisor itself is not fuzzed: its inputs are a filesystem event and a
+# caller's closure, neither of which a byte string models.
+terrace-config = { path = "..", features = ["full"] }
+
+# Versions restated rather than inherited: this is a workspace of its own, so `workspace = true`
+# has nothing to resolve against. They must not drift *downwards* from the root manifest — a
+# target extracting through an older figment than the crate does is measuring the wrong parser.
+#
+# `test` adds `figment::Jail`, which every target needs to set and restore `TEST_*` around each
+# iteration. `std::env::set_var` is `unsafe` in edition 2024 and the crate forbids unsafe code,
+# so `Jail` is not a convenience here — it is the only way in.
+figment = { version = "0.10", features = ["toml", "env", "test"] }
+serde = { version = "1", features = ["derive"] }
+# The all-digit-password bug was a `SecretString` field refusing a `Value::Num`. Deserialising
+# into one is how a target notices that layer emitting parsed values again.
+secrecy = { version = "0.10", features = ["serde"] }
+
+# `-Z sanitizer=address` instruments the crate under test, so the fuzz binary must be built with
+# debug assertions on: an arithmetic overflow that panics is a finding, and one that silently
+# wraps is not.
+[profile.release]
+debug = true
+debug-assertions = true
+overflow-checks = true
+
+[lints.rust]
+unsafe_code = "forbid"
+# `cargo fuzz` sets `--cfg fuzzing` through RUSTFLAGS, so cargo cannot see it declared anywhere
+# and `unexpected_cfgs` would fire on every target shim.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
+# The same set as the crate under test, restated because this is a workspace of its own. An
+# oracle is the thing deciding whether a finding is real, so it is the last place to accept
+# sloppiness.
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+must_use_candidate = "allow"
+
+# `test`/`doc`/`bench = false`: a `fuzz_target!` binary has no `main` a test harness can call,
+# and `cargo test` in here would fail to link.
+
+[[bin]]
+name = "env_load"
+path = "fuzz_targets/env_load.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "secrets_dir"
+path = "fuzz_targets/secrets_dir.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "toml_layers"
+path = "fuzz_targets/toml_layers.rs"
+test = false
+doc = false
+bench = false
