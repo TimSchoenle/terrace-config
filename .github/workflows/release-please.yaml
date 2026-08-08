@@ -57,6 +57,9 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          permission-contents: write # release commit, tag and GitHub release
+          permission-pull-requests: write # open and maintain the release pull request
+          permission-issues: write # comment on the issues a release closes
 
       - name: Run release-please
         id: release
