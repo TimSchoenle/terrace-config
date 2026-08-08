@@ -17,7 +17,7 @@ already updated.
 
 [![CI](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml/badge.svg)](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/TimSchoenle/terrace-config?label=version&sort=semver&color=blue)](https://github.com/TimSchoenle/terrace-config/tags)
-[![MSRV](https://img.shields.io/badge/MSRV-1.94-blue)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-{{msrv}}-blue)](Cargo.toml)
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
 Layered [figment](https://docs.rs/figment) configuration for services that read their secrets
@@ -26,7 +26,7 @@ rebuilds the service when those files change.
 
 ```toml
 [dependencies]
-terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.1.0" }
+terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "{{tag}}" }
 ```
 
 Pin by tag, not branch. `Cargo.lock` records the resolved revision either way, but a branch
@@ -237,7 +237,7 @@ narrow that for no benefit. Symmetrically, a service that only reads a config fi
 reason to link tokio and notify:
 
 ```toml
-terrace-config = { git = "…", tag = "v0.1.0", default-features = false, features = ["loader"] }
+terrace-config = { git = "…", tag = "{{tag}}", default-features = false, features = ["loader"] }
 ```
 
 The single line joining the halves is `impl reload::Source for Sources`, compiled only when both

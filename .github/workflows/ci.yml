@@ -25,6 +25,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -49,6 +53,10 @@ jobs:
           - "--no-default-features --features loader"
           - "--no-default-features --features reload"
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/clippy@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
           clippy_arguments: ${{ matrix.features }} --all-targets
@@ -64,6 +72,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/test@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
           test_arguments: --all-features
@@ -86,6 +98,10 @@ jobs:
           - "--no-default-features --features reload"
           - "--all-features"
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/cargo-check@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
           check_arguments: --lib ${{ matrix.features }}
@@ -99,6 +115,10 @@ jobs:
     env:
       RUSTDOCFLAGS: "-D warnings"
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -123,6 +143,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -158,6 +182,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -172,6 +200,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false

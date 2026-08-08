@@ -1,0 +1,54 @@
+name: security
+
+# Static analysis of the workflows themselves — the one body of code in this repository with
+# write access to it, and the one nothing else checks. Catches unpinned actions, over-broad
+# `permissions`, credentials persisted into `.git/config`, and `${{ }}` interpolated into a
+# `run:` block, which is a shell injection rather than a template.
+#
+# `pedantic` on purpose: the default persona reports only what is provably exploitable today,
+# pedantic reports the shape that becomes exploitable after one careless edit.
+#
+# Dependency advisories are not here. `cargo deny check` in ci.yml already covers them against
+# the committed `Cargo.lock`, and ci.yml runs on the same weekly schedule so an advisory
+# published against an unchanged tree is still caught. Two gates reading two configurations for
+# one advisory database is how they end up disagreeing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, alongside CI's scheduled run: zizmor's audit set grows between releases.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # to check out the workflows
+      actions: read # to resolve the actions they reference
+      security-events: write # to upload the SARIF findings to code scanning
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          persona: pedantic

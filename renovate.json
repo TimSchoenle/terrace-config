@@ -6,15 +6,15 @@
   ],
   "packageRules": [
     {
-      "description": "The Rust toolchain is a reviewed decision, not a dependency — `rust-toolchain.toml`, ci.yml and the Dockerfiles' RUST_VERSION must move together, not one at a time.",
-      "matchPackageNames": ["dtolnay/rust-toolchain"],
+      "description": "The MSRV is a compatibility promise, not a dependency: `rust-version` in Cargo.toml, the MSRV badge rendered into the README and the `msrv` CI job all move together, as a decision.",
+      "matchManagers": ["cargo"],
+      "matchDepTypes": ["rust-version"],
       "enabled": false
     },
     {
-      "description": "Same lockstep from the image side: these base tags embed the Rust minor and must not move ahead of rust-toolchain.toml. Digest updates (same toolchain, rebuilt) are still wanted.",
-      "matchPackageNames": ["lukemathwalker/cargo-chef", "rust"],
-      "matchUpdateTypes": ["major", "minor", "patch"],
-      "enabled": false
+      "description": "`fuzz/` is a separate workspace whose lockfile only ever backs a local fuzzing run. Bumps there are grouped so they cost one pull request rather than one per crate.",
+      "matchFileNames": ["fuzz/Cargo.toml"],
+      "groupName": "fuzz harness dependencies"
     }
   ]
 }
