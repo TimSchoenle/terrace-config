@@ -1,0 +1,4 @@
+k:by /url=A trailing space, which the environment layer trims off the key it produces.
+k: by=A leading one.
+x:_
+k:normal=A neighbour that must still be reachable every way.

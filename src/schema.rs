@@ -806,8 +806,32 @@ fn env_spelling(dialect: &Dialect, path: &str) -> Option<String> {
     if dialect.indirection_target(&name).is_some() {
         return None;
     }
-    let suffix = name.strip_prefix(dialect.prefix())?;
-    (dialect.key_path(suffix) == path).then_some(name)
+    (env_layer_key(dialect, &name).as_deref() == Some(path)).then_some(name)
+}
+
+/// The key figment's environment layer makes of `name`, or [`None`] if it drops it.
+///
+/// Modelled on `Env::iter` rather than on [`Dialect::key_path`], because the environment layer is
+/// figment's and does two things the dialect does not:
+///
+/// - **It trims.** The mapped key is trimmed at both ends, so a key path with surrounding
+///   whitespace can never come back — `TEST_BY ` arrives as `by`, and a schema promising it would
+///   supply `by ` sends an operator to set a variable that quietly fills in a different key. The
+///   file layers do *not* trim, so a secrets-directory entry can still reach such a path; the two
+///   mechanisms genuinely differ here and the schema has to say so separately.
+/// - **It drops a key with an empty segment.** `a..b` and `.a` are refused outright rather than
+///   nested, so no environment variable supplies them.
+///
+/// Found by the `schema` fuzz target, which set every spelling the schema reported and caught the
+/// value landing at a neighbouring key.
+fn env_layer_key(dialect: &Dialect, name: &str) -> Option<String> {
+    let suffix = name.trim().strip_prefix(dialect.prefix())?;
+    let mapped = suffix.replace(dialect.separator(), ".");
+    let mapped = mapped.trim();
+    if mapped.split('.').any(str::is_empty) {
+        return None;
+    }
+    Some(mapped.to_ascii_lowercase())
 }
 
 /// The secrets-directory file name for `path`, when one can name it.

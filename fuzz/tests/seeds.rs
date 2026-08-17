@@ -263,6 +263,12 @@ mod generated {
         // found the unescaped `Path` column first.
         "a|b",
         "a\\b",
+        // Whitespace, which figment's environment layer trims off the key it produces --
+        // so a path carrying it is reachable by a file and not by a variable.
+        "by ",
+        " by",
+        " ",
+        "",
     ];
 
     /// Separators and suffixes that each break a different assumption: one that is a prefix of

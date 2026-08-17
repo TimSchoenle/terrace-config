@@ -1092,3 +1092,48 @@ fn a_pipe_in_a_loader_variable_does_not_add_a_column() {
     assert!(markdown.contains(r"`T_CON\|FIG`"), "{markdown}");
     assert!(markdown.contains(r"`T_PRO\|FILE`"), "{markdown}");
 }
+
+/// Found by the `schema` fuzz campaign. figment's environment layer trims the key it produces, so
+/// a path with surrounding whitespace can never come back from it: `TEST_BY ` arrives as `by`, and
+/// the schema was promising it would supply `by `. An operator following that would set a variable
+/// that quietly fills in a *neighbouring* key — worse than one that does nothing.
+#[test]
+fn a_path_the_environment_layer_would_trim_has_no_environment_spelling() {
+    #[derive(Describe)]
+    struct Spaced {
+        #[serde(rename = "by ")]
+        trailing: bool,
+        #[serde(rename = " by")]
+        leading: bool,
+        normal: bool,
+    }
+
+    let schema = Schema::describe::<Spaced>(&Terrace::new("T_").dialect());
+    assert_eq!(key(&schema, "by ").env, None);
+    assert_eq!(key(&schema, " by").env, None);
+    assert_eq!(key(&schema, "normal").env.as_deref(), Some("T_NORMAL"));
+
+    // The file layers do not trim, so they can still reach it — the two mechanisms genuinely
+    // differ, and the schema reports them separately rather than blanket-refusing the key.
+    assert_eq!(key(&schema, "by ").secrets_file.as_deref(), Some("by "));
+}
+
+/// figment drops a variable whose key has an empty segment rather than nesting it, so no
+/// environment variable supplies such a path.
+#[test]
+fn a_path_with_an_empty_segment_has_no_environment_spelling() {
+    #[derive(Describe)]
+    struct Empties {
+        #[config(nested)]
+        outer: Inner,
+    }
+
+    #[derive(Describe)]
+    struct Inner {
+        #[serde(rename = "")]
+        blank: bool,
+    }
+
+    let schema = Schema::describe::<Empties>(&Terrace::new("T_").dialect());
+    assert_eq!(key(&schema, "outer.").env, None);
+}
