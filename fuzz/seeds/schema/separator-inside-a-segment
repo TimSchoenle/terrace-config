@@ -1,0 +1,3 @@
+s:__
+k:a__b=A segment containing the separator itself.
+k:a/b=The path that segment would collide with.

@@ -51,6 +51,7 @@ jobs:
         features:
           - "--all-features"
           - "--no-default-features --features loader"
+          - "--no-default-features --features schema"
           - "--no-default-features --features reload"
     steps:
       - name: Harden Runner
@@ -78,7 +79,10 @@ jobs:
           egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/test@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
-          test_arguments: --all-features
+          # `--workspace`, not just `--all-features`: the derive's parser is tested in
+          # `macros/`, and without this cargo tests only the root package and reports green
+          # while running none of them.
+          test_arguments: --workspace --all-features
 
   # A build of each feature set on its own, with no dev-dependencies in the graph. This is the
   # job that catches a feature only unified in by a dev-dependency — `tokio/macros` was exactly
@@ -95,6 +99,7 @@ jobs:
         features:
           - "--no-default-features"
           - "--no-default-features --features loader"
+          - "--no-default-features --features schema"
           - "--no-default-features --features reload"
           - "--all-features"
     steps:
@@ -127,6 +132,7 @@ jobs:
       # intra-doc link can hide in a set `--all-features` never renders.
       - run: cargo doc --all-features --no-deps
       - run: cargo doc --no-default-features --features loader --no-deps
+      - run: cargo doc --no-default-features --features schema --no-deps
       - run: cargo doc --no-default-features --features reload --no-deps
 
   # `fuzz/` is a workspace of its own on a nightly toolchain, so none of the jobs above touch it.
@@ -169,7 +175,7 @@ jobs:
       - name: Short campaign
         run: |
           host="$(rustc -vV | sed -n 's/^host: //p')"
-          for target in env_load secrets_dir toml_layers; do
+          for target in env_load secrets_dir toml_layers schema; do
             cargo fuzz run --target "$host" "$target" \
               "fuzz/corpus/$target" "fuzz/seeds/$target" \
               -- -dict=fuzz/dictionaries/config.dict -max_total_time=60
@@ -214,7 +220,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - run: cargo check --all-features --all-targets
+      - run: cargo check --workspace --all-features --all-targets
 
   # The single required check. It fails if any job failed and passes when jobs were skipped, so
   # branch protection needs one entry that cannot silently stop existing.

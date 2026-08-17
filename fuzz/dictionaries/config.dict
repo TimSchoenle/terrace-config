@@ -40,3 +40,26 @@
 "key = "
 "\"\""
 "[["
+
+# --- the `schema` target's grammar ---
+# Its directives, and the tokens that decide whether a key has an environment spelling at all:
+# a separator containing a letter, a segment carrying the separator or a `.`, and the names that
+# sit on the boundary between an ordinary key and a `_FILE` indirection.
+"k:"
+"m:"
+"S:"
+"s:"
+"x:"
+"r:"
+"s:_X_"
+"s:_"
+"s:."
+"x:_PATH"
+"x:_"
+"distDir"
+"a.b"
+"a__b"
+"file"
+"filename"
+"/"
+" | "

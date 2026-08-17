@@ -1,0 +1,4 @@
+k:a.b/c=A segment containing a dot, so the path cannot say where the boundaries were.
+A:a.b/c=alias
+k:d/e.f=A dot in the leaf name itself.
+A:d/e.f=other

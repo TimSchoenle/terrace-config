@@ -1,0 +1,3 @@
+r:TEST_PROFILE
+k:profile=Reserved, so no file may supply it.
+k:other=Not reserved.

@@ -1,0 +1,5 @@
+k:database/url=The connection string.
+k:database/max_connections=Pool size.
+k:auth/jwt_secret=Signing key.
+S:auth/jwt_secret
+m:database/max_connections=per process

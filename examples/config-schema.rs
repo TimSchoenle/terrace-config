@@ -1,0 +1,206 @@
+//! Dump a configuration surface for a documentation job.
+//!
+//! This is the shape the `schema` feature is built for, and it is meant to be copied into the
+//! service whose configuration is being documented — a handful of lines that a CI step can run
+//! and redirect somewhere:
+//!
+//! ```text
+//! cargo run --example config-schema -- --format json              > docs/config.json
+//! cargo run --example config-schema -- --format markdown          > docs/config.md
+//! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
+//! ```
+//!
+//! It reads nothing from the environment, so it produces the same answer on a developer's
+//! machine and on a runner where none of the variables it describes exist.
+//!
+//! # A configuration is not one file
+//!
+//! The types below are deliberately in separate modules, as they would be in a real service —
+//! each `Describe` derived beside the code that consumes the values, often in a different crate
+//! entirely. `#[config(nested)]` is a trait bound, so it follows the *type*: describing the root
+//! walks the whole tree wherever it lives, and nothing has to be registered anywhere central.
+//!
+//! `--only` goes the other way, slicing one subsystem out for a page of its own.
+
+use std::process::ExitCode;
+
+use serde::{Deserialize, Serialize};
+use terrace_config::Terrace;
+use terrace_config::schema::Describe;
+
+/// The root. Everything under it lives somewhere else.
+#[derive(Deserialize, Serialize, Describe)]
+struct Config {
+    /// Bundle directory the readiness probe checks.
+    #[serde(default = "default_dist_dir")]
+    dist_dir: String,
+    #[config(nested)]
+    csp: csp::Csp,
+    #[config(nested)]
+    github: github::Github,
+    /// How much the service says.
+    #[config(values)]
+    #[serde(default)]
+    log_level: LogLevel,
+}
+
+/// An enum of unit variants is the set of values one key accepts, so `Describe` on it reports
+/// those spellings rather than leaving the table to name a type nobody can see inside.
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum LogLevel {
+    Trace,
+    Debug,
+    #[default]
+    Info,
+    Warn,
+}
+
+fn default_dist_dir() -> String {
+    "public".to_owned()
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            dist_dir: default_dist_dir(),
+            csp: csp::Csp::default(),
+            github: github::Github::default(),
+            log_level: LogLevel::default(),
+        }
+    }
+}
+
+/// Stands in for a `csp` module — or a `myservice-csp` crate.
+mod csp {
+    use serde::{Deserialize, Serialize};
+    use terrace_config::schema::Describe;
+
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    pub(crate) struct Csp {
+        /// Hash the document's inline scripts instead of allowing `'unsafe-inline'`.
+        #[serde(default)]
+        pub(crate) hash_inline_scripts: bool,
+        #[config(nested)]
+        pub(crate) cloudflare: Cloudflare,
+    }
+
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    pub(crate) struct Cloudflare {
+        /// Per-response nonce for the script Cloudflare injects at the edge.
+        #[serde(default)]
+        pub(crate) script_nonce: bool,
+        /// Admit the Turnstile widget — `script-src` and `frame-src`.
+        #[serde(default)]
+        pub(crate) turnstile: bool,
+    }
+}
+
+/// Stands in for a `github` module, which knows nothing about `csp`.
+mod github {
+    use serde::{Deserialize, Serialize};
+    use terrace_config::schema::Describe;
+
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    pub(crate) struct Github {
+        /// User whose repositories `update-repos` lists.
+        #[serde(alias = "user")]
+        pub(crate) username: String,
+        /// Explicit repository set. Every active repository when unset.
+        pub(crate) repos: Option<Vec<String>>,
+        /// Bearer token lifting the GitHub API rate limit.
+        #[config(secret)]
+        pub(crate) token: Option<String>,
+        /// Revalidation interval in seconds.
+        #[config(note = "permanent")]
+        #[serde(default)]
+        pub(crate) ttl_secs: u64,
+    }
+}
+
+fn main() -> ExitCode {
+    let options = match Options::from_args() {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match render(&options) {
+        Ok(rendered) => {
+            println!("{rendered}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn render(options: &Options) -> Result<String, terrace_config::Error> {
+    // Built whole and then sliced, rather than described from the subsystem's own type: the whole
+    // schema is the only place the real key paths exist, and a page documenting `cloudflare.*`
+    // when the file says `csp.cloudflare.*` is worse than no page.
+    //
+    // The defaults come from a value the caller builds, not from the environment: a documentation
+    // job runs where none of these variables are set, and that is the point.
+    let schema = Terrace::new("PORTFOLIO_")
+        .reserve("PORTFOLIO_PROFILE")
+        .schema::<Config>()
+        .with_defaults_from(&Config::default())?
+        .subset(&options.only);
+
+    match options.format {
+        Format::Json => schema.to_json(),
+        Format::Markdown => Ok(schema.to_markdown()),
+    }
+}
+
+/// What to emit, and how much of it.
+struct Options {
+    format: Format,
+    /// The subtree to keep. Empty means the whole configuration.
+    only: String,
+}
+
+/// Which rendering to emit.
+enum Format {
+    /// The versioned contract, for a pipeline that renders its own tables.
+    Json,
+    /// GitHub-flavoured tables, for a pipeline whose next step is `>> README.md`.
+    Markdown,
+}
+
+impl Options {
+    /// JSON and everything, unless asked otherwise: those are the outputs that lose nothing.
+    fn from_args() -> Result<Self, String> {
+        let mut options = Self {
+            format: Format::Json,
+            only: String::new(),
+        };
+        let mut args = std::env::args().skip(1);
+        while let Some(flag) = args.next() {
+            match flag.as_str() {
+                "--format" => {
+                    options.format = match args.next().as_deref() {
+                        Some("json") => Format::Json,
+                        Some("markdown" | "md") => Format::Markdown,
+                        Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
+                        None => return Err(format!("--format takes a value; {USAGE}")),
+                    };
+                }
+                "--only" => {
+                    options.only = args
+                        .next()
+                        .ok_or_else(|| format!("--only takes a key prefix; {USAGE}"))?;
+                }
+                other => return Err(format!("unknown argument `{other}`; {USAGE}")),
+            }
+        }
+        Ok(options)
+    }
+}
+
+const USAGE: &str = "usage: config-schema [--format json|markdown] [--only <key-prefix>]";

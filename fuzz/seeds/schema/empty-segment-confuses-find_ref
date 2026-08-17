@@ -1,0 +1,7 @@
+s:/
+x:FILE
+k:a\b/a|b=A backslash and a pipe in one path.
+A:a\b/a|b=file
+k:auth/.ab/ =A path with an empty segment, where figment's own lookup stops early.
+k:__=
+k:AUTH=The key whose value that early stop would hand back.

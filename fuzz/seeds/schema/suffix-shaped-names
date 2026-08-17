@@ -1,0 +1,4 @@
+x:_FILE
+k:file=A name that is only the prefix and the suffix, and so an ordinary key.
+k:auth/file=One with something in between, which is an indirection.
+k:profile=Merely ends in the letters.

@@ -164,6 +164,73 @@ impl Terrace {
             .fold(dialect, |dialect, key| dialect.reserve(key.clone()))
     }
 
+    /// Every key `T` can carry, in every spelling this loader accepts.
+    ///
+    /// Reads nothing: the answer is a property of `T` and of this loader's dialect, not of the
+    /// environment the process happens to be running in. That is what makes it usable from a
+    /// documentation job, where none of the variables it describes are set.
+    ///
+    /// The keys come from `T`'s [`Describe`](crate::schema::Describe) implementation; the
+    /// variables the loader itself reads — `<PREFIX>CONFIG`, `<PREFIX>SECRETS_DIR`, and anything
+    /// [`reserved`](Self::reserve) — come from here, because no derive can see them.
+    ///
+    /// # Panics
+    /// As [`Schema::describe`](crate::schema::Schema::describe): if two of `T`'s fields resolve
+    /// to one key path, or if `T` contains itself.
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn schema<T: crate::schema::Describe + ?Sized>(&self) -> crate::schema::Schema {
+        self.schema_at::<T>("")
+    }
+
+    /// Every key `T` can carry, as they are spelled when `T` sits at `root` in a larger config.
+    ///
+    /// [`Self::schema`] on the root type already covers a configuration split across modules and
+    /// crates: `#[config(nested)]` follows the type, not the file. This is for documenting one
+    /// subsystem on a page of its own — `schema_at::<Csp>("csp")` produces
+    /// `csp.cloudflare.turnstile`, where `schema::<Csp>()` would produce `cloudflare.turnstile`,
+    /// a path that appears in no configuration file anywhere.
+    ///
+    /// # Panics
+    /// As [`Self::schema`].
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn schema_at<T: crate::schema::Describe + ?Sized>(
+        &self,
+        root: &str,
+    ) -> crate::schema::Schema {
+        use crate::schema::{LoaderRole, LoaderVar};
+
+        let mut schema = crate::schema::Schema::describe_at::<T>(&self.dialect(), root);
+        schema.loader.push(LoaderVar {
+            env: self.config_var_name(),
+            role: LoaderRole::Config,
+            docs: "Names the TOML layer: a file, or a directory whose `*.toml` files are all \
+                   merged in name order."
+                .to_owned(),
+            default: Some(self.default_config_path.display().to_string()),
+        });
+        schema.loader.push(LoaderVar {
+            env: self.secrets_dir_var_name(),
+            role: LoaderRole::SecretsDir,
+            docs: "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. \
+                   Each file supplies the key its name spells."
+                .to_owned(),
+            default: None,
+        });
+        for reserved in &self.reserved {
+            schema.loader.push(LoaderVar {
+                env: reserved.clone(),
+                role: LoaderRole::Reserved,
+                docs: "Read directly from the environment before the layered config exists, so \
+                       no file may supply it."
+                    .to_owned(),
+                default: None,
+            });
+        }
+        schema
+    }
+
     /// The assembled figment.
     ///
     /// # Errors

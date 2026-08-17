@@ -1,0 +1,9 @@
+s:.
+x:_file
+r:TEST_MIXED
+k:filename/file=back\slash
+k:a.b=trailing space 
+m:a.b=plain
+k:a__b=escaped \| pipe
+S:a__b
+k:a/b=back\slash

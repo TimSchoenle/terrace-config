@@ -43,9 +43,19 @@ impl Sources {
     }
 
     /// Whether `self` resolves to different values than `previous`.
+    ///
+    /// Compared structurally rather than with `==`, for one reason: `NaN != NaN`. A configuration
+    /// holding a float NaN — `timeout = nan` in a TOML file — made a fingerprint unequal to
+    /// *itself*, so every filesystem event looked like a change and the supervisor tore the
+    /// service down and rebuilt it, for as long as that key stayed in the file. Found by the
+    /// `toml_layers` fuzz target.
+    ///
+    /// Floats therefore compare by their bits, which makes the relation reflexive. It also makes
+    /// `0.0` and `-0.0` distinct, which is the safe direction: the cost is one needless reload of
+    /// a configuration nobody writes, against a reload loop that never ends.
     #[must_use]
     pub fn differs_from(&self, previous: &Self) -> bool {
-        self.fingerprint != previous.fingerprint
+        !same_value(&self.fingerprint, &previous.fingerprint)
     }
 }
 
@@ -67,5 +77,49 @@ impl crate::reload::Source for Sources {
 
     fn differs_from(&self, previous: &Self) -> bool {
         Self::differs_from(self, previous)
+    }
+}
+
+/// Structural equality over a merged configuration value, with floats compared by their bits.
+///
+/// Mirrors figment's own `PartialEq for Value` — which ignores the [`Tag`] on every variant, since
+/// two loads of one file are the same configuration however they were provided — and changes
+/// exactly one thing: a float leaf compares by bits, so a value equals itself. See
+/// [`Sources::differs_from`].
+///
+/// [`Tag`]: figment::value::Tag
+fn same_value(a: &figment::value::Value, b: &figment::value::Value) -> bool {
+    use figment::value::Value;
+
+    match (a, b) {
+        (Value::Num(_, left), Value::Num(_, right)) => same_num(left, right),
+        (Value::Dict(_, left), Value::Dict(_, right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|((left_key, left), (right_key, right))| {
+                        left_key == right_key && same_value(left, right)
+                    })
+        }
+        (Value::Array(_, left), Value::Array(_, right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| same_value(left, right))
+        }
+        _ => a == b,
+    }
+}
+
+/// Two numbers, where the float variants compare by bits so a value equals itself.
+fn same_num(a: &figment::value::Num, b: &figment::value::Num) -> bool {
+    use figment::value::Num;
+
+    match (a, b) {
+        (Num::F32(left), Num::F32(right)) => left.to_bits() == right.to_bits(),
+        (Num::F64(left), Num::F64(right)) => left.to_bits() == right.to_bits(),
+        _ => a == b,
     }
 }

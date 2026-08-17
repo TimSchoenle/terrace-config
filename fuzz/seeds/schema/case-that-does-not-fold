@@ -1,0 +1,3 @@
+k:assets/distDir=camelCase never survives the fold back from an env key.
+k:CSP/Turnstile=Upper-case segments.
+k:MiXeD=Mixed case.

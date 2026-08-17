@@ -1,0 +1,3 @@
+s:=
+k:outer/leaf=A separator that lands an `=` in every nested variable name.
+k:top=A top-level key, which the separator never touches.
