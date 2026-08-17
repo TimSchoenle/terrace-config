@@ -577,10 +577,7 @@ fn attr_metas(attrs: &[Attribute], name: &str) -> syn::Result<Vec<Meta>> {
         if !attr.path().is_ident(name) {
             continue;
         }
-        metas.extend(
-            attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?
-                .into_iter(),
-        );
+        metas.extend(attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?);
     }
     Ok(metas)
 }
