@@ -44,7 +44,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use terrace_config::Terrace;
 use terrace_config::schema::{Describe, Key, Leaf, Schema, Sink};
 
-use crate::support::{MAX_DIRECTIVES, MAX_NAME_LEN, PREFIX, is_safe_name};
+use crate::support::{MAX_DIRECTIVES, MAX_NAME_LEN, PREFIX, is_safe_name, lookup};
 
 /// The value every pass writes, and the value every assertion looks for.
 ///
@@ -398,7 +398,11 @@ fn assert_arrives(terrace: &Terrace, keys: &[&Key], mechanism: &str) {
     };
 
     for key in keys {
-        let found = value.find_ref(&key.path);
+        // `support::lookup`, not `Value::find_ref`: figment's own lookup *stops early* on an empty
+        // path segment and hands back whatever it had reached, so `auth..ab` resolves to the value
+        // at `auth`. That lets a neighbouring key's value answer for this one, in both directions,
+        // and a strict walk is what the question actually is.
+        let found = lookup(&value, &key.path);
         assert!(
             found.is_some(),
             "the schema advertised {mechanism} for `{}`, but setting it that way produced \
@@ -449,10 +453,7 @@ fn an_unreachable_key_stays_unreachable(spec: &Spec, schema: &Schema) {
         };
         for key in &unreachable {
             assert!(
-                value
-                    .find_ref(&key.path)
-                    .and_then(figment::value::Value::as_str)
-                    != Some(MARKER),
+                lookup(&value, &key.path).and_then(figment::value::Value::as_str) != Some(MARKER),
                 "the schema reported no environment spelling for `{}`, but `{}` reached it \
                  anyway — the key is documented as unsettable when it is not.",
                 key.path,
@@ -572,12 +573,19 @@ fn subsets_are_prefixes(schema: &Schema) {
             continue;
         };
         let head = head.to_owned();
-        let expected: Vec<String> = schema
-            .keys
-            .iter()
-            .filter(|k| k.path == head || k.path.starts_with(&format!("{head}.")))
-            .map(|k| k.path.clone())
-            .collect();
+        // The contract has two branches, and this asserted only one of them. An empty prefix
+        // keeps *everything* — it is how "the whole schema" is spelled — and a key whose own name
+        // begins with a `.` is how a fuzzer reaches that branch through this loop.
+        let expected: Vec<String> = if head.is_empty() {
+            schema.keys.iter().map(|k| k.path.clone()).collect()
+        } else {
+            schema
+                .keys
+                .iter()
+                .filter(|k| k.path == head || k.path.starts_with(&format!("{head}.")))
+                .map(|k| k.path.clone())
+                .collect()
+        };
         let actual: Vec<String> = schema
             .clone()
             .subset(&head)

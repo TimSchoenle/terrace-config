@@ -1,0 +1,3 @@
+k:.ab=A key whose name starts with a dot, so its parent segment is empty.
+k:a=A sibling.
+k:a/b=A real subtree.

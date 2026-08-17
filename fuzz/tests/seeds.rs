@@ -269,6 +269,10 @@ mod generated {
         " by",
         " ",
         "",
+        // A leading or trailing dot, which makes a segment whose parent is the empty
+        // prefix -- the branch of `subset` that means "the whole schema".
+        ".ab",
+        "ab.",
     ];
 
     /// Separators and suffixes that each break a different assumption: one that is a prefix of
