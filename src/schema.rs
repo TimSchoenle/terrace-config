@@ -493,7 +493,7 @@ impl Schema {
                 let _ = writeln!(
                     out,
                     "| `{}` | {} | {} | {} |",
-                    var.env,
+                    escape(&var.env),
                     var.role.label(),
                     optional_code(var.default.as_deref()),
                     cell(&var.docs),
@@ -603,7 +603,10 @@ impl Column {
 
     fn render(self, key: &Key) -> String {
         match self {
-            Self::Path => format!("`{}`", key.path),
+            // Escaped like every other cell. A key path is not prose, but it is not the
+            // table author's to choose either — `#[serde(rename = "a|b")]` puts a cell
+            // separator in it, and an unescaped one adds a column to the row.
+            Self::Path => format!("`{}`", escape(&key.path)),
             // The choices when there are any, because `LogLevel` tells an operator nothing they
             // can act on and `trace | debug | info` tells them exactly what to type. The type
             // name stays in front of them, since it is what they will see in the source.

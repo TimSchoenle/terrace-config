@@ -1043,3 +1043,52 @@ fn a_secrets_file_name_that_would_be_a_path_is_not_advertised() {
         );
     }
 }
+
+/// Found by the libFuzzer campaign. A key path is not prose, but it is not the table author's to
+/// choose either — `#[serde(rename = "a|b")]` puts a cell separator into it, and the `Path`
+/// column was the one cell interpolating its value without escaping. One unescaped `|` adds a
+/// column to that row and the table stops rendering.
+#[test]
+fn a_pipe_in_a_key_path_does_not_add_a_column() {
+    #[derive(Describe)]
+    struct Piped {
+        #[serde(rename = "da|abase")]
+        db: bool,
+        normal: bool,
+    }
+
+    let markdown = Schema::describe::<Piped>(&Terrace::new("T_").dialect()).to_markdown();
+    let widths: Vec<usize> = markdown
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(cell_boundaries)
+        .collect();
+    assert!(widths.windows(2).all(|w| w[0] == w[1]), "{markdown}");
+    assert!(markdown.contains(r"`da\|abase`"), "{markdown}");
+}
+
+/// The same hole in the other table: a loader variable's name comes from `Terrace::reserve` and
+/// `Terrace::config_var`, which are the caller's strings.
+#[test]
+fn a_pipe_in_a_loader_variable_does_not_add_a_column() {
+    #[derive(Describe)]
+    struct One {
+        a: bool,
+    }
+
+    let markdown = Terrace::new("T_")
+        .config_var("T_CON|FIG")
+        .reserve("T_PRO|FILE")
+        .schema::<One>()
+        .to_markdown();
+
+    let loader_table = markdown.split("\n\n").next().expect("the loader table");
+    let widths: Vec<usize> = loader_table
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(cell_boundaries)
+        .collect();
+    assert!(widths.windows(2).all(|w| w[0] == w[1]), "{markdown}");
+    assert!(markdown.contains(r"`T_CON\|FIG`"), "{markdown}");
+    assert!(markdown.contains(r"`T_PRO\|FILE`"), "{markdown}");
+}
