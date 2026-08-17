@@ -424,6 +424,18 @@ fn an_unreachable_key_stays_unreachable(spec: &Spec, schema: &Schema) {
     }
 
     let dialect = terrace(spec).dialect();
+    // The obvious spelling is only worth trying when an operating system could hold it. A name
+    // carrying a NUL or an `=` cannot be created at all, so "setting it does not reach the key"
+    // would be true for a reason that has nothing to do with the schema — and `set_var` panics
+    // rather than failing, which is what took down the first libFuzzer campaign to run this.
+    let unreachable: Vec<&Key> = unreachable
+        .into_iter()
+        .filter(|key| settable_name(&dialect.env_spelling(&key.path)))
+        .collect();
+    if unreachable.is_empty() {
+        return;
+    }
+
     figment::Jail::expect_with(|jail| {
         jail.clear_env();
         for key in &unreachable {
@@ -475,6 +487,15 @@ fn aliases_sit_beside_the_key_they_alias(spec: &Spec, schema: &Schema) {
             );
         }
     }
+}
+
+/// Whether an operating system could hold an environment variable of this name.
+///
+/// The same rule the crate applies before advertising a spelling, restated here rather than
+/// called: an oracle that asked the code under test what to try would agree with it by
+/// construction, and this is the one place whose whole job is to disagree.
+fn settable_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains(['\0', '='])
 }
 
 /// Every Markdown row has the same number of cells, whatever the prose contains.

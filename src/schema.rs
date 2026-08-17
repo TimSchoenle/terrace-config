@@ -361,7 +361,10 @@ impl Schema {
             key.env_file = key
                 .env
                 .as_ref()
-                .map(|env| format!("{env}{}", dialect.indirection_suffix()));
+                .map(|env| format!("{env}{}", dialect.indirection_suffix()))
+                // The suffix is a parameter too, so a usable `env` does not make the indirection
+                // variable usable — `_FILE` could just as easily be `=`.
+                .filter(|name| is_settable_env_name(name));
             key.secrets_file = secrets_file_name(dialect, &key.path);
             key.reserved = key
                 .env
@@ -763,6 +766,26 @@ fn alias_paths(prefix: &[String], aliases: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// Whether an operating system could hold an environment variable of this name.
+///
+/// Not a style rule — a hard limit. POSIX and Windows both forbid `=` in a name, and a NUL ends
+/// the string that carries it, so `std::env::set_var` panics on either. A schema that printed
+/// such a name would be pointing an operator at a variable that cannot be created, which is the
+/// same false claim as printing the wrong one. Found by the `schema` fuzz target, which set every
+/// spelling the schema reported and died on the first one containing a NUL.
+fn is_settable_env_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains(['\0', '='])
+}
+
+/// Whether a directory could hold an entry of this name.
+///
+/// A secrets-directory key is one entry *in* a directory, so anything that would make it a path
+/// instead — a separator — or that cannot be in a file name at all names no file that
+/// `SecretsDir` could ever read back.
+fn is_nameable_file(name: &str) -> bool {
+    !name.is_empty() && !name.contains(['\0', '/', '\\'])
+}
+
 /// The environment spelling of `path`, when the environment can actually name it.
 ///
 /// [`Dialect::env_spelling`] always produces *a* string; whether that string comes back as the
@@ -771,6 +794,9 @@ fn alias_paths(prefix: &[String], aliases: &[&str]) -> Vec<String> {
 /// because such a variable is read as a path to a file rather than as a value.
 fn env_spelling(dialect: &Dialect, path: &str) -> Option<String> {
     let name = dialect.env_spelling(path);
+    if !is_settable_env_name(&name) {
+        return None;
+    }
     // Asked of the dialect rather than tested here, because "ends with the suffix" is not the
     // same question: `MYAPP_FILE` ends with `_FILE` and is still an ordinary key called `file`,
     // since the indirection layer needs something *between* the prefix and the suffix.
@@ -788,7 +814,7 @@ fn env_spelling(dialect: &Dialect, path: &str) -> Option<String> {
 /// containing one produce no answer here.
 fn secrets_file_name(dialect: &Dialect, path: &str) -> Option<String> {
     let name = path.replace('.', dialect.separator());
-    if name.contains('.') {
+    if name.contains('.') || !is_nameable_file(&name) {
         return None;
     }
     (dialect.key_path(&name) == path).then_some(name)

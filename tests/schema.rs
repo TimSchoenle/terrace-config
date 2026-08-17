@@ -968,3 +968,78 @@ fn a_required_key_says_what_to_supply_even_with_no_default() {
     assert!(row.contains("| `String` |"), "{row}");
     assert!(row.contains("| required |"), "{row}");
 }
+
+/// Found by the `schema` fuzz target on the first libFuzzer campaign that ran it: a key path
+/// carrying a NUL produced an environment spelling the schema advertised and `std::env::set_var`
+/// then refused. POSIX and Windows both forbid `=` in a variable name, and a NUL ends the string
+/// that carries it, so a name containing either is one no operator can create — the same false
+/// claim as printing the wrong name.
+#[test]
+fn a_spelling_no_operating_system_could_hold_is_not_advertised() {
+    #[derive(Describe)]
+    struct One {
+        #[serde(rename = "a\0b")]
+        nul: bool,
+    }
+
+    let schema = Schema::describe::<One>(&Terrace::new("T_").dialect());
+    let key = key(&schema, "a\0b");
+    assert_eq!(key.env, None);
+    assert_eq!(key.env_file, None);
+    assert_eq!(key.secrets_file, None);
+}
+
+/// The separator and the suffix are parameters too, so an unusable name can come from the
+/// dialect rather than from the key.
+#[test]
+fn an_unusable_dialect_produces_no_spellings() {
+    #[derive(Describe)]
+    struct Nested {
+        #[config(nested)]
+        outer: Inner,
+    }
+
+    #[derive(Describe)]
+    struct Inner {
+        leaf: bool,
+    }
+
+    // A separator containing `=` lands in the middle of every nested variable name.
+    let equals = Terrace::new("T_").nesting_separator("=").schema::<Nested>();
+    assert_eq!(key(&equals, "outer.leaf").env, None);
+
+    // A usable `env` does not make the indirection variable usable: the suffix is its own knob.
+    let suffix = Terrace::new("T_").file_suffix("=F").schema::<Nested>();
+    assert_eq!(
+        key(&suffix, "outer.leaf").env.as_deref(),
+        Some("T_OUTER__LEAF")
+    );
+    assert_eq!(key(&suffix, "outer.leaf").env_file, None);
+}
+
+/// A secrets-directory key is one entry *in* a directory. A name carrying a path separator names
+/// a path instead, and `SecretsDir` reads `file_name()`, which can never contain one.
+#[test]
+fn a_secrets_file_name_that_would_be_a_path_is_not_advertised() {
+    #[derive(Describe)]
+    struct Nested {
+        #[config(nested)]
+        outer: Inner,
+    }
+
+    #[derive(Describe)]
+    struct Inner {
+        leaf: bool,
+    }
+
+    for separator in ["/", "\\"] {
+        let schema = Terrace::new("T_")
+            .nesting_separator(separator)
+            .schema::<Nested>();
+        assert_eq!(
+            key(&schema, "outer.leaf").secrets_file,
+            None,
+            "separator {separator:?}"
+        );
+    }
+}

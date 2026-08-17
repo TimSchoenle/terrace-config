@@ -255,11 +255,19 @@ mod generated {
         "ünïcode",
         "x_FILE",
         "0",
+        // Characters no environment variable name can carry.
+        "a\0b",
+        "a=b",
     ];
 
     /// Separators and suffixes that each break a different assumption: one that is a prefix of
     /// another, one containing a letter, one that is a single character, one containing a `.`.
-    const SEPARATORS: &[&str] = &["__", "_", "_X_", "-", ".", "___", "x"];
+    const SEPARATORS: &[&str] = &[
+        "__", "_", "_X_", "-", ".", "___", "x",
+        // `=` and a NUL cannot be in a variable name, and `/` would make a secrets-directory
+        // entry a path rather than a name: each must produce *no* spelling, not a bad one.
+        "=", "/", "\0",
+    ];
     const SUFFIXES: &[&str] = &["_FILE", "_PATH", "_", "FILE", "_file"];
 
     /// Types and value sets, including the ones whose rendering needs escaping: a generic with a

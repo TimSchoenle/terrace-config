@@ -1,0 +1,4 @@
+s:/
+k:outer/leaf=A separator that would make the secrets file name a path.
+x:/
+k:other=Another.
