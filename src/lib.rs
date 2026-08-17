@@ -8,9 +8,10 @@
 //! |---|---|---|
 //! | `loader` (default) | `Terrace`, the three providers, `Loaded`/`Sources` | `figment` |
 //! | `reload` | `reload::run`, a supervisor that rebuilds a runtime on change | `tokio`, `notify`, `tracing` |
-//! | `full` | both | both |
+//! | `schema` | `schema::Schema`, a machine-readable dump of every key | `serde_json`, `syn` |
+//! | `full` | all three | all of it |
 //!
-//! They are independent on purpose. `reload` does not depend on `loader`: it is useful to
+//! `loader` and `reload` are independent on purpose. `reload` does not depend on `loader`: it is useful to
 //! anyone with a `Fn(Arc<C>, CancellationToken) -> Future` and a way to detect change, and
 //! requiring figment would shrink its audience for no benefit. Symmetrically, a service that
 //! only reads a config file at boot has no reason to link tokio and notify. The single line
@@ -88,6 +89,47 @@ credential. No error in this crate prints a value either.
 "#
 )]
 #![cfg_attr(
+    feature = "schema",
+    doc = r#"
+# Documenting the configuration
+
+The loader never learns the shape of a config: it hands the merged figment to `serde` and takes
+back a `T`. [`schema`] inverts that, so the reference table every service needs — key,
+environment spelling, default, and what the key is *for* — is generated from the type instead of
+maintained beside it.
+
+```no_run
+use serde::{Deserialize, Serialize};
+use terrace_config::{Terrace, schema::Describe};
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Config {
+    #[config(nested)]
+    csp: Csp,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Csp {
+    /// Hash the document's inline scripts instead of allowing `'unsafe-inline'`.
+    hash_inline_scripts: bool,
+}
+
+let schema = Terrace::new("PORTFOLIO_")
+    .schema::<Config>()
+    .with_defaults_from(&Config::default())?;
+
+// The contract, for a documentation pipeline to render however it likes:
+println!("{}", schema.to_json()?);
+// Or the table itself, ready to paste:
+println!("{}", schema.to_markdown());
+# Ok::<(), terrace_config::Error>(())
+```
+
+The `///` comment is the reason this is a derive and not runtime reflection: it is the one column
+that exists nowhere but the source.
+"#
+)]
+#![cfg_attr(
     feature = "reload",
     doc = r"
 # Reloading
@@ -112,6 +154,9 @@ mod loaded;
 pub mod provider;
 #[cfg(feature = "loader")]
 mod terrace;
+
+#[cfg(feature = "schema")]
+pub mod schema;
 
 #[cfg(feature = "reload")]
 pub mod reload;

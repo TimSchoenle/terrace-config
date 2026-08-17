@@ -5,5 +5,6 @@
 //! is what lets the seed corpus double as a regression suite.
 
 pub mod env_load;
+pub mod schema;
 pub mod secrets_dir;
 pub mod toml_layers;

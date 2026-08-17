@@ -1,3 +1,9 @@
+# The macro crate is a member rather than a workspace of its own: it is version-locked to this
+# one, so `cargo fmt --all`, `cargo clippy --workspace` and a single `Cargo.lock` covering both
+# is exactly the coupling that already exists. (`fuzz/` is the opposite case — see its manifest.)
+[workspace]
+members = ["macros"]
+
 [package]
 name = "terrace-config"
 version = "0.2.0"
@@ -32,6 +38,14 @@ publish = false
 [features]
 default = ["loader"]
 loader = ["dep:figment", "dep:serde"]
+# `schema` is an *add-on to* `loader`, not a third independent half. Every spelling it reports is
+# derived from a `Dialect`, and the defaults column is read out of a serialised figment `Value`;
+# there is no audience for it that is not already loading configuration this way.
+#
+# `serde/derive` is pulled in here rather than in `loader` on purpose: the loader itself only
+# needs `DeserializeOwned` as a bound, and a service that loads configuration at boot has no
+# reason to compile `serde_derive` on this crate's account.
+schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros"]
 reload = [
     "dep:notify",
     "dep:notify-debouncer-full",
@@ -39,7 +53,7 @@ reload = [
     "dep:tokio-util",
     "dep:tracing",
 ]
-full = ["loader", "reload"]
+full = ["loader", "reload", "schema"]
 
 [dependencies]
 thiserror = "2"
@@ -47,6 +61,12 @@ thiserror = "2"
 # --- loader ---
 figment = { version = "0.10", features = ["toml", "env"], optional = true }
 serde = { version = "1", optional = true }
+
+# --- schema ---
+# `=`, not `^`: the derive expands to struct literals of `terrace_config::schema` types, so the
+# two crates are one artefact and a version skew between them is a compile error at best.
+terrace-config-macros = { version = "=0.2.0", path = "macros", optional = true }
+serde_json = { version = "1", optional = true }
 
 # --- reload ---
 notify = { version = "8.2", optional = true }
@@ -62,12 +82,18 @@ secrecy = { version = "=0.10.3", features = ["serde"] }
 tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
 tokio-util = "=0.7.19"
 
-[lints.rust]
+# Declared on the workspace and inherited by both members, so the macro crate — which writes the
+# code every consumer compiles — cannot be held to a looser standard than the crate it writes it
+# for.
+[lints]
+workspace = true
+
+[workspace.lints.rust]
 unsafe_code = "forbid"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
 
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 cargo = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
@@ -80,11 +106,17 @@ missing_errors_doc = "warn"
 missing_panics_doc = "warn"
 must_use_candidate = "allow"
 
-[lints.rustdoc]
+[workspace.lints.rustdoc]
 # A broken intra-doc link renders as literal `[`Foo`]` text — invisible to anyone reading the
 # rendered page, and this crate's doc comments are the artefact being reused.
 broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
+
+# The shape a documentation job takes, kept compiling by `cargo clippy --all-targets` rather
+# than by a README that says what it used to look like.
+[[example]]
+name = "config-schema"
+required-features = ["schema"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -82,6 +82,11 @@ fn toml_layers_seeds() {
     replay_target("toml_layers", oracle::toml_layers::check);
 }
 
+#[test]
+fn schema_seeds() {
+    replay_target("schema", oracle::schema::check);
+}
+
 /// A deterministic input generator, standing in for a mutation engine.
 ///
 /// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
@@ -195,6 +200,11 @@ mod generated {
     /// The corpus replay above deliberately does *not* do this — there the file name is the
     /// context, and the harness already prints it.
     fn sweep(seed: u64, oracle: Oracle) {
+        sweep_with(seed, oracle, generate);
+    }
+
+    /// As [`sweep`], for a target whose input grammar is its own.
+    fn sweep_with(seed: u64, oracle: Oracle, generate: fn(&mut Rng) -> String) {
         let mut rng = Rng(seed);
         for iteration in 0..iterations() {
             let input = generate(&mut rng);
@@ -219,5 +229,108 @@ mod generated {
     #[test]
     fn toml_layers_sweep() {
         sweep(0x5EED_0003, oracle::toml_layers::check);
+    }
+
+    /// Path segments chosen to sit on the rules that decide whether a key has an environment
+    /// spelling at all: case that does not survive the fold, the separator embedded in a segment,
+    /// a `.` inside one, and a name ending in the indirection suffix.
+    const SEGMENTS: &[&str] = &[
+        "a",
+        "b",
+        "auth",
+        "jwt_secret",
+        "AUTH",
+        "distDir",
+        "MiXeD",
+        "a__b",
+        "a_b",
+        "a.b",
+        "file",
+        "filename",
+        "_",
+        "__",
+        "profile",
+        "config",
+        "secrets_dir",
+        "ünïcode",
+        "x_FILE",
+        "0",
+    ];
+
+    /// Separators and suffixes that each break a different assumption: one that is a prefix of
+    /// another, one containing a letter, one that is a single character, one containing a `.`.
+    const SEPARATORS: &[&str] = &["__", "_", "_X_", "-", ".", "___", "x"];
+    const SUFFIXES: &[&str] = &["_FILE", "_PATH", "_", "FILE", "_file"];
+
+    /// Types and value sets, including the ones whose rendering needs escaping: a generic with a
+    /// comma in it, and a choice list whose separator is the character that ends a table cell.
+    const TYPES: &[&str] = &[
+        "String",
+        "u16",
+        "Vec<String>",
+        "BTreeMap<String, u8>",
+        "std::path::PathBuf",
+        "Log|Level",
+        "",
+    ];
+    const VALUE_SETS: &[&str] = &["trace,debug,info", "on,off", "a", "a,,b", "x|y,z", ""];
+
+    /// Prose chosen to break a Markdown table if it is not escaped.
+    const PROSE: &[&str] = &[
+        "plain",
+        "",
+        "pipes | in | prose",
+        r"back\slash",
+        r"escaped \| pipe",
+        "em — dash",
+        "trailing space ",
+    ];
+
+    /// Build one schema-oracle input.
+    fn generate_schema(rng: &mut Rng) -> String {
+        let mut lines = Vec::new();
+        if rng.next().is_multiple_of(3) {
+            lines.push(format!("s:{}", rng.pick(SEPARATORS)));
+        }
+        if rng.next().is_multiple_of(4) {
+            lines.push(format!("x:{}", rng.pick(SUFFIXES)));
+        }
+        if rng.next().is_multiple_of(5) {
+            lines.push(format!("r:TEST_{}", rng.pick(SEGMENTS).to_uppercase()));
+        }
+
+        let keys = 1 + rng.next() % 5;
+        for _ in 0..keys {
+            let depth = 1 + rng.next() % 3;
+            let path = (0..depth)
+                .map(|_| (*rng.pick(SEGMENTS)).to_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            lines.push(format!("k:{path}={}", rng.pick(PROSE)));
+            if rng.next().is_multiple_of(3) {
+                lines.push(format!("t:{path}={}", rng.pick(TYPES)));
+            }
+            if rng.next().is_multiple_of(4) {
+                lines.push(format!("v:{path}={}", rng.pick(VALUE_SETS)));
+            }
+            if rng.next().is_multiple_of(5) {
+                lines.push(format!("A:{path}={}", rng.pick(SEGMENTS)));
+            }
+            if rng.next().is_multiple_of(3) {
+                lines.push(format!("m:{path}={}", rng.pick(PROSE)));
+            }
+            if rng.next().is_multiple_of(4) {
+                lines.push(format!("S:{path}"));
+            }
+        }
+        lines.join(
+            "
+",
+        )
+    }
+
+    #[test]
+    fn schema_sweep() {
+        sweep_with(0x5EED_0004, oracle::schema::check, generate_schema);
     }
 }

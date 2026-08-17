@@ -1,0 +1,7 @@
+k:a=Pipes in a type and in a value set.
+t:a=Log|Level
+v:a=x|y,z
+A:a=b|c
+k:d=Empty type and empty value set.
+t:d=
+v:d=

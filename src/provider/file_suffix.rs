@@ -29,22 +29,15 @@ impl FileSuffixEnv {
     /// variable names a key reserved by `dialect`.
     pub fn read(dialect: &Dialect) -> Result<Self, Error> {
         let prefix = dialect.prefix();
-        let suffix = dialect.indirection_suffix();
 
         let mut values = BTreeMap::new();
         for (name, path) in std::env::vars_os() {
             let (Some(name), Some(path)) = (name.to_str(), path.to_str()) else {
                 continue;
             };
-            let Some(key) = name
-                .strip_prefix(prefix)
-                .and_then(|k| k.strip_suffix(suffix))
-            else {
+            let Some(key) = dialect.indirection_target(name) else {
                 continue;
             };
-            if key.is_empty() {
-                continue;
-            }
 
             let spelled = format!("{prefix}{key}");
             if dialect.is_reserved(&spelled) {

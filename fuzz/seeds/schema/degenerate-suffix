@@ -1,0 +1,3 @@
+x:_
+k:a=A one-character indirection suffix, so every name ends with it.
+k:b_=Ends with the suffix.

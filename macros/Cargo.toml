@@ -1,0 +1,40 @@
+[package]
+name = "terrace-config-macros"
+# Version-locked to `terrace-config`, which depends on this with `=`. The derive expands to
+# struct literals of types in `terrace_config::schema`, so the two are one artefact split in
+# half only because a proc-macro crate cannot export anything else.
+version = "0.2.0"
+edition = "2024"
+authors = ["Tim Schönle"]
+license = "MIT"
+description = "The `Describe` derive for terrace-config. Not useful on its own."
+repository = "https://github.com/TimSchoenle/terrace-config"
+readme = "../README.md"
+keywords = ["configuration", "figment", "documentation", "derive", "schema"]
+categories = ["config", "development-tools::procedural-macro-helpers"]
+rust-version = "1.94"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+# Tracks the major `serde_derive` is on, so a build with the `schema` feature compiles one `syn`
+# rather than two — the derive is only ever enabled alongside `serde/derive` anyway.
+#
+# Deliberately *without* `full`. Everything parsed here is a derive input or an attribute
+# argument, and serde's attribute values are all string literals or paths — the `derive`
+# feature set covers them. `full` adds statement and expression parsing this never reaches, and
+# it is a measurable share of the crate's compile time.
+syn = { version = "3", default-features = false, features = [
+    "derive",
+    "parsing",
+    "printing",
+    "proc-macro",
+    "clone-impls",
+] }
+
+[lints]
+workspace = true

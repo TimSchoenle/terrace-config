@@ -1,0 +1,2 @@
+k:a.b/c=A dot inside a segment, where a key path and a figment path stop agreeing.
+k:d/e.f=A dot in the leaf.
