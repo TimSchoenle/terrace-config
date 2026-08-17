@@ -752,3 +752,52 @@ fn the_default_config_path_is_read_when_no_variable_is_set() {
         Ok(())
     });
 }
+
+/// Found by the `toml_layers` fuzz target. `NaN != NaN`, so a configuration holding a float NaN
+/// made its fingerprint unequal to *itself*: every filesystem event looked like a change, and the
+/// supervisor tore the service down and rebuilt it for as long as that key stayed in the file.
+///
+/// A reload loop is worse than any of the failures the fingerprint exists to avoid, and it is
+/// permanent — it does not resolve when the volume settles.
+#[test]
+fn a_configuration_holding_a_nan_is_not_a_perpetual_change() {
+    jailed(|jail| {
+        jail.create_file(
+            "config.toml",
+            "[database]\nurl = \"postgres://one/app\"\ntimeout = nan\n",
+        )?;
+        jail.set_env(
+            "TEST_CONFIG",
+            jail.directory().join("config.toml").display(),
+        );
+
+        let first = layers()
+            .load_watched::<figment::value::Value>()
+            .map_err(|e| e.to_string())
+            .unwrap();
+        let again = layers()
+            .load_watched::<figment::value::Value>()
+            .map_err(|e| e.to_string())
+            .unwrap();
+
+        assert!(
+            !again.sources.differs_from(&first.sources),
+            "a NaN in the configuration made an unchanged file look like a change"
+        );
+
+        // And the comparison still notices a real change alongside the NaN.
+        jail.create_file(
+            "config.toml",
+            "[database]\nurl = \"postgres://two/app\"\ntimeout = nan\n",
+        )?;
+        let rotated = layers()
+            .load_watched::<figment::value::Value>()
+            .map_err(|e| e.to_string())
+            .unwrap();
+        assert!(
+            rotated.sources.differs_from(&first.sources),
+            "a rotated value alongside a NaN must still look like a change"
+        );
+        Ok(())
+    });
+}
