@@ -296,17 +296,8 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
         schema.insert("description".to_owned(), json!(description));
     }
 
-    if key.values.is_empty() {
-        if let Some(ty) = &key.ty
-            && let Some(interpreted) = rust_type::interpret(ty)
-        {
-            schema.extend(interpreted);
-        }
-    } else {
-        // A fixed set of values is stronger than any type could be, and it is always a set of
-        // strings: `Values::VARIANTS` holds the spellings `serde` accepts for unit variants.
-        schema.insert("type".to_owned(), json!("string"));
-        schema.insert("enum".to_owned(), json!(key.values));
+    if let Some(constraint) = constraint(key.ty.as_deref(), &key.values) {
+        schema.extend(constraint);
     }
 
     if key.secret {
@@ -327,6 +318,33 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
     }
 
     schema
+}
+
+/// What a value of this type must be, as JSON Schema keywords — `type`, `enum`, the numeric
+/// bounds, `items`, `uniqueItems`.
+///
+/// The whole of what a *type* can say and nothing about the key that has it, which is what makes
+/// it reusable: [`leaf`] adds the description and the default for a key in a rendered document,
+/// and [`Key::constraint`] carries it flat for a consumer checking the *environment variable* that
+/// supplies the same key. Every value in an environment is a string, so that consumer has nothing
+/// but this to check against — and without it, every consumer in every language reimplements a
+/// vocabulary of Rust type names, with `PathBuf` as the trap: it is a string and nothing in the
+/// name says so.
+///
+/// [`None`] means unconstrained: a type [`rust_type::interpret`] does not recognise, and no fixed
+/// set of values. A domain newtype lands here, and a validator can say nothing about it beyond
+/// that the key exists.
+pub(super) fn constraint(ty: Option<&str>, values: &[String]) -> Option<Map<String, Json>> {
+    if values.is_empty() {
+        return ty.and_then(rust_type::interpret);
+    }
+
+    // A fixed set of values is stronger than any type could be, and it is always a set of strings:
+    // `Values::VARIANTS` holds the spellings `serde` accepts for unit variants.
+    let mut schema = Map::new();
+    schema.insert("type".to_owned(), json!("string"));
+    schema.insert("enum".to_owned(), json!(values));
+    Some(schema)
 }
 
 /// The `description` for a key: its comment, and what its default means.

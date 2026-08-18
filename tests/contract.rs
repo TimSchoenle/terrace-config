@@ -11,7 +11,7 @@
 #![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value as Json;
+use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, DRAFT_07, Describe, External, ExternalVar,
@@ -87,10 +87,20 @@ fn the_envelope_carries_both_machine_readable_halves() {
 fn a_field_nothing_was_said_about_is_absent_rather_than_null() {
     let json: Json = serde_json::from_str(&contract().to_json().expect("renders")).expect("parses");
 
-    // `digest` is filled in after the push, by whatever attaches the artifact. A `null` here would
-    // be indistinguishable from a build that tried and failed to record one.
-    assert!(json["app"].get("digest").is_none());
     assert!(json["app"].get("revision").is_none());
+}
+
+#[test]
+fn nothing_in_the_document_names_the_image() {
+    let json: Json = serde_json::from_str(&contract().to_json().expect("renders")).expect("parses");
+
+    // Deliberate. A digest is what building the image produces, so a field carrying it could only
+    // be written after the push — changing the bytes `LABEL_SHA256` was computed over before it,
+    // which §3.3 of the plan defines as a hard error. The tie is the attachment: whatever comes
+    // back from asking a digest for its `ARTIFACT_TYPE` referrers is that digest's contract.
+    assert!(json["app"].get("digest").is_none());
+    let rendered = serde_json::to_string(&json).expect("renders");
+    assert!(!rendered.contains("sha256:"), "{rendered}");
 }
 
 #[test]
@@ -275,6 +285,33 @@ fn an_unprefixed_variable_is_accepted_even_when_it_looks_like_a_key() {
 }
 
 #[test]
+fn an_ignore_pattern_may_not_reach_into_the_loaders_namespace() {
+    // The hole `External::var`'s refusal closes, reached through the other door. `var` at least
+    // names the variable it exempts; a pattern exempts everything it happens to cover.
+    for pattern in [
+        "PORTFOLIO_*",
+        "PORTFOLIO_ISR__*",
+        "PORTFOLIO_GITHUB__TOKEN",
+        // The nastiest spelling, because it carries no prefix and reads as a pattern about the
+        // external `PORT`: one character from correct, and it disables the whole gate.
+        "PORT*",
+        "P*",
+    ] {
+        let error = with_external(External::new().ignore(pattern))
+            .expect_err(&format!("`{pattern}` was accepted"));
+        assert!(error.to_string().contains("PORTFOLIO_"), "{pattern}");
+    }
+}
+
+#[test]
+fn an_exact_pattern_the_prefix_merely_starts_with_is_fine() {
+    // `PORT` matches the name `PORT` and nothing else, and no key is spelled that. Refusing it
+    // would be the mirror-image mistake: a rule so broad it rejects correct declarations.
+    with_external(External::new().ignore("PORT")).expect("builds");
+    with_external(External::new().ignore("KUBERNETES_*").ignore("HOSTNAME")).expect("builds");
+}
+
+#[test]
 fn an_ignore_pattern_is_a_trailing_star_or_nothing() {
     with_external(External::new().ignore("KUBERNETES_").ignore("KUBERNETES_*"))
         .expect("both forms build");
@@ -353,19 +390,100 @@ fn a_hand_built_secret_default_is_refused_at_the_boundary() {
 }
 
 #[test]
-fn marking_an_external_variable_secret_drops_its_default() {
-    let var = ExternalVar::new("API_TOKEN").default("hunter2").secret();
+fn a_secret_with_a_default_is_refused_in_either_order() {
+    // One intent, one outcome. Dropping the default inside `secret()` would make the first of
+    // these build and the second fail, and the caller writing either has a misunderstanding worth
+    // surfacing rather than silently repairing.
+    for var in [
+        ExternalVar::new("API_TOKEN").default("hunter2").secret(),
+        ExternalVar::new("API_TOKEN").secret().default("hunter2"),
+    ] {
+        let error = with_external(External::new().var(var)).expect_err("refused");
+        assert!(error.to_string().contains("API_TOKEN"));
+        assert!(!error.to_string().contains("hunter2"));
+    }
+}
 
-    assert!(var.secret);
-    assert_eq!(var.default, None);
+// ---------------------------------------------------------------------------------------------
+// The constraints, which are what makes the document checkable by something that is not Rust
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn every_key_carries_what_its_value_must_be() {
+    let contract = contract();
+    let key = |path: &str| {
+        contract
+            .schema
+            .keys
+            .iter()
+            .find(|key| key.path == path)
+            .unwrap_or_else(|| panic!("{path} is described"))
+            .constraint
+            .clone()
+    };
+
+    // Without this a consumer has only `ty`, a Rust type name with no published vocabulary, and
+    // every consumer in every language writes the same mapping table by reading the app's source.
+    assert_eq!(
+        key("ttl_secs"),
+        Some(json!({ "type": "integer", "minimum": 0 }))
+    );
+    assert_eq!(key("dist_dir"), Some(json!({ "type": "string" })));
+    assert_eq!(key("github.username"), Some(json!({ "type": "string" })));
 }
 
 #[test]
-fn an_external_secret_that_kept_a_default_is_refused() {
-    let mut var = ExternalVar::new("API_TOKEN").secret();
-    var.default = Some("hunter2".to_owned());
+fn a_declared_variable_carries_one_too() {
+    // The half that has no JSON Schema to fall back on. Every value in an environment is a string,
+    // so this is the only thing that makes `PORT: "http"` catchable.
+    let contract =
+        with_external(External::new().var(ExternalVar::new("PORT").ty("u16"))).expect("builds");
 
-    let error = with_external(External::new().var(var)).expect_err("refused");
-    assert!(error.to_string().contains("API_TOKEN"));
-    assert!(!error.to_string().contains("hunter2"));
+    assert_eq!(
+        contract.external.env[0].constraint,
+        Some(json!({ "type": "integer", "minimum": 0, "maximum": 65535 }))
+    );
+}
+
+#[test]
+fn a_type_nothing_can_interpret_leaves_the_constraint_absent_rather_than_guessed() {
+    let contract = with_external(External::new().var(ExternalVar::new("ENDPOINT").ty("MyNewtype")))
+        .expect("builds");
+
+    // Absent means "declared but unconstrained", which is nearer to `ignore` than the declaration
+    // reads — and inventing a constraint for a type this crate does not recognise would reject
+    // values the image accepts, which is the one thing a schema here must never do.
+    assert_eq!(contract.external.env[0].constraint, None);
+    assert_eq!(contract.external.env[0].ty.as_deref(), Some("MyNewtype"));
+}
+
+#[test]
+fn a_choice_constrains_to_its_spellings_rather_than_to_a_type() {
+    let contract =
+        with_external(External::new().var(ExternalVar::new("MODE").values(["fast", "slow"])))
+            .expect("builds");
+
+    assert_eq!(
+        contract.external.env[0].constraint,
+        Some(json!({ "type": "string", "enum": ["fast", "slow"] }))
+    );
+}
+
+#[test]
+fn the_flat_constraint_agrees_with_the_nested_one() {
+    // Two renderings of one fact, so the test that matters is that they cannot disagree: both come
+    // from `json_schema::constraint`, and this is what fails if one of them stops.
+    let contract = contract();
+    let nested = &contract.json_schema["properties"]["ttl_secs"];
+    let flat = contract
+        .schema
+        .keys
+        .iter()
+        .find(|key| key.path == "ttl_secs")
+        .and_then(|key| key.constraint.clone())
+        .expect("carried");
+
+    for (keyword, value) in flat.as_object().expect("an object") {
+        assert_eq!(&nested[keyword], value, "{keyword}");
+    }
 }

@@ -70,6 +70,12 @@
 //! was published — attached to a digest, signed — rather than of what it says. [`ARTIFACT_TYPE`]
 //! and the `dev.terrace.config.*` labels are the two halves of that publication, and they are
 //! constants here so that the producer and the consumer cannot spell them differently.
+//!
+//! Nothing inside the document names the image, and that is deliberate rather than an omission:
+//! the tie is the attachment. A consumer asks a digest for its [`ARTIFACT_TYPE`] referrers and
+//! whatever comes back is that digest's contract, by construction — where a field claiming a
+//! digest could only be written after the push, changing the bytes [`LABEL_SHA256`] was computed
+//! over before it.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
@@ -109,11 +115,17 @@ pub const LABEL_PATH: &str = "dev.terrace.config.contract.path";
 
 /// The image label carrying the SHA-256 of the contract document, lower-case hex, unprefixed.
 ///
-/// Computed over the exact bytes [`Contract::to_json`] produced, by whatever writes them — this
-/// crate takes no hashing dependency for a value the build already has to compute to name the
-/// file it is copying. It is what turns three copies of one document into one guarantee: the
+/// **Over the exact bytes [`Contract::to_json`] produced** — the whole document, no
+/// canonicalisation, nothing excluded. A consumer checks it by hashing the file it has, which is
+/// the cheapest check there is and only stays cheap while nothing is carved out of it. That is why
+/// [`App`] carries no image digest: a field written after the push would change these bytes after
+/// they were hashed, and the alternative — hashing a canonicalisation with that field removed —
+/// makes every consumer in every language reproduce the carve-out before it can verify anything.
+///
+/// This crate takes no hashing dependency for a value the build already computes to name the file
+/// it is copying. What the label buys is that three copies of one document are one guarantee: the
 /// embedded file, the registry artifact and this label must agree, and a consumer that finds they
-/// do not has found a build it should refuse rather than a copy it should prefer.
+/// do not has found a build to refuse rather than a copy to prefer.
 pub const LABEL_SHA256: &str = "dev.terrace.config.contract.sha256";
 
 /// The image label carrying the loader's environment prefix, e.g. `PORTFOLIO_`.
@@ -163,7 +175,12 @@ pub struct Contract {
 pub struct App {
     /// The service's name, as its image is named.
     pub name: String,
-    /// The release this was built from, e.g. `v2.5.0`.
+    /// The release this was built from, **spelled as the image tag spells it**.
+    ///
+    /// `v2.5.0` where the images are tagged `v2.5.0`, and `2.5.0` where they are not — this field
+    /// exists to be compared against a tag, and `env!("CARGO_PKG_VERSION")` yields the form
+    /// without the `v`. A consumer comparing across that difference is the whole reason to say
+    /// which form is meant.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     /// The commit it was built from.
@@ -175,14 +192,14 @@ pub struct App {
     /// Where the source lives.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    /// The image digest this contract was published against, `sha256:…`.
-    ///
-    /// Not knowable while the image is being built — the digest is what building it produces — so
-    /// this is filled in after the push, by whatever attaches the artifact. A consumer that finds
-    /// it absent has a contract that cannot be tied to an image, and the whole value of the
-    /// document is that it can be.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub digest: Option<String>,
+    //
+    // No `digest`. It looks like it belongs here and it cannot: the digest is what building the
+    // image *produces*, so a document carrying it must be written after the push — and writing it
+    // changes the bytes, which are the bytes [`LABEL_SHA256`] was computed over before the push.
+    // There is no build order that satisfies both, and the field is unnecessary anyway: a
+    // registry artifact's subject *is* a digest, so a consumer that fetched this document by
+    // asking a digest for its [`ARTIFACT_TYPE`] referrers already knows which image it belongs to.
+    // The attachment is the tie, not a field.
 }
 
 impl App {
@@ -222,21 +239,57 @@ impl App {
         self.source = Some(source.into());
         self
     }
-
-    /// The image digest this contract belongs to.
-    #[must_use]
-    pub fn digest(mut self, digest: impl Into<String>) -> Self {
-        self.digest = Some(digest.into());
-        self
-    }
 }
 
 /// The environment this image reads that the loader does not own.
 ///
 /// Empty by default, and an empty `External` with [`Unknown::Reject`] is a strong claim: *every*
-/// variable set on this container is either a configuration key or a mistake. That is the right
-/// default for a `scratch` image running one static binary, and the wrong one for almost anything
-/// built on a distribution base — which is what [`Self::ignore`] is for.
+/// variable set on this container is either a configuration key or a mistake. Almost no real
+/// deployment can make it — see [`Unknown::Reject`] for the three things a Kubernetes pod carries
+/// that no image asked for.
+///
+/// # How a validator classifies a variable
+///
+/// Normative, and an ordered list because it has to be: the first match wins, and two consumers
+/// that ran these in different orders would disagree about whether a deployment is valid. That is
+/// the failure [`Self::ignore`]'s single wildcard form exists to prevent, reached through
+/// evaluation order instead of through pattern syntax.
+///
+/// For each environment variable set on a container:
+///
+/// 1. it is one of `schema.loader[].env` — a variable the loader reads to decide what the layers
+///    are. Valid.
+/// 2. it equals some `schema.keys[].env` — that key, supplied by the environment layer. Check the
+///    value against that key's [`constraint`](super::Key::constraint).
+/// 3. it equals some `schema.keys[].env_file` — that key, supplied by indirection. The value is a
+///    path, so the constraint does not apply to it; what applies is that the path is mounted.
+/// 4. it begins with `schema.dialect.prefix` and matched none of the above — **reject**. It is a
+///    key spelling nothing in this image reads: a rename nobody finished, or a typo. Neither
+///    [`Self::env`] nor [`Self::ignore`] can reach this step, because [`ContractBuilder::build`]
+///    refuses both when they carry the prefix.
+/// 5. it equals some [`Self::env`] entry — check it against that entry's
+///    [`constraint`](ExternalVar::constraint).
+/// 6. it matches some [`Self::ignore`] pattern — skip it.
+/// 7. otherwise — [`Self::unknown`].
+///
+/// Step 4 sitting above 5 and 6 is the load-bearing part. After `build`'s refusals the two cannot
+/// disagree, so stating the order costs nothing and removes the question.
+///
+/// # What this deliberately cannot say
+///
+/// Step 4 also catches what a *cluster* injects into the prefix, and the contract has no way to
+/// declare it. Kubernetes service links inject `<SERVICE_NAME>_SERVICE_HOST`, `<SERVICE_NAME>_PORT`
+/// and five more per Service in the namespace, and the service name is the *release* name — which
+/// an image cannot know. A release called `portfolio` produces `PORTFOLIO_SERVICE_HOST` and
+/// `PORTFOLIO_PORT` against a `PORTFOLIO_` prefix; a release called `staging-portfolio` produces
+/// names that fall outside it entirely. No declaration written at build time is right for both.
+///
+/// So it belongs to whatever renders the deployment, which does know the release name, and the
+/// answer is the same one that answers it at runtime: **set `enableServiceLinks: false`**. Service
+/// links are a legacy mechanism, and leaving them on against a prefix that matches the release
+/// name is not merely a validation nuisance — `PORTFOLIO_PORT` is a spelling of the key `port`,
+/// so a service link would *supply* that key, from the environment layer, outranking the mounted
+/// file. That is a live misconfiguration this document cannot fix and can only refuse to hide.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -276,6 +329,11 @@ impl External {
     /// For variables with no owner in this image — an operator's `TZ`, a base image's `PATH`, a
     /// platform's injected `KUBERNETES_*`. Prefer [`Self::var`] wherever the variable does have an
     /// owner: an ignored variable is one a chart can misspell freely.
+    ///
+    /// A pattern that reaches into the loader's namespace is refused by
+    /// [`ContractBuilder::build`], including one that does not carry the prefix but subsumes it —
+    /// `ignore("PORT*")` against a `PORTFOLIO_` prefix reads as a pattern about the external
+    /// `PORT` and would exempt every configuration key the image has.
     #[must_use]
     pub fn ignore(mut self, pattern: impl Into<String>) -> Self {
         self.ignore.push(pattern.into());
@@ -311,13 +369,29 @@ pub struct ExternalVar {
     pub owner: Option<String>,
     /// What it is for. Empty when nothing was said.
     pub docs: String,
-    /// The type it takes, spelled as a Rust type so it interprets exactly as [`Key::ty`] does.
+    /// The type it takes, spelled as a Rust type — prose, saying what the reading side calls it.
+    ///
+    /// [`Self::constraint`] is what a validator acts on. This is not a vocabulary a consumer is
+    /// expected to interpret, and a type this crate does not recognise leaves the constraint
+    /// [`None`] rather than making one up.
     ///
     /// [`Key::ty`]: super::Key::ty
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ty: Option<String>,
     /// The fixed set of values it accepts. Empty when it is not a choice.
     pub values: Vec<String>,
+    /// What a value of this variable must be, as JSON Schema keywords, derived from [`Self::ty`]
+    /// and [`Self::values`] exactly as [`Key::constraint`] is.
+    ///
+    /// **[`None`] means declared but unconstrained** — legitimate for an opaque string, and the
+    /// difference a consumer must not miss: an entry with a constraint is checked like a
+    /// configuration key, an entry without one is only checked to exist. That is nearer to
+    /// [`External::ignore`] than the declaration reads, so a variable worth declaring is usually
+    /// worth typing.
+    ///
+    /// [`Key::constraint`]: super::Key::constraint
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub constraint: Option<Json>,
     /// What the image does when it is unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
@@ -338,6 +412,9 @@ impl ExternalVar {
             docs: String::new(),
             ty: None,
             values: Vec::new(),
+            // Derived by `build`, for `Key::constraint`'s reason: one place decides what a type
+            // means, so a variable's constraint cannot disagree with the key's for one spelling.
+            constraint: None,
             default: None,
             required: false,
             secret: false,
@@ -386,11 +463,15 @@ impl ExternalVar {
         self
     }
 
-    /// Mark it a credential. Any default is dropped, because this document is published.
+    /// Mark it a credential.
+    ///
+    /// A secret with a default is refused by [`ContractBuilder::build`] whichever order the two
+    /// were called in. Dropping the default here instead would make `.default(…).secret()` build
+    /// and `.secret().default(…)` fail, which is one intent with two outcomes — and the caller
+    /// writing either has a misunderstanding worth surfacing rather than silently repairing.
     #[must_use]
     pub fn secret(mut self) -> Self {
         self.secret = true;
-        self.default = None;
         self
     }
 }
@@ -403,6 +484,18 @@ pub enum Unknown {
     /// Fail. The default, on the reasoning the rest of this crate defaults on: a variable nobody
     /// reads is a mistake rather than a courtesy, and one that used to be read is a rename nobody
     /// finished.
+    ///
+    /// It is the default; it is not free. A pod carries variables no image asked for, and a
+    /// contract adopting `Reject` has to account for all of them — including on a `scratch` image
+    /// running one static binary, which is the case where it is most tempting to assume otherwise:
+    ///
+    /// - `HOSTNAME`, from the container runtime.
+    /// - `KUBERNETES_SERVICE_HOST` and its four relatives, from the API server.
+    /// - the service links, which need `enableServiceLinks: false` on the pod rather than anything
+    ///   in this document — see [`External`] for why an image cannot declare them.
+    ///
+    /// The first two are what [`External::ignore`] is for. Reaching for [`Self::Warn`] instead
+    /// gives up the whole gate to tolerate six names.
     #[default]
     Reject,
     /// Report it and carry on. For adopting the gate on a chart that has variables nobody has
@@ -469,6 +562,12 @@ impl ContractBuilder {
         validate_external(&schema, &external)?;
         validate_secrets(&schema, &external)?;
 
+        let mut external = external;
+        for var in &mut external.env {
+            var.constraint =
+                json_schema::constraint(var.ty.as_deref(), &var.values).map(Json::Object);
+        }
+
         let options = json_schema.or_title(format!("{} configuration", app.name));
         let rendered = json_schema::document(&schema, &options);
 
@@ -484,6 +583,16 @@ impl ContractBuilder {
 
 impl Schema {
     /// This schema as the contract an image publishes. See [`Contract`].
+    ///
+    /// **The schema passed here is a claim about what *this image's binary* loads.** Pass what
+    /// that binary loads — not the union across a workspace, which is what a generator producing
+    /// every other rendering naturally has to hand. A contract built from the union asserts the
+    /// runtime image reads a build-time credential no deployment supplies, and a chart believing
+    /// it is a chart being told to mount something that does not exist. Nothing can check this:
+    /// both schemas are well-formed and only the caller knows which binary is in the image.
+    ///
+    /// [`Schema::merge`] is for the other case, and it is a real one — several binaries in one
+    /// image, or one document read by several. Merge the roots that are actually in the image.
     ///
     /// Consuming, because a generator has no use for the schema afterwards and the alternative is
     /// cloning every key to no end. [`Clone`] is there for the generator that does.
@@ -543,6 +652,12 @@ impl Contract {
 /// spelling, and the reason is not tidiness — a chart setting `PORTFOLIO_GITHUB__TOKEN` while the
 /// contract declares it "external, owned by something else" is a key silently exempted from the
 /// gate that would otherwise catch it being renamed.
+///
+/// [`Key::secrets_file`](super::Key::secrets_file) is deliberately absent: it is a file name in a
+/// mounted directory, not a variable, so it cannot collide with one. A validator checking the
+/// *files* a chart mounts wants that field, one per key, straight off
+/// [`Contract::schema`]`.keys` — there is no set assembled here for it, because nothing in this
+/// module has a reason to build one.
 fn loader_spellings(schema: &Schema) -> impl Iterator<Item = &str> {
     schema
         .keys
@@ -607,19 +722,21 @@ fn validate_external(schema: &Schema, external: &External) -> Result<(), Error> 
     }
 
     for pattern in &external.ignore {
-        validate_pattern(pattern)?;
+        validate_pattern(pattern, prefix)?;
     }
 
     Ok(())
 }
 
-/// Check that an ignore pattern is one a consumer can match without inventing a glob dialect.
+/// Check that an ignore pattern is one a consumer can match without inventing a glob dialect, and
+/// that it stays out of the loader's namespace.
 ///
 /// Exactly one wildcard form is supported — a trailing `*` — because every consumer of this
 /// document has to implement the matching, in whatever language it is written in, and a pattern
 /// language is a place for two implementations to disagree about what is exempt from a security
 /// check.
-fn validate_pattern(pattern: &str) -> Result<(), Error> {
+fn validate_pattern(pattern: &str, prefix: &str) -> Result<(), Error> {
+    let wildcard = pattern.ends_with('*');
     let stem = pattern.strip_suffix('*').unwrap_or(pattern);
 
     if stem.is_empty() {
@@ -640,6 +757,26 @@ fn validate_pattern(pattern: &str) -> Result<(), Error> {
     if !stem.chars().all(is_env_char) {
         return Err(Error::Invalid(format!(
             "`{pattern}` contains a character no environment variable name can hold."
+        )));
+    }
+
+    // The `ExternalVar` case reached through the suppression list, and worse than it: a declared
+    // variable at least names what it is, while a pattern exempts everything it happens to cover.
+    //
+    // Two ways in. A pattern *inside* the namespace — `PORTFOLIO_*`, `PORTFOLIO_GITHUB__TOKEN` —
+    // and a wildcard pattern that does not carry the prefix but subsumes it: `ignore("PORT*")`
+    // against `PORTFOLIO_` reads as a pattern about the external `PORT` and disables the whole
+    // gate, one character from a spelling that is entirely correct.
+    //
+    // An *exact* pattern the prefix starts with is not either of those. `ignore("PORT")` matches
+    // the name `PORT` and nothing else, and no key is spelled that.
+    if !prefix.is_empty() && (stem.starts_with(prefix) || (wildcard && prefix.starts_with(stem))) {
+        return Err(Error::Invalid(format!(
+            "`{pattern}` ignores variables carrying the loader's prefix `{prefix}`. Everything in \
+             that namespace is a configuration key, and an ignored key is one a chart may misspell \
+             freely — which is the exemption `External::var` is refused for. If these are names a \
+             platform injects rather than keys, they belong to whatever renders the deployment: \
+             see `External` on service links."
         )));
     }
 

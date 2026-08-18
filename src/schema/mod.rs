@@ -232,6 +232,11 @@ impl Sink {
                 .map(str::to_owned)
                 .collect(),
             aliases: alias_paths(&self.prefix, leaf.aliases),
+            // Filled in by `describe_at`, beside the spellings: both are derived from what the
+            // derive collected rather than collected themselves, and doing it in one place is what
+            // keeps a hand-built `Sink` from producing a key whose constraint disagrees with its
+            // type.
+            constraint: None,
             default: None,
             default_value: None,
             note: leaf.note.map(str::to_owned),
@@ -290,6 +295,21 @@ pub struct Key {
     /// The fixed set of values the key accepts, spelled as `serde` accepts them. Empty when the
     /// key is not a choice.
     pub values: Vec<String>,
+    /// What a value of this key must be, as JSON Schema keywords — `type`, `enum`, the numeric
+    /// bounds, `items`.
+    ///
+    /// [`Schema::to_json_schema`] carries the same keywords *nested*, at the key's position in the
+    /// document. This carries them flat, and the reason is the environment: a consumer checking
+    /// [`Self::env`] has a variable name and a string, not a document, and digging the constraint
+    /// out of a nested schema by dotted path is a step every consumer would reimplement. Without
+    /// it they reimplement something worse — a vocabulary of Rust type names, in whatever language
+    /// they are written in, with `PathBuf` as the trap: it is a string and nothing in the name
+    /// says so.
+    ///
+    /// [`None`] means unconstrained, and says exactly as much as [`Self::ty`] does about a domain
+    /// newtype: the key exists and nothing here can check its value.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub constraint: Option<serde_json::Value>,
     /// Other key paths that supply this same key, from `#[serde(alias = "…")]`.
     ///
     /// Full paths, so each one's environment and file spellings derive exactly as
@@ -300,6 +320,12 @@ pub struct Key {
     /// or, for a [`required`](Self::required) key, that there is no default to have.
     ///
     /// Filled in by [`Schema::with_defaults_from`]; the exact value, never prose.
+    ///
+    /// "Nothing supplies it" means nothing in the *program*. A container image that sets the key's
+    /// environment variable in its own `ENV` block supplies it on every run, so what an operator
+    /// omitting the key actually gets is this value only when the image is silent about it. The
+    /// derive cannot see an `ENV` line, so a [`Contract`] is a claim about the code's defaults and
+    /// not about the image's — see [`Contract`] for where that gap is recorded.
     pub default: Option<String>,
     /// That same default as the value it *is*, rather than as the text a table prints.
     ///
@@ -427,6 +453,8 @@ impl Schema {
 
         let mut keys = sink.keys;
         for key in &mut keys {
+            key.constraint = json_schema::constraint(key.ty.as_deref(), &key.values)
+                .map(serde_json::Value::Object);
             key.env = env_spelling(dialect, &key.path);
             key.env_file = key
                 .env

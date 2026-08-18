@@ -79,8 +79,7 @@ one document:
     "name": "portfolio",
     "version": "v2.5.0",
     "revision": "b47ca70…",
-    "created": "2026-08-18T09:12:44Z",
-    "digest": "sha256:48e259cb…"
+    "created": "2026-08-18T09:12:44Z"
   },
   "schema": { "schema_version": 1, "dialect": {…}, "loader": […], "keys": […] },
   "jsonSchema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
@@ -91,9 +90,18 @@ one document:
 `terraceContract` is the envelope's own version, independent of the `schema_version` inside it.
 A consumer that does not recognise it refuses the document by name instead of misreading it.
 
-**Status: implemented.** `schema::Contract`, `Schema::into_contract`, `--format contract` and
-`--format labels`. See §2.4 for `external`, which was added during implementation and is the piece
-that turns this from a terrace-only gate into a whole-image one.
+**Status: implemented**, and revised after a full Phase 0 + Phase 1 implementation against
+`TimSchoenle/Portfolio` found four blockers in the design below. See §2.4 for `external`, the piece
+that turns this from a terrace-only gate into a whole-image one, and §2.5 for the constraints that
+make it readable by something that is not Rust.
+
+**No `app.digest`.** It was in this document and it cannot work: a digest is what building the image
+*produces*, so a field carrying it must be written after the push — changing the bytes
+`dev.terrace.config.contract.sha256` was computed over before it, which §3.3 defines as a hard
+error. Absent, §12.3 would have nothing to compare. There is no build order satisfying both. The
+field is also unnecessary: a registry artifact's subject *is* a digest, so a consumer that fetched
+the document by asking a digest for its referrers already knows which image it belongs to. **The
+attachment is the tie.** §12.3 is rewritten accordingly.
 
 ### 2.2 Determinism is a requirement, not a nicety
 
@@ -144,17 +152,68 @@ The distinction is the whole value. A declared `PORT` with `ty("u16")` means a c
 `server.host` and `logLevel` — which today are typed by nothing anywhere — become checked values,
 and the pipeline covers every variable a pod carries rather than only the prefixed ones.
 
-`build()` refuses four things outright, each a way a contract could quietly stop being one:
+`build()` refuses five things outright, each a way a contract could quietly stop being one:
 
 - an external variable **carrying the loader's prefix**: everything in that namespace is a
   configuration key, and declaring one external would leave it governed and exempt at once, with
-  the exemption winning. This is the security-relevant one — it is the only way an application
-  could remove a real key from the gate that owns it.
+  the exemption winning.
+- an **ignore pattern reaching into that namespace** — the same exemption through the other door,
+  and worse, because a pattern exempts everything it happens to cover rather than one named
+  variable. `ignore("PORTFOLIO_*")` is the obvious spelling; the dangerous one is `ignore("PORT*")`,
+  which carries no prefix, reads as a pattern about the external `PORT`, subsumes `PORTFOLIO_`
+  entirely, and looks correct in review. An *exact* `ignore("PORT")` is fine — it matches that name
+  and nothing else, and no key is spelled that. Together with the first, these are the
+  security-relevant refusals: they are the only ways an application could remove a real key from
+  the gate that owns it.
 - an external variable **colliding with a spelling the loader reads**, the same defect reached
   through a `reserve`d name or a renamed prefix;
 - an external variable **declared twice**, on `Schema::merge`'s reasoning;
 - a **secret carrying a default**, anywhere in the document, checked at the boundary the document
   crosses into a public registry rather than trusted to the code paths that build it.
+
+### 2.5 Constraints, so the document is readable by something that is not Rust
+
+`ty` is a Rust type name and there is no published vocabulary for one. A consumer given only that
+writes a mapping table — `bool`, `u8`…`usize`, `String`, `PathBuf`, `IpAddr`, plus a regex to unwrap
+`Option<T>` — by reading the service's source, in whatever language it is written in, once per
+consumer. `PathBuf` is the trap: it is a string and nothing in the name says so.
+
+So every key and every declared external variable carries a `constraint`, the JSON Schema keywords
+its value must satisfy:
+
+```json
+{ "path": "isr.ttl_secs", "env": "PORTFOLIO_ISR__TTL_SECS", "ty": "u64",
+  "constraint": { "type": "integer", "minimum": 0 } }
+```
+
+`jsonSchema` already carries the same keywords, *nested*, at the key's position in the rendered
+document. This carries them where the gates that check the **environment** can reach them: gate 2
+has a variable name and a string, not a document. `external.env` has no `jsonSchema` at all, and
+that is where it matters most — `PORT: "http"` is catchable only because `u16` was rendered to
+`{"type": "integer", "maximum": 65535}` by the producer rather than re-derived by every consumer.
+
+Both come from one function, and a test asserts the flat and nested renderings agree. `null` means
+declared but unconstrained: a domain newtype, or a type the crate does not recognise. Inventing one
+would reject values the image accepts, which is the one thing a schema here must never do.
+
+### 2.6 What the contract cannot say: platform-injected variables
+
+Kubernetes service links inject `<SERVICE_NAME>_SERVICE_HOST`, `<SERVICE_NAME>_PORT` and five more
+per Service in the namespace. The service name is the **release** name, so for a release called
+`portfolio` they land inside a `PORTFOLIO_` prefix and gate 2 reports five failures on a correct
+deployment; for a release called `staging-portfolio` they fall outside it entirely.
+
+There is deliberately no API for declaring them. An image cannot know the release names it will be
+deployed under, so no declaration written at build time is right for both cases. It belongs to
+whatever renders the deployment, which does know:
+
+**`enableServiceLinks: false` is a precondition of adopting this gate**, and every chart in §4 sets
+it. It is not merely a validation nuisance — `PORTFOLIO_PORT` is a spelling of the key `port`, so
+with service links on, a Service named after the release *supplies* that key from the environment
+layer, outranking the mounted file. That is a live misconfiguration the contract cannot fix and
+will not hide.
+
+`HOSTNAME` and `KUBERNETES_*` do not carry the prefix and are ordinary `external.ignore` entries.
 
 ---
 
@@ -229,17 +288,45 @@ a fallback — the two disagreeing means one of them is from a different build.
 
 ### 3.4 Build wiring in `Portfolio`
 
-A new stage, on the existing builder image so no toolchain is added:
+A new stage, on the existing builder image so no toolchain is added, and a `COPY` into `runtime`:
 
 ```dockerfile
 FROM builder AS contract-builder
 RUN cargo run -p portfolio-config --features config-schema --example config-schema \
       -- --format contract > /out/contract.json
+
+FROM scratch AS runtime
+COPY --from=contract-builder /out/contract.json /config/contract.json
 ```
 
-Then `COPY` into `runtime`, and the labels from a `--build-arg CONTRACT_SHA256` computed by the
-workflow. The `oras attach` and `cosign sign` steps run after the push, keyed on the digest
-`docker/build-push-action` returns.
+**The labels come from the generator, not from `LABEL` instructions.** That was wrong in the first
+draft of this document: `Contract::labels` exists so that a Dockerfile never spells a label name by
+hand — the failure mode of a typo being a contract that is silently never found — and a `LABEL`
+key cannot be read from a build, so the Dockerfile spells all four by hand anyway and `labels()`
+earns nothing.
+
+```bash
+cargo run -p portfolio-config --features config-schema --example config-schema \
+  -- --format contract > contract.json
+sha256="$(sha256sum contract.json | cut -d' ' -f1)"
+
+args=()
+while IFS= read -r label; do args+=(--label "$label"); done < <(
+  cargo run -p portfolio-config --features config-schema --example config-schema -- --format labels
+)
+args+=(--label "dev.terrace.config.contract.sha256=${sha256}")
+
+docker buildx build "${args[@]}" .
+```
+
+A repository that would rather keep `LABEL` instructions in the Dockerfile can, provided CI diffs
+them against `--format labels` — so a typo fails a build rather than a deployment. What is not an
+option is hand-written labels with nothing checking them.
+
+The `oras attach` and `cosign sign` steps run after the push, keyed on the digest
+`docker/build-push-action` returns. The document is attached **verbatim** — the bytes that were
+hashed into the label, with nothing added afterwards. See §2.1 for why there is no digest field to
+add.
 
 ---
 
@@ -372,6 +459,11 @@ scalar belongs.
 
 ### Gate 2 — the environment
 
+Classification is the ordered list in §2.4's implementation — first match wins, and the step that
+rejects an unaccounted-for prefixed variable sits *above* both external lists, so the two cannot
+disagree about what is exempt. Requires `enableServiceLinks: false` on every pod it checks; see
+§2.6.
+
 For every declared container, every variable matching the document's prefix must be one of:
 
 - a key's `env` spelling,
@@ -455,6 +547,12 @@ key in `_helpers.tpl`, nothing downstream is worth building.
 - **Third-party images.** A `documents[].contract: { file: contracts/paperless.hand.json }` points
   at a hand-written contract for an upstream image, and every gate runs identically. The
   distinction is where the document comes from, never what is done with it.
+- **The image's own `ENV` block.** A Dockerfile setting `ENV PORTFOLIO_ISR__CACHE_DIR=/tmp/isr`
+  supplies that key on every run, and the contract reports the key with no default — so a chart
+  asking what happens if it omits the key is told "ISR off" and gets "ISR on". `Key::default` is a
+  claim about the *code*, and the image's defaults are a second surface no derive can see. Reading
+  them is a `crane config` away and the union is a natural additive field; the gap is documented on
+  `Key::default` in the meantime.
 - **A drift report rather than a gate.** The same union, run across every published chart version
   against every published image digest, answers "which deployed releases are running on a config
   the image no longer reads" — a scheduled job, not a pull-request gate.
@@ -711,14 +809,36 @@ Because the docs job does not gate the others, a Renovate digest bump produces t
 3. **run 2** — new digest, new contract. The config gate is authoritative.
 
 Run 1's config job must never report a pass it cannot justify. So it does not validate at all
-unless the contract provably belongs to the image:
+unless the contract provably belongs to the image.
+
+The digest is **not** in the contract — see §2.1 — so the chart repo records it on the way in. The
+published document is vendored inside a wrapper `just contracts` writes, keeping the published
+bytes exactly the ones that were hashed:
+
+```json
+{
+  "source": {
+    "image": "ghcr.io/timschoenle/portfolio",
+    "digest": "sha256:48e259cb…",
+    "sha256": "3f1c…",
+    "fetched": "2026-08-18T09:12:44Z"
+  },
+  "contract": { "terraceContract": 1, … }
+}
+```
+
+`sha256` is over `contract` as published, so the vendored copy can still be checked against the
+image label without re-fetching. The interlock then reads:
 
 ```
-if contract["app"]["digest"] != resolve_digest(values, document.images[i]):
+if vendored["source"]["digest"] != resolve_digest(values, document.images[i]):
     fail: "charts/portfolio/contracts/server.json is for sha256:48e259cb..., but the chart
            pins sha256:9a1f22e7.... The Documentation job refreshes it; re-run after its
            commit, or run 'just contracts' locally."
 ```
+
+The provenance a chart repo needs is chart-repo-shaped, which is why it lives in the chart repo's
+wrapper rather than in a document a hundred other consumers also read.
 
 Deterministic, offline, self-healing, and a hard failure rather than a skip — the whole design
 turns on the gate being trustworthy on exactly the pull request that bumps a digest.

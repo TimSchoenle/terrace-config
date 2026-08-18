@@ -239,8 +239,11 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
 fn contract(schema: Schema) -> Result<Contract, terrace_config::Error> {
     schema
         .into_contract(
+            // Spelled as the image tag spells it. `CARGO_PKG_VERSION` alone yields `2.5.0`
+            // where the images are tagged `v2.5.0`, and the field exists to be compared against
+            // a tag.
             App::new("portfolio")
-                .version(env!("CARGO_PKG_VERSION"))
+                .version(concat!("v", env!("CARGO_PKG_VERSION")))
                 .source("https://github.com/TimSchoenle/Portfolio"),
         )
         .external(
@@ -265,7 +268,12 @@ fn contract(schema: Schema) -> Result<Contract, terrace_config::Error> {
                         .ty("String")
                         .default("info")
                         .docs("Verbosity, as `tracing` directives — `info`, `web=debug,info`."),
-                ),
+                )
+                // What `Unknown::Reject` costs, and it is not zero even for a `scratch` image
+                // running one static binary: a pod carries names no image asked for. These have
+                // no owner here, which is the one case `ignore` is for.
+                .ignore("KUBERNETES_*")
+                .ignore("HOSTNAME"),
         )
         .build()
 }

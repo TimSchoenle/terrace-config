@@ -817,7 +817,8 @@ let contract = Terrace::new("PORTFOLIO_")
                     .docs("Bind port. Read by the Dioxus toolchain, not by this loader."),
             )
             .var(ExternalVar::new("RUST_LOG").owner("tracing").ty("String"))
-            .ignore("KUBERNETES_*"),
+            .ignore("KUBERNETES_*")
+            .ignore("HOSTNAME"),
     )
     .build()?;
 
@@ -830,7 +831,7 @@ std::fs::write("contract.json", contract.to_json()?)?;
   "app": { "name": "portfolio", "version": "v2.5.0" },
   "schema": { "schema_version": 1, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
   "jsonSchema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
-  "external": { "env": [ … ], "ignore": ["KUBERNETES_*"], "unknown": "reject" }
+  "external": { "env": [ … ], "ignore": ["KUBERNETES_*", "HOSTNAME"], "unknown": "reject" }
 }
 ```
 
@@ -843,6 +844,33 @@ no validator. Published as two artefacts they would be two hashes and two chance
 The JSON Schema half defaults to draft-07 — the dialect Helm validates `values.schema.json`
 against — and to `additionalProperties: false`, because an unknown key is the defect the document
 exists to catch and an open schema catches none of them.
+
+**The schema you pass is a claim about what *this image's binary* loads.** A workspace with several
+aggregates has a generator that naturally reaches for the union of them, and a contract built from
+that union asserts the runtime image reads a build-time credential no deployment supplies. Nothing
+can check this: both schemas are well-formed and only you know which binary is in the image. Use
+`Schema::merge` when several binaries really are.
+
+### Every key says what its value must be
+
+`Key::constraint` and `ExternalVar::constraint` carry JSON Schema keywords — `type`, `enum`, the
+numeric bounds, `items` — flat, beside the spellings:
+
+```json
+{ "path": "isr.ttl_secs", "env": "PORTFOLIO_ISR__TTL_SECS", "ty": "u64",
+  "constraint": { "type": "integer", "minimum": 0 } }
+```
+
+`jsonSchema` carries the same keywords nested, at the key's position in the rendered document. This
+carries them where a consumer checking an *environment variable* can reach them: it has a variable
+name and a string, not a document. Without it, every consumer in every language reimplements a
+vocabulary of Rust type names by reading the service's source — with `PathBuf` as the trap, since
+it is a string and nothing in the name says so.
+
+`null` means declared but unconstrained: a domain newtype, or a type this crate does not recognise.
+Inventing a constraint for one would reject values the image accepts, which is the one thing a
+schema here must never do — so an untyped `ExternalVar` is closer to `ignore` than the declaration
+reads, and a variable worth declaring is usually worth typing.
 
 ### The half no derive can see
 
@@ -864,22 +892,66 @@ suppression list:
 The difference matters. A declared `PORT` with `ty("u16")` means a chart passing `PORT: "http"`
 fails the same gate that a chart passing `PORTFOLIO_ISR__TTL_SECS: "soon"` fails. An ignored `PORT`
 is a variable the chart may misspell freely. Reach for `ignore` only where there is genuinely no
-owner — an operator's `TZ`, a platform's injected `KUBERNETES_*` — and note that only a trailing
-`*` is a wildcard, because every consumer of this document implements the matching itself and a
-pattern language is a place for two implementations to disagree about what is exempt from a check.
+owner — an operator's `TZ`, the platform's `KUBERNETES_*` — and note that only a trailing `*` is a
+wildcard, because every consumer of this document implements the matching itself and a pattern
+language is a place for two implementations to disagree about what is exempt from a check.
 
-`build` refuses four things outright, all of them ways a contract could quietly stop being one:
+`build` refuses five things outright, all of them ways a contract could quietly stop being one:
 
 - an external variable **carrying the loader's prefix** — everything in that namespace is a
   configuration key, and declaring one external would leave it governed and exempt at once;
-- an external variable **colliding with a spelling the loader reads**, which is the same defect
+- an ignore pattern **reaching into that namespace**, which is the same exemption through the other
+  door and worse, because a pattern exempts everything it happens to cover rather than one named
+  variable. That includes a pattern which does not carry the prefix but subsumes it: `ignore("PORT*")`
+  against `PORTFOLIO_` reads as a pattern about the external `PORT` and disables the whole gate,
+  one character from a spelling that is entirely correct. An *exact* `ignore("PORT")` is fine — it
+  matches that name and nothing else, and no key is spelled that;
+- an external variable **colliding with a spelling the loader reads**, which is the first case
   reached through a `reserve`d name;
 - an external variable **declared twice**, on `Schema::merge`'s reasoning: refusing to build beats
   picking one of two descriptions;
-- a **secret carrying a default**, anywhere in the document. Nothing here produces that pair —
-  `with_defaults_from` drops a secret's value and `ExternalVar::secret` drops its own — but this is
-  the point the document crosses into a public registry, and "no code path produces it" is a weaker
-  guarantee than "the type will not carry it".
+- a **secret carrying a default**, in either order the two were declared in, and anywhere in the
+  document. Nothing here produces that pair, but this is the point the document crosses into a
+  public registry, and "no code path produces it" is a weaker guarantee than "the type will not
+  carry it".
+
+### How a validator reads it
+
+Normative, and an ordered list because it has to be — two consumers running these in a different
+order disagree about whether a deployment is valid, which is the failure the single wildcard form
+exists to prevent, reached through evaluation order instead of pattern syntax. For each environment
+variable on a container, first match winning:
+
+1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
+2. some `schema.keys[].env` — that key, from the environment layer. Check it against that key's
+   `constraint`.
+3. some `schema.keys[].env_file` — that key, by indirection. The value is a path.
+4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
+   image reads. Neither `external.env` nor `external.ignore` can reach this step, because `build`
+   refuses both when they carry the prefix.
+5. some `external.env[].name` — check it against that entry's `constraint`.
+6. some `external.ignore` pattern — skip it.
+7. otherwise — `external.unknown`.
+
+### What the contract deliberately cannot say
+
+Step 4 also catches what a *cluster* injects into the prefix. Kubernetes service links inject
+`<SERVICE_NAME>_SERVICE_HOST`, `<SERVICE_NAME>_PORT` and five more per Service in the namespace,
+and the service name is the release name — which an image cannot know. A release called
+`portfolio` produces `PORTFOLIO_SERVICE_HOST` and `PORTFOLIO_PORT` against a `PORTFOLIO_` prefix; a
+release called `staging-portfolio` produces names outside it entirely. No declaration written at
+build time is right for both, which is why there is no API for it.
+
+**Set `enableServiceLinks: false` on the pod.** It is the deployment's business, and the deployment
+does know the release name. It is also not merely a validation nuisance: `PORTFOLIO_PORT` is a
+spelling of the key `port`, so with service links on, a Service named after the release *supplies*
+that key from the environment layer, outranking the mounted file. That is a live misconfiguration
+this document cannot fix and will not hide.
+
+`Unknown::Reject` is the default and it is not free for the same reason. A pod carries `HOSTNAME`
+from the runtime and `KUBERNETES_SERVICE_HOST` and its relatives from the API server, even on a
+`scratch` image running one static binary. Those are what `ignore` is for; reaching for
+`Unknown::Warn` instead gives up the whole gate to tolerate six names.
 
 ### Getting it onto the image
 
@@ -887,26 +959,38 @@ pattern language is a place for two implementations to disagree about what is ex
 can be hashed, and the hash is what ties three copies of it together.
 
 ```dockerfile
-# 1. Generate it in a builder stage, on the toolchain that is already there.
+# Generate it in a builder stage, on the toolchain that is already there.
 FROM builder AS contract-builder
 RUN cargo run --features config-schema --example config-schema -- --format contract > /out/contract.json
 
 FROM scratch AS runtime
-# 2. Embed it, so the image is self-describing with no registry at all.
+# Embed it, so the image is self-describing with no registry at all.
 COPY --from=contract-builder /out/contract.json /config/contract.json
-# 3. Label it, so anything can find it from the config blob alone — no layer pull.
-LABEL dev.terrace.config.contract.version="1" \
-      dev.terrace.config.contract.path="/config/contract.json" \
-      dev.terrace.config.contract.sha256="${CONTRACT_SHA256}" \
-      dev.terrace.config.prefix="PORTFOLIO_"
 ```
 
-`Contract::labels` emits the first, second and fourth of those, so a Dockerfile never spells a
-label name by hand — the failure mode of a typo there is a contract that is silently never found.
-`--format labels` prints them as `NAME=value` lines for `docker build --label`. The SHA-256 is not
-among them: it is a property of the rendered bytes rather than of the value, and the build writing
-those bytes already has it. This crate takes no hashing dependency for a number `sha256sum` is
-about to produce anyway.
+The labels come from the generator rather than from `LABEL` instructions, which is the only way
+`Contract::labels` earns its place — a `LABEL` key cannot be read from a build, so a Dockerfile
+spelling the four by hand is a Dockerfile that can spell one differently from the pipeline reading
+it, and the failure mode is a contract that is silently never found:
+
+```bash
+cargo run --features config-schema --example config-schema -- --format contract > contract.json
+sha256="$(sha256sum contract.json | cut -d' ' -f1)"
+
+args=()
+while IFS= read -r label; do args+=(--label "$label"); done < <(
+  cargo run --features config-schema --example config-schema -- --format labels
+)
+args+=(--label "dev.terrace.config.contract.sha256=${sha256}")
+
+docker buildx build "${args[@]}" .
+```
+
+The SHA-256 is not among what `labels` emits: it is a property of the rendered bytes rather than of
+the value, and the build writing those bytes already has it. This crate takes no hashing dependency
+for a number `sha256sum` is about to produce anyway. (If you would rather keep `LABEL` instructions
+in the Dockerfile, diff them against `--format labels` in CI, so a typo fails a build rather than a
+deployment.)
 
 Then, after the push, attach it to the digest:
 
@@ -919,8 +1003,14 @@ That copy is the one a pipeline fetches — attached to the digest the chart pin
 tag that can move, two small HTTP requests rather than a layer pull, and signable. `ARTIFACT_TYPE`
 is a constant here so the producer and the consumer cannot spell it differently.
 
+Nothing inside the document names the image, and that is deliberate. The tie is the attachment: ask
+a digest for its referrers of this artifact type and whatever comes back is that digest's contract,
+by construction. A field claiming a digest could only be written after the push — changing the very
+bytes the label was computed over. `dev.terrace.config.contract.sha256` covers the whole document
+with no canonicalisation and nothing carved out, so verifying it is `sha256sum` and nothing else.
+
 A consumer that finds the label, the embedded file and the registry artifact disagreeing has found
-a build to refuse, not a copy to prefer. That is what three carriers and one hash buy.
+a build to refuse, not a copy to prefer.
 
 ### Keeping the checked-in copy honest
 
