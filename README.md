@@ -26,7 +26,7 @@ rebuilds the service when those files change.
 
 ```toml
 [dependencies]
-terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.3.0" }
+terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.4.0" }
 ```
 
 Pin by tag, not branch. `Cargo.lock` records the resolved revision either way, but a branch
@@ -238,7 +238,7 @@ narrow that for no benefit. Symmetrically, a service that only reads a config fi
 reason to link tokio and notify:
 
 ```toml
-terrace-config = { git = "…", tag = "v0.3.0", default-features = false, features = ["loader"] }
+terrace-config = { git = "…", tag = "v0.4.0", default-features = false, features = ["loader"] }
 ```
 
 The single line joining those two is `impl reload::Source for Sources`, compiled only when both
@@ -252,7 +252,7 @@ back a `T`. The `schema` feature inverts that, so the reference table every serv
 generated from the type instead of maintained beside it.
 
 ```toml
-terrace-config = { git = "…", tag = "v0.3.0", features = ["schema"] }
+terrace-config = { git = "…", tag = "v0.4.0", features = ["schema"] }
 ```
 
 Add one derive to the structs you already have. Everything else is read from the `#[serde(...)]`
@@ -421,7 +421,7 @@ not a dev-dependency:
 
 ```toml
 [dependencies]
-terrace-config = { git = "…", tag = "v0.3.0", features = ["schema"] }
+terrace-config = { git = "…", tag = "v0.4.0", features = ["schema"] }
 
 # The generator, so `cargo clippy --all-targets` keeps it compiling.
 [[example]]
@@ -510,7 +510,7 @@ which the loader never needs and `with_defaults_from` does:
 config-schema = ["terrace-config/schema"]
 
 [dependencies]
-terrace-config = { git = "…", tag = "v0.3.0" }   # no `schema` here
+terrace-config = { git = "…", tag = "v0.4.0" }   # no `schema` here
 
 [[example]]
 name = "config-schema"
