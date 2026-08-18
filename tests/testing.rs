@@ -274,13 +274,21 @@ fn the_symlinked_layout_links_every_key_through_dot_data() {
             .symlinked()
             .create()?;
 
+        // `symlink_metadata`, not `metadata`: the whole point of this layout is the distinction
+        // between a symlink and what it resolves to, and `metadata` follows the link.
         let data = directory.join("..data");
         let key = directory.join("auth__jwt_secret");
-        assert!(std::fs::symlink_metadata(&data)?.file_type().is_symlink());
-        assert!(std::fs::symlink_metadata(&key)?.file_type().is_symlink());
+        let link_type = |path: &std::path::Path| {
+            std::fs::symlink_metadata(path)
+                .expect("the entry exists")
+                .file_type()
+        };
+        assert!(link_type(&data).is_symlink());
+        assert!(link_type(&key).is_symlink());
         assert_eq!(
-            std::fs::read_link(&key)?,
-            PathBuf::from("..data/auth__jwt_secret")
+            std::fs::read_link(&key).expect("a symlink"),
+            PathBuf::from("..data/auth__jwt_secret"),
+            "a key must be linked through `..data`, not straight at the generation"
         );
         assert!(key.is_file(), "the link must resolve to the generation");
 

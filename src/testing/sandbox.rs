@@ -108,7 +108,7 @@ impl Sandbox {
     /// rewriting that as an absolute path would test a mount that never exists in a cluster.
     ///
     /// Unix only, which is the honest signature rather than a limitation of this crate. Windows
-    /// needs either developer mode or a privilege for [`std::os::windows::fs::symlink_file`],
+    /// needs either developer mode or a privilege for `std::os::windows::fs::symlink_file`,
     /// so a portable version of this would silently create regular files on the one platform
     /// where the distinction is invisible — and the distinction is the whole test: reading a
     /// projected volume through `DirEntry::metadata()`, which does not follow symlinks, reports
