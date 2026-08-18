@@ -959,18 +959,40 @@ exists to prevent, reached through evaluation order instead of pattern syntax. F
 variable on a container, first match winning:
 
 1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
-2. some `schema.keys[].env` — that key, from the environment layer. Check the text against that
-   key's `text_constraint`; `constraint` describes the value after figment's parse, so applying it
-   to the raw characters would reject `"0"` for an integer key.
+2. some `schema.keys[].env` — that key, from the environment layer. Check it in two steps; see
+   below.
 3. some `schema.keys[].env_file` — that key, by indirection. The value is a path, so neither
    constraint applies; what applies is that the path is mounted.
 4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
    image reads. Neither `external.env` nor `external.ignore` can reach this step, because `build`
    refuses both when they carry the prefix.
-5. some `external.env[].name` — check the text against that entry's `text_constraint`. An
-   external variable is only ever text, so that is the one that catches `PORT: "http"`.
+5. some `external.env[].name` — check it the same two ways, against that entry's
+   `text_constraint` and `constraint`.
 6. some `external.ignore` pattern — skip it.
 7. otherwise — `external.unknown`.
+
+That list is repeated verbatim in `External`'s own documentation, and the two must be edited
+together: two normative statements that disagree is the same defect as none, and harder to notice.
+
+**Steps 2 and 5 are two checks, and both are needed.** A variable holds text and a configuration
+holds a value:
+
+1. **Form.** The text must satisfy `text_constraint`. `"http"` is not an integer in any spelling,
+   and this is the check that says so.
+2. **Range.** Parse the text by the form that just matched, then check the result against
+   `constraint`. This is where `minimum` and `maximum` live, and it is the only step that can reach
+   them — a pattern matches characters, so `99999` is a well-formed integer and only a bound
+   catches it not fitting a `u16`.
+
+Skipping the second leaves every bound in the document decorative: a deployment that passes every
+gate and fails at boot. Applying `constraint` to the raw text instead rejects `"0"` for an integer
+key — a correct deployment refused.
+
+**A 64-bit range is not checkable from this document at all.** `u64::MAX` is not representable as
+an IEEE double, so no `maximum` is published rather than one that is a different number than the
+type accepts. A `u64` key given `18446744073709551616` satisfies everything here and still fails to
+load; loading the configuration with the real binary is what closes that, and no arrangement of
+these fields would.
 
 ### What the contract deliberately cannot say
 

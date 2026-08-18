@@ -259,27 +259,53 @@ impl App {
 /// the failure [`Self::ignore`]'s single wildcard form exists to prevent, reached through
 /// evaluation order instead of through pattern syntax.
 ///
+/// This list is repeated verbatim in the crate's README, which is what a pipeline implementer
+/// reads. **Edit both or neither.** Two normative statements that disagree is the same defect as
+/// no normative statement, and worse for being harder to notice.
+///
 /// For each environment variable set on a container:
 ///
 /// 1. it is one of `schema.loader[].env` — a variable the loader reads to decide what the layers
 ///    are. Valid.
-/// 2. it equals some `schema.keys[].env` — that key, supplied by the environment layer. Check the
-///    text against that key's [`text_constraint`](super::Key::text_constraint); the
-///    [`constraint`](super::Key::constraint) beside it describes the value *after* figment's
-///    parse, so applying it to the raw characters would reject `"0"` for an integer key.
+/// 2. it equals some `schema.keys[].env` — that key, supplied by the environment layer. Check it
+///    in two steps; see *Two constraints* below.
 /// 3. it equals some `schema.keys[].env_file` — that key, supplied by indirection. The value is a
 ///    path, so neither constraint applies to it; what applies is that the path is mounted.
 /// 4. it begins with `schema.dialect.prefix` and matched none of the above — **reject**. It is a
 ///    key spelling nothing in this image reads: a rename nobody finished, or a typo. Neither
 ///    [`Self::env`] nor [`Self::ignore`] can reach this step, because [`ContractBuilder::build`]
 ///    refuses both when they carry the prefix.
-/// 5. it equals some [`Self::env`] entry — check it against that entry's
+/// 5. it equals some [`Self::env`] entry — check it the same two ways, against that entry's
+///    [`text_constraint`](ExternalVar::text_constraint) and
 ///    [`constraint`](ExternalVar::constraint).
 /// 6. it matches some [`Self::ignore`] pattern — skip it.
 /// 7. otherwise — [`Self::unknown`].
 ///
 /// Step 4 sitting above 5 and 6 is the load-bearing part. After `build`'s refusals the two cannot
 /// disagree, so stating the order costs nothing and removes the question.
+///
+/// # Two constraints, and both are needed
+///
+/// A variable holds text and a configuration holds a value, so steps 2 and 5 are two checks:
+///
+/// 1. **Form.** The text must satisfy `text_constraint`. `"http"` is not an integer in any
+///    spelling, and this is the check that says so.
+/// 2. **Range.** Parse the text according to the form that just matched — an integer pattern means
+///    read it as an integer — and check the result against `constraint`. This is where `minimum`
+///    and `maximum` live, and it is the only step that can reach them: a pattern matches
+///    characters, so `99999` is a perfectly well-formed integer and only a bound catches it not
+///    fitting a `u16`.
+///
+/// Skipping the second leaves every bound in the document decorative, which is a deployment that
+/// passes every gate and fails at boot. Skipping the first, or applying `constraint` to the raw
+/// text, rejects `"0"` for an integer key — a correct deployment refused.
+///
+/// **A 64-bit range is not checkable from this document at all.** `u64::MAX` is not representable
+/// as an IEEE double, so a `maximum` carrying it would be a different number than the type
+/// accepts, and none is emitted rather than one that is wrong. A
+/// `u64` key given `18446744073709551616` therefore satisfies everything published here and still
+/// fails to load. Running the real binary against the rendered configuration is what closes that,
+/// and there is no arrangement of these fields that would.
 ///
 /// # The file layers are a separate question
 ///
@@ -789,6 +815,20 @@ fn validate_external(schema: &Schema, external: &External) -> Result<(), Error> 
     let spellings: Vec<&str> = loader_spellings(schema).collect();
     for pattern in &external.ignore {
         validate_pattern(pattern, prefix, &spellings)?;
+
+        // An *exact* pattern naming a declared variable is the duplicate-declaration case in
+        // different words: the contract says this variable is checked and that it is nobody's
+        // business, and only the classification order decides which. A wildcard that happens to
+        // cover one is deliberately left alone — `ignore("KUBERNETES_*")` beside a declared
+        // `KUBERNETES_SERVICE_HOST` is an ordinary thing to write, and refusing it would make the
+        // ordered list carry no weight.
+        if seen.contains(pattern.as_str()) {
+            return Err(Error::Invalid(format!(
+                "`{pattern}` is both declared as an external variable and ignored. One says a \
+                 chart's value for it is checked and the other says it is nobody's business; a \
+                 contract cannot say both."
+            )));
+        }
     }
 
     Ok(())

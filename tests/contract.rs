@@ -361,6 +361,33 @@ fn a_pattern_beside_the_loaders_variables_is_still_fine() {
 }
 
 #[test]
+fn a_variable_cannot_be_declared_and_ignored_at_once() {
+    // The duplicate-declaration case in different words: one says a chart's value for it is
+    // checked, the other says it is nobody's business, and only the classification order decides
+    // which. `build` refuses less than that elsewhere.
+    let error = with_external(
+        External::new()
+            .var(ExternalVar::new("PORT").ty("u16"))
+            .ignore("PORT"),
+    )
+    .expect_err("refused");
+    assert!(error.to_string().contains("PORT"));
+}
+
+#[test]
+fn a_wildcard_that_happens_to_cover_a_declared_variable_is_left_alone() {
+    // `ignore("KUBERNETES_*")` beside a declared `KUBERNETES_SERVICE_HOST` is an ordinary thing to
+    // write, and the ordered list already resolves it — step 5 beats step 6. Refusing it would
+    // make that ordering carry no weight.
+    with_external(
+        External::new()
+            .var(ExternalVar::new("KUBERNETES_SERVICE_HOST").ty("String"))
+            .ignore("KUBERNETES_*"),
+    )
+    .expect("builds");
+}
+
+#[test]
 fn an_exact_pattern_the_prefix_merely_starts_with_is_fine() {
     // `PORT` matches the name `PORT` and nothing else, and no key is spelled that. Refusing it
     // would be the mirror-image mistake: a rule so broad it rejects correct declarations.

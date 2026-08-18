@@ -113,7 +113,7 @@ The document is hashed, committed, and diffed. It must be byte-identical across 
   design of `examples/config-schema.rs`.
 - Key order is declaration order; `serde_json::Map` is ordered whichever feature set is on.
 - `app.created` and `app.revision` are the only fields that move between builds of the same source.
-  **They live in `app`, never inside `contract` or `jsonSchema`** — so the chart repo can diff the
+  **They live in `app`, never inside `schema` or `json_schema`** — so the chart repo can diff the
   half that describes the configuration and ignore the half that describes the build.
 
 Add a test in `terrace-config` asserting `to_contract` is stable across two calls, and one
@@ -132,6 +132,11 @@ The service repo checks in its own copy and fails on drift, exactly as `Portfoli
 This is what makes a configuration change *visible in the pull request that makes it*. A removed
 key showing up in a diff is the cheapest possible signal that a chart is about to break, and it
 costs one CI step.
+
+**Do not pass `--revision` or `--created` here.** The container build does, and should; this gate
+must not, or every commit fails it on two fields that are supposed to move. The committed document
+is deliberately not byte-identical to the published one — it is the half that describes the
+configuration, which is the half worth diffing.
 
 ### 2.4 `external` — the surface no derive can see
 
@@ -453,7 +458,7 @@ belonging to the other seven would be "unknown".
 The correct object to validate against is the union of the schemas of every binary that reads the
 document. `terrace-config` already names this exact problem and solves it in-crate with
 `Schema::merge`, for workspaces with no single root type. Chart-side the same union is computed
-structurally, over the `jsonSchema` halves:
+structurally, over the `json_schema` halves:
 
 | Situation | Rule | Why |
 |---|---|---|
@@ -490,8 +495,14 @@ scalar belongs.
 
 Classification is the ordered list in §2.4's implementation — first match wins, and the step that
 rejects an unaccounted-for prefixed variable sits *above* both external lists, so the two cannot
-disagree about what is exempt. Values are checked against `text_constraint`, never `constraint`;
-see §2.5. Requires `enableServiceLinks: false` on every pod it checks; see §2.6.
+disagree about what is exempt. A value is checked twice: its text against `text_constraint`, then
+the parsed result against `constraint`, which is the only step a `minimum` or `maximum` is reached
+by. See §2.5.
+
+Requires `enableServiceLinks: false` on every pod it checks (§2.6) — and the gate should *look* for
+it. When step 4 rejects an unaccounted-for prefixed variable and the pod spec does not set it, the
+message is not "this name is a mystery" but "this is a service link; set `enableServiceLinks:
+false`". The contract names the fix, so the gate can too.
 
 For every declared container, every variable matching the document's prefix must be one of:
 
@@ -807,7 +818,7 @@ for chart in charts/*/:
         union = merge(vendored contracts of document.images)      # section 4.3
         for rendered in rendered/<chart>--*.yaml:
             if (values file, gate) in document.exempt: relax that gate only
-            gate 1  the ConfigMap's data[key], TOML to JSON, against union.jsonSchema
+            gate 1  the ConfigMap's data[key], TOML to JSON, against union.json_schema
             gate 2  every PREFIX_* env var in the declared containers
             gate 3  secrets-dir file names and the targets of every _FILE variable
 ```
@@ -854,7 +865,7 @@ bytes exactly the ones that were hashed:
     "sha256": "3f1c…",
     "fetched": "2026-08-18T09:12:44Z"
   },
-  "contract": { "terraceContract": 1, … }
+  "contract": { "terrace_contract": 1, … }
 }
 ```
 

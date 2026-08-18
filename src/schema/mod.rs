@@ -331,6 +331,20 @@ pub struct Key {
     /// variants of a choice. [`None`] means the text is unconstrained — which is the answer for
     /// every string-like type, since an environment value is a string to begin with.
     ///
+    /// **It constrains form, not range.** A pattern matches characters, so `99999` is a
+    /// well-formed integer and only [`Self::constraint`]'s `maximum` catches it not fitting a
+    /// `u16` — which means a validator has to do both, in the order
+    /// [`External`] sets out: match the text, parse it by the form that
+    /// matched, then check the parsed value. Doing only the first leaves every bound in this
+    /// document decorative.
+    ///
+    /// And a 64-bit range is not checkable from this document at all, by either constraint:
+    /// `u64::MAX` is not representable as an IEEE double, so no `maximum` is published rather than
+    /// one that is a different number than the type accepts. A `u64` key given
+    /// `18446744073709551616` satisfies everything here and still fails to load. Loading the
+    /// configuration with the real binary is what closes that gap, and no arrangement of these
+    /// fields would.
+    ///
     /// **The file layers are a different question, and the answer is usually "not at all".**
     /// [`Self::secrets_file`] and [`Self::env_file`] deliver their contents as strings with no
     /// parse, and `Figment::extract` does not coerce a string into a number or a boolean — so a
