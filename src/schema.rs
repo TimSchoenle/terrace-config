@@ -427,10 +427,57 @@ impl Schema {
     /// credential should end up, and a default that *is* a credential is exactly the case where
     /// this matters.
     ///
+    /// A type holding a secret is the case this bound bites on: `secrecy::SecretString` refuses
+    /// to implement [`Serialize`] on purpose, so a config struct containing one cannot derive it
+    /// either. Mark the field `#[serde(skip_serializing)]` — a secret has no default worth
+    /// printing, and [`Key::secret`] would redact it anyway — or, when the type is not yours to
+    /// annotate, build the value yourself and use [`Self::with_defaults_from_value`].
+    ///
     /// # Errors
     /// Returns [`Error::Figment`] if `value` cannot be serialised.
-    pub fn with_defaults_from<T: Serialize + ?Sized>(mut self, value: &T) -> Result<Self, Error> {
+    pub fn with_defaults_from<T: Serialize + ?Sized>(self, value: &T) -> Result<Self, Error> {
         let root = figment::value::Value::serialize(value).map_err(Box::new)?;
+        Ok(self.with_defaults_from_value(&root))
+    }
+
+    /// Fill in each key's default from an already-serialised value.
+    ///
+    /// [`Self::with_defaults_from`] is this with the serialisation done for you, and is what a
+    /// caller who owns the config type should reach for. This is the escape hatch for the case
+    /// where the root type cannot implement [`Serialize`] at all — a field whose type is from
+    /// another crate and refuses to, `secrecy::SecretString` being the one that turns up in a
+    /// configuration — and the value has to be assembled by hand:
+    ///
+    /// ```
+    /// # use terrace_config::Terrace;
+    /// use figment::value::{Dict, Value};
+    ///
+    /// # struct Config;
+    /// # impl terrace_config::schema::Describe for Config {
+    /// #     fn describe(sink: &mut terrace_config::schema::Sink) {
+    /// #         sink.leaf(terrace_config::schema::Leaf {
+    /// #             name: "ttl_secs", docs: "", ty: Some("u64"), values: None,
+    /// #             aliases: &[], note: None, required: false, secret: false,
+    /// #         });
+    /// #     }
+    /// # }
+    /// let mut defaults = Dict::new();
+    /// defaults.insert("ttl_secs".to_owned(), Value::from(0u64));
+    ///
+    /// let schema = Terrace::new("MYSERVICE_")
+    ///     .schema::<Config>()
+    ///     .with_defaults_from_value(&Value::from(defaults));
+    ///
+    /// assert_eq!(schema.keys[0].default.as_deref(), Some("0"));
+    /// ```
+    ///
+    /// `figment::util::nest` builds the same thing from a dotted path when the keys are nested.
+    ///
+    /// The rules are [`Self::with_defaults_from`]'s, because that is a thin wrapper over this: a
+    /// required key keeps no default, a [`secret`](Key::secret) one renders `<redacted>`, and a
+    /// path `root` does not carry stays unset.
+    #[must_use]
+    pub fn with_defaults_from_value(mut self, root: &figment::value::Value) -> Self {
         for key in &mut self.keys {
             // A required key has no default *by definition* — loading fails when nothing
             // supplies it. Whatever `Default` happened to put in the field is an artefact of
@@ -456,7 +503,7 @@ impl Schema {
                 rendered
             });
         }
-        Ok(self)
+        self
     }
 
     /// The schema as a JSON document — the machine-readable contract.

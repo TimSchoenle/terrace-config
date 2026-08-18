@@ -429,6 +429,29 @@ fn main() -> ExitCode {
 `Serialize` as well as `Deserialize`. Pass whatever represents "nothing was supplied" — if your
 `Default` and your `#[serde(default = "…")]` functions disagree, pass what serde would produce.
 
+**A field holding a secret needs one more attribute.** `secrecy::SecretString` refuses to
+implement `Serialize` on purpose, so a config that holds one cannot derive `Serialize` either —
+which is the crate's own audience, since a config holding secrets is the reason to reach for
+`terrace-config` over bare figment. The compiler says so in terms of `SerializableSecret` and
+`SerializeStruct::serialize_field`, and mentions nothing about schemas:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Github {
+    /// Bearer token lifting the GitHub API rate limit.
+    #[config(secret)]
+    #[serde(skip_serializing)]
+    token: Option<SecretString>,
+}
+```
+
+`skip_serializing` costs nothing here: a secret has no default worth printing, and
+`#[config(secret)]` renders `<redacted>` in place of one anyway. The key keeps its row, its
+spellings and its `secret` flag; only the observed value is left out, which is where it belongs.
+
+When the type is not yours to annotate, `Schema::with_defaults_from_value` takes an already-built
+`figment::value::Value` and asks for no `Serialize` bound on the root at all.
+
 **3. Generate**, from the crate that owns the root type:
 
 ```bash
@@ -453,9 +476,10 @@ request that changes a key without regenerating fails.
 ### Keeping it out of the production build
 
 `serde_json` is linked and the derive costs compile time, which for a service that ships in a
-container may be worth avoiding. Put the whole thing behind a feature of your own — but gate the
-helper attributes too, or the build fails with `cannot find attribute config` the moment the
-derive is not applied:
+container may be worth avoiding. Put the whole thing behind a feature of your own — but gate three
+things, not one: the derive, the `#[config(...)]` helper attributes (or the build fails with
+`cannot find attribute config` the moment the derive is not applied), and `derive(Serialize)`,
+which the loader never needs and `with_defaults_from` does:
 
 ```toml
 [features]
@@ -470,18 +494,31 @@ required-features = ["config-schema"]
 ```
 
 ```rust
-#[derive(Deserialize, Serialize, Default)]
-#[cfg_attr(feature = "config-schema", derive(terrace_config::schema::Describe))]
+#[derive(Deserialize, Default)]
+#[cfg_attr(
+    feature = "config-schema",
+    derive(serde::Serialize, terrace_config::schema::Describe)
+)]
 struct Github {
     /// Bearer token lifting the GitHub API rate limit.
     #[cfg_attr(feature = "config-schema", config(secret))]
-    token: Option<String>,
+    #[serde(skip_serializing)]
+    token: Option<SecretString>,
 }
 ```
 
+Both derives go in one `cfg_attr`, because both exist for the same job: `Describe` reports the
+keys and `Serialize` is what `with_defaults_from` reads the `Default` column out of. A config
+struct that is only ever deserialised has no other reason to carry `Serialize`, so leaving it
+ungated links serde's serialiser into the production build for nothing.
+
+`#[serde(skip_serializing)]` stays ungated: it is inert without a `Serialize` impl, and a
+`cfg_attr` around it would gate the one attribute that has to agree with the field's type either
+way.
+
 Then `cargo run --features config-schema --example config-schema`. The `cfg_attr` on every
-`#[config(...)]` is the price; a struct with no `#[config(...)]` attributes needs only the derive
-gated.
+`#[config(...)]` is the price; a struct with no `#[config(...)]` attributes needs only the two
+derives gated.
 
 ### What the columns mean
 

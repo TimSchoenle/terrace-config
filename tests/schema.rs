@@ -1235,6 +1235,58 @@ fn the_rendered_markdown_ends_with_exactly_one_newline() {
     assert!(markdown.ends_with("|\n"), "{markdown:?}");
 }
 
+/// The escape hatch for a root type that cannot implement `Serialize`: the caller assembles the
+/// value, and the schema reads it exactly as it reads a serialised one.
+#[test]
+fn defaults_can_be_supplied_as_an_already_serialised_value() {
+    use figment::value::{Dict, Value};
+
+    let mut github = Dict::new();
+    github.insert("ttl_secs".to_owned(), Value::from(30u64));
+    let mut root = Dict::new();
+    root.insert("github".to_owned(), Value::from(github));
+
+    let schema = schema().with_defaults_from_value(&Value::from(root));
+
+    assert_eq!(
+        key(&schema, "github.ttl_secs").default.as_deref(),
+        Some("30")
+    );
+    // A path the value does not carry stays unset rather than inventing one.
+    assert_eq!(key(&schema, "csp.hash_inline_scripts").default, None);
+}
+
+/// The case the `Serialize` bound bites on, and the reason it is worth documenting: a config
+/// holding a secret is what this crate exists for. `secrecy::SecretString` refuses to implement
+/// `Serialize` on purpose, so the struct cannot derive it either — unless the field is skipped,
+/// which costs nothing because a secret's default is never rendered anyway.
+#[test]
+fn a_config_holding_a_secret_type_can_still_supply_defaults() {
+    use secrecy::SecretString;
+
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct WithSecret {
+        /// Bearer token lifting the GitHub API rate limit.
+        #[config(secret)]
+        #[serde(skip_serializing)]
+        token: Option<SecretString>,
+        /// Revalidation interval in seconds.
+        #[serde(default)]
+        ttl_secs: u64,
+    }
+
+    let schema = Terrace::new("T_")
+        .schema::<WithSecret>()
+        .with_defaults_from(&WithSecret::default())
+        .expect("the default config serialises");
+
+    // The skipped field supplies no value, so the key is documented with no default at all —
+    // which is the truth, and is what `secret` would have redacted to anyway.
+    assert!(key(&schema, "token").secret);
+    assert_eq!(key(&schema, "token").default, None);
+    assert_eq!(key(&schema, "ttl_secs").default.as_deref(), Some("0"));
+}
+
 /// A README with one key table per subsystem wants the loader variables once, above the first of
 /// them — not repeated over every table, and not reachable only by clearing a public field.
 #[test]

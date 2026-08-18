@@ -106,6 +106,7 @@ mod csp {
 
 /// Stands in for a `github` module, which knows nothing about `csp`.
 mod github {
+    use secrecy::SecretString;
     use serde::{Deserialize, Serialize};
     use terrace_config::schema::Describe;
 
@@ -117,8 +118,24 @@ mod github {
         /// Explicit repository set. Every active repository when unset.
         pub(crate) repos: Option<Vec<String>>,
         /// Bearer token lifting the GitHub API rate limit.
+        ///
+        /// A real secret type, not a `String`, because that is what a service holding one uses —
+        /// and `SecretString` deliberately does not implement `Serialize`, which would otherwise
+        /// stop the whole struct from deriving it and `with_defaults_from` from taking a
+        /// `Config`. `skip_serializing` is the answer and costs nothing: a secret has no default
+        /// worth printing, and `#[config(secret)]` renders `<redacted>` in place of one anyway.
+        ///
+        /// This field is here in the shape a consumer will have it so that
+        /// `cargo clippy --all-targets` fails if that ever stops being true.
         #[config(secret)]
-        pub(crate) token: Option<String>,
+        #[serde(skip_serializing)]
+        #[expect(
+            dead_code,
+            reason = "skipping serialisation is what leaves it unread here: this example only \
+                      dumps a schema, so every other field is read by the `Serialize` derive and \
+                      this one is not. A real service reads it."
+        )]
+        pub(crate) token: Option<SecretString>,
         /// Revalidation interval in seconds.
         #[config(note = "permanent")]
         #[serde(default)]
