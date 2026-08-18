@@ -9,10 +9,11 @@
 //! | `loader` (default) | `Terrace`, the three providers, `Loaded`/`Sources` | `figment` |
 //! | `reload` | `reload::run`, a supervisor that rebuilds a runtime on change | `tokio`, `notify`, `tracing` |
 //! | `schema` | `schema::Schema`, a machine-readable dump of every key | `serde_json`, `syn` |
+//! | `explain` | `Terrace::explain`, which layer supplied each key | nothing |
 //! | `testing` | `testing::Harness`, a sandbox for a consumer's own tests | `figment/test` |
-//! | `full` | all three | all of it |
+//! | `full` | all four | all of it |
 //!
-//! `full` is the three runtime feature sets. `testing` is not one of them: it belongs in a
+//! `full` is the four runtime feature sets. `testing` is not one of them: it belongs in a
 //! consumer's `[dev-dependencies]`, and a service asking for everything this crate does at
 //! runtime should not link a test harness.
 //!
@@ -176,6 +177,31 @@ arrangement and on the load being tested alike, and a test file no longer carrie
 "#
 )]
 #![cfg_attr(
+    feature = "explain",
+    doc = r#"
+# Where did this value come from?
+
+[`Terrace::load`] returns a `T` and throws the provenance away, which is fine right up until a
+value arrives from the layer nobody expected. [`Terrace::explain`] keeps it: which layer supplied
+each key, which file or variable inside that layer, and which keys more than one layer supplied.
+
+```no_run
+use terrace_config::Terrace;
+
+let terrace = Terrace::new("MYAPP_");
+// At boot, and again from inside a reload — it re-reads at the moment it is called.
+println!("{}", terrace.explain()?);
+# Ok::<(), terrace_config::Error>(())
+```
+
+An [`Explanation`](explain::Explanation) holds no configuration *value*, only the places values
+came from, so printing one into a log that is shipped and retained is safe by construction rather
+than safe if reviewed. It is also deliberately harder to break than the load it describes: it
+assembles under [`ShadowPolicy::LastWins`] whatever policy is set, so a configuration
+[`Terrace::load`] *refuses* can still be explained.
+"#
+)]
+#![cfg_attr(
     feature = "reload",
     doc = r"
 # Reloading
@@ -200,6 +226,9 @@ mod loaded;
 pub mod provider;
 #[cfg(feature = "loader")]
 mod terrace;
+
+#[cfg(feature = "explain")]
+pub mod explain;
 
 #[cfg(feature = "schema")]
 pub mod schema;

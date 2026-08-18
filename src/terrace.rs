@@ -231,6 +231,40 @@ impl Terrace {
         schema
     }
 
+    /// Where every value this loader can see would come from.
+    ///
+    /// The report [`load`](Self::load) cannot give you, because by the time it has returned a
+    /// `T` the provenance is gone: which layer supplied each key, which file or variable inside
+    /// that layer, and which keys more than one layer supplied. Printable at boot and on every
+    /// reload — an [`Explanation`](crate::explain::Explanation) holds no configuration *value*
+    /// at all, so there is nothing in it to redact.
+    ///
+    /// Reads the environment and the files exactly as [`Self::load`] does, at the moment it is
+    /// called, which is what makes it usable from inside a reload.
+    ///
+    /// **The shadow policy does not apply here.** This assembles under
+    /// [`ShadowPolicy::LastWins`] whatever [`shadow_policy`](Self::shadow_policy) was set to, so
+    /// a configuration that [`Self::load`] *refuses* can still be explained, and a
+    /// doubly-supplied key is reported as one key with two sources rather than stopping the
+    /// report. A diagnostic that fails for the reason you are running it is not a diagnostic.
+    ///
+    /// ```no_run
+    /// # use terrace_config::Terrace;
+    /// println!("{}", Terrace::new("MYAPP_").explain()?);
+    /// # Ok::<(), terrace_config::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`Error::Source`] if a configured source cannot be read at all — a secrets
+    /// directory that is not mounted, a `_FILE` naming a path that does not exist. Those are
+    /// answers rather than failures of the report, and the message names the path; a TOML
+    /// fragment that is merely absent or unparseable is reported as such instead of raised.
+    #[cfg(feature = "explain")]
+    pub fn explain(&self) -> Result<crate::explain::Explanation, Error> {
+        let layers = self.collect_layers(ShadowPolicy::LastWins)?;
+        Ok(crate::explain::Explanation::of(&layers))
+    }
+
     /// The assembled figment.
     ///
     /// # Errors
@@ -280,12 +314,7 @@ impl Terrace {
     /// Split out because a reload has to re-run exactly this assembly, and needs the layers to
     /// know which paths to watch.
     fn assemble(&self) -> Result<(Figment, TomlLayers, FileLayers), Error> {
-        let dialect = self.dialect();
-
-        let config_var = self.config_var_name();
-        let config_path = std::env::var(&config_var)
-            .map_or_else(|_| self.default_config_path.clone(), PathBuf::from);
-        let toml = TomlLayers::expand(&config_var, config_path)?;
+        let Layers { toml, files, .. } = self.collect_layers(self.shadow_policy)?;
 
         let mut figment = Figment::new();
         // File by file rather than through `TomlLayers`'s own `Provider` impl, so figment
@@ -295,19 +324,84 @@ impl Terrace {
         }
         figment = figment.merge(Env::prefixed(&self.prefix).split(&self.separator));
 
-        // Collected after the environment layer is in place but merged on top of it: the file
-        // layers are the more deliberate way to supply a value, and `FileLayers::collect` has
-        // already refused any key that two mechanisms define.
-        let secrets_var = self.secrets_dir_var_name();
-        let dir = std::env::var(&secrets_var)
-            .ok()
-            .filter(|d| !d.trim().is_empty())
-            .map(PathBuf::from);
-        let files = FileLayers::collect(dir, &secrets_var, &dialect, self.shadow_policy)?;
+        // Merged on top of the environment layer: the file layers are the more deliberate way
+        // to supply a value, and `FileLayers::collect` has already refused any key that two
+        // mechanisms define.
         if !files.is_empty() {
             figment = figment.merge(files.clone());
         }
 
         Ok((figment, toml, files))
     }
+
+    /// Read what this loader's environment points at, without merging any of it.
+    ///
+    /// The half of assembly that touches the world, separated from the half that combines the
+    /// result, because the report needs the first and must not repeat it: a report derived from
+    /// its own second reading of the environment can disagree with the load it claims to
+    /// describe, which is the one thing a diagnostic may never do.
+    ///
+    /// `policy` is a parameter rather than `self.shadow_policy` for the same reason — see
+    /// [`Self::explain`].
+    fn collect_layers(&self, policy: ShadowPolicy) -> Result<Layers, Error> {
+        let dialect = self.dialect();
+
+        let config_var = self.config_var_name();
+        let configured = std::env::var(&config_var).ok();
+        let config_path = configured
+            .as_ref()
+            .map_or_else(|| self.default_config_path.clone(), PathBuf::from);
+        let toml = TomlLayers::expand(&config_var, config_path.clone())?;
+
+        let secrets_var = self.secrets_dir_var_name();
+        let secrets_dir = std::env::var(&secrets_var)
+            .ok()
+            .filter(|d| !d.trim().is_empty())
+            .map(PathBuf::from);
+        let files = FileLayers::collect(secrets_dir.clone(), &secrets_var, &dialect, policy)?;
+
+        Ok(Layers {
+            dialect,
+            config_var,
+            config_path,
+            config_from_env: configured.is_some(),
+            toml,
+            secrets_var,
+            secrets_dir,
+            files,
+        })
+    }
+}
+
+/// Everything one loader's environment points at, before any of it is merged.
+///
+/// Produced by [`Terrace::collect_layers`] and consumed by the two things that need it: the
+/// merge, and the report.
+#[cfg_attr(
+    not(feature = "explain"),
+    expect(
+        dead_code,
+        reason = "the fields naming where each layer came from exist for `Terrace::explain`; \
+                  the merge itself reads only the two layers"
+    )
+)]
+pub(crate) struct Layers {
+    /// The environment spelling in force.
+    pub(crate) dialect: Dialect,
+    /// The variable naming the TOML layer.
+    pub(crate) config_var: String,
+    /// What the TOML layer resolved to — a file, or a directory of fragments.
+    pub(crate) config_path: PathBuf,
+    /// Whether [`Self::config_path`] came from the environment or is the compiled default. The
+    /// distinction is invisible in the path itself, and is the first thing to check when the
+    /// TOML layer supplied nothing.
+    pub(crate) config_from_env: bool,
+    /// The fragments the TOML layer expanded to, in merge order.
+    pub(crate) toml: TomlLayers,
+    /// The variable naming the secrets directory.
+    pub(crate) secrets_var: String,
+    /// The directory it resolved to, when one is configured.
+    pub(crate) secrets_dir: Option<PathBuf>,
+    /// The two file-backed layers.
+    pub(crate) files: FileLayers,
 }

@@ -352,6 +352,20 @@ impl<'figment> Jail<'figment> {
         self.terrace.figment()
     }
 
+    /// Where each value the loader can see would come from.
+    ///
+    /// Here beside [`Self::load`] because it is the assertion a consumer wants about the mount
+    /// they just arranged: not only that the value arrived, but that it arrived from the layer
+    /// they meant. A `secret` that a leftover `env_key` is shadowing loads perfectly well and is
+    /// testing nothing.
+    ///
+    /// # Errors
+    /// As [`Terrace::explain`].
+    #[cfg(feature = "explain")]
+    pub fn explain(&self) -> Result<crate::explain::Explanation, Error> {
+        self.terrace.explain()
+    }
+
     /// Run `future` to completion on a runtime of this thread.
     ///
     /// The supervisor is driven from inside the jail rather than the other way round, because

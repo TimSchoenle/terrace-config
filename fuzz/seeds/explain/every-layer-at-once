@@ -1,0 +1,5 @@
+f:10-base.toml=[database]\nurl = "from-the-file"\n[server]\nworkers = 4\n
+f:20-tuning.toml=[server]\nport = 8080\n
+f:auth__jwt_secret=mounted
+e:DATABASE__URL=from-the-environment
+p:github__token=ghp

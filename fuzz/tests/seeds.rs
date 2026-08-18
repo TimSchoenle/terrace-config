@@ -73,6 +73,11 @@ fn env_load_seeds() {
 }
 
 #[test]
+fn explain_seeds() {
+    replay_target("explain", oracle::explain::check);
+}
+
+#[test]
 fn secrets_dir_seeds() {
     replay_target("secrets_dir", oracle::secrets_dir::check);
 }
@@ -219,6 +224,11 @@ mod generated {
     #[test]
     fn env_load_sweep() {
         sweep(0x5EED_0001, oracle::env_load::check);
+    }
+
+    #[test]
+    fn explain_sweep() {
+        sweep(0x5EED_0005, oracle::explain::check);
     }
 
     #[test]

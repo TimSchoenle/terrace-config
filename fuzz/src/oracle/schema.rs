@@ -624,18 +624,16 @@ fn the_example_is_a_file_the_loader_reads(spec: &Spec, schema: &Schema, settable
         return;
     }
 
-    figment::Jail::expect_with(|jail| {
-        let path = jail.directory().join("config.toml");
-        jail.clear_env();
-        if std::fs::write(&path, &example).is_err() {
+    // Ignored: a jail-setup failure says nothing about the rendering under test.
+    let _ = Harness::over(terrace(spec)).try_run(|jail| {
+        if jail.config(&example).is_err() {
             return Ok(());
         }
-        jail.set_env(format!("{PREFIX}CONFIG"), path.display());
 
         // Not a legitimate outcome, unlike a refusal in the spelling passes: the TOML layer is
         // the only source in this jail, so the only thing that can fail here is the parse of a
         // file this crate itself just wrote.
-        let value = terrace(spec)
+        let value = jail
             .figment()
             .map_err(|e| e.to_string())
             .and_then(|figment| {

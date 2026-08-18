@@ -61,6 +61,15 @@ schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros
 # use `reload`. The `reload` feature itself asks tokio for `macros`, `sync` and `time` only,
 # because the supervisor runs on the caller's runtime rather than building one.
 testing = ["loader", "figment/test", "tokio?/rt"]
+# `explain` is the third add-on to `loader`, and the only feature in this manifest that costs no
+# dependency at all. It is a feature anyway, for the reason the rest of the crate is split: a
+# service that loads its configuration and never reports on it should not carry the reporting.
+# What it carries is not trivial — a second walk of every layer, a `Display` over all of it, and
+# the strings that render it — and it is dead weight in an image that will never print one.
+#
+# Unlike `testing`, it *is* part of `full`: printing where a value came from is something a
+# service does at runtime, in the log it was already writing at boot.
+explain = ["loader"]
 reload = [
     "dep:notify",
     "dep:notify-debouncer-full",
@@ -68,7 +77,7 @@ reload = [
     "dep:tokio-util",
     "dep:tracing",
 ]
-full = ["loader", "reload", "schema"]
+full = ["loader", "reload", "schema", "explain"]
 
 [dependencies]
 thiserror = "2"

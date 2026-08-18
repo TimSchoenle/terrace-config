@@ -16,6 +16,15 @@ use crate::provider::{FileValue, insert_nested, read_value};
 pub struct FileSuffixEnv {
     /// The values found, keyed by figment key path.
     values: BTreeMap<String, FileValue>,
+    /// The variable that named each of them, keyed the same way.
+    ///
+    /// A second map rather than a field on [`FileValue`], which is shared with
+    /// [`SecretsDir`](super::SecretsDir) where there is no variable to record. Recomputing the
+    /// name from the key path would very nearly work — it is what
+    /// [`Schema`](crate::schema::Schema) documents — but "very nearly" is the wrong standard for
+    /// a report whose job is to tell an operator which knob they actually turned: the
+    /// recomputed spelling is upper-cased, and the one they set may not have been.
+    origins: BTreeMap<String, String>,
 }
 
 impl FileSuffixEnv {
@@ -31,6 +40,7 @@ impl FileSuffixEnv {
         let prefix = dialect.prefix();
 
         let mut values = BTreeMap::new();
+        let mut origins = BTreeMap::new();
         for (name, path) in std::env::vars_os() {
             let (Some(name), Some(path)) = (name.to_str(), path.to_str()) else {
                 continue;
@@ -53,16 +63,27 @@ impl FileSuffixEnv {
             // a secret goes silently unset and the service boots with a default instead.
             let value = read_value(&path)
                 .map_err(|e| Error::source(format!("{name} names {}: {e}", path.display())))?;
-            values.insert(dialect.key_path(key), FileValue { path, value });
+            let key = dialect.key_path(key);
+            origins.insert(key.clone(), name.to_owned());
+            values.insert(key, FileValue { path, value });
         }
 
-        Ok(Self { values })
+        Ok(Self { values, origins })
     }
 
     /// The values this layer supplies, keyed by figment key path (`auth.jwt_secret`).
     #[must_use]
     pub fn values(&self) -> &BTreeMap<String, FileValue> {
         &self.values
+    }
+
+    /// The variable that named the file supplying `key`, in the spelling it was set in.
+    ///
+    /// [`Self::values`] says which file a value came out of; this says which variable pointed at
+    /// it, which is the half an operator can actually change.
+    #[must_use]
+    pub fn origin(&self, key: &str) -> Option<&str> {
+        self.origins.get(key).map(String::as_str)
     }
 
     /// Whether the environment declared no indirection variables.
