@@ -17,7 +17,7 @@ use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, DRAFT_07, Describe, External, ExternalVar,
-    JsonSchema, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, Schema, TextForm, Unknown,
+    JsonSchema, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, LoaderRole, Schema, TextForm, Unknown,
 };
 
 #[derive(Deserialize, Serialize, Default, Describe)]
@@ -1260,4 +1260,90 @@ fn bracketed(pattern: &str, text: &str) -> bool {
     let opens = text.starts_with('[') || text.starts_with('{');
     let closes = text.ends_with(']') || text.ends_with('}');
     opens && closes && text.len() >= 2
+}
+
+// ---------------------------------------------------------------------------------------------
+// Forward compatibility, which the version policy promises and only a fallback variant delivers
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_document_from_a_later_crate_still_reads() {
+    // `CONTRACT_VERSION` promises a version is bumped only when a field changes meaning or
+    // disappears, never when one is added — so a consumer must be able to read a document carrying
+    // things it has no name for. A consumer branching on strings gets that for free; one
+    // deserialising into typed enums does not, and an unfamiliar variant is a parse error for the
+    // *whole document* rather than for the field carrying it.
+    let rendered = contract().to_json().expect("renders");
+    let mut json: Json = serde_json::from_str(&rendered).expect("parses");
+
+    // A field the envelope gained, a field a key gained, and one of each enum set to a spelling
+    // this version has never heard of.
+    json["future_envelope_field"] = json!("ignored");
+    let keys = json["schema"]["keys"].as_array_mut().expect("an array");
+    keys[0]["future_key_field"] = json!("ignored");
+    keys[0]["text_form"] = json!("duration");
+    json["schema"]["loader"][0]["role"] = json!("overlay");
+    json["external"]["unknown"] = json!("report");
+
+    let parsed: Contract =
+        serde_json::from_value(json).expect("a later crate's document is still readable");
+
+    // Each fallback is the one that keeps a consumer honest rather than the one that is nearest.
+    assert_eq!(parsed.schema.keys[0].text_form, TextForm::Unknown);
+    assert_eq!(parsed.schema.loader[0].role, LoaderRole::Other);
+    // Failing closed: read as `Allow` this would silently switch off the ordered list's last step.
+    assert_eq!(parsed.external.unknown, Unknown::Reject);
+
+    // And the rest of the document survived, which is the whole point — one unfamiliar form on one
+    // key used to make the envelope, the app block and every other key unreadable.
+    assert_eq!(parsed.terrace_contract, CONTRACT_VERSION);
+    assert_eq!(parsed.app.name, "portfolio");
+    assert!(parsed.json_schema["properties"].is_object());
+    assert!(parsed.schema.keys.len() > 1);
+}
+
+#[test]
+fn an_unknown_role_is_not_read_as_a_role_that_means_something() {
+    // The reason `LoaderRole` needed a new variant rather than folding into one of the three. Every
+    // role means "the loader reads this variable", so the ordered list's step 1 is satisfied by
+    // `env` alone whatever this says — but a consumer looking for the secrets directory matches on
+    // the role, and an unknown one read as `Config` would hand it the wrong variable.
+    let role: LoaderRole = serde_json::from_str("\"overlay\"").expect("reads");
+
+    assert_eq!(role, LoaderRole::Other);
+    assert_ne!(role, LoaderRole::Config);
+    assert_ne!(role, LoaderRole::SecretsDir);
+}
+
+#[test]
+fn the_known_spellings_still_round_trip() {
+    // A fallback that swallowed a spelling this version does know would be worse than none.
+    for (json, form) in [
+        ("\"text\"", TextForm::Text),
+        ("\"integer\"", TextForm::Integer),
+        ("\"boolean\"", TextForm::Boolean),
+        ("\"choice\"", TextForm::Choice),
+        ("\"structured\"", TextForm::Structured),
+        ("\"unknown\"", TextForm::Unknown),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<TextForm>(json).expect("reads"),
+            form,
+            "{json}"
+        );
+        assert_eq!(serde_json::to_string(&form).expect("renders"), json);
+    }
+
+    for (json, policy) in [
+        ("\"reject\"", Unknown::Reject),
+        ("\"warn\"", Unknown::Warn),
+        ("\"allow\"", Unknown::Allow),
+    ] {
+        assert_eq!(
+            serde_json::from_str::<Unknown>(json).expect("reads"),
+            policy,
+            "{json}"
+        );
+        assert_eq!(serde_json::to_string(&policy).expect("renders"), json);
+    }
 }

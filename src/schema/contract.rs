@@ -102,6 +102,20 @@ use super::{Error, Schema, TextForm};
 /// same reasoning and with the same obligation on consumers: ignore what you do not recognise,
 /// and refuse a version you were not written against rather than guessing at it.
 ///
+/// A consumer branching on strings gets that for free. One deserialising into typed enums does
+/// not: an unfamiliar variant is a parse error for the *whole document*, not for the field
+/// carrying it, so a single new [`TextForm`](super::TextForm) on a single key would make the
+/// envelope, the app block, the JSON Schema half and every other key unreadable — on a document
+/// this policy says is readable. Every enum here therefore carries a fallback variant:
+/// [`TextForm::Unknown`](super::TextForm::Unknown), [`Unknown::Reject`] and
+/// [`LoaderRole::Other`](super::LoaderRole::Other). `#[non_exhaustive]` says the same thing to a
+/// Rust *caller* and does nothing at all for `Deserialize`.
+///
+/// Degrading is still degrading, and the obligation runs the other way too: **a consumer that
+/// skips a check because it did not recognise a form should say that it did.** A silently skipped
+/// check is indistinguishable from a passing one, which is the failure this whole document exists
+/// to prevent one level up.
+///
 /// Every field in this document is `snake_case`, including the ones the envelope adds. The
 /// alternative was `camelCase` for the envelope and `snake_case` for the [`Schema`] it wraps,
 /// which is what this started as — one document in two conventions, `text_constraint` on a key
@@ -651,7 +665,17 @@ impl ExternalVar {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
+// Declared least strict first, which is the reverse of how the variants read — because
+// `#[serde(other)]` must sit on the *last* variant, and the one it belongs on is the strict one.
+// A policy a later version emits has to fail closed: read as `Reject` it is stricter than it was
+// meant to be, read as `Allow` it would silently switch off the ordered list's last step.
 pub enum Unknown {
+    /// Say nothing. For an image whose environment is genuinely open, where the alternative is an
+    /// ignore list that is never finished and therefore never trusted.
+    Allow,
+    /// Report it and carry on. For adopting the gate on a chart that has variables nobody has
+    /// accounted for yet — a migration state, not a resting place.
+    Warn,
     /// Fail. The default, on the reasoning the rest of this crate defaults on: a variable nobody
     /// reads is a mistake rather than a courtesy, and one that used to be read is a rename nobody
     /// finished.
@@ -667,14 +691,12 @@ pub enum Unknown {
     ///
     /// The first two are what [`External::ignore`] is for. Reaching for [`Self::Warn`] instead
     /// gives up the whole gate to tolerate six names.
+    ///
+    /// Also where a policy a *later* version of this crate emits lands, for the reason above the
+    /// enum.
     #[default]
+    #[serde(other)]
     Reject,
-    /// Report it and carry on. For adopting the gate on a chart that has variables nobody has
-    /// accounted for yet — a migration state, not a resting place.
-    Warn,
-    /// Say nothing. For an image whose environment is genuinely open, where the alternative is an
-    /// ignore list that is never finished and therefore never trusted.
-    Allow,
 }
 
 /// Assembles a [`Contract`]. Built by [`Schema::into_contract`].

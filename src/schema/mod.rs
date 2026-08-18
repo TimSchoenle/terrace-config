@@ -508,13 +508,20 @@ pub enum TextForm {
     Structured,
     /// Nothing certain is known: a domain newtype, a float, a type this crate does not interpret.
     /// No check is possible, and unlike [`Self::Text`] that is a gap rather than an answer.
+    ///
+    /// Also where a form a *later* version of this crate emits lands, which is the same answer for
+    /// the same reason: a check exists and this document cannot describe it to you. Without the
+    /// fallback, one unfamiliar form on one key would make the whole document unreadable — see
+    /// [`CONTRACT_VERSION`].
     #[default]
+    #[serde(other)]
     Unknown,
 }
 
 /// What a variable the loader itself reads is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum LoaderRole {
     /// Names the TOML layer.
     Config,
@@ -522,6 +529,15 @@ pub enum LoaderRole {
     SecretsDir,
     /// Read directly from the environment, so no file may supply it.
     Reserved,
+    /// A role a later version of this crate emits and this one has no name for.
+    ///
+    /// A *new* variant rather than folding into one of the three above, and the distinction is
+    /// load-bearing. Every role means "the loader reads this variable", so the ordered list's step
+    /// 1 is satisfied by [`LoaderVar::env`] alone whatever this says — but a consumer looking for
+    /// the secrets directory matches on the role, and an unknown one read as [`Self::Config`]
+    /// would hand it the wrong variable. This keeps step 1 working and that lookup honest.
+    #[serde(other)]
+    Other,
 }
 
 /// A variable the loader reads to decide what the layers *are*, rather than a configuration key.
@@ -899,6 +915,7 @@ impl LoaderRole {
             Self::Config => "config",
             Self::SecretsDir => "secrets dir",
             Self::Reserved => "reserved",
+            Self::Other => "other",
         }
     }
 }
