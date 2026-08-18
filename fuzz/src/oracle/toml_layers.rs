@@ -24,9 +24,9 @@
 //! Only the directory form is fuzzed; the single-file form is the same expansion with the loop
 //! not entered.
 
-use figment::Jail;
 use figment::value::Value;
 use terrace_config::Terrace;
+use terrace_config::testing::Harness;
 
 use crate::support::{Directive, PREFIX, contains_key, directives, lookup, write_file};
 
@@ -50,20 +50,22 @@ fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve("TEST_PROFILE")
 }
 
+/// The sandbox each iteration runs in, around the loader under test.
+fn harness() -> Harness {
+    Harness::over(layers())
+}
+
 /// Run the oracle. Panics when the loader breaks one of the rules above.
 ///
 /// # Panics
 /// That is the contract: a panic is the finding.
 pub fn check(data: &str) {
     // Ignored: a jail-setup failure says nothing about the code under test.
-    let _ = Jail::try_with(|jail| {
-        jail.clear_env();
-
-        let conf = jail.directory().join("conf.d");
-        if std::fs::create_dir_all(&conf).is_err() {
+    let _ = harness().try_run(|jail| {
+        let Ok(conf) = jail.create_dir("conf.d") else {
             return Ok(());
-        }
-        jail.set_env("TEST_CONFIG", conf.display());
+        };
+        jail.config_at(&conf);
 
         // (2) and (3). Planted first, so a directive naming the same file overwrites it and the
         // guard below drops the corresponding assertion.
@@ -93,7 +95,7 @@ pub fn check(data: &str) {
         }
 
         // (1) Totality. Corrupted TOML is a legitimate typed failure.
-        let Ok(loaded) = layers().load_watched::<Value>() else {
+        let Ok(loaded) = jail.load_watched::<Value>() else {
             return Ok(());
         };
 
@@ -118,7 +120,7 @@ pub fn check(data: &str) {
         }
 
         // (4) Re-reading an untouched directory is not a change.
-        let again = layers()
+        let again = jail
             .load_watched::<Value>()
             .expect("a load that just succeeded must succeed again unchanged");
         assert!(

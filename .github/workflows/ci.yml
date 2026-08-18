@@ -52,6 +52,7 @@ jobs:
           - "--all-features"
           - "--no-default-features --features loader"
           - "--no-default-features --features schema"
+          - "--no-default-features --features testing"
           - "--no-default-features --features reload"
     steps:
       - name: Harden Runner
@@ -82,6 +83,10 @@ jobs:
           # `--workspace`, not just `--all-features`: the derive's parser is tested in
           # `macros/`, and without this cargo tests only the root package and reports green
           # while running none of them.
+          #
+          # `--all-features` is also what compiles the integration tests at all: they run inside
+          # a `terrace_config::testing` jail, which is the `testing` feature, and a test file
+          # whose `cfg` is not satisfied is silently empty rather than a failure.
           test_arguments: --workspace --all-features
 
   # A build of each feature set on its own, with no dev-dependencies in the graph. This is the
@@ -100,6 +105,7 @@ jobs:
           - "--no-default-features"
           - "--no-default-features --features loader"
           - "--no-default-features --features schema"
+          - "--no-default-features --features testing"
           - "--no-default-features --features reload"
           - "--all-features"
     steps:
@@ -133,6 +139,7 @@ jobs:
       - run: cargo doc --all-features --no-deps
       - run: cargo doc --no-default-features --features loader --no-deps
       - run: cargo doc --no-default-features --features schema --no-deps
+      - run: cargo doc --no-default-features --features testing --no-deps
       - run: cargo doc --no-default-features --features reload --no-deps
 
   # `fuzz/` is a workspace of its own on a nightly toolchain, so none of the jobs above touch it.

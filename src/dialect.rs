@@ -209,6 +209,21 @@ impl Dialect {
 #[cfg(test)]
 mod tests {
     use super::Dialect;
+    use crate::error::Error;
+    use crate::terrace::Terrace;
+    use crate::testing::Harness;
+
+    /// What figment's own environment layer makes of the variables a jail has set.
+    ///
+    /// The comparison every test below is really making: this module's view of a variable has to
+    /// be the view the layer that reads it has, or the shadow check compares two different
+    /// spellings of every key and stops rejecting anything.
+    fn env_layer(separator: &str) -> Result<figment::value::Value, Error> {
+        figment::Figment::new()
+            .merge(figment::providers::Env::prefixed("TEST_").split(separator))
+            .extract()
+            .map_err(|e| Error::from(Box::new(e)))
+    }
 
     #[test]
     fn a_key_round_trips_between_its_two_spellings() {
@@ -263,22 +278,12 @@ mod tests {
     /// `plain_env_keys` does not, the shadow check compares two different spellings of every key
     /// and `ShadowPolicy::Reject` quietly stops rejecting.
     #[test]
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail::expect_with fixes the closure's error type to figment::Error"
-    )]
     fn shadow_detection_sees_the_same_key_the_environment_layer_produces() {
-        figment::Jail::expect_with(|jail| {
-            jail.set_env("TEST_AUTH_X_JWT", "value");
-            let dialect = Dialect::new("TEST_").nesting_separator("_X_");
+        Harness::over(Terrace::new("TEST_").nesting_separator("_X_")).run(|jail| {
+            jail.env("TEST_AUTH_X_JWT", "value");
 
-            assert!(dialect.plain_env_keys().contains("auth.jwt"));
-
-            // What the environment layer itself makes of the same variable.
-            let nested: figment::value::Value = figment::Figment::new()
-                .merge(figment::providers::Env::prefixed("TEST_").split("_X_"))
-                .extract()?;
-            assert!(nested.find_ref("auth.jwt").is_some());
+            assert!(jail.dialect().plain_env_keys().contains("auth.jwt"));
+            assert!(env_layer("_X_")?.find_ref("auth.jwt").is_some());
             Ok(())
         });
     }
@@ -303,22 +308,12 @@ mod tests {
     /// shadow check has to see it there. While it did not, a secrets file of the same name
     /// shadowed it silently — which is the failure `ShadowPolicy::Reject` exists to prevent.
     #[test]
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail::expect_with fixes the closure's error type to figment::Error"
-    )]
     fn a_key_named_for_the_suffix_is_still_seen_by_the_shadow_check() {
-        figment::Jail::expect_with(|jail| {
-            jail.clear_env();
-            jail.set_env("TEST_FILE", "value");
-            let dialect = Dialect::new("TEST_");
-            assert!(dialect.plain_env_keys().contains("file"));
+        Harness::new("TEST_").run(|jail| {
+            jail.env("TEST_FILE", "value");
 
-            // And it is what the environment layer itself produces from that variable.
-            let nested: figment::value::Value = figment::Figment::new()
-                .merge(figment::providers::Env::prefixed("TEST_").split("__"))
-                .extract()?;
-            assert!(nested.find_ref("file").is_some());
+            assert!(jail.dialect().plain_env_keys().contains("file"));
+            assert!(env_layer("__")?.find_ref("file").is_some());
             Ok(())
         });
     }

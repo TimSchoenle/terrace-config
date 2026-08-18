@@ -3,16 +3,20 @@
 //! Every test here was ported from the project this crate was extracted out of, with the
 //! prefix parameterised to `TEST_`. The ones that describe a Kubernetes mount are the reason
 //! the crate exists, and their comments record failures that already happened once.
+//!
+//! They also run through [`terrace_config::testing`], the harness this crate ships for its
+//! consumers to write exactly these tests with. Two things follow from that. A test says what it
+//! is arranging — a mounted secret, a `ConfigMap` of fragments — rather than which variable
+//! spells it, so a rename of the mechanism cannot leave a green test exercising a name the
+//! loader no longer reads. And this file is the harness's own first consumer: a change that
+//! makes it awkward here makes it awkward everywhere.
 
-#![cfg(feature = "loader")]
-#![expect(
-    clippy::result_large_err,
-    reason = "figment::Jail::expect_with fixes the closure's error type to figment::Error"
-)]
+#![cfg(all(feature = "loader", feature = "testing"))]
 
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::Deserialize;
-use terrace_config::{Error, ShadowPolicy, Terrace};
+use terrace_config::testing::Harness;
+use terrace_config::{ShadowPolicy, Terrace};
 
 /// Two levels of nesting, and a `SecretString` leaf — the shape every real secret has.
 #[derive(Debug, Deserialize)]
@@ -77,31 +81,13 @@ fn layers() -> Terrace {
         .reserve("TEST_CONFIRM_RESET")
 }
 
-fn load<T: serde::de::DeserializeOwned>() -> Result<T, Error> {
-    layers().load()
-}
-
-/// A jail with no inherited `TEST_*` variables: several of these assertions are about what the
+/// A sandbox over that loader.
+///
+/// The environment inside it is empty: several of these assertions are about what the
 /// environment does *not* contain, and a developer machine with a real value exported would
-/// otherwise decide the outcome.
-fn jailed(f: impl FnOnce(&mut figment::Jail) -> figment::error::Result<()>) {
-    figment::Jail::expect_with(|jail| {
-        jail.clear_env();
-        f(jail)
-    });
-}
-
-fn secrets_dir(jail: &figment::Jail) -> std::path::PathBuf {
-    jail.directory().join("secrets")
-}
-
-/// A symlink, as the error type `figment::Jail` closures return: it has no
-/// `From<std::io::Error>`, and `Jail` itself can only create regular files and directories.
-#[cfg(unix)]
-fn symlink(target: &str, link: &std::path::Path) -> figment::error::Result<()> {
-    std::os::unix::fs::symlink(target, link).map_err(|e| {
-        figment::Error::from(format!("symlinking {} -> {target}: {e}", link.display()))
-    })
+/// otherwise decide the outcome. The harness clears it, and puts it back afterwards.
+fn harness() -> Harness {
+    Harness::over(layers())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -110,14 +96,12 @@ fn symlink(target: &str, link: &std::path::Path) -> figment::error::Result<()> {
 
 #[test]
 fn a_secrets_directory_file_supplies_a_nested_key() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
+    harness().run(|jail| {
         // A trailing newline, which is what `printf '%s\n'` and every editor produce.
-        jail.create_file("secrets/auth__jwt_secret", "s3cret\n")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+        jail.secret("auth__jwt_secret", "s3cret\n")?;
 
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "s3cret");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "s3cret");
         Ok(())
     });
 }
@@ -127,34 +111,31 @@ fn a_secrets_directory_file_supplies_a_nested_key() {
 /// credential silently rather than fail.
 #[test]
 fn only_trailing_line_terminators_are_stripped() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth__jwt_secret", " pass phrase \r\n\n")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.secret("auth__jwt_secret", " pass phrase \r\n\n")?;
 
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), " pass phrase ");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), " pass phrase ");
         Ok(())
     });
 }
 
 /// The layout a Kubernetes `Secret` volume actually has: a `..data` entry and a timestamped
-/// directory beside the real keys. Reading either as a key yields a garbage config entry;
-/// classifying the real keys with `symlink_metadata` instead of `metadata` yields an empty
-/// layer and a service that boots on defaults. Both were live hazards, so this pins the shape
-/// rather than the rule.
+/// directory beside the real keys, plus a subdirectory. Reading any of them as a key yields a
+/// garbage config entry; classifying the real keys with `symlink_metadata` instead of `metadata`
+/// yields an empty layer and a service that boots on defaults. Both were live hazards, so this
+/// pins the shape rather than the rule.
 #[test]
 fn a_projected_volume_layout_yields_only_the_real_keys() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_dir("secrets/..2026_08_02_10_00_00")?;
-        jail.create_file("secrets/..data", "not a key")?;
-        jail.create_dir("secrets/nested")?;
-        jail.create_file("secrets/auth__jwt_secret", "from-the-volume")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.secrets_volume()
+            .file("auth__jwt_secret", "from-the-volume")
+            .stray_dir("nested")
+            .projected()
+            .create()?;
 
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-volume");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-volume");
         Ok(())
     });
 }
@@ -169,22 +150,14 @@ fn a_projected_volume_layout_yields_only_the_real_keys() {
 #[cfg(unix)]
 #[test]
 fn keys_symlinked_into_dot_data_are_read() {
-    jailed(|jail| {
-        let data = "..2026_08_02_10_00_00";
-        jail.create_dir("secrets")?;
-        jail.create_dir(format!("secrets/{data}"))?;
-        jail.create_file(
-            format!("secrets/{data}/auth__jwt_secret"),
-            "from-the-volume",
-        )?;
+    harness().run(|jail| {
+        jail.secrets_volume()
+            .file("auth__jwt_secret", "from-the-volume")
+            .symlinked()
+            .create()?;
 
-        let dir = secrets_dir(jail);
-        symlink(data, &dir.join("..data"))?;
-        symlink("..data/auth__jwt_secret", &dir.join("auth__jwt_secret"))?;
-        jail.set_env("TEST_SECRETS_DIR", dir.display());
-
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-volume");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-volume");
         Ok(())
     });
 }
@@ -198,13 +171,11 @@ fn keys_symlinked_into_dot_data_are_read() {
 /// password is not a deployment that cannot start.
 #[test]
 fn an_all_digit_secret_from_a_file_stays_a_string() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth__jwt_secret", "12345678")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.secret("auth__jwt_secret", "12345678")?;
 
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "12345678");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "12345678");
         Ok(())
     });
 }
@@ -213,27 +184,27 @@ fn an_all_digit_secret_from_a_file_stays_a_string() {
 /// secrets were mounted, and booting on defaults instead is the outcome worth avoiding.
 #[test]
 fn a_missing_secrets_directory_is_fatal() {
-    jailed(|jail| {
-        jail.set_env(
-            "TEST_SECRETS_DIR",
-            jail.directory().join("absent").display(),
-        );
+    harness().run(|jail| {
+        let absent = jail.path("absent");
+        jail.secrets_dir_at(absent);
 
-        let err = load::<Sample>().expect_err("a named directory must exist");
-        assert!(err.to_string().contains("TEST_SECRETS_DIR"), "{err}");
+        let error = jail
+            .load::<Sample>()
+            .expect_err("a named directory must exist");
+        assert!(error.to_string().contains("TEST_SECRETS_DIR"), "{error}");
         Ok(())
     });
 }
 
 #[test]
 fn a_dotted_file_name_is_refused_rather_than_nested_wrongly() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth.jwt_secret", "x")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.secret("auth.jwt_secret", "x")?;
 
-        let err = load::<Sample>().expect_err("`.` is not the nesting separator");
-        assert!(err.to_string().contains("__"), "{err}");
+        let error = jail
+            .load::<Sample>()
+            .expect_err("`.` is not the nesting separator");
+        assert!(error.to_string().contains("__"), "{error}");
         Ok(())
     });
 }
@@ -244,15 +215,11 @@ fn a_dotted_file_name_is_refused_rather_than_nested_wrongly() {
 
 #[test]
 fn file_suffix_indirection_supplies_a_key() {
-    jailed(|jail| {
-        jail.create_file("jwt", "from-the-path")?;
-        jail.set_env(
-            "TEST_AUTH__JWT_SECRET_FILE",
-            jail.directory().join("jwt").display(),
-        );
+    harness().run(|jail| {
+        jail.indirection("auth.jwt_secret", "from-the-path")?;
 
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-path");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-path");
         Ok(())
     });
 }
@@ -261,14 +228,14 @@ fn file_suffix_indirection_supplies_a_key() {
 /// secret goes silently unset and the service comes up on a default.
 #[test]
 fn a_file_suffix_path_that_cannot_be_read_is_fatal() {
-    jailed(|jail| {
-        jail.set_env(
-            "TEST_AUTH__JWT_SECRET_FILE",
-            jail.directory().join("absent").display(),
-        );
+    harness().run(|jail| {
+        let absent = jail.path("absent");
+        jail.indirection_at("auth.jwt_secret", absent);
 
-        let err = load::<Sample>().expect_err("an unreadable path must not be skipped");
-        let message = err.to_string();
+        let error = jail
+            .load::<Sample>()
+            .expect_err("an unreadable path must not be skipped");
+        let message = error.to_string();
         assert!(
             message.contains("TEST_AUTH__JWT_SECRET_FILE") && message.contains("absent"),
             "the error must name the variable and the path: {message}"
@@ -282,15 +249,11 @@ fn a_file_suffix_path_that_cannot_be_read_is_fatal() {
 /// the indirection actually supplies — then every `_FILE` variable would refuse its own value.
 #[test]
 fn the_indirection_variable_does_not_shadow_the_key_it_supplies() {
-    jailed(|jail| {
-        jail.create_file("jwt", "fine")?;
-        jail.set_env(
-            "TEST_AUTH__JWT_SECRET_FILE",
-            jail.directory().join("jwt").display(),
-        );
+    harness().run(|jail| {
+        jail.indirection("auth.jwt_secret", "fine")?;
 
-        let cfg: Sample = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "fine");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "fine");
         Ok(())
     });
 }
@@ -299,15 +262,13 @@ fn the_indirection_variable_does_not_shadow_the_key_it_supplies() {
 /// ignored. Ignoring is the silent misconfiguration these layers exist to remove.
 #[test]
 fn a_reserved_key_cannot_come_from_a_file() {
-    jailed(|jail| {
-        jail.create_file("profile", "production")?;
-        jail.set_env(
-            "TEST_PROFILE_FILE",
-            jail.directory().join("profile").display(),
-        );
+    harness().run(|jail| {
+        jail.indirection("profile", "production")?;
 
-        let err = load::<Sample>().expect_err("a reserved key must be refused");
-        assert!(err.to_string().contains("TEST_PROFILE"), "{err}");
+        let error = jail
+            .load::<Sample>()
+            .expect_err("a reserved key must be refused");
+        assert!(error.to_string().contains("TEST_PROFILE"), "{error}");
         Ok(())
     });
 }
@@ -316,15 +277,13 @@ fn a_reserved_key_cannot_come_from_a_file() {
 /// they are read to decide what the layers *are*.
 #[test]
 fn the_config_and_secrets_variables_are_reserved_automatically() {
-    jailed(|jail| {
-        jail.create_file("elsewhere", "/etc/conf.d")?;
-        jail.set_env(
-            "TEST_CONFIG_FILE",
-            jail.directory().join("elsewhere").display(),
-        );
+    harness().run(|jail| {
+        jail.indirection("config", "/etc/conf.d")?;
 
-        let err = load::<Sample>().expect_err("TEST_CONFIG must be reserved without being named");
-        assert!(err.to_string().contains("TEST_CONFIG"), "{err}");
+        let error = jail
+            .load::<Sample>()
+            .expect_err("TEST_CONFIG must be reserved without being named");
+        assert!(error.to_string().contains("TEST_CONFIG"), "{error}");
         Ok(())
     });
 }
@@ -335,18 +294,21 @@ fn the_config_and_secrets_variables_are_reserved_automatically() {
 
 #[test]
 fn env_overrides_and_defaults_apply() {
-    jailed(|jail| {
-        jail.set_env("TEST_DATABASE__URL", "postgres://localhost/app");
-        jail.set_env("TEST_DATABASE__MAX_CONNECTIONS", "32");
+    harness().run(|jail| {
+        jail.env_key("database.url", "postgres://localhost/app");
+        jail.env_key("database.max_connections", 32);
 
-        let cfg: App = load().map_err(|e| e.to_string()).unwrap();
+        let config: App = jail.load()?;
         // `SecretString` has no `PartialEq`; comparing requires `expose_secret()`.
-        assert_eq!(cfg.database.url.expose_secret(), "postgres://localhost/app");
-        assert_eq!(cfg.database.max_connections, 32);
+        assert_eq!(
+            config.database.url.expose_secret(),
+            "postgres://localhost/app"
+        );
+        assert_eq!(config.database.max_connections, 32);
         // Untouched nested default still applies.
-        assert_eq!(cfg.database.acquire_timeout_secs, 10);
+        assert_eq!(config.database.acquire_timeout_secs, 10);
         // A block untouched by the environment still materialises with its own defaults.
-        assert_eq!(cfg.metrics.route, "/metrics");
+        assert_eq!(config.metrics.route, "/metrics");
         Ok(())
     });
 }
@@ -355,25 +317,22 @@ fn env_overrides_and_defaults_apply() {
 /// `ConfigMap` mounted as a directory of fragments.
 #[test]
 fn a_toml_directory_merges_its_fragments_in_name_order() {
-    jailed(|jail| {
-        jail.create_dir("conf.d")?;
-        jail.create_file(
-            "conf.d/10-base.toml",
-            "[database]\nurl = \"postgres://base/app\"\nmax_connections = 5\n",
-        )?;
-        jail.create_file(
-            "conf.d/20-overrides.toml",
-            "[database]\nmax_connections = 40\n",
-        )?;
-        // Neither is a `*.toml`, so neither may contribute; the dot-prefixed one is also what a
-        // `ConfigMap` volume puts beside the real keys.
-        jail.create_file("conf.d/..data", "[database]\nmax_connections = 1\n")?;
-        jail.create_file("conf.d/notes.md", "not config\n")?;
-        jail.set_env("TEST_CONFIG", jail.directory().join("conf.d").display());
+    harness().run(|jail| {
+        jail.config_volume()
+            .file(
+                "10-base.toml",
+                "[database]\nurl = \"postgres://base/app\"\nmax_connections = 5\n",
+            )
+            .file("20-overrides.toml", "[database]\nmax_connections = 40\n")
+            // Neither is a `*.toml`, so neither may contribute; the dot-prefixed one is also
+            // what a `ConfigMap` volume puts beside the real keys.
+            .stray_file("..data", "[database]\nmax_connections = 1\n")
+            .stray_file("notes.md", "not config\n")
+            .create()?;
 
-        let cfg: App = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.database.url.expose_secret(), "postgres://base/app");
-        assert_eq!(cfg.database.max_connections, 40);
+        let config: App = jail.load()?;
+        assert_eq!(config.database.url.expose_secret(), "postgres://base/app");
+        assert_eq!(config.database.max_connections, 40);
         Ok(())
     });
 }
@@ -387,23 +346,18 @@ fn a_toml_directory_merges_its_fragments_in_name_order() {
 #[cfg(unix)]
 #[test]
 fn a_configmap_volume_of_symlinked_fragments_is_merged() {
-    jailed(|jail| {
-        let data = "..2026_08_02_10_00_00";
-        jail.create_dir("conf.d")?;
-        jail.create_dir(format!("conf.d/{data}"))?;
-        jail.create_file(
-            format!("conf.d/{data}/config.toml"),
-            "[database]\nurl = \"postgres://volume/app\"\nmax_connections = 7\n",
-        )?;
+    harness().run(|jail| {
+        jail.config_volume()
+            .file(
+                "config.toml",
+                "[database]\nurl = \"postgres://volume/app\"\nmax_connections = 7\n",
+            )
+            .symlinked()
+            .create()?;
 
-        let dir = jail.directory().join("conf.d");
-        symlink(data, &dir.join("..data"))?;
-        symlink("..data/config.toml", &dir.join("config.toml"))?;
-        jail.set_env("TEST_CONFIG", dir.display());
-
-        let cfg: App = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.database.url.expose_secret(), "postgres://volume/app");
-        assert_eq!(cfg.database.max_connections, 7);
+        let config: App = jail.load()?;
+        assert_eq!(config.database.url.expose_secret(), "postgres://volume/app");
+        assert_eq!(config.database.max_connections, 7);
         Ok(())
     });
 }
@@ -412,21 +366,12 @@ fn a_configmap_volume_of_symlinked_fragments_is_merged() {
 /// win over the `Secret` that carries the real one.
 #[test]
 fn a_secrets_directory_outranks_the_toml_layer() {
-    jailed(|jail| {
-        jail.create_file(
-            "config.toml",
-            "[database]\nurl = \"postgres://placeholder/app\"\n",
-        )?;
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/database__url", "postgres://real/app\n")?;
-        jail.set_env(
-            "TEST_CONFIG",
-            jail.directory().join("config.toml").display(),
-        );
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.config("[database]\nurl = \"postgres://placeholder/app\"\n")?;
+        jail.secret("database__url", "postgres://real/app\n")?;
 
-        let cfg: App = load().map_err(|e| e.to_string()).unwrap();
-        assert_eq!(cfg.database.url.expose_secret(), "postgres://real/app");
+        let config: App = jail.load()?;
+        assert_eq!(config.database.url.expose_secret(), "postgres://real/app");
         Ok(())
     });
 }
@@ -441,14 +386,14 @@ fn a_secrets_directory_outranks_the_toml_layer() {
 /// during an incident.
 #[test]
 fn a_key_supplied_twice_is_refused_and_no_value_is_printed() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth__jwt_secret", "from-the-file")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
-        jail.set_env("TEST_AUTH__JWT_SECRET", "from-the-environment");
+    harness().run(|jail| {
+        jail.secret("auth__jwt_secret", "from-the-file")?;
+        jail.env_key("auth.jwt_secret", "from-the-environment");
 
-        let err = load::<Sample>().expect_err("a shadowed key must be refused");
-        let message = err.to_string();
+        let error = jail
+            .load::<Sample>()
+            .expect_err("a shadowed key must be refused");
+        let message = error.to_string();
         assert!(
             message.contains("auth.jwt_secret")
                 && message.contains("TEST_AUTH__JWT_SECRET")
@@ -465,18 +410,14 @@ fn a_key_supplied_twice_is_refused_and_no_value_is_printed() {
 
 #[test]
 fn a_key_supplied_by_both_file_mechanisms_is_refused() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth__jwt_secret", "a")?;
-        jail.create_file("jwt", "b")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
-        jail.set_env(
-            "TEST_AUTH__JWT_SECRET_FILE",
-            jail.directory().join("jwt").display(),
-        );
+    harness().run(|jail| {
+        jail.secret("auth__jwt_secret", "a")?;
+        jail.indirection("auth.jwt_secret", "b")?;
 
-        let err = load::<Sample>().expect_err("a shadowed key must be refused");
-        assert!(err.to_string().contains("auth.jwt_secret"), "{err}");
+        let error = jail
+            .load::<Sample>()
+            .expect_err("a shadowed key must be refused");
+        assert!(error.to_string().contains("auth.jwt_secret"), "{error}");
         Ok(())
     });
 }
@@ -485,18 +426,15 @@ fn a_key_supplied_by_both_file_mechanisms_is_refused() {
 /// file layer outranks the environment, matching the documented layer order.
 #[test]
 fn last_wins_lets_a_mounted_file_outrank_the_environment() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth__jwt_secret", "from-the-file")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
-        jail.set_env("TEST_AUTH__JWT_SECRET", "from-the-environment");
+    harness().run(|jail| {
+        jail.secret("auth__jwt_secret", "from-the-file")?;
+        jail.env_key("auth.jwt_secret", "from-the-environment");
 
-        let cfg: Sample = layers()
+        let config: Sample = jail
+            .terrace()
             .shadow_policy(ShadowPolicy::LastWins)
-            .load()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-file");
+            .load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-file");
         Ok(())
     });
 }
@@ -504,22 +442,15 @@ fn last_wins_lets_a_mounted_file_outrank_the_environment() {
 /// Between the two file mechanisms, `_FILE` indirection is the later layer and wins.
 #[test]
 fn last_wins_ranks_indirection_above_the_secrets_directory() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth__jwt_secret", "from-the-directory")?;
-        jail.create_file("jwt", "from-the-path")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
-        jail.set_env(
-            "TEST_AUTH__JWT_SECRET_FILE",
-            jail.directory().join("jwt").display(),
-        );
+    harness().run(|jail| {
+        jail.secret("auth__jwt_secret", "from-the-directory")?;
+        jail.indirection("auth.jwt_secret", "from-the-path")?;
 
-        let cfg: Sample = layers()
+        let config: Sample = jail
+            .terrace()
             .shadow_policy(ShadowPolicy::LastWins)
-            .load()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-path");
+            .load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-path");
         Ok(())
     });
 }
@@ -528,18 +459,15 @@ fn last_wins_ranks_indirection_above_the_secrets_directory() {
 /// because there is no precedence answer to give: the key is read before the layers exist.
 #[test]
 fn last_wins_still_refuses_a_reserved_key() {
-    jailed(|jail| {
-        jail.create_file("profile", "production")?;
-        jail.set_env(
-            "TEST_PROFILE_FILE",
-            jail.directory().join("profile").display(),
-        );
+    harness().run(|jail| {
+        jail.indirection("profile", "production")?;
 
-        let err = layers()
+        let error = jail
+            .terrace()
             .shadow_policy(ShadowPolicy::LastWins)
             .load::<Sample>()
             .expect_err("a reserved key must be refused under either policy");
-        assert!(err.to_string().contains("TEST_PROFILE"), "{err}");
+        assert!(error.to_string().contains("TEST_PROFILE"), "{error}");
         Ok(())
     });
 }
@@ -552,29 +480,18 @@ fn last_wins_still_refuses_a_reserved_key() {
 /// key would otherwise rebuild the pool and rebind the listener for nothing.
 #[test]
 fn the_fingerprint_tracks_values_not_reads() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/database__url", "postgres://one/app")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.secret("database__url", "postgres://one/app")?;
 
-        let first = layers()
-            .load_watched::<App>()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        let again = layers()
-            .load_watched::<App>()
-            .map_err(|e| e.to_string())
-            .unwrap();
+        let first = jail.load_watched::<App>()?;
+        let again = jail.load_watched::<App>()?;
         assert!(
             !again.sources.differs_from(&first.sources),
             "re-reading unchanged files must not look like a change"
         );
 
-        jail.create_file("secrets/database__url", "postgres://two/app")?;
-        let rotated = layers()
-            .load_watched::<App>()
-            .map_err(|e| e.to_string())
-            .unwrap();
+        jail.secret("database__url", "postgres://two/app")?;
+        let rotated = jail.load_watched::<App>()?;
         assert!(
             rotated.sources.differs_from(&first.sources),
             "a rotated secret must look like a change"
@@ -584,7 +501,7 @@ fn the_fingerprint_tracks_values_not_reads() {
                 .sources
                 .watch_paths()
                 .iter()
-                .any(|p| p.ends_with("secrets")),
+                .any(|path| path.ends_with("secrets")),
             "the secrets directory must be watched: {:?}",
             rotated.sources.watch_paths()
         );
@@ -596,15 +513,10 @@ fn the_fingerprint_tracks_values_not_reads() {
 /// it. A `tracing::debug!(?sources)` is otherwise a credential in the log.
 #[test]
 fn debug_does_not_print_the_fingerprint() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/database__url", "postgres://super-secret/app")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    harness().run(|jail| {
+        jail.secret("database__url", "postgres://super-secret/app")?;
 
-        let loaded = layers()
-            .load_watched::<App>()
-            .map_err(|e| e.to_string())
-            .unwrap();
+        let loaded = jail.load_watched::<App>()?;
         let rendered = format!("{:?}", loaded.sources);
         assert!(
             !rendered.contains("super-secret"),
@@ -620,22 +532,18 @@ fn debug_does_not_print_the_fingerprint() {
 /// be noticed.
 #[test]
 fn the_toml_directory_is_watched_even_when_the_file_is_absent() {
-    jailed(|jail| {
-        jail.create_dir("conf")?;
-        let config = jail.directory().join("conf").join("config.toml");
-        jail.set_env("TEST_CONFIG", config.display());
-        jail.set_env("TEST_DATABASE__URL", "postgres://env/app");
+    harness().run(|jail| {
+        let directory = jail.create_dir("conf")?;
+        jail.config_at(directory.join("config.toml"));
+        jail.env_key("database.url", "postgres://env/app");
 
-        let loaded = layers()
-            .load_watched::<App>()
-            .map_err(|e| e.to_string())
-            .unwrap();
+        let loaded = jail.load_watched::<App>()?;
         assert!(
             loaded
                 .sources
                 .watch_paths()
                 .iter()
-                .any(|p| p.ends_with("conf")),
+                .any(|path| path.ends_with("conf")),
             "the config file's directory must be watched: {:?}",
             loaded.sources.watch_paths()
         );
@@ -649,22 +557,23 @@ fn the_toml_directory_is_watched_even_when_the_file_is_absent() {
 
 /// Renamed variables are honoured, and the derived ones are then *not* read — otherwise a
 /// deployment that renamed one would silently keep obeying the old name too.
+///
+/// Built over the renamed loader rather than renaming inside the jail, so that the volume the
+/// harness wires up is the one that loader actually reads. The decoy is wired by name, because
+/// after the rename nothing else points at `TEST_SECRETS_DIR`.
 #[test]
 fn renamed_variables_replace_the_derived_ones() {
-    jailed(|jail| {
-        jail.create_dir("vault")?;
-        jail.create_file("vault/auth__jwt_secret", "from-the-vault")?;
-        jail.create_dir("decoy")?;
-        jail.create_file("decoy/auth__jwt_secret", "from-the-decoy")?;
-        jail.set_env("APP_VAULT", jail.directory().join("vault").display());
-        jail.set_env("TEST_SECRETS_DIR", jail.directory().join("decoy").display());
+    Harness::over(layers().secrets_dir_var("APP_VAULT")).run(|jail| {
+        jail.secrets_volume()
+            .file("auth__jwt_secret", "from-the-vault")
+            .create()?;
+        jail.volume("decoy")
+            .file("auth__jwt_secret", "from-the-decoy")
+            .wire_to("TEST_SECRETS_DIR")
+            .create()?;
 
-        let cfg: Sample = layers()
-            .secrets_dir_var("APP_VAULT")
-            .load()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-vault");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-vault");
         Ok(())
     });
 }
@@ -673,19 +582,19 @@ fn renamed_variables_replace_the_derived_ones() {
 /// [`Terrace::secrets_dir_var`] call after the [`Terrace::reserve`] calls still takes effect.
 #[test]
 fn a_renamed_variable_is_the_one_that_gets_reserved() {
-    jailed(|jail| {
-        jail.create_file("path", "/mnt/secrets")?;
-        jail.set_env("TEST_VAULT_FILE", jail.directory().join("path").display());
+    harness().run(|jail| {
+        jail.indirection("vault", "/mnt/secrets")?;
 
-        let err = layers()
+        let error = jail
+            .terrace()
             .secrets_dir_var("TEST_VAULT")
             .load::<Sample>()
             .expect_err("TEST_VAULT must be reserved once it is the secrets variable");
-        assert!(err.to_string().contains("TEST_VAULT"), "{err}");
+        assert!(error.to_string().contains("TEST_VAULT"), "{error}");
 
         // Under the derived name, `TEST_VAULT` is just another key, and the indirection is
         // honoured rather than refused — it is the rename that reserved it.
-        let refused = layers()
+        let refused = jail
             .load::<Sample>()
             .expect_err("auth.jwt_secret is missing");
         assert!(
@@ -698,21 +607,19 @@ fn a_renamed_variable_is_the_one_that_gets_reserved() {
 
 /// The indirection suffix is a parameter: a deployment spelling it `_PATH` gets `_PATH`, and
 /// `_FILE` then means nothing.
+///
+/// `jail.indirection` derives the variable from the loader it was built over, so this asserts
+/// the rename took effect rather than restating the new spelling — a test naming
+/// `TEST_AUTH__JWT_SECRET_PATH` by hand would keep passing if the loader stopped reading it.
 #[test]
 fn a_custom_indirection_suffix_replaces_the_default() {
-    jailed(|jail| {
-        jail.create_file("jwt", "from-the-path")?;
-        jail.set_env(
-            "TEST_AUTH__JWT_SECRET_PATH",
-            jail.directory().join("jwt").display(),
-        );
+    Harness::over(layers().file_suffix("_PATH")).run(|jail| {
+        jail.indirection("auth.jwt_secret", "from-the-path")?;
+        assert!(std::env::var("TEST_AUTH__JWT_SECRET_PATH").is_ok());
+        assert!(std::env::var("TEST_AUTH__JWT_SECRET_FILE").is_err());
 
-        let cfg: Sample = layers()
-            .file_suffix("_PATH")
-            .load()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-path");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-path");
         Ok(())
     });
 }
@@ -722,17 +629,12 @@ fn a_custom_indirection_suffix_replaces_the_default() {
 /// different fields.
 #[test]
 fn a_custom_nesting_separator_governs_every_layer() {
-    jailed(|jail| {
-        jail.create_dir("secrets")?;
-        jail.create_file("secrets/auth-jwt_secret", "from-the-file")?;
-        jail.set_env("TEST_SECRETS_DIR", secrets_dir(jail).display());
+    Harness::over(layers().nesting_separator("-")).run(|jail| {
+        jail.secret_key("auth.jwt_secret", "from-the-file")?;
+        assert!(jail.path("secrets").join("auth-jwt_secret").is_file());
 
-        let cfg: Sample = layers()
-            .nesting_separator("-")
-            .load()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        assert_eq!(cfg.auth.jwt_secret.expose_secret(), "from-the-file");
+        let config: Sample = jail.load()?;
+        assert_eq!(config.auth.jwt_secret.expose_secret(), "from-the-file");
         Ok(())
     });
 }
@@ -740,15 +642,14 @@ fn a_custom_nesting_separator_governs_every_layer() {
 /// With no configuration variable set, the TOML layer reads the configured default path.
 #[test]
 fn the_default_config_path_is_read_when_no_variable_is_set() {
-    jailed(|jail| {
-        jail.create_file("app.toml", "[database]\nurl = \"postgres://default/app\"\n")?;
+    harness().run(|jail| {
+        let path = jail.write("app.toml", "[database]\nurl = \"postgres://default/app\"\n")?;
 
-        let cfg: App = layers()
-            .default_config_path(jail.directory().join("app.toml"))
-            .load()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        assert_eq!(cfg.database.url.expose_secret(), "postgres://default/app");
+        let config: App = jail.terrace().default_config_path(path).load()?;
+        assert_eq!(
+            config.database.url.expose_secret(),
+            "postgres://default/app"
+        );
         Ok(())
     });
 }
@@ -761,39 +662,19 @@ fn the_default_config_path_is_read_when_no_variable_is_set() {
 /// permanent — it does not resolve when the volume settles.
 #[test]
 fn a_configuration_holding_a_nan_is_not_a_perpetual_change() {
-    jailed(|jail| {
-        jail.create_file(
-            "config.toml",
-            "[database]\nurl = \"postgres://one/app\"\ntimeout = nan\n",
-        )?;
-        jail.set_env(
-            "TEST_CONFIG",
-            jail.directory().join("config.toml").display(),
-        );
+    harness().run(|jail| {
+        jail.config("[database]\nurl = \"postgres://one/app\"\ntimeout = nan\n")?;
 
-        let first = layers()
-            .load_watched::<figment::value::Value>()
-            .map_err(|e| e.to_string())
-            .unwrap();
-        let again = layers()
-            .load_watched::<figment::value::Value>()
-            .map_err(|e| e.to_string())
-            .unwrap();
-
+        let first = jail.load_watched::<figment::value::Value>()?;
+        let again = jail.load_watched::<figment::value::Value>()?;
         assert!(
             !again.sources.differs_from(&first.sources),
             "a NaN in the configuration made an unchanged file look like a change"
         );
 
         // And the comparison still notices a real change alongside the NaN.
-        jail.create_file(
-            "config.toml",
-            "[database]\nurl = \"postgres://two/app\"\ntimeout = nan\n",
-        )?;
-        let rotated = layers()
-            .load_watched::<figment::value::Value>()
-            .map_err(|e| e.to_string())
-            .unwrap();
+        jail.config("[database]\nurl = \"postgres://two/app\"\ntimeout = nan\n")?;
+        let rotated = jail.load_watched::<figment::value::Value>()?;
         assert!(
             rotated.sources.differs_from(&first.sources),
             "a rotated value alongside a NaN must still look like a change"

@@ -9,7 +9,12 @@
 //! | `loader` (default) | `Terrace`, the three providers, `Loaded`/`Sources` | `figment` |
 //! | `reload` | `reload::run`, a supervisor that rebuilds a runtime on change | `tokio`, `notify`, `tracing` |
 //! | `schema` | `schema::Schema`, a machine-readable dump of every key | `serde_json`, `syn` |
+//! | `testing` | `testing::Harness`, a sandbox for a consumer's own tests | `figment/test` |
 //! | `full` | all three | all of it |
+//!
+//! `full` is the three runtime feature sets. `testing` is not one of them: it belongs in a
+//! consumer's `[dev-dependencies]`, and a service asking for everything this crate does at
+//! runtime should not link a test harness.
 //!
 //! `loader` and `reload` are independent on purpose. `reload` does not depend on `loader`: it is useful to
 //! anyone with a `Fn(Arc<C>, CancellationToken) -> Future` and a way to detect change, and
@@ -139,6 +144,38 @@ JSON Schema that has drifted underlines a key that is perfectly valid.
 "#
 )]
 #![cfg_attr(
+    feature = "testing",
+    doc = r#"
+# Testing a service's configuration
+
+Every service that loads configuration this way ends up writing the same fixture: a temporary
+directory, a secrets file in it, a variable pointing at the directory, and a way to put all of
+it back afterwards. [`testing::Harness`] is that fixture, written once.
+
+```
+use terrace_config::{Terrace, testing::Harness};
+# #[derive(serde::Deserialize)] struct Config { database: Database }
+# #[derive(serde::Deserialize)] struct Database { url: String }
+
+let harness = Harness::over(Terrace::new("MYAPP_").reserve("MYAPP_PROFILE"));
+
+harness.run(|jail| {
+    jail.config("[database]\nurl = \"postgres://placeholder/app\"\n")?;
+    jail.secret("database__url", "postgres://real/app\n")?;
+
+    let config: Config = jail.load()?;
+    assert_eq!(config.database.url, "postgres://real/app");
+    Ok(())
+});
+```
+
+The closure returns this crate's own [`Error`], which is the point: `?` works on the
+arrangement and on the load being tested alike, and a test file no longer carries an
+`#[expect(clippy::result_large_err, …)]` for a `figment::Error` it never names. See the
+[`testing`] module for the whole surface.
+"#
+)]
+#![cfg_attr(
     feature = "reload",
     doc = r"
 # Reloading
@@ -169,6 +206,13 @@ pub mod schema;
 
 #[cfg(feature = "reload")]
 pub mod reload;
+
+// Compiled for this crate's own unit tests as well as for the feature, so that `dialect.rs`
+// tests the loader through the same harness a consumer gets rather than through a second,
+// private copy of it. `figment::Jail` is available to a `cargo test` build either way: the
+// dev-dependency on figment already asks for its `test` feature.
+#[cfg(all(feature = "loader", any(feature = "testing", test)))]
+pub mod testing;
 
 #[cfg(feature = "loader")]
 pub use dialect::Dialect;
