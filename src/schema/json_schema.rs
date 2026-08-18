@@ -30,7 +30,7 @@
 use serde_json::{Map, Value as Json, json};
 
 use super::tree::{self, Node};
-use super::{Docs, Error, Key, Schema, rust_type};
+use super::{Docs, Error, Key, Schema, TextForm, rust_type};
 
 /// The meta-schema URI for JSON Schema 2020-12 — what a current editor implements.
 pub const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -358,9 +358,12 @@ pub(super) fn constraint(ty: Option<&str>, values: &[String]) -> Option<Map<Stri
 /// environment value is already a string, so `{"type": "string"}` would say nothing. See
 /// [`rust_type::in_text`] for what is emitted, and for why the measured accepted set rather than
 /// TOML's grammar is what decides it.
-pub(super) fn text_constraint(ty: Option<&str>, values: &[String]) -> Option<Map<String, Json>> {
+pub(super) fn text_constraint(
+    ty: Option<&str>,
+    values: &[String],
+) -> (TextForm, Option<Map<String, Json>>) {
     if values.is_empty() {
-        return ty.and_then(rust_type::in_text);
+        return ty.map_or((TextForm::Unknown, None), rust_type::in_text);
     }
 
     // A fixed set of spellings is already a set of strings, so it applies to the text unchanged —
@@ -370,7 +373,7 @@ pub(super) fn text_constraint(ty: Option<&str>, values: &[String]) -> Option<Map
     let mut schema = Map::new();
     schema.insert("type".to_owned(), json!("string"));
     schema.insert("enum".to_owned(), json!(values));
-    Some(schema)
+    (TextForm::Choice, Some(schema))
 }
 
 /// The `description` for a key: its comment, and what its default means.

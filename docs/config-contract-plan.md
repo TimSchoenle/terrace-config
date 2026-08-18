@@ -218,10 +218,20 @@ figment's `Env` provider decides them and its parse is neither TOML's nor `str::
 is a superset of what was measured, because a pattern rejecting text the loader accepts stops a
 deployment that was correct.
 
-`null` means unconstrained, and for `text_constraint` that includes every string-like type — an
-environment value is a string already, so `{"type": "string"}` would constrain nothing.
-`ExternalVar::constraint` states both by hand for a type the crate cannot interpret, and the derive
-leaves what it finds alone.
+Each key also carries a **`text_form`** — `text`, `integer`, `boolean`, `choice`, `structured` or
+`unknown` — which is what a consumer reads to choose the parse for the range step. Inferring the
+parse from the constraint's shape ("a pattern means integer") was right while the producer emitted
+two shapes and wrong the moment it emitted a third.
+
+It also gives `text_constraint: null` one meaning rather than two. `text` means any text is fine;
+`unknown` means nothing could be determined. Those were indistinguishable in the first
+implementation, and a list-typed key is what made the difference cost a deployment: a `Vec<T>` needs
+a bracketed TOML literal, so `PORTFOLIO_GITHUB__REPOS=a,b` — the first thing anyone would try — was
+refused by the loader and passed every gate. `structured` keys now carry a pattern requiring the
+bracket form.
+
+`ExternalVar::constraint` states both constraints by hand for a type the crate cannot interpret,
+`ExternalVar::text_form` states the form beside them, and the derive leaves what it finds alone.
 
 **Gate 3 gets a blunter rule than a pattern.** The secrets directory and `_FILE` targets deliver
 their contents as strings with no parse, and `Figment::extract` does not coerce a string into a
@@ -464,9 +474,20 @@ structurally, over the `json_schema` halves:
 |---|---|---|
 | a path in one schema only | keep | it belongs to that binary |
 | a path in several, identical | keep once | the shared key both binaries read |
-| a path in several, different `type`/`enum` | **hard error** | two binaries disagree about one key: a real defect, and the merged document could not say which is right |
 | `required` | union | a key any reader requires must be present |
 | `additionalProperties` | `false` at every level | after the union, an unknown key is unknown to *all* of them |
+| **any other keyword present in two schemas with different values** | **hard error** | two binaries disagree about one key |
+
+The last row is a catch-all on purpose, and it is the row to get right. An earlier draft named
+`type` and `enum` and left everything else to last-one-wins, which is a rule nobody wrote down: two
+images disagreeing about a key's `maximum` is the same defect as disagreeing about its `type` —
+one contract accepts a value the other refuses — and enumerating keywords means the next one added
+to the producer falls through the gap silently. `minimum`, `maximum`, `items`, `uniqueItems`,
+`default`, `description`, `$schema` and `$id` are all covered by saying it once.
+
+`$schema` in particular: two contracts of one document declaring different dialects is a real
+signal, not a formatting difference, and refusing it is what caught a producer bug where relaxing
+one option silently moved a document off draft-07.
 
 Same reasoning as `Schema::merge`'s: refusing to build is better than quietly picking one of two
 descriptions. About sixty lines of Python, deterministic, unit-testable without a registry —
@@ -493,11 +514,14 @@ scalar belongs.
 
 ### Gate 2 — the environment
 
+**Per container, against that container's own image contract — not the union.** A container has one
+image; a variable it carries that only a *sibling* image reads is the defect this gate is for.
+
 Classification is the ordered list in §2.4's implementation — first match wins, and the step that
 rejects an unaccounted-for prefixed variable sits *above* both external lists, so the two cannot
-disagree about what is exempt. A value is checked twice: its text against `text_constraint`, then
-the parsed result against `constraint`, which is the only step a `minimum` or `maximum` is reached
-by. See §2.5.
+disagree about what is exempt. A value is checked twice: its text against `text_constraint`, then —
+parsed the way `text_form` says — against `constraint`, which is the only step a `minimum` or
+`maximum` is reached by. See §2.5.
 
 Requires `enableServiceLinks: false` on every pod it checks (§2.6) — and the gate should *look* for
 it. When step 4 rejects an unaccounted-for prefixed variable and the pod spec does not set it, the
@@ -523,10 +547,12 @@ key.
 
 ### Gate 3 — file spellings
 
+Per container, for gate 2's reason.
+
 - every file name in a rendered Secret mounted at `secretsDir` must equal some key's `secrets_file`
 - every `*_FILE` variable must equal some key's `env_file` and point inside a mounted volume
-- and the key it names must be string-typed — see §2.5, a numeric key cannot be file-supplied at
-  all, so a mount for one is a defect the file's contents cannot repair
+- and the key it names must have `text_form: text` — see §2.5. A key of any other form cannot be
+  file-supplied at all, so a mount for one is a defect the file's contents cannot repair
 
 Catches a `github.token` → `github.api_token` rename breaking a mount with no error at either end.
 
@@ -818,10 +844,23 @@ for chart in charts/*/:
         union = merge(vendored contracts of document.images)      # section 4.3
         for rendered in rendered/<chart>--*.yaml:
             if (values file, gate) in document.exempt: relax that gate only
+
+            # One document, read by every image — so the union, or a key belonging to one
+            # binary is "unknown" to the schema of another.
             gate 1  the ConfigMap's data[key], TOML to JSON, against union.json_schema
-            gate 2  every PREFIX_* env var in the declared containers
-            gate 3  secrets-dir file names and the targets of every _FILE variable
+
+            # One container, one image — so that container's own contract, never the union.
+            for consumer in document.consumers:
+                gate 2  every env var on the container, against consumer's contract
+                gate 3  its secret file names and _FILE targets, likewise
 ```
+
+**The scopes are different and the difference is the point.** Gate 1 is about a file every binary
+reads. Gates 2 and 3 are about one container, which has exactly one image, so checking them against
+the union reintroduces precisely what splitting the scopes removed — a variable set on the
+`update-repos` container that only the server reads passes against the union and is exactly the
+defect gate 2 exists to catch. Use the union where the artefact is shared and the image's own
+contract where it is not.
 
 ### 12.2 Output
 

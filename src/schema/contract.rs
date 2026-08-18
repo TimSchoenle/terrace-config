@@ -81,7 +81,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
 use super::json_schema::{self, DRAFT_07, JsonSchema};
-use super::{Error, Schema};
+use super::{Error, Schema, TextForm};
 
 /// The version of the envelope [`Contract::to_json`] produces.
 ///
@@ -288,13 +288,19 @@ impl App {
 ///
 /// A variable holds text and a configuration holds a value, so steps 2 and 5 are two checks:
 ///
-/// 1. **Form.** The text must satisfy `text_constraint`. `"http"` is not an integer in any
-///    spelling, and this is the check that says so.
-/// 2. **Range.** Parse the text according to the form that just matched — an integer pattern means
-///    read it as an integer — and check the result against `constraint`. This is where `minimum`
-///    and `maximum` live, and it is the only step that can reach them: a pattern matches
-///    characters, so `99999` is a perfectly well-formed integer and only a bound catches it not
-///    fitting a `u16`.
+/// 1. **Form.** The text must satisfy `text_constraint`, when there is one. `"http"` is not an
+///    integer in any spelling, and this is the check that says so.
+/// 2. **Range.** Read the text according to `text_form` — [`TextForm::Integer`] means parse it as
+///    an integer — and check the result against `constraint`. This is where `minimum` and
+///    `maximum` live, and it is the only step that can reach them: a pattern matches characters,
+///    so `99999` is a perfectly well-formed integer and only a bound catches it not fitting a
+///    `u16`.
+///
+/// `text_form` is what says which parse, rather than the shape of the constraint object: a
+/// consumer inferring "pattern means integer" was right while there were two shapes and wrong as
+/// soon as [`TextForm::Structured`] arrived. [`TextForm::Text`] and [`TextForm::Unknown`] have no
+/// second step — the first because there is nothing to parse, the second because nothing is known
+/// to parse it as.
 ///
 /// Skipping the second leaves every bound in the document decorative, which is a deployment that
 /// passes every gate and fails at boot. Skipping the first, or applying `constraint` to the raw
@@ -449,6 +455,11 @@ pub struct ExternalVar {
     /// [`Key::text_constraint`]: super::Key::text_constraint
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub text_constraint: Option<Json>,
+    /// How to read this variable's text, as [`Key::text_form`] carries it for a configuration key.
+    ///
+    /// [`Key::text_form`]: super::Key::text_form
+    #[serde(default)]
+    pub text_form: TextForm,
     /// What the image does when it is unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
@@ -473,6 +484,7 @@ impl ExternalVar {
             // means, so a variable's constraint cannot disagree with the key's for one spelling.
             constraint: None,
             text_constraint: None,
+            text_form: TextForm::Unknown,
             default: None,
             required: false,
             secret: false,
@@ -524,7 +536,23 @@ impl ExternalVar {
         }
         if text.is_some() {
             self.text_constraint = text;
+            // A stated text constraint that left the form at its default would tell a consumer
+            // "nothing certain is known" beside a pattern that says otherwise. `Text` is the
+            // honest reading of a hand-written pattern: match it, and do not try to parse the
+            // result into something this crate was not told about.
+            self.text_form = TextForm::Text;
         }
+        self
+    }
+
+    /// State how to read this variable's text, when [`Self::constraint`] gave it a shape the
+    /// default reading is wrong for.
+    ///
+    /// [`TextForm::Integer`] beside a hand-written pattern is what makes a consumer parse the
+    /// match and check [`Self::constraint`]'s bounds, rather than stopping at the pattern.
+    #[must_use]
+    pub fn text_form(mut self, form: TextForm) -> Self {
+        self.text_form = form;
         self
     }
 
@@ -595,6 +623,7 @@ pub struct ContractBuilder {
     schema: Schema,
     app: App,
     external: External,
+    /// How the JSON Schema half renders. Not settable as a whole: see [`Self::closed`].
     json_schema: JsonSchema,
 }
 
@@ -606,15 +635,21 @@ impl ContractBuilder {
         self
     }
 
-    /// How the JSON Schema half renders.
+    /// Whether a key the schema does not describe is an error. Defaults to `true`.
     ///
-    /// Defaults to draft-07, closed, titled after the app — the dialect Helm validates against and
-    /// the strictness that makes an unknown key an error. Override it for a service whose rendered
-    /// document legitimately carries keys this schema does not describe; prefer declaring those
-    /// keys to relaxing the check.
+    /// Off for a service whose rendered document legitimately carries keys this contract does not
+    /// describe. Prefer declaring those keys to relaxing the check: an unknown key is the defect
+    /// the whole document exists to catch, and an open schema catches none of them.
     #[must_use]
-    pub fn json_schema(mut self, options: JsonSchema) -> Self {
-        self.json_schema = options;
+    pub fn closed(mut self, closed: bool) -> Self {
+        self.json_schema = self.json_schema.closed(closed);
+        self
+    }
+
+    /// The JSON Schema half's `title`. Defaults to the app's name.
+    #[must_use]
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.json_schema = self.json_schema.title(title);
         self
     }
 
@@ -650,9 +685,10 @@ impl ContractBuilder {
                 var.constraint =
                     json_schema::constraint(var.ty.as_deref(), &var.values).map(Json::Object);
             }
+            let (form, text) = json_schema::text_constraint(var.ty.as_deref(), &var.values);
             if var.text_constraint.is_none() {
-                var.text_constraint =
-                    json_schema::text_constraint(var.ty.as_deref(), &var.values).map(Json::Object);
+                var.text_form = form;
+                var.text_constraint = text.map(Json::Object);
             }
         }
 
@@ -694,6 +730,13 @@ impl Schema {
             // and the one every consumer of this document is already able to read; closed because
             // an unknown key in a rendered configuration is the defect this whole document exists
             // to catch, and an open schema catches none of them.
+            //
+            // Deliberately not settable as a whole. A caller writing the obvious
+            // `.json_schema(JsonSchema::new().closed(false))` to relax one knob would silently
+            // take the dialect back to 2020-12 with it — which validates fine on its own and
+            // fails only when a pipeline pins a draft-07 engine, or when two contracts of one
+            // document refuse to merge. `closed` and `title` are the two knobs that override
+            // meaningfully, so they are the two that exist.
             json_schema: JsonSchema::new().meta_schema(DRAFT_07).closed(true),
         }
     }

@@ -15,7 +15,7 @@ use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, DRAFT_07, Describe, External, ExternalVar,
-    JsonSchema, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, Schema, Unknown,
+    JsonSchema, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, Schema, TextForm, Unknown,
 };
 
 #[derive(Deserialize, Serialize, Default, Describe)]
@@ -162,10 +162,43 @@ fn the_title_falls_back_to_the_app_but_never_overrides_one() {
 
     let titled = schema()
         .into_contract(App::new("portfolio"))
-        .json_schema(JsonSchema::new().meta_schema(DRAFT_07).title("chosen"))
+        .title("chosen")
         .build()
         .expect("builds");
     assert_eq!(titled.json_schema["title"], Json::from("chosen"));
+}
+
+#[test]
+fn overriding_a_knob_cannot_change_the_dialect() {
+    // The builder used to take a whole `JsonSchema`, so the documented way to relax one knob —
+    // `.json_schema(JsonSchema::new().closed(false))` — silently took the dialect back to 2020-12
+    // with it. That validates fine alone and fails only where it is expensive: against a pipeline
+    // pinning a draft-07 engine, or when two contracts of one document refuse to merge.
+    for contract in [
+        schema()
+            .into_contract(App::new("portfolio"))
+            .closed(false)
+            .build()
+            .expect("builds"),
+        schema()
+            .into_contract(App::new("portfolio"))
+            .title("whatever")
+            .build()
+            .expect("builds"),
+    ] {
+        assert_eq!(contract.json_schema["$schema"], Json::from(DRAFT_07));
+    }
+}
+
+#[test]
+fn closed_is_the_knob_it_says_it_is() {
+    let open = schema()
+        .into_contract(App::new("portfolio"))
+        .closed(false)
+        .build()
+        .expect("builds");
+
+    assert!(open.json_schema.get("additionalProperties").is_none());
 }
 
 #[test]
@@ -705,4 +738,129 @@ fn matches_pattern(pattern: &str, text: &str) -> bool {
         },
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The text form, which is what says how to read the text a key is supplied as
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Shapes {
+    /// A string.
+    #[serde(default)]
+    name: String,
+    /// A number.
+    #[serde(default)]
+    count: u32,
+    /// A flag.
+    #[serde(default)]
+    on: bool,
+    /// A list.
+    #[serde(default)]
+    repos: Vec<String>,
+    /// A map.
+    #[serde(default)]
+    labels: std::collections::BTreeMap<String, String>,
+    /// Something this crate cannot interpret.
+    #[serde(default)]
+    endpoint: Newtype,
+}
+
+// No `Describe`: it is a leaf, and the derive reports the token `Newtype` as its type without
+// needing the type to describe anything. That is the point of the fixture — a spelling the crate
+// cannot interpret.
+#[derive(Deserialize, Serialize, Default)]
+struct Newtype(String);
+
+fn shapes() -> Contract {
+    Terrace::new("SHAPES_")
+        .schema::<Shapes>()
+        .with_defaults_from(&Shapes::default())
+        .expect("serialises")
+        .into_contract(App::new("shapes"))
+        .build()
+        .expect("builds")
+}
+
+#[test]
+fn every_key_says_how_to_read_its_text() {
+    let contract = shapes();
+    let form = |path: &str| key_of(&contract, path).text_form;
+
+    assert_eq!(form("name"), TextForm::Text);
+    assert_eq!(form("count"), TextForm::Integer);
+    assert_eq!(form("on"), TextForm::Boolean);
+    assert_eq!(form("repos"), TextForm::Structured);
+    assert_eq!(form("labels"), TextForm::Structured);
+    // Not `Text`. The distinction is the point: `Text` says any text is fine, `Unknown` says
+    // nothing could be determined and a check might have paid.
+    assert_eq!(form("endpoint"), TextForm::Unknown);
+}
+
+#[test]
+fn a_list_key_requires_the_bracket_form_rather_than_accepting_anything() {
+    // The case that made the form necessary. `text_constraint: null` used to mean both "any text
+    // is fine" and "this needs a structured literal nobody described", so a chart setting
+    // `SHAPES_REPOS=a,b` — the first thing anyone would try — passed every gate and failed at
+    // boot with a type error.
+    let contract = shapes();
+    let repos = key_of(&contract, "repos");
+
+    assert_eq!(repos.text_form, TextForm::Structured);
+    let pattern = repos.text_constraint.as_ref().expect("carried")["pattern"]
+        .as_str()
+        .expect("a string");
+
+    // Measured: figment takes `[]` and `["a","b"]` for a `Vec<String>` and refuses `a,b`, `a` and
+    // the empty string.
+    for text in ["[]", "[\"a\",\"b\"]", " [ 1, 2 ] "] {
+        assert!(bracketed(pattern, text), "{text} must be admitted");
+    }
+    for text in ["a,b", "a", "", "["] {
+        assert!(!bracketed(pattern, text), "{text} must be refused");
+    }
+}
+
+#[test]
+fn a_string_key_says_any_text_is_fine_rather_than_saying_nothing() {
+    let contract = shapes();
+    let name = key_of(&contract, "name");
+
+    // No pattern, because an environment value is a string already — but the form is what makes
+    // that "nothing to check" rather than "nothing is known".
+    assert_eq!(name.text_constraint, None);
+    assert_eq!(name.text_form, TextForm::Text);
+}
+
+#[test]
+fn a_stated_constraint_takes_a_stated_form() {
+    let contract = with_external(
+        External::new().var(
+            ExternalVar::new("TIMEOUT")
+                .ty("Duration")
+                .constraint(
+                    None,
+                    Some(json!({ "type": "string", "pattern": "^[0-9]+s$" })),
+                )
+                .text_form(TextForm::Text),
+        ),
+    )
+    .expect("builds");
+
+    assert_eq!(contract.external.env[0].text_form, TextForm::Text);
+}
+
+/// Whether `text` satisfies the bracket pattern this crate emits for a structured key.
+///
+/// Hand-rolled for `matches_pattern`'s reason: the crate takes no regex dependency, and asserting
+/// four strings against one anchored shape does not justify a dev-dependency for one either.
+fn bracketed(pattern: &str, text: &str) -> bool {
+    assert!(
+        pattern.contains("[\\[\\{]") && pattern.contains("[\\]\\}]"),
+        "this matcher only understands the shape this crate emits: {pattern}"
+    );
+    let text = text.trim();
+    let opens = text.starts_with('[') || text.starts_with('{');
+    let closes = text.ends_with(']') || text.ends_with('}');
+    opens && closes && text.len() >= 2
 }

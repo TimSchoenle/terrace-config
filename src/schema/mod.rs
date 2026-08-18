@@ -238,6 +238,7 @@ impl Sink {
             // its type.
             constraint: None,
             text_constraint: None,
+            text_form: TextForm::Unknown,
             default: None,
             default_value: None,
             note: leaf.note.map(str::to_owned),
@@ -331,6 +332,11 @@ pub struct Key {
     /// variants of a choice. [`None`] means the text is unconstrained — which is the answer for
     /// every string-like type, since an environment value is a string to begin with.
     ///
+    /// [`None`] here means there is no pattern to match, which [`Self::text_form`] disambiguates:
+    /// [`TextForm::Text`] means any text is fine, and [`TextForm::Unknown`] means nothing could be
+    /// said. The two used to be indistinguishable, and a list-typed key was the case that made the
+    /// difference cost a deployment.
+    ///
     /// **It constrains form, not range.** A pattern matches characters, so `99999` is a
     /// well-formed integer and only [`Self::constraint`]'s `maximum` catches it not fitting a
     /// `u16` — which means a validator has to do both, in the order
@@ -354,6 +360,13 @@ pub struct Key {
     /// mounting a key-named file for a numeric key has made a mistake no file contents can fix.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub text_constraint: Option<serde_json::Value>,
+    /// How to read the text this key is supplied as. See [`TextForm`].
+    ///
+    /// Always present, which is what makes it usable as the discriminator: a consumer reads this
+    /// to decide how to parse before checking [`Self::constraint`], instead of inferring the parse
+    /// from which keywords [`Self::text_constraint`] happens to carry.
+    #[serde(default)]
+    pub text_form: TextForm,
     /// Other key paths that supply this same key, from `#[serde(alias = "…")]`.
     ///
     /// Full paths, so each one's environment and file spellings derive exactly as
@@ -398,6 +411,37 @@ pub struct Key {
     pub secret: bool,
     /// Whether the loader reserves this key, so only the environment may supply it.
     pub reserved: bool,
+}
+
+/// What form the text supplying a key takes, and so how to read it.
+///
+/// The reason this is a field rather than something a consumer infers from
+/// [`Key::text_constraint`]: inference works while the crate emits two shapes and becomes a guess
+/// the moment it emits a third — which it now does. And a bare [`None`] constraint used to mean
+/// two incompatible things, "any text is fine" and "this needs a structured literal nobody
+/// described"; a chart setting `PORTFOLIO_GITHUB__REPOS=a,b` passed every gate and failed at boot
+/// because a validator could not tell them apart. This is what tells them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum TextForm {
+    /// Any text. A `String`, a `PathBuf`, a `Url` — nothing to check and nothing to parse.
+    Text,
+    /// Digits with an optional sign. Read it as an integer, then check [`Key::constraint`], which
+    /// is where a `minimum` and `maximum` live.
+    Integer,
+    /// `true` or `false`, and nothing else — not `TRUE`, not `1`, not `yes`.
+    Boolean,
+    /// One of [`Key::values`], spelled as `serde` accepts it.
+    Choice,
+    /// A TOML literal: an array, an inline table. Only the environment layer can carry one at all
+    /// — the file layers deliver text with no parse, so a key of this form cannot be supplied by a
+    /// secrets file or a `_FILE` path whatever it contains.
+    Structured,
+    /// Nothing certain is known: a domain newtype, a float, a type this crate does not interpret.
+    /// No check is possible, and unlike [`Self::Text`] that is a gap rather than an answer.
+    #[default]
+    Unknown,
 }
 
 /// What a variable the loader itself reads is for.
@@ -501,8 +545,9 @@ impl Schema {
         for key in &mut keys {
             key.constraint = json_schema::constraint(key.ty.as_deref(), &key.values)
                 .map(serde_json::Value::Object);
-            key.text_constraint = json_schema::text_constraint(key.ty.as_deref(), &key.values)
-                .map(serde_json::Value::Object);
+            let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
+            key.text_form = form;
+            key.text_constraint = text.map(serde_json::Value::Object);
             key.env = env_spelling(dialect, &key.path);
             key.env_file = key
                 .env

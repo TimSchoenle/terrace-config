@@ -17,6 +17,8 @@
 
 use serde_json::{Map, Value as Json, json};
 
+use super::TextForm;
+
 /// The JSON Schema keywords `ty` justifies, or [`None`] for a spelling with no certain meaning.
 ///
 /// Keywords rather than a shape enum of this crate's own: they are the vocabulary the output is
@@ -126,8 +128,8 @@ fn integer(name: &str) -> Option<Map<String, Json>> {
     Some(schema)
 }
 
-/// The keywords the *unparsed text* of an environment variable must satisfy, or [`None`] when
-/// nothing certain can be said about it.
+/// What form the *unparsed text* of an environment variable takes, and the keywords that check
+/// it.
 ///
 /// [`interpret`] describes a value once it is in the document — an integer, a boolean, an array.
 /// A variable holds none of those; it holds text, and `"0"` fails `{"type": "integer"}` under
@@ -156,10 +158,18 @@ fn integer(name: &str) -> Option<Map<String, Json>> {
 /// [`provider`](crate::provider)). Expressing that needs a `not` over the forms that parse, and
 /// the boundary of "what parses" is exactly what is not known exactly enough to reject on. It is
 /// documented instead of guessed.
-pub(super) fn in_text(ty: &str) -> Option<Map<String, Json>> {
+pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
     let ty = strip_reference(ty.trim());
+
+    // `[T; N]` and `[T]` have no head to look up, and are sequences like the rest.
+    if ty.starts_with('[') && ty.ends_with(']') {
+        return (TextForm::Structured, Some(bracketed()));
+    }
+
     let (head, args) = split_generic(ty);
-    let name = head.rsplit("::").next()?;
+    let Some(name) = head.rsplit("::").next() else {
+        return (TextForm::Unknown, None);
+    };
 
     match (name, args.as_slice()) {
         ("Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock", [inner]) => {
@@ -167,14 +177,51 @@ pub(super) fn in_text(ty: &str) -> Option<Map<String, Json>> {
         }
         ("Cow", [_lifetime, inner]) => in_text(inner),
 
-        ("bool", []) => Some(json_map(&json!({
-            "type": "string",
-            "enum": ["true", "false"],
-        }))),
+        ("bool", []) => (
+            TextForm::Boolean,
+            Some(json_map(
+                &json!({ "type": "string", "enum": ["true", "false"] }),
+            )),
+        ),
 
-        (name, []) => integer_text(name),
-        _ => None,
+        // Every one of these deserialises from a TOML string, so any text is a candidate and the
+        // only honest constraint is none. The form is what carries the meaning: `Text` says "no
+        // check possible and none needed", where [`TextForm::Unknown`] says "no check possible and
+        // one might have been".
+        (
+            "String" | "str" | "PathBuf" | "Path" | "OsString" | "OsStr" | "CString" | "CStr"
+            | "SecretString" | "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr"
+            | "SocketAddrV4" | "SocketAddrV6" | "char",
+            [],
+        ) => (TextForm::Text, None),
+
+        ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [_]) | ("HashMap" | "BTreeMap", [_, _]) => {
+            (TextForm::Structured, Some(bracketed()))
+        }
+
+        (name, []) => match integer_text(name) {
+            Some(schema) => (TextForm::Integer, Some(schema)),
+            None => (TextForm::Unknown, None),
+        },
+        _ => (TextForm::Unknown, None),
     }
+}
+
+/// The one thing certainly true of a sequence or a map in an environment variable: it is a TOML
+/// literal, so it is bracketed.
+///
+/// Measured, like the rest. Against a `Vec<String>` key figment takes `[]` and `["a","b"]` and
+/// refuses `a,b`, `a` and the empty string — so `PORTFOLIO_GITHUB__REPOS=a,b`, which is the first
+/// thing anyone would try, is caught here rather than at boot. The pattern says nothing about what
+/// is *between* the brackets, because that is TOML's grammar and this is not a TOML parser.
+fn bracketed() -> Map<String, Json> {
+    json_map(&json!({
+        "type": "string",
+        // `[\s\S]` rather than `.`, which does not match a newline in most engines — and a
+        // multi-line array is legal TOML, so a pattern that refused one would refuse a value the
+        // loader takes.
+        "pattern": r"^\s*[\[\{][\s\S]*[\]\}]\s*$",
+    }))
 }
 
 /// The text form of an integer spelling: a sign, digits, and the whitespace figment trims.

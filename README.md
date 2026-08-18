@@ -865,7 +865,8 @@ key carries two constraints, flat, beside the spellings:
 ```json
 { "path": "isr.ttl_secs", "env": "PORTFOLIO_ISR__TTL_SECS", "ty": "u64",
   "constraint":      { "type": "integer", "minimum": 0 },
-  "text_constraint": { "type": "string", "pattern": "^\\s*\\+?[0-9]+\\s*$" } }
+  "text_constraint": { "type": "string", "pattern": "^\\s*\\+?[0-9]+\\s*$" },
+  "text_form":       "integer" }
 ```
 
 `constraint` describes the parsed value; `text_constraint` describes the characters an environment
@@ -886,20 +887,30 @@ For a `u64` it takes `0`, `42`, `007`, `+5` and `7` with surrounding whitespace,
 `TRUE`, not `1`, not `yes`. The emitted pattern is a superset of what was measured, because a
 pattern that rejects text the loader accepts stops a deployment that was correct.
 
-`null` means unconstrained. For `constraint` that is a domain newtype, or a type this crate does
-not recognise — inventing one would reject values the image accepts, which is the one thing a
-schema here must never do. For `text_constraint` it is also every string-like type: an environment
-value is a string already, so `{"type": "string"}` would constrain nothing, and saying nothing is
-more honest than saying that.
+**`text_form` is what says how to read the text**, and it is always present: `text`, `integer`,
+`boolean`, `choice`, `structured` or `unknown`. A consumer reads it to choose the parse for the
+range step rather than inferring one from which keywords `text_constraint` happens to carry — an
+inference that was right while there were two shapes and wrong the moment there were three.
+
+It also gives `text_constraint: null` one meaning instead of two. `text` says any text is fine and
+there is nothing to parse; `unknown` says nothing could be determined, which is a gap rather than
+an answer. Those used to be indistinguishable, and a list-typed key is what made the difference
+cost a deployment: a `structured` key — a `Vec<T>`, a map — needs a TOML literal, so
+`PORTFOLIO_GITHUB__REPOS=a,b` is refused by the loader and used to pass every gate. Those now carry
+a pattern requiring the bracket form.
+
+`constraint: null` still means no check is possible: a domain newtype, or a type this crate does
+not recognise. Inventing one would reject values the image accepts, which is the one thing a schema
+here must never do.
 
 `ExternalVar::constraint` sets both by hand for a type the crate cannot interpret — a duration, a
 connection string — and the derive leaves whatever it finds alone.
 
 **The file layers are a blunter question.** A key-named file in the secrets directory and a `_FILE`
 target both deliver their contents as strings with no parse, and `Figment::extract` does not coerce
-a string into a number or a boolean. A key whose `constraint` is anything but a string type
-therefore **cannot be supplied by either, whatever the file contains** — not "must match a
-pattern", cannot be supplied at all. That is deliberate: those layers exist to carry secrets, and a
+a string into a number or a boolean. A key whose `text_form` is anything but `text` therefore
+**cannot be supplied by either, whatever the file contains** — not "must match a pattern", cannot
+be supplied at all. That is deliberate: those layers exist to carry secrets, and a
 secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file has made a
 mistake no file contents can fix, and a validator can say so from `constraint` alone.
 
@@ -977,12 +988,14 @@ together: two normative statements that disagree is the same defect as none, and
 **Steps 2 and 5 are two checks, and both are needed.** A variable holds text and a configuration
 holds a value:
 
-1. **Form.** The text must satisfy `text_constraint`. `"http"` is not an integer in any spelling,
-   and this is the check that says so.
-2. **Range.** Parse the text by the form that just matched, then check the result against
-   `constraint`. This is where `minimum` and `maximum` live, and it is the only step that can reach
-   them — a pattern matches characters, so `99999` is a well-formed integer and only a bound
-   catches it not fitting a `u16`.
+1. **Form.** The text must satisfy `text_constraint`, when there is one. `"http"` is not an
+   integer in any spelling, and this is the check that says so.
+2. **Range.** Read the text according to `text_form` — `integer` means parse it as an integer —
+   then check the result against `constraint`. This is where `minimum` and `maximum` live, and it
+   is the only step that can reach them: a pattern matches characters, so `99999` is a well-formed
+   integer and only a bound catches it not fitting a `u16`. `text` and `unknown` have no second
+   step, the first because there is nothing to parse and the second because nothing is known to
+   parse it as.
 
 Skipping the second leaves every bound in the document decorative: a deployment that passes every
 gate and fails at boot. Applying `constraint` to the raw text instead rejects `"0"` for an integer
