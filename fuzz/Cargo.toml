@@ -28,7 +28,9 @@ libfuzzer-sys = "0.4"
 # `full`, because `secrets_dir` reaches the file layers and `env_load` compares `load` against
 # `load_watched`. The supervisor itself is not fuzzed: its inputs are a filesystem event and a
 # caller's closure, neither of which a byte string models.
-terrace-config = { path = "..", features = ["full"] }
+# `testing` alongside `full`: every oracle runs inside a `terrace_config::testing` jail, which
+# is also where the `figment/test` feature now comes from.
+terrace-config = { path = "..", features = ["full", "testing"] }
 # The `schema` oracle asserts against the JSON contract, so it needs to parse it back.
 serde_json = "1"
 
@@ -36,10 +38,10 @@ serde_json = "1"
 # has nothing to resolve against. They must not drift *downwards* from the root manifest — a
 # target extracting through an older figment than the crate does is measuring the wrong parser.
 #
-# `test` adds `figment::Jail`, which every target needs to set and restore `TEST_*` around each
-# iteration. `std::env::set_var` is `unsafe` in edition 2024 and the crate forbids unsafe code,
-# so `Jail` is not a convenience here — it is the only way in.
-figment = { version = "0.10", features = ["toml", "env", "test"] }
+# No `test` feature: the jail every oracle runs in comes from `terrace_config::testing` now, and
+# that feature pulls `figment/test` in for itself. What is left here is `figment::value::Value`,
+# which the oracles compare against.
+figment = { version = "0.10", features = ["toml", "env"] }
 serde = { version = "1", features = ["derive"] }
 # The all-digit-password bug was a `SecretString` field refusing a `Value::Num`. Deserialising
 # into one is how a target notices that layer emitting parsed values again.

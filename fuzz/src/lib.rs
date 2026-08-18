@@ -11,13 +11,5 @@
 //! oracle nobody checks. Here, the seeds are a regression suite that runs anywhere, and the
 //! fuzzer is what discovers new inputs to add to it.
 
-// `figment::Jail::try_with` fixes the closure's error type to the large `figment::Error`, and
-// every oracle is one such closure — so the expectation belongs here rather than three times
-// over.
-#![expect(
-    clippy::result_large_err,
-    reason = "figment::Jail::try_with fixes the closure's error type"
-)]
-
 pub mod oracle;
 pub mod support;

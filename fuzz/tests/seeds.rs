@@ -182,7 +182,7 @@ mod generated {
 
     /// The budget, overridable so a longer hunt does not need a recompile.
     ///
-    /// Read before the oracle runs, because [`figment::Jail`] clears the environment inside it.
+    /// Read before the oracle runs, because the jail each one enters clears the environment.
     fn iterations() -> usize {
         std::env::var("TERRACE_FUZZ_ITERATIONS")
             .ok()

@@ -43,6 +43,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use terrace_config::Terrace;
 use terrace_config::schema::{Describe, Key, Leaf, Schema, Sink};
+use terrace_config::testing::Harness;
 
 use crate::support::{MAX_DIRECTIVES, MAX_NAME_LEN, PREFIX, is_safe_name, lookup};
 
@@ -321,10 +322,9 @@ fn env_spelling_reaches_its_key(spec: &Spec, keys: &[Key]) {
         return;
     }
 
-    figment::Jail::expect_with(|jail| {
-        jail.clear_env();
+    Harness::over(terrace(spec)).run(|jail| {
         for key in &named {
-            jail.set_env(key.env.as_ref().expect("filtered"), MARKER);
+            jail.env(key.env.as_ref().expect("filtered"), MARKER);
         }
         assert_arrives(&terrace(spec), &named, "the environment spelling");
         Ok(())
@@ -341,19 +341,18 @@ fn secrets_file_reaches_its_key(spec: &Spec, keys: &[Key]) {
         return;
     }
 
-    figment::Jail::expect_with(|jail| {
-        jail.clear_env();
-        let dir = jail.directory().join("secrets");
-        if std::fs::create_dir_all(&dir).is_err() {
+    Harness::over(terrace(spec)).run(|jail| {
+        // `secrets_dir` also points the loader's own variable at the directory, whatever the
+        // spec named it.
+        if jail.secrets_dir().is_err() {
             return Ok(());
         }
         for key in &named {
             let name = key.secrets_file.as_ref().expect("filtered");
-            if std::fs::write(dir.join(name), MARKER).is_err() {
+            if jail.secret(name, MARKER).is_err() {
                 return Ok(());
             }
         }
-        jail.set_env(format!("{PREFIX}SECRETS_DIR"), dir.display());
         assert_arrives(&terrace(spec), &named, "the secrets-directory file name");
         Ok(())
     });
@@ -366,20 +365,17 @@ fn indirection_reaches_its_key(spec: &Spec, keys: &[Key]) {
         return;
     }
 
-    figment::Jail::expect_with(|jail| {
-        jail.clear_env();
-        let dir = jail.directory().join("indirect");
-        if std::fs::create_dir_all(&dir).is_err() {
-            return Ok(());
-        }
+    Harness::over(terrace(spec)).run(|jail| {
         for (index, key) in named.iter().enumerate() {
             // The path is named by this oracle, never by the input: an indirection variable holds
             // a path, and a fuzzer-chosen one would have the target reading the host's files.
-            let path = dir.join(format!("value-{index}"));
-            if std::fs::write(&path, MARKER).is_err() {
+            //
+            // The *variable* is the schema's own spelling rather than the one `Jail::indirection`
+            // would derive, because that spelling is exactly what this oracle is checking.
+            let Ok(path) = jail.write(format!("indirect/value-{index}"), MARKER) else {
                 return Ok(());
-            }
-            jail.set_env(key.env_file.as_ref().expect("filtered"), path.display());
+            };
+            jail.env(key.env_file.as_ref().expect("filtered"), path.display());
         }
         assert_arrives(&terrace(spec), &named, "the indirection variable");
         Ok(())
@@ -440,10 +436,9 @@ fn an_unreachable_key_stays_unreachable(spec: &Spec, schema: &Schema) {
         return;
     }
 
-    figment::Jail::expect_with(|jail| {
-        jail.clear_env();
+    Harness::over(terrace(spec)).run(|jail| {
         for key in &unreachable {
-            jail.set_env(dialect.env_spelling(&key.path), MARKER);
+            jail.env(dialect.env_spelling(&key.path), MARKER);
         }
         let Ok(figment) = terrace(spec).figment() else {
             return Ok(());

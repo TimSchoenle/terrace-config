@@ -27,11 +27,11 @@
 //! file elsewhere on the machine is not a reproducer. Those layers have oracles of their own,
 //! which build the directory they read.
 
-use figment::Jail;
 use figment::value::Value;
 use secrecy::SecretString;
 use serde::Deserialize;
 use terrace_config::Terrace;
+use terrace_config::testing::Harness;
 
 use crate::support::{Directive, PREFIX, directives, is_safe_env};
 
@@ -76,6 +76,13 @@ fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve("TEST_PROFILE")
 }
 
+/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the
+/// loader under test. `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid
+/// unsafe code, so a jail is not a convenience here — it is the only way in.
+fn harness() -> Harness {
+    Harness::over(layers())
+}
+
 /// Run the oracle. Panics when the loader breaks one of the rules above.
 ///
 /// # Panics
@@ -83,10 +90,9 @@ fn layers() -> Terrace {
 pub fn check(data: &str) {
     // Ignored: a jail-setup failure (a temp dir it could not create) says nothing about the code
     // under test. Every outcome that does is handled inside the closure.
-    let _ = Jail::try_with(|jail| {
-        jail.clear_env();
+    let _ = harness().try_run(|jail| {
         for (key, value) in BASE_ENV {
-            jail.set_env(key, value);
+            jail.env(key, value);
         }
 
         for directive in directives(data) {
@@ -109,16 +115,16 @@ pub fn check(data: &str) {
             {
                 continue;
             }
-            jail.set_env(&name, value);
+            jail.env(&name, value);
         }
 
         // (1) Totality, through the typed extraction where a second round of interpretation
         // happens. Either outcome is legitimate for almost any input.
-        let _ = layers().load::<Sample>();
+        let _ = jail.load::<Sample>();
 
         // (2) Boot and reload must see the same thing.
-        let direct = layers().load::<Value>();
-        let watched = layers().load_watched::<Value>();
+        let direct = jail.load::<Value>();
+        let watched = jail.load_watched::<Value>();
         match (direct, watched) {
             (Ok(direct), Ok(watched)) => {
                 assert_eq!(
@@ -127,7 +133,7 @@ pub fn check(data: &str) {
                 );
 
                 // (3) Re-reading an environment nothing touched is not a change.
-                let again = layers()
+                let again = jail
                     .load_watched::<Value>()
                     .expect("a load that just succeeded must succeed again unchanged");
                 assert!(

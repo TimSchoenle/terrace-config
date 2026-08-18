@@ -46,6 +46,21 @@ loader = ["dep:figment", "dep:serde"]
 # needs `DeserializeOwned` as a bound, and a service that loads configuration at boot has no
 # reason to compile `serde_derive` on this crate's account.
 schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros"]
+# `testing` is an add-on to `loader` in the same way `schema` is, and for the same reason: every
+# affordance it has is one of the loader's layers — a secrets directory, TOML fragments, `_FILE`
+# indirection — and every name it writes is derived from the loader's own `Dialect`. It belongs in
+# a consumer's `[dev-dependencies]`; it is deliberately **not** part of `full`, so that a service
+# asking for everything the crate does at runtime does not link a test harness.
+#
+# `figment/test` supplies the process-wide lock, the temporary directory and the save/restore of
+# the environment. `std::env::set_var` is `unsafe` in edition 2024 and this crate forbids unsafe
+# code, so `figment::Jail` is not a convenience here — it is the only way in.
+#
+# `tokio?/rt` is weak on purpose: it reads as "if tokio is being compiled anyway, add `rt`", which
+# is what `Jail::block_on` needs, without `testing` pulling tokio in for a consumer who does not
+# use `reload`. The `reload` feature itself asks tokio for `macros`, `sync` and `time` only,
+# because the supervisor runs on the caller's runtime rather than building one.
+testing = ["loader", "figment/test", "tokio?/rt"]
 reload = [
     "dep:notify",
     "dep:notify-debouncer-full",

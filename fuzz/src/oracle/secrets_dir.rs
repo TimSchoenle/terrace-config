@@ -39,8 +39,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use figment::Jail;
 use figment::value::Value;
+use terrace_config::testing::Harness;
 use terrace_config::{ShadowPolicy, Terrace};
 
 use crate::support::{
@@ -86,6 +86,13 @@ const SENTINEL_BODY: &str = "terrace-fuzz-sentinel-must-not-be-read";
 
 fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve(RESERVED)
+}
+
+/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the
+/// loader under test. `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid
+/// unsafe code, so a jail is not a convenience here — it is the only way in.
+fn harness() -> Harness {
+    Harness::over(layers())
 }
 
 /// The figment key path an environment suffix or file name denotes.
@@ -182,15 +189,11 @@ impl Model {
 )]
 pub fn check(data: &str) {
     // Ignored: a jail-setup failure says nothing about the code under test.
-    let _ = Jail::try_with(|jail| {
-        jail.clear_env();
-
-        let root = jail.directory().to_path_buf();
-        let secrets = root.join("secrets");
-        if std::fs::create_dir_all(&secrets).is_err() {
+    let _ = harness().try_run(|jail| {
+        let root = jail.sandbox().root().to_path_buf();
+        let Ok(secrets) = jail.secrets_dir() else {
             return Ok(());
-        }
-        jail.set_env("TEST_SECRETS_DIR", secrets.display());
+        };
 
         // (4) The planted skip. Written before the fuzzer's files so a directive naming the same
         // thing overwrites it, which the model then notices.
@@ -233,7 +236,7 @@ pub fn check(data: &str) {
                         continue;
                     }
                     let variable = format!("{PREFIX}{suffix}_FILE");
-                    jail.set_env(&variable, root.join(&name).display());
+                    jail.env(&variable, root.join(&name).display());
 
                     if is_reserved(&format!("{PREFIX}{suffix}")) {
                         model.fatal = true;
@@ -258,7 +261,7 @@ pub fn check(data: &str) {
                     if is_reserved(&name) {
                         continue;
                     }
-                    jail.set_env(&name, value);
+                    jail.env(&name, value);
                     model.env.insert(key_path(suffix));
                 }
             }
@@ -267,7 +270,7 @@ pub fn check(data: &str) {
         let refused = model.fatal || model.collides();
 
         // (1) and (2). Totality first, then the verdict the model computed for itself.
-        let loaded = match layers().load_watched::<Value>() {
+        let loaded = match jail.load_watched::<Value>() {
             Err(_) => {
                 assert!(
                     refused,
@@ -310,7 +313,7 @@ pub fn check(data: &str) {
 
         // (5) The relaxed policy must not be the stricter one.
         assert!(
-            layers()
+            jail.terrace()
                 .shadow_policy(ShadowPolicy::LastWins)
                 .load::<Value>()
                 .is_ok(),
