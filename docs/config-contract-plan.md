@@ -684,6 +684,11 @@ key in `_helpers.tpl`, nothing downstream is worth building.
   claim about the *code*, and the image's defaults are a second surface no derive can see. Reading
   them is a `crane config` away and the union is a natural additive field; the gap is documented on
   `Key::default` in the meantime.
+- **Gate 3 checking rendered `Secret` *values*, not only their names.** A chart's `Secret` carries
+  the values in the manifest, `constraint` is published, and the file layers' read is one rule for
+  every form — strip trailing line terminators, nothing else. So `marker: "x "` in a `stringData`
+  block is catchable, where today it fails at boot with `invalid value string "x "` and a message
+  naming neither the chart, the `Secret`, nor the key. Nothing further is needed from the contract.
 - **A drift report rather than a gate.** The same union, run across every published chart version
   against every published image digest, answers "which deployed releases are running on a config
   the image no longer reads" — a scheduled job, not a pull-request gate.

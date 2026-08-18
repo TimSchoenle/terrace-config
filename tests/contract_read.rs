@@ -181,3 +181,75 @@ fn every_form_a_key_can_report_has_a_documented_read() {
     // takes no dependency on and a consumer may not have either.
     assert!(read(TextForm::Structured, "[]").is_none());
 }
+
+// ---------------------------------------------------------------------------------------------
+// The file layers, whose read is one rule for every form and is not the one above
+// ---------------------------------------------------------------------------------------------
+
+/// What a secrets-directory file delivers, as documented.
+///
+/// Trailing line terminators and nothing else: an editor and a YAML block scalar both add one
+/// nobody meant as part of the value, while a trailing space can be a real character of a real
+/// password. The environment layer trims everything; this strips two characters. Getting the two
+/// confused is why this is checked rather than assumed.
+fn read_from_file(text: &str) -> String {
+    text.trim_end_matches(['\r', '\n']).to_owned()
+}
+
+/// What the loader made of a secrets-directory file holding `text`.
+fn loaded_from_file(key: &str, text: &str) -> Result<Json, String> {
+    let mut outcome = Err(String::new());
+    Harness::over(Terrace::new("READ_")).run(|jail| {
+        jail.secret(key, text)?;
+        outcome = match jail.load::<Config>() {
+            Ok(config) => {
+                Ok(serde_json::to_value(&config).expect("the fixture serialises")[key].clone())
+            }
+            Err(error) => Err(error.to_string()),
+        };
+        Ok(())
+    });
+    outcome
+}
+
+#[test]
+fn a_file_strips_line_terminators_and_keeps_every_other_space() {
+    // Only the string-typed keys: a file cannot supply anything else at all, whatever it holds,
+    // which is the rule stated beside this one.
+    for (key, text, expected) in [
+        ("text", "hello", "hello"),
+        // The ordinary way a chart writes a Secret — a YAML block scalar leaves the newline.
+        ("text", "hello\n", "hello"),
+        ("text", "hello\r\n", "hello"),
+        ("text", "hello\n\n", "hello"),
+        // Kept, and deliberately: a trailing space can be a real character of a real password.
+        ("text", "hello ", "hello "),
+        ("text", "  hello  ", "  hello  "),
+        ("marker", "x\n", "x"),
+    ] {
+        let loaded = loaded_from_file(key, text).unwrap_or_else(|error| {
+            panic!("the loader refused a case this test assumes it takes: {error}")
+        });
+        assert_eq!(
+            Json::from(read_from_file(text)),
+            loaded,
+            "key {key:?}, file {text:?}: the documented read and the loader disagree"
+        );
+        assert_eq!(read_from_file(text), expected, "file {text:?}");
+    }
+}
+
+#[test]
+fn a_file_layer_read_is_not_the_environment_layer_read() {
+    // The two rules and the reason they are stated separately. A consumer applying the
+    // environment's trim to a file would accept `"x "` for a `char` key, which the loader refuses;
+    // applying the file's strip to a variable would refuse `" x "`, which the loader takes.
+    assert_eq!(read_from_file("x "), "x ");
+    assert_eq!(read(TextForm::Unknown, "x "), Some(Json::from("x")));
+
+    assert!(loaded_from_file("marker", "x ").is_err());
+    assert_eq!(
+        loaded("marker", " x ").expect("the environment layer trims"),
+        Json::from("x")
+    );
+}

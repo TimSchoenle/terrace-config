@@ -932,7 +932,23 @@ be supplied at all.
 Keyed on `constraint`, not on `text_form`: that field answers what parse the *environment* layer
 needs, and the two differ for every type whose `Deserialize` parses a string. An `IpAddr` key is
 `text_form: unknown` — no pattern here describes an address — and it is a string in the document
-and mounts from a secrets file perfectly well. That is deliberate: those layers exist to carry secrets, and a
+and mounts from a secrets file perfectly well.
+
+They also *read* differently, which is a third rule and not the table above. Trailing `\r` and
+`\n` are stripped and no other whitespace is — every editor and every YAML block scalar adds a
+line ending nobody meant as part of the value, whereas a trailing space can be a real character of
+a real password. So `"x\n"` supplies a `char` key and `"x "` does not:
+
+| layer | read |
+|---|---|
+| environment | trim all surrounding whitespace, then the form's read |
+| secrets file, `_FILE` target | strip trailing line terminators, and nothing else |
+| the document | nothing; it is already a parsed value |
+
+Which is enough for a consumer holding a rendered `Secret` to check its **values** as well as its
+file names: strip the trailing line terminators and apply `constraint`. Not `text_constraint` —
+that is the one that looks right because it takes a string, and it is exactly wrong here, because
+it permits the surrounding whitespace an environment spelling may carry and a file keeps. That is deliberate: those layers exist to carry secrets, and a
 secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file has made a
 mistake no file contents can fix, and a validator can say so from `constraint` alone.
 

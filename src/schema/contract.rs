@@ -369,6 +369,27 @@ impl App {
 /// is an opaque byte string. So a chart mounting `isr__ttl_secs` as a secret file has made a
 /// mistake no file contents can fix, and a validator can say so from the constraint alone.
 ///
+/// **What a file delivers.** Trailing `\r` and `\n` are stripped and *no other whitespace is* —
+/// `printf 'x\n' > f` and every text editor add a line ending nobody meant as part of the value,
+/// whereas a trailing space can be a real character of a real password. See
+/// [`provider`](crate::provider). So `"x\n"` supplies a `char` key and `"x "` does not, which is
+/// the opposite of the environment layer's rule: three layers, three reads.
+///
+/// | layer | read |
+/// |---|---|
+/// | environment | trim all surrounding whitespace, then the form's read above |
+/// | secrets file, `_FILE` target | strip trailing line terminators, and nothing else |
+/// | the document | nothing; it is already a parsed value |
+///
+/// That is enough for a consumer holding a rendered `Secret` to check its **values** as well as
+/// its file names: strip the trailing line terminators and apply [`Key::constraint`](super::Key::constraint).
+/// It is a check nothing else in a chart repository can make, for the same reason the name check
+/// is — it needs to know that the file `marker` is the key `marker`.
+///
+/// [`Key::text_constraint`](super::Key::text_constraint) is the wrong instrument here, and it is
+/// the one that looks right because it is the one that takes a string: it describes an
+/// *environment* spelling, and permits surrounding whitespace this layer keeps.
+///
 /// # What this deliberately cannot say
 ///
 /// Step 4 also catches what a *cluster* injects into the prefix, and the contract has no way to
