@@ -73,9 +73,10 @@
 //!
 //! Nothing inside the document names the image, and that is deliberate rather than an omission:
 //! the tie is the attachment. A consumer asks a digest for its [`ARTIFACT_TYPE`] referrers and
-//! whatever comes back is that digest's contract, by construction — where a field claiming a
-//! digest could only be written after the push, changing the bytes [`LABEL_SHA256`] was computed
-//! over before it.
+//! whatever comes back is that digest's contract, by construction — and the registry
+//! content-addresses those bytes, so there is nothing further to assert about them.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
@@ -119,21 +120,6 @@ pub const LABEL_VERSION: &str = "dev.terrace.config.contract.version";
 /// air-gapped mirror, a running container being inspected.
 pub const LABEL_PATH: &str = "dev.terrace.config.contract.path";
 
-/// The image label carrying the SHA-256 of the contract document, lower-case hex, unprefixed.
-///
-/// **Over the exact bytes [`Contract::to_json`] produced** — the whole document, no
-/// canonicalisation, nothing excluded. A consumer checks it by hashing the file it has, which is
-/// the cheapest check there is and only stays cheap while nothing is carved out of it. That is why
-/// [`App`] carries no image digest: a field written after the push would change these bytes after
-/// they were hashed, and the alternative — hashing a canonicalisation with that field removed —
-/// makes every consumer in every language reproduce the carve-out before it can verify anything.
-///
-/// This crate takes no hashing dependency for a value the build already computes to name the file
-/// it is copying. What the label buys is that three copies of one document are one guarantee: the
-/// embedded file, the registry artifact and this label must agree, and a consumer that finds they
-/// do not has found a build to refuse rather than a copy to prefer.
-pub const LABEL_SHA256: &str = "dev.terrace.config.contract.sha256";
-
 /// The image label carrying the loader's environment prefix, e.g. `PORTFOLIO_`.
 ///
 /// Read before the document is fetched: it is what tells a validator which of a pod's environment
@@ -142,6 +128,22 @@ pub const LABEL_PREFIX: &str = "dev.terrace.config.prefix";
 
 /// Where [`LABEL_PATH`] points unless a build says otherwise.
 pub const DEFAULT_PATH: &str = "/config/contract.json";
+
+// There is deliberately no label carrying the document's hash, and the reasoning is worth keeping
+// because the obvious design has one.
+//
+// What such a label would buy is a cross-check: the file embedded in the image and the artifact
+// attached to its digest are the same document, so a pipeline that attached a *stale* file is
+// caught. That is a real failure and worth catching — but it is a failure of the build, and the
+// build is the one place that already holds both copies locally and can compare them for nothing.
+// Publishing an assertion about it makes every consumer carry a field none of them need: they read
+// the registry artifact, whose bytes the registry itself content-addresses.
+//
+// It was also the only *dynamic* label. Without it the three below are constants for a given
+// service, so a Dockerfile can carry them as a plain `LABEL` block — no build argument, no
+// host-side generator run to feed `--label`, and nothing to interpolate. That is what
+// [`Contract::to_dockerfile_labels`] emits and what [`Contract::verify_labels`] checks against a
+// built image.
 
 /// The whole configuration surface of one image, in the shape a pipeline reads it.
 ///
@@ -199,7 +201,7 @@ pub struct App {
     //
     // No `digest`. It looks like it belongs here and it cannot: the digest is what building the
     // image *produces*, so a document carrying it must be written after the push — and writing it
-    // changes the bytes, which are the bytes [`LABEL_SHA256`] was computed over before the push.
+    // changes bytes that were already hashed and already committed.
     // There is no build order that satisfies both, and the field is unnecessary anyway: a
     // registry artifact's subject *is* a digest, so a consumer that fetched this document by
     // asking a digest for its [`ARTIFACT_TYPE`] referrers already knows which image it belongs to.
@@ -746,7 +748,7 @@ impl Contract {
     /// The document, pretty-printed.
     ///
     /// Deterministic: the same schema and the same [`App`] produce byte-identical output, which is
-    /// what lets the result be hashed into [`LABEL_SHA256`] and diffed in review. Keys keep
+    /// what lets the result be committed and diffed in review. Keys keep
     /// declaration order and the JSON Schema half is ordered by `serde_json`'s own map; nothing
     /// here reads a clock, a hash seed or the environment.
     ///
@@ -760,13 +762,14 @@ impl Contract {
 
     /// The image labels that make this contract discoverable, given where it was embedded.
     ///
-    /// [`LABEL_SHA256`] is not among them: it is a property of the rendered bytes rather than of
-    /// this value, and the build that writes those bytes is already the one that has them. Emit it
-    /// alongside these.
+    /// All three are constants for a given service, which is the point: a build needs no argument
+    /// to interpolate and no host-side run of the generator to feed `--label`. See
+    /// [`Self::to_dockerfile_labels`] for the block to paste and [`Self::verify_labels`] for the
+    /// check that the image actually carries them.
     ///
-    /// The point of the accessor is that the label *names* live in one place. A Dockerfile that
-    /// spells one of them by hand is a Dockerfile that can spell it differently from the pipeline
-    /// reading it, and the failure mode is a contract that is silently never found.
+    /// The reason the label *names* live here rather than in a Dockerfile: a Dockerfile that
+    /// spells one by hand is a Dockerfile that can spell it differently from the pipeline reading
+    /// it, and the failure mode of that is a contract silently never found.
     #[must_use]
     pub fn labels(&self, path: &str) -> Vec<(&'static str, String)> {
         vec![
@@ -774,6 +777,82 @@ impl Contract {
             (LABEL_PATH, path.to_owned()),
             (LABEL_PREFIX, self.schema.dialect.prefix.clone()),
         ]
+    }
+
+    /// [`Self::labels`] as a `LABEL` instruction, ready to paste into a Dockerfile.
+    ///
+    /// A `LABEL` key cannot be interpolated from anything, so the choice is between a Dockerfile
+    /// that spells these by hand and a build that passes `--label` from a host-side run of this
+    /// generator. Multi-stage builds make the second awkward — the document is produced *inside* a
+    /// builder stage, where the host's `docker build` command line cannot reach it — so the honest
+    /// answer is to make hand-writing a copy-paste and then check the result, which is what
+    /// [`Self::verify_labels`] is for.
+    ///
+    /// Ends with a newline. No trailing backslash, so a following instruction needs no separator.
+    #[must_use]
+    pub fn to_dockerfile_labels(&self, path: &str) -> String {
+        let labels = self.labels(path);
+        let mut rendered = String::from("LABEL ");
+        for (index, (name, value)) in labels.iter().enumerate() {
+            if index > 0 {
+                rendered.push_str(" \\\n      ");
+            }
+            rendered.push_str(name);
+            rendered.push_str("=\"");
+            // A value carrying either of these would break the instruction rather than the build,
+            // which is the worst way to find out. Neither occurs in a prefix or a path today.
+            for character in value.chars() {
+                if character == '"' || character == '\\' {
+                    rendered.push('\\');
+                }
+                rendered.push(character);
+            }
+            rendered.push('"');
+        }
+        rendered.push('\n');
+        rendered
+    }
+
+    /// Check that a built image carries these labels.
+    ///
+    /// `labels` is what `docker inspect` or `crane config` reports under `config.Labels`. Extra
+    /// labels are ignored — an image carries `org.opencontainers.image.*` and whatever its base
+    /// contributed, and none of that is this document's business.
+    ///
+    /// Checking the **image** rather than the Dockerfile is the whole value. A source diff sees
+    /// the recipe: it cannot see a build argument that failed to interpolate, a label a base image
+    /// overrode, or a `LABEL` line deleted in a branch that was not the one diffed. This sees what
+    /// was actually built, which is what a registry will serve.
+    ///
+    /// Run it after the build and before the push, where a failure costs a retry instead of a
+    /// release.
+    ///
+    /// # Errors
+    /// Returns [`Error::Invalid`] naming the first label that is missing or wrong.
+    pub fn verify_labels(
+        &self,
+        path: &str,
+        labels: &BTreeMap<String, String>,
+    ) -> Result<(), Error> {
+        for (name, expected) in self.labels(path) {
+            match labels.get(name) {
+                Some(found) if found == &expected => {}
+                Some(found) => {
+                    return Err(Error::Invalid(format!(
+                        "the image's `{name}` is `{found}`, and this contract's is `{expected}`. \
+                         A label that disagrees with the document is a contract a pipeline will \
+                         look for in the wrong place, or not recognise at all."
+                    )));
+                }
+                None => {
+                    return Err(Error::Invalid(format!(
+                        "the image carries no `{name}`, so nothing can discover this contract \
+                         from its config blob. `Contract::to_dockerfile_labels` emits the block."
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

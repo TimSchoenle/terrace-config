@@ -92,7 +92,7 @@ mod tree;
 
 pub use contract::{
     ARTIFACT_TYPE, App, CONTRACT_VERSION, Contract, ContractBuilder, DEFAULT_PATH, External,
-    ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_SHA256, LABEL_VERSION, Unknown,
+    ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, Unknown,
 };
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;

@@ -11,6 +11,7 @@
 //! cargo run --example config-schema -- --format json-schema       > config.schema.json
 //! cargo run --example config-schema -- --format contract          > contract.json
 //! cargo run --example config-schema -- --format labels            > contract.labels
+//! cargo run --example config-schema -- --format dockerfile        # paste into the Dockerfile
 //! cargo run --example config-schema -- --format contract --revision "$(git rev-parse HEAD)" \
 //!                                       --created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
@@ -227,6 +228,10 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
             .map(|(name, value)| format!("{name}={value}"))
             .collect::<Vec<_>>()
             .join("\n")),
+        Format::Dockerfile => Ok(contract(schema, options)?
+            .to_dockerfile_labels(DEFAULT_PATH)
+            .trim_end()
+            .to_owned()),
     }
 }
 
@@ -317,6 +322,8 @@ enum Format {
     Contract,
     /// The image labels that make that document discoverable, one `NAME=value` per line.
     Labels,
+    /// The same labels as the `LABEL` instruction to paste into a Dockerfile.
+    Dockerfile,
 }
 
 impl Format {
@@ -325,7 +332,7 @@ impl Format {
     /// A contract that quietly omitted the keys `--only` cut would be a contract asserting the
     /// image does not read them, which is the one claim in the document that must never be wrong.
     fn whole_image(self) -> bool {
-        matches!(self, Self::Contract | Self::Labels)
+        matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
     }
 }
 
@@ -349,6 +356,7 @@ impl Options {
                         Some("json-schema" | "jsonschema") => Format::JsonSchema,
                         Some("contract") => Format::Contract,
                         Some("labels") => Format::Labels,
+                        Some("dockerfile") => Format::Dockerfile,
                         Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
                         None => return Err(format!("--format takes a value; {USAGE}")),
                     };
@@ -390,5 +398,5 @@ impl Options {
 }
 
 const USAGE: &str = "usage: config-schema \
-                     [--format json|markdown|toml|json-schema|contract|labels] \
+                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
                      [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";

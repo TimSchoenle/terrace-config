@@ -99,8 +99,8 @@ make it readable by something that is not Rust.
 
 **No `app.digest`.** It was in this document and it cannot work: a digest is what building the image
 *produces*, so a field carrying it must be written after the push — changing the bytes
-`dev.terrace.config.contract.sha256` was computed over before it, which §3.3 defines as a hard
-error. Absent, §12.3 would have nothing to compare. There is no build order satisfying both. The
+the label was computed over, which §3.3 defined as a hard error. Absent, §12.3 would have nothing
+to compare. There is no build order satisfying both. The
 field is also unnecessary: a registry artifact's subject *is* a digest, so a consumer that fetched
 the document by asking a digest for its referrers already knows which image it belongs to. **The
 attachment is the tie.** §12.3 is rewritten accordingly.
@@ -274,9 +274,11 @@ one request with no layer pull:
 ```dockerfile
 LABEL dev.terrace.config.contract.version="1" \
       dev.terrace.config.contract.path="/config/contract.json" \
-      dev.terrace.config.contract.sha256="${CONTRACT_SHA256}" \
       dev.terrace.config.prefix="PORTFOLIO_"
 ```
+
+Three, not four. An earlier draft had a `sha256` label; see §3.4 for why it went and what replaced
+it.
 
 This is the *protocol*. "Does this image declare a config contract, and what should it hash to" is
 answerable for any image in any registry without knowing anything about the project. It is also
@@ -326,9 +328,11 @@ This is what the chart repo actually fetches, for four reasons:
 Fallback: OCI 1.0 registries without referrers get the `sha256-<digest>.<suffix>` tag scheme, which
 `oras` handles transparently.
 
-**Consistency check.** Whatever the chart repo fetches, it verifies `sha256(document) ==
-dev.terrace.config.contract.sha256`. A referrer that disagrees with the label is a hard error, not
-a fallback — the two disagreeing means one of them is from a different build.
+**Consistency check.** The registry content-addresses the blob, so the bytes need no assertion of
+their own. What the chart repo does check is that the *image* and the *document* belong together:
+`dev.terrace.config.prefix` on the image must equal the document's own `schema.dialect.prefix`, and
+`dev.terrace.config.contract.version` must be one it understands. That is `Contract::verify_labels`
+run from the other side, and a mismatch is a hard error rather than a fallback.
 
 ### 3.4 Build wiring in `Portfolio`
 
@@ -343,29 +347,33 @@ FROM scratch AS runtime
 COPY --from=contract-builder /out/contract.json /config/contract.json
 ```
 
-**The labels come from the generator, not from `LABEL` instructions.** That was wrong in the first
-draft of this document: `Contract::labels` exists so that a Dockerfile never spells a label name by
-hand — the failure mode of a typo being a contract that is silently never found — and a `LABEL`
-key cannot be read from a build, so the Dockerfile spells all four by hand anyway and `labels()`
-earns nothing.
+**The labels are a plain `LABEL` block, and CI checks the built image.** Two earlier drafts of this
+document got this wrong in opposite directions — first a `LABEL` block with nothing checking it,
+then `--label` fed from the generator, which a multi-stage build cannot do without running the
+generator twice, because the document is produced inside a builder stage the host command line
+cannot reach.
 
-```bash
-cargo run -p portfolio-config --features config-schema --example config-schema \
-  -- --format contract > contract.json
-sha256="$(sha256sum contract.json | cut -d' ' -f1)"
+What unstuck it was dropping the hash label. It was the only dynamic one, and what it bought — the
+embedded file and the attached artifact being the same document — is a *build* failure, catchable
+for nothing by the pipeline that holds both copies. Every consumer downstream reads the registry
+artifact, which the registry content-addresses. So the three that remain are constants:
 
-args=()
-while IFS= read -r label; do args+=(--label "$label"); done < <(
-  cargo run -p portfolio-config --features config-schema --example config-schema -- --format labels
-)
-args+=(--label "dev.terrace.config.contract.sha256=${sha256}")
-
-docker buildx build "${args[@]}" .
+```dockerfile
+LABEL dev.terrace.config.contract.version="1" \
+      dev.terrace.config.contract.path="/config/contract.json" \
+      dev.terrace.config.prefix="PORTFOLIO_"
 ```
 
-A repository that would rather keep `LABEL` instructions in the Dockerfile can, provided CI diffs
-them against `--format labels` — so a typo fails a build rather than a deployment. What is not an
-option is hand-written labels with nothing checking them.
+`--format dockerfile` emits exactly that, so writing it is a paste. Then, after the build and
+before the push:
+
+```bash
+crane config "$image" | jq -c '.config.Labels'   # → Contract::verify_labels
+```
+
+Checking the image rather than the Dockerfile is the point: a source diff cannot see a build
+argument that failed to interpolate, a label a base image overrode, or a `LABEL` line deleted on a
+branch nobody diffed. What is not an option is hand-written labels with nothing checking them.
 
 The `oras attach` and `cosign sign` steps run after the push, keyed on the digest
 `docker/build-push-action` returns. The document is attached **verbatim** — the bytes that were
@@ -454,8 +462,8 @@ just contracts        # resolve each declared image to a digest, fetch, verify, 
 just check-contracts  # `git diff --exit-code`, for anyone running it locally
 ```
 
-`just contracts` verifies the cosign signature and the `sha256` label before writing. Once written
-and committed, the file is trusted, and no gate below touches the network.
+`just contracts` verifies the cosign signature and the labels before writing. Once written and
+committed, the file is trusted, and no gate below touches the network.
 
 ### 4.3 Unioning contracts — the non-obvious part
 
@@ -605,7 +613,7 @@ key in `_helpers.tpl`, nothing downstream is worth building.
 ## 7. Extension points designed for, not built
 
 - **Cluster-side admission.** The rendered ConfigMap carries
-  `dev.terrace.config/contract-sha256`; a Kyverno policy fetches the same referrer for the running
+  `dev.terrace.config/contract-version`; a Kyverno policy fetches the same referrer for the running
   pod's image digest and refuses a mismatched pair. Same artifacts, no new generation — this is why
   the in-image copy (§3.2) is worth its 30 KB.
 - **Non-TOML documents.** `source.format` is already a field. A YAML or JSON document normalises to
@@ -632,7 +640,7 @@ key in `_helpers.tpl`, nothing downstream is worth building.
 | Risk | Answer |
 |---|---|
 | registry outage breaks every PR | vendored contracts; only the refresh recipe touches the network |
-| a compromised or swapped contract weakens the gate | cosign-verified at refresh, `sha256` cross-checked against the image label, committed and reviewed |
+| a compromised or swapped contract weakens the gate | cosign-verified at refresh, fetched by digest from the referrer, committed and reviewed |
 | a schema with a remote `$ref` makes CI depend on a third party | the validator refuses any `$ref` that is not `#/…` |
 | the JSON Schema is more permissive than the real loader | acknowledged and bounded by design (`rust_type` emits nothing for a type it does not recognise); gate 4 is the answer, not tighter guessing |
 | the JSON Schema is *stricter* than the loader — a false failure blocks a correct deploy | the crate's stated rule already: "a schema that rejects a file the loader would have accepted is worse than one that accepts a file the loader will reject" |
@@ -750,14 +758,16 @@ check-contracts:
 2. resolve each `images[].values` path through `values.yaml` to `registry/repository:tag@digest`
 3. `oras discover --artifact-type application/vnd.terrace.config-schema.v1+json <ref>@<digest>`
 4. `cosign verify` against `$CONTRACT_SIGNER`, with the image digest as the subject
-5. `crane config` → read `dev.terrace.config.contract.sha256`
-6. `oras pull` → assert `sha256(document)` equals both that label and the digest the referrer
-   descriptor claims
-7. write `charts/<chart>/contracts/<component>.json`, with `app.digest` recorded inside
+5. `crane config` → check `dev.terrace.config.*` against the fetched document, which is
+   `Contract::verify_labels` from the other side: a prefix label disagreeing with the document's
+   own dialect is an image and a contract that do not belong together
+6. `oras pull` → the blob is content-addressed, so its bytes need no assertion of their own
+7. write `charts/<chart>/contracts/<component>.json`, recording the image digest in the wrapper's
+   `source` block
 
-A failure at 4, 5 or 6 is fatal and names which of the three copies disagreed. There is no fallback
-path to "fetch it unverified" — a contract that cannot be proven to belong to the pinned digest is
-worse than none, because every gate downstream would trust it.
+A failure at 4 or 5 is fatal. There is no fallback path to "fetch it unverified" — a contract that
+cannot be proven to belong to the pinned digest is worse than none, because every gate downstream
+would trust it.
 
 ### 11.2 The gate — offline
 

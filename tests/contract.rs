@@ -11,6 +11,8 @@
 #![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
 use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
@@ -95,9 +97,9 @@ fn nothing_in_the_document_names_the_image() {
     let json: Json = serde_json::from_str(&contract().to_json().expect("renders")).expect("parses");
 
     // Deliberate. A digest is what building the image produces, so a field carrying it could only
-    // be written after the push — changing the bytes `LABEL_SHA256` was computed over before it,
-    // which §3.3 of the plan defines as a hard error. The tie is the attachment: whatever comes
-    // back from asking a digest for its `ARTIFACT_TYPE` referrers is that digest's contract.
+    // be written after the push, changing bytes that were already hashed and already committed.
+    // The tie is the attachment: whatever comes back from asking a digest for its `ARTIFACT_TYPE`
+    // referrers is that digest's contract, content-addressed by the registry.
     // Scoped to `app`, not to the whole document: a `///` comment on a key about image pinning
     // or checksum verification would legitimately contain `sha256:`, and an assertion that fails
     // on a fixture's prose is testing the fixture.
@@ -217,6 +219,66 @@ fn a_reserved_key_is_in_the_schema_half_and_out_of_the_json_schema() {
             .any(|var| var.env == "PORTFOLIO_PROFILE")
     );
     assert!(contract.json_schema["properties"].get("profile").is_none());
+}
+
+#[test]
+fn the_labels_are_constants_a_dockerfile_can_carry_verbatim() {
+    // The whole reason the hash label is gone: with it, one of the four had to be interpolated
+    // from a build argument fed by a host-side run of the generator, which a multi-stage build
+    // cannot do without running the generator twice. These three never change for a service.
+    let rendered = contract().to_dockerfile_labels(DEFAULT_PATH);
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "LABEL dev.terrace.config.contract.version=\"1\" \\\n",
+            "      dev.terrace.config.contract.path=\"/config/contract.json\" \\\n",
+            "      dev.terrace.config.prefix=\"PORTFOLIO_\"\n",
+        )
+    );
+    // A following instruction needs no separator of its own.
+    assert!(rendered.ends_with('\n') && !rendered.ends_with("\\\n"));
+}
+
+#[test]
+fn a_built_image_is_checked_against_the_contract_rather_than_the_dockerfile() {
+    let contract = contract();
+    let mut labels: BTreeMap<String, String> = contract
+        .labels(DEFAULT_PATH)
+        .into_iter()
+        .map(|(name, value)| (name.to_owned(), value))
+        .collect();
+    // An image carries `org.opencontainers.image.*` and whatever its base contributed. None of
+    // that is this document's business.
+    labels.insert(
+        "org.opencontainers.image.title".to_owned(),
+        "portfolio".to_owned(),
+    );
+
+    contract
+        .verify_labels(DEFAULT_PATH, &labels)
+        .expect("the labels this contract produced are the ones it accepts");
+
+    // A build argument that failed to interpolate — the failure a source diff cannot see, because
+    // the Dockerfile is correct and the image is not.
+    let mut wrong = labels.clone();
+    wrong.insert(LABEL_PREFIX.to_owned(), String::new());
+    let error = contract
+        .verify_labels(DEFAULT_PATH, &wrong)
+        .expect_err("refused");
+    assert!(error.to_string().contains(LABEL_PREFIX), "{error}");
+
+    let mut missing = labels.clone();
+    missing.remove(LABEL_PATH);
+    let error = contract
+        .verify_labels(DEFAULT_PATH, &missing)
+        .expect_err("refused");
+    assert!(
+        error
+            .to_string()
+            .contains("no `dev.terrace.config.contract.path`"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -1040,31 +1040,41 @@ RUN cargo run --features config-schema --example config-schema -- --format contr
 FROM scratch AS runtime
 # Embed it, so the image is self-describing with no registry at all.
 COPY --from=contract-builder /out/contract.json /config/contract.json
+
+# Discovery, from the config blob alone. `--format dockerfile` emits exactly this block.
+LABEL dev.terrace.config.contract.version="1" \
+      dev.terrace.config.contract.path="/config/contract.json" \
+      dev.terrace.config.prefix="PORTFOLIO_"
 ```
 
-The labels come from the generator rather than from `LABEL` instructions, which is the only way
-`Contract::labels` earns its place — a `LABEL` key cannot be read from a build, so a Dockerfile
-spelling the four by hand is a Dockerfile that can spell one differently from the pipeline reading
-it, and the failure mode is a contract that is silently never found:
+**All three labels are constants for a service**, which is what lets them be a plain `LABEL` block:
+no build argument to interpolate, and no host-side run of the generator to feed `--label`. That
+last one is the trap in a multi-stage build — the document is produced *inside* a builder stage,
+where the `docker build` command line cannot reach it, so feeding `--label` means running the
+generator twice.
+
+There is deliberately no label carrying the document's hash. It would buy a cross-check — that the
+embedded file and the attached artifact are the same document, catching a pipeline that attached a
+stale one — but that is a failure of the *build*, and the build is the one place holding both
+copies locally and able to compare them for nothing. Every consumer downstream reads the registry
+artifact, whose bytes the registry content-addresses. Publishing the assertion would make all of
+them carry a field none of them need, and it was the only label that had to be dynamic.
+
+A `LABEL` key cannot be interpolated from anything, so hand-writing the block is unavoidable —
+which makes checking it the thing that matters. Check the **image**, not the Dockerfile:
 
 ```bash
-cargo run --features config-schema --example config-schema -- --format contract > contract.json
-sha256="$(sha256sum contract.json | cut -d' ' -f1)"
-
-args=()
-while IFS= read -r label; do args+=(--label "$label"); done < <(
-  cargo run --features config-schema --example config-schema -- --format labels
-)
-args+=(--label "dev.terrace.config.contract.sha256=${sha256}")
-
-docker buildx build "${args[@]}" .
+crane config "$image" | jq -c '.config.Labels' > labels.json
+# then, in a test or a small binary:
+#   contract.verify_labels(DEFAULT_PATH, &serde_json::from_str(&labels)?)?
 ```
 
-The SHA-256 is not among what `labels` emits: it is a property of the rendered bytes rather than of
-the value, and the build writing those bytes already has it. This crate takes no hashing dependency
-for a number `sha256sum` is about to produce anyway. (If you would rather keep `LABEL` instructions
-in the Dockerfile, diff them against `--format labels` in CI, so a typo fails a build rather than a
-deployment.)
+`Contract::verify_labels` takes what `docker inspect` or `crane config` reports and names the first
+label that is missing or wrong, ignoring the `org.opencontainers.image.*` and base-image labels
+around it. Checking the built image rather than the source catches what a diff cannot: a build
+argument that failed to interpolate, a label a base image overrode, a `LABEL` line deleted on the
+branch that was not the one reviewed. Run it after the build and before the push, where a failure
+costs a retry instead of a release.
 
 Then, after the push, attach it to the digest:
 
@@ -1079,12 +1089,12 @@ is a constant here so the producer and the consumer cannot spell it differently.
 
 Nothing inside the document names the image, and that is deliberate. The tie is the attachment: ask
 a digest for its referrers of this artifact type and whatever comes back is that digest's contract,
-by construction. A field claiming a digest could only be written after the push — changing the very
-bytes the label was computed over. `dev.terrace.config.contract.sha256` covers the whole document
-with no canonicalisation and nothing carved out, so verifying it is `sha256sum` and nothing else.
+by construction, and the registry content-addresses those bytes. A field claiming a digest could
+only be written after the push, changing bytes that were already committed.
 
-A consumer that finds the label, the embedded file and the registry artifact disagreeing has found
-a build to refuse, not a copy to prefer.
+What a consumer does check is that the image and the document belong together — the image's
+`dev.terrace.config.prefix` against the document's own dialect. That is `Contract::verify_labels`
+run from the far side, and a mismatch is a build to refuse rather than a copy to prefer.
 
 ### Keeping the checked-in copy honest
 
