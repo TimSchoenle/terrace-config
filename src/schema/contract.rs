@@ -1,0 +1,688 @@
+//! The document a build attaches to its image, and a deployment pipeline reads back.
+//!
+//! The other four renderings describe a configuration to somebody who already has the source.
+//! This one is for the machine that does not: a Helm chart's CI job, holding an image digest and
+//! a `config.toml` it rendered itself, with no way to know whether the two agree.
+//!
+//! # Why an envelope rather than a file per rendering
+//!
+//! Two of the renderings are machine-readable and neither subsumes the other:
+//!
+//! - [`Schema::to_json`] carries every key in every spelling — the environment variable, the
+//!   `_FILE` variable, the secrets-directory file name — which is what lets a validator check the
+//!   *environment* a chart sets and the *secret files* it mounts, not only the file it renders.
+//! - [`Schema::to_json_schema`] carries none of those, and is the only half a stock JSON Schema
+//!   validator can act on.
+//!
+//! Published as two artefacts they are two hashes, two fetches, and two chances to be half-stale.
+//! [`Contract`] is both in one document, under one hash, so "the contract for this image digest"
+//! names exactly one thing.
+//!
+//! # The part no derive can see
+//!
+//! A service reads variables that are not its configuration. The Dioxus toolchain reads `PORT`,
+//! `IP` and `RUST_LOG` before any of this crate's layers exist; a base image contributes `PATH`
+//! and `SSL_CERT_FILE`. None of them carry the loader's prefix, so no [`Describe`](super::Describe)
+//! implementation can report them — and a validator that flags every variable it cannot account
+//! for would flag all of them.
+//!
+//! [`External`] is where those are declared, and it is deliberately a *positive* declaration
+//! rather than a suppression list. A variable named in [`External::env`] is checked like any
+//! other key: its type is known, so a chart passing `PORT: "http"` fails the same gate that a
+//! chart passing `PORTFOLIO_ISR__TTL_SECS: "soon"` fails. Only [`External::ignore`] suppresses,
+//! and it exists for the variables that genuinely have no owner here — an operator's `TZ`, a base
+//! image's `PATH`.
+//!
+//! ```
+//! # use terrace_config::Terrace;
+//! # use terrace_config::schema::{App, Describe, External, ExternalVar, Leaf, Sink};
+//! # struct Config;
+//! # impl Describe for Config {
+//! #     fn describe(sink: &mut Sink) {
+//! #         sink.leaf(Leaf { name: "dist_dir", docs: "", ty: Some("String"), values: None,
+//! #             aliases: &[], note: None, required: false, secret: false });
+//! #     }
+//! # }
+//! let contract = Terrace::new("PORTFOLIO_")
+//!     .schema::<Config>()
+//!     .into_contract(App::new("portfolio").version("v2.5.0"))
+//!     .external(
+//!         External::new()
+//!             .var(
+//!                 ExternalVar::new("PORT")
+//!                     .ty("u16")
+//!                     .docs("Bind port. Read by the Dioxus toolchain, not by this loader.")
+//!                     .owner("dioxus"),
+//!             )
+//!             .var(ExternalVar::new("RUST_LOG").ty("String").owner("tracing"))
+//!             .ignore("TZ"),
+//!     )
+//!     .build()?;
+//!
+//! println!("{}", contract.to_json()?);
+//! # Ok::<(), terrace_config::Error>(())
+//! ```
+//!
+//! # What it is not
+//!
+//! It is not a signature, and it is not evidence of anything on its own. A contract is only worth
+//! reading when it is known to belong to the image being deployed, which is a property of how it
+//! was published — attached to a digest, signed — rather than of what it says. [`ARTIFACT_TYPE`]
+//! and the `dev.terrace.config.*` labels are the two halves of that publication, and they are
+//! constants here so that the producer and the consumer cannot spell them differently.
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
+
+use super::json_schema::{self, DRAFT_07, JsonSchema};
+use super::{Error, Schema};
+
+/// The version of the envelope [`Contract::to_json`] produces.
+///
+/// Independent of [`SCHEMA_VERSION`](super::SCHEMA_VERSION), which versions the
+/// [`schema`](Contract::schema) *inside* it: a change to how the envelope is arranged and a change
+/// to how a key is described are different events, and a consumer that only reads
+/// [`Contract::external`] should not be told to re-check its parsing because a key gained a field.
+///
+/// Bumped when an existing field changes meaning or disappears — never when one is added, on the
+/// same reasoning and with the same obligation on consumers: ignore what you do not recognise,
+/// and refuse a version you were not written against rather than guessing at it.
+pub const CONTRACT_VERSION: u32 = 1;
+
+/// The OCI artifact type a published contract is attached to its image under.
+///
+/// This is the whole discovery protocol on the registry side: `oras discover --artifact-type`
+/// with this string against an image digest returns the contract for that exact build, or
+/// nothing. Nothing means the image does not publish one — which is an answer, and a different
+/// answer from "the contract could not be fetched".
+pub const ARTIFACT_TYPE: &str = "application/vnd.terrace.config-schema.v1+json";
+
+/// The image label carrying [`CONTRACT_VERSION`].
+pub const LABEL_VERSION: &str = "dev.terrace.config.contract.version";
+
+/// The image label naming where the contract is embedded in the image's own filesystem.
+///
+/// The registry copy is the one a pipeline fetches, because it costs no layer pull. This one is
+/// what makes an image self-describing when there is no registry at all — an exported tarball, an
+/// air-gapped mirror, a running container being inspected.
+pub const LABEL_PATH: &str = "dev.terrace.config.contract.path";
+
+/// The image label carrying the SHA-256 of the contract document, lower-case hex, unprefixed.
+///
+/// Computed over the exact bytes [`Contract::to_json`] produced, by whatever writes them — this
+/// crate takes no hashing dependency for a value the build already has to compute to name the
+/// file it is copying. It is what turns three copies of one document into one guarantee: the
+/// embedded file, the registry artifact and this label must agree, and a consumer that finds they
+/// do not has found a build it should refuse rather than a copy it should prefer.
+pub const LABEL_SHA256: &str = "dev.terrace.config.contract.sha256";
+
+/// The image label carrying the loader's environment prefix, e.g. `PORTFOLIO_`.
+///
+/// Read before the document is fetched: it is what tells a validator which of a pod's environment
+/// variables are this contract's business at all.
+pub const LABEL_PREFIX: &str = "dev.terrace.config.prefix";
+
+/// Where [`LABEL_PATH`] points unless a build says otherwise.
+pub const DEFAULT_PATH: &str = "/config/contract.json";
+
+/// The whole configuration surface of one image, in the shape a pipeline reads it.
+///
+/// Built with [`Schema::into_contract`]. The two schema halves are here because neither is enough
+/// alone: [`Self::json_schema`] is the only one a stock validator acts on and carries no
+/// environment spellings at all, while [`Self::schema`] carries every spelling and no validator
+/// takes it. [`External`] is the third half — what this image reads that no derive can find.
+///
+/// It is not evidence of anything on its own. A contract is worth reading only when it is known to
+/// belong to the image being deployed, which is a property of how it was published rather than of
+/// what it says: see [`ARTIFACT_TYPE`] and [`Self::labels`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct Contract {
+    /// The version of this envelope's shape. See [`CONTRACT_VERSION`].
+    pub terrace_contract: u32,
+    /// Which build this describes.
+    pub app: App,
+    /// Every key the loader can carry, in every spelling that can supply it.
+    pub schema: Schema,
+    /// The same keys as a JSON Schema, for validating the document a chart renders.
+    pub json_schema: Json,
+    /// The surface outside the loader's namespace: what else this image reads, and what it does
+    /// not care about.
+    pub external: External,
+}
+
+/// Which build a [`Contract`] describes.
+///
+/// Every field here moves independently of the configuration surface, which is why they are
+/// collected rather than scattered: a consumer diffing two contracts to see whether the
+/// *configuration* changed diffs everything except this.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct App {
+    /// The service's name, as its image is named.
+    pub name: String,
+    /// The release this was built from, e.g. `v2.5.0`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The commit it was built from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// When it was built, as an RFC 3339 timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    /// Where the source lives.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The image digest this contract was published against, `sha256:…`.
+    ///
+    /// Not knowable while the image is being built — the digest is what building it produces — so
+    /// this is filled in after the push, by whatever attaches the artifact. A consumer that finds
+    /// it absent has a contract that cannot be tied to an image, and the whole value of the
+    /// document is that it can be.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+}
+
+impl App {
+    /// A named build with nothing else stated.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            ..Self::default()
+        }
+    }
+
+    /// The release this was built from.
+    #[must_use]
+    pub fn version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
+    /// The commit this was built from.
+    #[must_use]
+    pub fn revision(mut self, revision: impl Into<String>) -> Self {
+        self.revision = Some(revision.into());
+        self
+    }
+
+    /// When this was built, as an RFC 3339 timestamp.
+    #[must_use]
+    pub fn created(mut self, created: impl Into<String>) -> Self {
+        self.created = Some(created.into());
+        self
+    }
+
+    /// Where the source lives.
+    #[must_use]
+    pub fn source(mut self, source: impl Into<String>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
+    /// The image digest this contract belongs to.
+    #[must_use]
+    pub fn digest(mut self, digest: impl Into<String>) -> Self {
+        self.digest = Some(digest.into());
+        self
+    }
+}
+
+/// The environment this image reads that the loader does not own.
+///
+/// Empty by default, and an empty `External` with [`Unknown::Reject`] is a strong claim: *every*
+/// variable set on this container is either a configuration key or a mistake. That is the right
+/// default for a `scratch` image running one static binary, and the wrong one for almost anything
+/// built on a distribution base — which is what [`Self::ignore`] is for.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct External {
+    /// Variables this image reads outside the loader's namespace, described well enough to be
+    /// checked rather than merely tolerated.
+    pub env: Vec<ExternalVar>,
+    /// Patterns for variables that are nobody's business here. A trailing `*` matches any suffix.
+    pub ignore: Vec<String>,
+    /// What a validator should do with a variable matching neither.
+    pub unknown: Unknown,
+}
+
+impl External {
+    /// Nothing declared, nothing ignored, unknown variables refused.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Declare a variable this image reads.
+    #[must_use]
+    pub fn var(mut self, var: ExternalVar) -> Self {
+        self.env.push(var);
+        self
+    }
+
+    /// Declare every variable in an iterator.
+    #[must_use]
+    pub fn vars(mut self, vars: impl IntoIterator<Item = ExternalVar>) -> Self {
+        self.env.extend(vars);
+        self
+    }
+
+    /// Ignore every variable matching `pattern`, which may end in `*`.
+    ///
+    /// For variables with no owner in this image — an operator's `TZ`, a base image's `PATH`, a
+    /// platform's injected `KUBERNETES_*`. Prefer [`Self::var`] wherever the variable does have an
+    /// owner: an ignored variable is one a chart can misspell freely.
+    #[must_use]
+    pub fn ignore(mut self, pattern: impl Into<String>) -> Self {
+        self.ignore.push(pattern.into());
+        self
+    }
+
+    /// What a validator should do with a variable matching neither [`Self::env`] nor
+    /// [`Self::ignore`]. Defaults to [`Unknown::Reject`].
+    #[must_use]
+    pub fn unknown(mut self, unknown: Unknown) -> Self {
+        self.unknown = unknown;
+        self
+    }
+}
+
+/// One variable this image reads that the loader does not supply.
+///
+/// Every field mirrors [`Key`](super::Key) deliberately: a validator that has code for checking a
+/// configuration key against a rendered value should need no second code path for `PORT`. Only the
+/// spellings differ, and they differ by being absent — an external variable has no key path, no
+/// `_FILE` form and no secrets-directory file name, because nothing in this crate reads it.
+// `Eq`, unlike [`Key`](super::Key): every field here is a string or a flag. A key cannot derive it
+// because its default is a figment `Value`, which can hold a float.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct ExternalVar {
+    /// The variable's exact spelling, e.g. `PORT`.
+    pub name: String,
+    /// What reads it — `dioxus`, `tracing`, `the base image`. Prose, for whoever is asking why a
+    /// chart is allowed to set this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// What it is for. Empty when nothing was said.
+    pub docs: String,
+    /// The type it takes, spelled as a Rust type so it interprets exactly as [`Key::ty`] does.
+    ///
+    /// [`Key::ty`]: super::Key::ty
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ty: Option<String>,
+    /// The fixed set of values it accepts. Empty when it is not a choice.
+    pub values: Vec<String>,
+    /// What the image does when it is unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    /// Whether the image fails without it.
+    pub required: bool,
+    /// Whether the value is a credential. A secret carries no default, on
+    /// [`Key::secret`](super::Key::secret)'s reasoning: this document is published.
+    pub secret: bool,
+}
+
+impl ExternalVar {
+    /// A variable with nothing stated but its name.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            owner: None,
+            docs: String::new(),
+            ty: None,
+            values: Vec::new(),
+            default: None,
+            required: false,
+            secret: false,
+        }
+    }
+
+    /// What reads it.
+    #[must_use]
+    pub fn owner(mut self, owner: impl Into<String>) -> Self {
+        self.owner = Some(owner.into());
+        self
+    }
+
+    /// What it is for.
+    #[must_use]
+    pub fn docs(mut self, docs: impl Into<String>) -> Self {
+        self.docs = docs.into();
+        self
+    }
+
+    /// The type it takes, spelled as a Rust type — `u16`, `String`, `bool`.
+    #[must_use]
+    pub fn ty(mut self, ty: impl Into<String>) -> Self {
+        self.ty = Some(ty.into());
+        self
+    }
+
+    /// The fixed set of values it accepts.
+    #[must_use]
+    pub fn values(mut self, values: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.values = values.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// What the image does when it is unset.
+    #[must_use]
+    pub fn default(mut self, default: impl Into<String>) -> Self {
+        self.default = Some(default.into());
+        self
+    }
+
+    /// Mark it required: the image fails without it.
+    #[must_use]
+    pub fn required(mut self) -> Self {
+        self.required = true;
+        self
+    }
+
+    /// Mark it a credential. Any default is dropped, because this document is published.
+    #[must_use]
+    pub fn secret(mut self) -> Self {
+        self.secret = true;
+        self.default = None;
+        self
+    }
+}
+
+/// What a validator does with an environment variable no part of the contract accounts for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Unknown {
+    /// Fail. The default, on the reasoning the rest of this crate defaults on: a variable nobody
+    /// reads is a mistake rather than a courtesy, and one that used to be read is a rename nobody
+    /// finished.
+    #[default]
+    Reject,
+    /// Report it and carry on. For adopting the gate on a chart that has variables nobody has
+    /// accounted for yet — a migration state, not a resting place.
+    Warn,
+    /// Say nothing. For an image whose environment is genuinely open, where the alternative is an
+    /// ignore list that is never finished and therefore never trusted.
+    Allow,
+}
+
+/// Assembles a [`Contract`]. Built by [`Schema::into_contract`].
+///
+/// The schema is moved in rather than borrowed: a generator builds one, converts it and is done,
+/// so making the common path copy every key to satisfy an API shape nobody needs would be a cost
+/// with no reader.
+#[derive(Debug, Clone)]
+pub struct ContractBuilder {
+    schema: Schema,
+    app: App,
+    external: External,
+    json_schema: JsonSchema,
+}
+
+impl ContractBuilder {
+    /// The surface outside the loader's namespace. Empty by default.
+    #[must_use]
+    pub fn external(mut self, external: External) -> Self {
+        self.external = external;
+        self
+    }
+
+    /// How the JSON Schema half renders.
+    ///
+    /// Defaults to draft-07, closed, titled after the app — the dialect Helm validates against and
+    /// the strictness that makes an unknown key an error. Override it for a service whose rendered
+    /// document legitimately carries keys this schema does not describe; prefer declaring those
+    /// keys to relaxing the check.
+    #[must_use]
+    pub fn json_schema(mut self, options: JsonSchema) -> Self {
+        self.json_schema = options;
+        self
+    }
+
+    /// Assemble the contract, checking the claims it is about to publish.
+    ///
+    /// # Errors
+    /// Returns [`Error::Invalid`] if the declared external surface is not one a validator could
+    /// act on:
+    ///
+    /// - a variable whose name is not a name the environment can hold;
+    /// - a variable carrying the loader's own prefix, which would exempt a real configuration key
+    ///   from the check that owns it;
+    /// - a variable declared twice, or colliding with a key's or the loader's own spelling;
+    /// - an ignore pattern that is empty, or wildcarded anywhere but at its end;
+    /// - a secret carrying a default, anywhere in the document.
+    pub fn build(self) -> Result<Contract, Error> {
+        let Self {
+            schema,
+            app,
+            external,
+            json_schema,
+        } = self;
+
+        validate_external(&schema, &external)?;
+        validate_secrets(&schema, &external)?;
+
+        let options = json_schema.or_title(format!("{} configuration", app.name));
+        let rendered = json_schema::document(&schema, &options);
+
+        Ok(Contract {
+            terrace_contract: CONTRACT_VERSION,
+            app,
+            schema,
+            json_schema: Json::Object(rendered),
+            external,
+        })
+    }
+}
+
+impl Schema {
+    /// This schema as the contract an image publishes. See [`Contract`].
+    ///
+    /// Consuming, because a generator has no use for the schema afterwards and the alternative is
+    /// cloning every key to no end. [`Clone`] is there for the generator that does.
+    #[must_use]
+    pub fn into_contract(self, app: App) -> ContractBuilder {
+        ContractBuilder {
+            schema: self,
+            app,
+            external: External::new(),
+            // draft-07 because that is the dialect Helm validates `values.schema.json` against
+            // and the one every consumer of this document is already able to read; closed because
+            // an unknown key in a rendered configuration is the defect this whole document exists
+            // to catch, and an open schema catches none of them.
+            json_schema: JsonSchema::new().meta_schema(DRAFT_07).closed(true),
+        }
+    }
+}
+
+impl Contract {
+    /// The document, pretty-printed.
+    ///
+    /// Deterministic: the same schema and the same [`App`] produce byte-identical output, which is
+    /// what lets the result be hashed into [`LABEL_SHA256`] and diffed in review. Keys keep
+    /// declaration order and the JSON Schema half is ordered by `serde_json`'s own map; nothing
+    /// here reads a clock, a hash seed or the environment.
+    ///
+    /// # Errors
+    /// Returns [`Error::Invalid`] if serialisation fails, which for this type means the JSON
+    /// writer failed rather than the data being unrepresentable.
+    pub fn to_json(&self) -> Result<String, Error> {
+        serde_json::to_string_pretty(self)
+            .map_err(|e| Error::Invalid(format!("the contract could not be written as JSON: {e}")))
+    }
+
+    /// The image labels that make this contract discoverable, given where it was embedded.
+    ///
+    /// [`LABEL_SHA256`] is not among them: it is a property of the rendered bytes rather than of
+    /// this value, and the build that writes those bytes is already the one that has them. Emit it
+    /// alongside these.
+    ///
+    /// The point of the accessor is that the label *names* live in one place. A Dockerfile that
+    /// spells one of them by hand is a Dockerfile that can spell it differently from the pipeline
+    /// reading it, and the failure mode is a contract that is silently never found.
+    #[must_use]
+    pub fn labels(&self, path: &str) -> Vec<(&'static str, String)> {
+        vec![
+            (LABEL_VERSION, self.terrace_contract.to_string()),
+            (LABEL_PATH, path.to_owned()),
+            (LABEL_PREFIX, self.schema.dialect.prefix.clone()),
+        ]
+    }
+}
+
+/// Every environment spelling the loader itself claims, in one set.
+///
+/// Both halves of the collision check read this: an external variable may not shadow a key's
+/// spelling, and the reason is not tidiness — a chart setting `PORTFOLIO_GITHUB__TOKEN` while the
+/// contract declares it "external, owned by something else" is a key silently exempted from the
+/// gate that would otherwise catch it being renamed.
+fn loader_spellings(schema: &Schema) -> impl Iterator<Item = &str> {
+    schema
+        .keys
+        .iter()
+        .flat_map(|key| {
+            [
+                key.env.as_deref(),
+                key.env_file.as_deref(),
+                // The secrets-directory name is not an environment variable and cannot collide
+                // with one, so it is deliberately not here.
+            ]
+        })
+        .flatten()
+        .chain(schema.loader.iter().map(|var| var.env.as_str()))
+}
+
+/// Check that the declared external surface is one a validator could act on.
+fn validate_external(schema: &Schema, external: &External) -> Result<(), Error> {
+    let prefix = &schema.dialect.prefix;
+    let mut seen = std::collections::BTreeSet::new();
+
+    for var in &external.env {
+        if !is_env_name(&var.name) {
+            return Err(Error::Invalid(format!(
+                "`{}` is declared as an external variable, but that is not a name an environment \
+                 can hold: a name is a letter or underscore followed by letters, digits and \
+                 underscores.",
+                var.name
+            )));
+        }
+        // The prefix is what tells a validator which variables this contract governs. A declared
+        // external variable inside it would be governed and exempt at once, and the exemption
+        // would win — so the two spaces are kept disjoint by construction rather than by care.
+        if !prefix.is_empty() && var.name.starts_with(prefix.as_str()) {
+            return Err(Error::Invalid(format!(
+                "`{}` is declared as an external variable but carries the loader's own prefix \
+                 `{prefix}`. Everything in that namespace is a configuration key; declaring one \
+                 external would exempt it from the check that owns it.",
+                var.name
+            )));
+        }
+        if !seen.insert(var.name.as_str()) {
+            return Err(Error::Invalid(format!(
+                "`{}` is declared as an external variable twice; a consumer cannot tell which \
+                 description is the one to check against.",
+                var.name
+            )));
+        }
+    }
+
+    // Cheap because the loader half is walked once against a set that is already built: an
+    // external declaration colliding with a spelling the loader reads is the same defect as the
+    // prefix case, reached by the other door — a `reserve`d variable, or a renamed prefix.
+    for spelling in loader_spellings(schema) {
+        if seen.contains(spelling) {
+            return Err(Error::Invalid(format!(
+                "`{spelling}` is declared as an external variable, but the loader reads it \
+                 itself. One of the two descriptions is wrong, and a consumer has no way to \
+                 decide which."
+            )));
+        }
+    }
+
+    for pattern in &external.ignore {
+        validate_pattern(pattern)?;
+    }
+
+    Ok(())
+}
+
+/// Check that an ignore pattern is one a consumer can match without inventing a glob dialect.
+///
+/// Exactly one wildcard form is supported — a trailing `*` — because every consumer of this
+/// document has to implement the matching, in whatever language it is written in, and a pattern
+/// language is a place for two implementations to disagree about what is exempt from a security
+/// check.
+fn validate_pattern(pattern: &str) -> Result<(), Error> {
+    let stem = pattern.strip_suffix('*').unwrap_or(pattern);
+
+    if stem.is_empty() {
+        return Err(Error::Invalid(if pattern.is_empty() {
+            "an empty ignore pattern matches nothing and says nothing; remove it.".to_owned()
+        } else {
+            "`*` as an ignore pattern exempts the entire environment from checking. Use \
+             `External::unknown(Unknown::Allow)`, which says so where a reader will look."
+                .to_owned()
+        }));
+    }
+    if stem.contains('*') {
+        return Err(Error::Invalid(format!(
+            "`{pattern}` wildcards somewhere other than its end. Only a trailing `*` is \
+             supported, so that every consumer implementing this match implements the same one."
+        )));
+    }
+    if !stem.chars().all(is_env_char) {
+        return Err(Error::Invalid(format!(
+            "`{pattern}` contains a character no environment variable name can hold."
+        )));
+    }
+
+    Ok(())
+}
+
+/// Refuse to publish a credential.
+///
+/// [`Schema::with_defaults_from`] already drops a secret key's value, and [`ExternalVar::secret`]
+/// already drops its own. This is the check that says so once, at the boundary the document
+/// crosses — the point where "this file goes to a public registry" stops being an assumption a
+/// reader has to make and becomes something the type refuses to violate.
+fn validate_secrets(schema: &Schema, external: &External) -> Result<(), Error> {
+    for key in &schema.keys {
+        if key.secret && (key.default.is_some() || key.default_value.is_some()) {
+            return Err(Error::Invalid(format!(
+                "`{}` is marked secret but carries a default, and a contract is published. \
+                 Nothing in this crate produces that pair; a schema built by hand can.",
+                key.path
+            )));
+        }
+    }
+    for var in &external.env {
+        if var.secret && var.default.is_some() {
+            return Err(Error::Invalid(format!(
+                "`{}` is marked secret but carries a default, and a contract is published.",
+                var.name
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Whether `name` is a name the environment can hold.
+fn is_env_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && chars.all(is_env_char)
+}
+
+/// Whether `c` may appear after the first character of an environment variable name.
+fn is_env_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}

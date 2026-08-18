@@ -125,6 +125,16 @@ impl JsonSchema {
         self
     }
 
+    /// The document's `title`, unless one was already chosen.
+    ///
+    /// For a caller supplying a default the user is expected to override rather than one that
+    /// overrides the user — which is [`Contract`](super::Contract), whose title falls back to the
+    /// app's name and must not silently replace a title the generator asked for.
+    pub(super) fn or_title(mut self, title: impl Into<String>) -> Self {
+        self.title = self.title.or_else(|| Some(title.into()));
+        self
+    }
+
     /// How much of each key's `///` comment becomes its `description`. Defaults to [`Docs::Full`].
     #[must_use]
     pub fn docs(mut self, docs: Docs) -> Self {
@@ -183,21 +193,31 @@ impl Schema {
     /// # Errors
     /// As [`Self::to_json_schema`].
     pub fn to_json_schema_with(&self, options: &JsonSchema) -> Result<String, Error> {
-        let reachable = self.keys.iter().filter(|key| !key.reserved);
-        let mut document = object(&Node::of(reachable), options);
-
-        document.insert("$schema".to_owned(), json!(options.meta_schema));
-        if let Some(id) = &options.id {
-            document.insert("$id".to_owned(), json!(id));
-        }
-        if let Some(title) = &options.title {
-            document.insert("title".to_owned(), json!(title));
-        }
-
-        serde_json::to_string_pretty(&Json::Object(document)).map_err(|e| {
+        serde_json::to_string_pretty(&Json::Object(document(self, options))).map_err(|e| {
             Error::Invalid(format!("the JSON Schema could not be written as JSON: {e}"))
         })
     }
+}
+
+/// The document itself, before anything decides how to write it out.
+///
+/// Split from [`Schema::to_json_schema_with`] because a JSON Schema has two destinations and only
+/// one of them is a file: [`Contract`](super::Contract) carries this one *inside* a larger
+/// document, and serialising it to a string only to parse it back would be both slower and a
+/// second place for the two to disagree about what was rendered.
+pub(super) fn document(schema: &Schema, options: &JsonSchema) -> Map<String, Json> {
+    let reachable = schema.keys.iter().filter(|key| !key.reserved);
+    let mut document = object(&Node::of(reachable), options);
+
+    document.insert("$schema".to_owned(), json!(options.meta_schema));
+    if let Some(id) = &options.id {
+        document.insert("$id".to_owned(), json!(id));
+    }
+    if let Some(title) = &options.title {
+        document.insert("title".to_owned(), json!(title));
+    }
+
+    document
 }
 
 /// One level of the configuration as a JSON Schema object.

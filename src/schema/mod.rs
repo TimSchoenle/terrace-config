@@ -23,6 +23,7 @@
 //! | [`Schema::to_markdown`] | `>> README.md` | the hand-written reference table |
 //! | [`Schema::to_toml_example`] | the operator | `config.example.toml` |
 //! | [`Schema::to_json_schema`] | an editor, or a Helm chart's `values.schema.json` | nothing that existed |
+//! | [`Schema::into_contract`] | the image, and whatever deploys it | nothing that existed |
 //!
 //! [`Schema::to_json`] is the contract: a versioned document with every field of every key,
 //! including the ones the other three leave out. Point a documentation pipeline at it and render
@@ -45,6 +46,12 @@
 //! editor complete and validate the TOML file, and what a Helm chart's `values.schema.json`
 //! consumes. It is the only rendering that has to *interpret* [`Key::ty`] — see [`JsonSchema`]
 //! for how far that interpretation goes and where it stops.
+//!
+//! [`Schema::into_contract`] is the fifth and the odd one out: not a rendering of the schema but a
+//! document *containing* two of them, published with the image rather than with the source. It
+//! exists because the reader is a deployment pipeline holding an image digest and nothing else —
+//! see [`Contract`] for what that reader needs that no single rendering above supplies, and
+//! [`External`] for the variables an image reads that no derive can find.
 //!
 //! # More than one root
 //!
@@ -76,12 +83,17 @@
 //! # Ok::<(), terrace_config::Error>(())
 //! ```
 
+mod contract;
 mod json_schema;
 mod markdown;
 mod rust_type;
 mod toml_example;
 mod tree;
 
+pub use contract::{
+    ARTIFACT_TYPE, App, CONTRACT_VERSION, Contract, ContractBuilder, DEFAULT_PATH, External,
+    ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_SHA256, LABEL_VERSION, Unknown,
+};
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;
 pub use terrace_config_macros::Describe;

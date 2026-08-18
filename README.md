@@ -788,6 +788,153 @@ A default that is a secret renders `<redacted>` regardless of what the value is,
 key reports no default at all — whatever `Default` put in the field is an artefact of building
 the value, and printing it would tell an operator they can leave the key out.
 
+## Publishing the contract with the image
+
+The four renderings above describe a configuration to somebody who has the source. A Helm chart's
+CI job does not: it holds an image digest and a `config.toml` it rendered itself, and no way to
+know whether the two agree. So a chart renders `isr.ttl_secs`, the service renames the key, `serde`
+ignores what it does not recognise, and the pod starts healthy on a compiled default.
+
+`Contract` is the document that closes that. One file, attached to one image digest, carrying both
+machine-readable halves:
+
+```rust
+use terrace_config::Terrace;
+use terrace_config::schema::{App, External, ExternalVar};
+
+let contract = Terrace::new("PORTFOLIO_")
+    .reserve("PORTFOLIO_PROFILE")
+    .schema::<Config>()
+    .with_defaults_from(&Config::default())?
+    .into_contract(App::new("portfolio").version("v2.5.0"))
+    .external(
+        External::new()
+            .var(
+                ExternalVar::new("PORT")
+                    .owner("dioxus")
+                    .ty("u16")
+                    .default("8080")
+                    .docs("Bind port. Read by the Dioxus toolchain, not by this loader."),
+            )
+            .var(ExternalVar::new("RUST_LOG").owner("tracing").ty("String"))
+            .ignore("KUBERNETES_*"),
+    )
+    .build()?;
+
+std::fs::write("contract.json", contract.to_json()?)?;
+```
+
+```json
+{
+  "terraceContract": 1,
+  "app": { "name": "portfolio", "version": "v2.5.0" },
+  "schema": { "schema_version": 1, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
+  "jsonSchema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
+  "external": { "env": [ … ], "ignore": ["KUBERNETES_*"], "unknown": "reject" }
+}
+```
+
+Both halves, because neither is enough on its own. `jsonSchema` is the only one a stock JSON Schema
+validator can act on, and it carries no environment spellings at all — so it cannot tell a chart
+that the `PORTFOLIO_ISR__CACHE_DIR` it sets is no longer read, or that the file it mounts as
+`github__token` is now named something else. `schema` carries every spelling and can be handed to
+no validator. Published as two artefacts they would be two hashes and two chances to be half-stale.
+
+The JSON Schema half defaults to draft-07 — the dialect Helm validates `values.schema.json`
+against — and to `additionalProperties: false`, because an unknown key is the defect the document
+exists to catch and an open schema catches none of them.
+
+### The half no derive can see
+
+A service reads variables that are not its configuration. `PORT`, `IP` and `RUST_LOG` belong to the
+Dioxus toolchain, which reads them before any of these layers exist; a base image contributes
+`PATH` and `SSL_CERT_FILE`. None carry the loader's prefix, so no `Describe` implementation can
+report them — and a validator that flagged everything it could not account for would flag all of
+them.
+
+`External` is where those go, and it is deliberately a *positive* declaration rather than a
+suppression list:
+
+| | What it says | What a validator does with it |
+|---|---|---|
+| `External::var` | this image reads it, and here is its type | checks it exactly like a configuration key |
+| `External::ignore` | nobody here owns it | skips it |
+| `External::unknown` | what to do with everything else | `Reject` by default |
+
+The difference matters. A declared `PORT` with `ty("u16")` means a chart passing `PORT: "http"`
+fails the same gate that a chart passing `PORTFOLIO_ISR__TTL_SECS: "soon"` fails. An ignored `PORT`
+is a variable the chart may misspell freely. Reach for `ignore` only where there is genuinely no
+owner — an operator's `TZ`, a platform's injected `KUBERNETES_*` — and note that only a trailing
+`*` is a wildcard, because every consumer of this document implements the matching itself and a
+pattern language is a place for two implementations to disagree about what is exempt from a check.
+
+`build` refuses four things outright, all of them ways a contract could quietly stop being one:
+
+- an external variable **carrying the loader's prefix** — everything in that namespace is a
+  configuration key, and declaring one external would leave it governed and exempt at once;
+- an external variable **colliding with a spelling the loader reads**, which is the same defect
+  reached through a `reserve`d name;
+- an external variable **declared twice**, on `Schema::merge`'s reasoning: refusing to build beats
+  picking one of two descriptions;
+- a **secret carrying a default**, anywhere in the document. Nothing here produces that pair —
+  `with_defaults_from` drops a secret's value and `ExternalVar::secret` drops its own — but this is
+  the point the document crosses into a public registry, and "no code path produces it" is a weaker
+  guarantee than "the type will not carry it".
+
+### Getting it onto the image
+
+`Contract::to_json` is byte-stable: the same source tree produces the same bytes, so the document
+can be hashed, and the hash is what ties three copies of it together.
+
+```dockerfile
+# 1. Generate it in a builder stage, on the toolchain that is already there.
+FROM builder AS contract-builder
+RUN cargo run --features config-schema --example config-schema -- --format contract > /out/contract.json
+
+FROM scratch AS runtime
+# 2. Embed it, so the image is self-describing with no registry at all.
+COPY --from=contract-builder /out/contract.json /config/contract.json
+# 3. Label it, so anything can find it from the config blob alone — no layer pull.
+LABEL dev.terrace.config.contract.version="1" \
+      dev.terrace.config.contract.path="/config/contract.json" \
+      dev.terrace.config.contract.sha256="${CONTRACT_SHA256}" \
+      dev.terrace.config.prefix="PORTFOLIO_"
+```
+
+`Contract::labels` emits the first, second and fourth of those, so a Dockerfile never spells a
+label name by hand — the failure mode of a typo there is a contract that is silently never found.
+`--format labels` prints them as `NAME=value` lines for `docker build --label`. The SHA-256 is not
+among them: it is a property of the rendered bytes rather than of the value, and the build writing
+those bytes already has it. This crate takes no hashing dependency for a number `sha256sum` is
+about to produce anyway.
+
+Then, after the push, attach it to the digest:
+
+```bash
+oras attach --artifact-type application/vnd.terrace.config-schema.v1+json \
+  "ghcr.io/you/portfolio@${DIGEST}" contract.json:application/json
+```
+
+That copy is the one a pipeline fetches — attached to the digest the chart pins rather than to a
+tag that can move, two small HTTP requests rather than a layer pull, and signable. `ARTIFACT_TYPE`
+is a constant here so the producer and the consumer cannot spell it differently.
+
+A consumer that finds the label, the embedded file and the registry artifact disagreeing has found
+a build to refuse, not a copy to prefer. That is what three carriers and one hash buy.
+
+### Keeping the checked-in copy honest
+
+The same `git diff --exit-code` gate the reference table gets, for the same reason and with more at
+stake — a chart is about to be validated against this:
+
+```yaml
+- run: cargo run --features config-schema --example config-schema -- --format contract > docs/config.contract.json
+- run: git diff --exit-code -- docs/config.contract.json
+```
+
+A renamed key then shows up in the diff of the pull request that renamed it, which is the cheapest
+possible warning that a chart is about to break.
+
 ## Secrets and `Debug`
 
 Two public types hold secret material: `provider::FileValue` and `Sources`, whose fingerprint is
