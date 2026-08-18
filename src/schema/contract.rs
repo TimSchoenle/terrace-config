@@ -89,7 +89,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
 use super::json_schema::{self, DRAFT_07, JsonSchema};
-use super::{Error, Schema, TextForm};
+use super::{Error, Schema, TextForm, Unreachable};
 
 /// The version of the envelope [`Contract::to_json`] produces.
 ///
@@ -773,7 +773,11 @@ impl ContractBuilder {
     ///   from the check that owns it;
     /// - a variable declared twice, or colliding with a key's or the loader's own spelling;
     /// - an ignore pattern that is empty, or wildcarded anywhere but at its end;
-    /// - a secret carrying a default, anywhere in the document.
+    /// - a secret carrying a default, anywhere in the document;
+    /// - an empty [`prefix`](super::DialectInfo::prefix), which would make the ordered list's step
+    ///   4 fire for every variable on the container;
+    /// - a key whose environment spelling is another key's `_FILE` variable, which is an effect
+    ///   this document cannot describe.
     pub fn build(self) -> Result<Contract, Error> {
         let Self {
             schema,
@@ -782,6 +786,8 @@ impl ContractBuilder {
             json_schema,
         } = self;
 
+        validate_dialect(&schema)?;
+        validate_reachable(&schema)?;
         validate_external(&schema, &external)?;
         validate_secrets(&schema, &external)?;
 
@@ -966,6 +972,56 @@ impl Contract {
         }
         Ok(())
     }
+}
+
+/// Refuse a dialect the ordered list cannot be applied to.
+///
+/// Only one so far, and it is the prefix. `External`'s step 4 rejects a variable that "begins with
+/// `schema.dialect.prefix` and matched none of the above" — and *every* name begins with the empty
+/// string, so a prefixless contract rejects `PORT` and `KUBERNETES_SERVICE_HOST` before step 5 or 6
+/// can consult the declarations that say both are fine. The two rules were written apart and each
+/// is reasonable alone; together they let a service declare an external surface that would never
+/// be read.
+///
+/// Refused rather than special-cased in the list, because the deeper problem is not the ordering:
+/// a prefixless loader cannot tell its own namespace from the machine's, and that distinction is
+/// what every gate in this document rests on.
+fn validate_dialect(schema: &Schema) -> Result<(), Error> {
+    if schema.dialect.prefix.is_empty() {
+        return Err(Error::Invalid(
+            "this loader has an empty prefix, so nothing separates its configuration keys from \
+             every other variable on the container. A contract cannot say which variables are its \
+             business, and the declarations in `External` would never be reached. Give the loader \
+             a prefix."
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// Refuse a key the environment reaches under a name given to another key.
+///
+/// [`Unreachable::Indirection`] is the one reason [`Key::env`] is absent that does not mean the
+/// environment cannot supply the key. With `token` and `token_file` both present, setting
+/// `<PREFIX>TOKEN_FILE` fills `token` from the file it names *and* fills `token_file` with the
+/// path — one variable, two keys — and a validator classifying that variable stops at the first,
+/// because this document told it the second has no environment spelling.
+///
+/// Publishing a contract that cannot describe an effect is worse than publishing none: every gate
+/// downstream would pass. The application can fix it by renaming the field, which is the same
+/// remedy `Sink::leaf`'s duplicate-path panic asks for and for the same reason.
+fn validate_reachable(schema: &Schema) -> Result<(), Error> {
+    for key in &schema.keys {
+        if key.unreachable == Some(Unreachable::Indirection) {
+            return Err(Error::Invalid(format!(
+                "`{}` would be spelled in the environment as another key's `{}` variable, so \
+                 setting that variable supplies both keys and this contract could describe only \
+                 one of them. Rename the field.",
+                key.path, schema.dialect.indirection_suffix
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Every environment spelling the loader itself claims, in one set.

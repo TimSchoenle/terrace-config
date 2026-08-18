@@ -187,6 +187,10 @@ and the pipeline covers every variable a pod carries rather than only the prefix
   decides where every credential is read from — worse than exempting a key, because it loses all of
   them at once;
 - an external variable **declared twice**, on `Schema::merge`'s reasoning;
+- an **empty prefix**, which makes the classification order's step 4 fire for every variable on the
+  container and the external declarations unreachable;
+- a key whose environment spelling is **another key's `_FILE` variable** — one variable supplying
+  two keys, which the document cannot describe and a gate would therefore pass;
 - a **secret carrying a default**, anywhere in the document, checked at the boundary the document
   crosses into a public registry rather than trusted to the code paths that build it.
 

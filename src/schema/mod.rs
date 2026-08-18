@@ -235,6 +235,7 @@ impl Sink {
             env_aliases: Vec::new(),
             env_file_aliases: Vec::new(),
             secrets_file_aliases: Vec::new(),
+            unreachable: None,
             // Filled in by `describe_at`, beside the spellings: all three are derived from what
             // the derive collected rather than collected themselves, and doing it in one place is
             // what keeps a hand-built `Sink` from producing a key whose constraint disagrees with
@@ -290,6 +291,12 @@ pub struct Key {
     /// The figment/TOML path, e.g. `csp.cloudflare.turnstile`.
     pub path: String,
     /// The environment variable supplying it directly, e.g. `PORTFOLIO_CSP__CLOUDFLARE__TURNSTILE`.
+    ///
+    /// [`None`] means **no environment variable is published for this key**, and
+    /// [`Self::unreachable`] says why — the two reasons differ in whether the environment can
+    /// reach the key at all. A consumer that treats a missing `env` as "skip this key" is right
+    /// for one of them and wrong for the other, which is why the reason is published rather than
+    /// left to be inferred from a `null`.
     pub env: Option<String>,
     /// The variable naming a *file* holding it, e.g. `PORTFOLIO_GITHUB__TOKEN_FILE`.
     pub env_file: Option<String>,
@@ -418,6 +425,9 @@ pub struct Key {
     /// Always serialised, for [`Self::env_aliases`]' reason.
     #[serde(default)]
     pub secrets_file_aliases: Vec<String>,
+    /// Why [`Self::env`] is absent, when it is. [`None`] whenever [`Self::env`] is present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unreachable: Option<Unreachable>,
     /// What the value is when nothing supplies it, rendered for display. [`None`] means unset —
     /// or, for a [`required`](Self::required) key, that there is no default to have.
     ///
@@ -516,6 +526,43 @@ pub enum TextForm {
     #[default]
     #[serde(other)]
     Unknown,
+}
+
+/// Why a key has no environment spelling, when it has none.
+///
+/// [`Key::env`] is [`None`] for more than one reason and they do not mean the same thing to a
+/// deployment. Without this a consumer meets a bare `null` on a key with a perfectly good path and
+/// has to guess, which is how a variable that supplies *two* keys went unnoticed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Unreachable {
+    /// No environment variable maps back to this path at all.
+    ///
+    /// `#[serde(rename_all = "camelCase")]` is the common cause — an environment key is folded to
+    /// lower case on the way in and `distDir` never comes back — and a path carrying the dialect's
+    /// own nesting separator, or surrounding whitespace, or an empty segment does the same. The
+    /// key is real and the document can supply it; the environment cannot.
+    ///
+    /// Says nothing about the file layers, which derive separately and do not fold or trim:
+    /// [`Key::secrets_file`] is the field that answers whether a mounted file can reach the key,
+    /// and for a camelCase path it is [`None`] too while for a whitespace path it is not.
+    Unnameable,
+    /// The name this key would take is another key's `_FILE` variable.
+    ///
+    /// The one case where [`Key::env`] being [`None`] does **not** mean the environment cannot
+    /// reach the key. It can, under a name this document gives to somebody else: with `token` and
+    /// `token_file` both present, setting `<PREFIX>TOKEN_FILE` fills `token` from the file it
+    /// points at *and* fills `token_file` with the path. One variable, two keys, and a validator
+    /// reading this document stops at the first.
+    ///
+    /// [`ContractBuilder::build`](crate::schema::ContractBuilder::build) refuses a schema carrying
+    /// one, because a contract that cannot describe an effect should not be published claiming to
+    /// describe the surface. The fix belongs to the application: rename the field.
+    Indirection,
+    /// A reason a later version of this crate names and this one does not.
+    #[serde(other)]
+    Other,
 }
 
 /// What a variable the loader itself reads is for.
@@ -632,7 +679,9 @@ impl Schema {
             let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
             key.text_form = form;
             key.text_constraint = text.map(serde_json::Value::Object);
-            key.env = env_spelling(dialect, &key.path);
+            let (env, unreachable) = env_spelling(dialect, &key.path);
+            key.env = env;
+            key.unreachable = unreachable;
             key.env_file = key
                 .env
                 .as_ref()
@@ -649,7 +698,7 @@ impl Schema {
             key.env_aliases = key
                 .aliases
                 .iter()
-                .filter_map(|alias| env_spelling(dialect, alias))
+                .filter_map(|alias| env_spelling(dialect, alias).0)
                 .collect();
             key.env_file_aliases = key
                 .env_aliases
@@ -1062,18 +1111,27 @@ fn is_nameable_file(name: &str) -> bool {
 /// same key is the question. It does not when a path segment is not already lower case, when it
 /// contains the separator, or when the whole name ends in the indirection suffix — the last
 /// because such a variable is read as a path to a file rather than as a value.
-fn env_spelling(dialect: &Dialect, path: &str) -> Option<String> {
+fn env_spelling(dialect: &Dialect, path: &str) -> (Option<String>, Option<Unreachable>) {
     let name = dialect.env_spelling(path);
     if !is_settable_env_name(&name) {
-        return None;
+        return (None, Some(Unreachable::Unnameable));
     }
     // Asked of the dialect rather than tested here, because "ends with the suffix" is not the
     // same question: `MYAPP_FILE` ends with `_FILE` and is still an ordinary key called `file`,
     // since the indirection layer needs something *between* the prefix and the suffix.
+    //
+    // Reported separately from the case below, and the difference is not cosmetic: there the
+    // environment genuinely cannot reach the key, while here it reaches it under a name this
+    // schema hands to another key. Publishing both as a bare `None` is what let one variable
+    // supply two keys with every gate passing.
     if dialect.indirection_target(&name).is_some() {
-        return None;
+        return (None, Some(Unreachable::Indirection));
     }
-    (env_layer_key(dialect, &name).as_deref() == Some(path)).then_some(name)
+    if env_layer_key(dialect, &name).as_deref() == Some(path) {
+        (Some(name), None)
+    } else {
+        (None, Some(Unreachable::Unnameable))
+    }
 }
 
 /// The key figment's environment layer makes of `name`, or [`None`] if it drops it.
@@ -1116,14 +1174,14 @@ fn secrets_file_name(dialect: &Dialect, path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Dialect, env_spelling, render_value, secrets_file_name};
+    use super::{Dialect, Unreachable, env_spelling, render_value, secrets_file_name};
 
     #[test]
     fn a_lower_case_path_gets_all_three_spellings() {
         let dialect = Dialect::new("TEST_");
         assert_eq!(
-            env_spelling(&dialect, "auth.jwt_secret").as_deref(),
-            Some("TEST_AUTH__JWT_SECRET")
+            env_spelling(&dialect, "auth.jwt_secret"),
+            (Some("TEST_AUTH__JWT_SECRET".to_owned()), None)
         );
         assert_eq!(
             secrets_file_name(&dialect, "auth.jwt_secret").as_deref(),
@@ -1136,7 +1194,10 @@ mod tests {
     #[test]
     fn a_path_that_does_not_survive_the_fold_has_no_environment_spelling() {
         let dialect = Dialect::new("TEST_");
-        assert_eq!(env_spelling(&dialect, "assets.distDir"), None);
+        assert_eq!(
+            env_spelling(&dialect, "assets.distDir"),
+            (None, Some(Unreachable::Unnameable))
+        );
         assert_eq!(secrets_file_name(&dialect, "assets.distDir"), None);
     }
 
@@ -1145,10 +1206,16 @@ mod tests {
     #[test]
     fn a_key_ending_in_the_indirection_suffix_has_no_environment_spelling() {
         let dialect = Dialect::new("TEST_");
-        assert_eq!(env_spelling(&dialect, "unit.file"), None);
+        // Reported as `Indirection` rather than `Unnameable`, and the difference is the one
+        // `ContractBuilder::build` refuses on: the environment *does* reach `unit.file`, under the
+        // name this dialect gives to `unit`'s indirection variable.
         assert_eq!(
-            env_spelling(&dialect, "unit.filename").as_deref(),
-            Some("TEST_UNIT__FILENAME")
+            env_spelling(&dialect, "unit.file"),
+            (None, Some(Unreachable::Indirection))
+        );
+        assert_eq!(
+            env_spelling(&dialect, "unit.filename"),
+            (Some("TEST_UNIT__FILENAME".to_owned()), None)
         );
     }
 

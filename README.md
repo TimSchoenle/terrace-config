@@ -916,6 +916,14 @@ cost a deployment: a `structured` key — a `Vec<T>`, a map — needs a TOML lit
 `PORTFOLIO_GITHUB__REPOS=a,b` is refused by the loader and used to pass every gate. Those now carry
 a pattern requiring the bracket form.
 
+A key's `env` can also be `null`, and `unreachable` says why — the two reasons differ in whether
+the environment can reach the key at all. `unnameable` means no variable names it: a
+`rename_all = "camelCase"` path never comes back through the case fold, and neither does one
+carrying the nesting separator, so the document is the only layer left. `indirection` is the case
+`build` refuses, and it is in the enum because a schema rendered for documentation still reports
+it. A consumer meeting a bare `null` and treating it as "skip this key" is right for the first and
+wrong for the second, which is why the reason is published rather than inferred.
+
 `constraint: null` still means no check is possible: a domain newtype, or a type this crate does
 not recognise. Inventing one would reject values the image accepts, which is the one thing a schema
 here must never do.
@@ -976,7 +984,7 @@ owner — an operator's `TZ`, the platform's `KUBERNETES_*` — and note that on
 wildcard, because every consumer of this document implements the matching itself and a pattern
 language is a place for two implementations to disagree about what is exempt from a check.
 
-`build` refuses six things outright, all of them ways a contract could quietly stop being one:
+`build` refuses eight things outright, all of them ways a contract could quietly stop being one:
 
 - an external variable **carrying the loader's prefix** — everything in that namespace is a
   configuration key, and declaring one external would leave it governed and exempt at once;
@@ -998,7 +1006,18 @@ language is a place for two implementations to disagree about what is exempt fro
 - a **secret carrying a default**, in either order the two were declared in, and anywhere in the
   document. Nothing here produces that pair, but this is the point the document crosses into a
   public registry, and "no code path produces it" is a weaker guarantee than "the type will not
-  carry it".
+  carry it";
+- an **empty prefix**, which would make step 4 of the list below fire for every variable on the
+  container — every name begins with the empty string — so steps 5 and 6 would never be reached
+  and a declared external surface would never be read. The deeper reason is that a prefixless
+  loader cannot tell its own namespace from the machine's, and that distinction is what every gate
+  rests on;
+- a key whose environment spelling is **another key's `_FILE` variable**. With `token` and
+  `token_file` both present, setting `<PREFIX>TOKEN_FILE` fills `token` from the file it names
+  *and* fills `token_file` with the path — one variable, two keys — and a validator classifying
+  that variable stops at the first. Publishing a contract that cannot describe an effect is worse
+  than publishing none, because every gate downstream would pass. The application renames the
+  field.
 
 ### How a validator reads it
 
