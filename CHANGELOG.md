@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/TimSchoenle/terrace-config/compare/v0.4.0...v0.5.0) (2026-08-18)
+
+
+### Features
+
+* add example config generator ([#30](https://github.com/TimSchoenle/terrace-config/issues/30)) ([b1056c4](https://github.com/TimSchoenle/terrace-config/commit/b1056c457e96f7c7611ef54c2ccfc05b8d90eff8))
+* **explain:** report which layer supplied each key ([#28](https://github.com/TimSchoenle/terrace-config/issues/28)) ([690056f](https://github.com/TimSchoenle/terrace-config/commit/690056f8c07d7556f207ffd877373099c805f361))
+* **testing:** add a test harness for consuming projects ([#29](https://github.com/TimSchoenle/terrace-config/issues/29)) ([4643e38](https://github.com/TimSchoenle/terrace-config/commit/4643e385a38609529050157fc8eafd7d31ec92bd))
+
+
+### Miscellaneous
+
+* **deps:** update step-security/harden-runner action to v2.21.0 ([#26](https://github.com/TimSchoenle/terrace-config/issues/26)) ([379a84f](https://github.com/TimSchoenle/terrace-config/commit/379a84f8df318f584735865a49ac4380bfb37dce))
+
 ## [0.4.0](https://github.com/TimSchoenle/terrace-config/compare/v0.3.0...v0.4.0) (2026-08-18)
 
 
