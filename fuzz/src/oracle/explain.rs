@@ -40,9 +40,9 @@
 //! [`secrets_dir`](super::secrets_dir): a fuzzer-chosen path would have the target reading
 //! arbitrary files on the host machine.
 
-use figment::Jail;
 use figment::value::Value;
 use terrace_config::explain::{Explanation, Layer};
+use terrace_config::testing::Harness;
 use terrace_config::{ShadowPolicy, Terrace};
 
 use crate::support::{Directive, PREFIX, directives, is_safe_env, write_file};
@@ -59,6 +59,13 @@ const SENTINEL: &str = "terrace-fuzz-value-must-not-be-printed";
 
 fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve(RESERVED)
+}
+
+/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the
+/// loader under test. `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid
+/// unsafe code, so a jail is not a convenience here — it is the only way in.
+fn harness() -> Harness {
+    Harness::over(layers())
 }
 
 /// Whether a fuzzer-supplied name or variable suffix would put the sentinel into the report
@@ -117,32 +124,29 @@ fn check_origins(explanation: &Explanation) {
 /// That is the contract: a panic is the finding.
 pub fn check(data: &str) {
     // Ignored: a jail-setup failure says nothing about the code under test.
-    let _ = Jail::try_with(|jail| {
-        jail.clear_env();
+    let _ = harness().try_run(|jail| {
+        let root = jail.sandbox().root().to_path_buf();
 
-        let root = jail.directory().to_path_buf();
-        let config = root.join("conf.d");
-        let secrets = root.join("secrets");
-        if std::fs::create_dir_all(&config).is_err() || std::fs::create_dir_all(&secrets).is_err() {
+        // (2) The plant, in all four layers, and the two mounts arranged in the same breath —
+        // both through the jail, so the variable naming each is the one the loader under test
+        // actually reads rather than a spelling restated here. Written before the fuzzer's
+        // directives, so one naming the same file overwrites it: that only weakens the
+        // assertion, never breaks it.
+        let sentinel_toml = format!("[sentinel]\ntoml = \"{SENTINEL}\"\n");
+        let (Ok(fragment), Ok(secrets), Ok(_)) = (
+            jail.fragment("00-sentinel.toml", &sentinel_toml),
+            jail.secret("sentinel__dir", SENTINEL),
+            jail.indirection("sentinel.indirect", SENTINEL),
+        ) else {
             return Ok(());
-        }
-        jail.set_env("TEST_CONFIG", config.display());
-        jail.set_env("TEST_SECRETS_DIR", secrets.display());
+        };
+        jail.env_key("sentinel.env", SENTINEL);
 
-        // (2) The plant, in all four layers. Written before the fuzzer's directives so one
-        // naming the same file overwrites it — which only weakens the assertion, never breaks it.
-        let mut planted = write_file(
-            &config,
-            "00-sentinel.toml",
-            &format!("[sentinel]\ntoml = \"{SENTINEL}\"\n"),
-        );
-        planted &= write_file(&secrets, "sentinel__dir", SENTINEL);
-        planted &= write_file(&root, "sentinel-indirect", SENTINEL);
-        jail.set_env("TEST_SENTINEL__ENV", SENTINEL);
-        jail.set_env(
-            "TEST_SENTINEL__INDIRECT_FILE",
-            root.join("sentinel-indirect").display(),
-        );
+        // The configuration *directory*, which is what `fragment` mounted and what the fuzzer's
+        // own `*.toml` directives go into.
+        let Some(config) = fragment.parent().map(std::path::Path::to_path_buf) else {
+            return Ok(());
+        };
 
         // A fuzzer-supplied *name* carrying the sentinel would put it in the report as a path or
         // a variable, which is correct behaviour and would fail an assertion about values.
@@ -176,7 +180,7 @@ pub fn check(data: &str) {
                     if !write_file(&root, &name, &content) {
                         continue;
                     }
-                    jail.set_env(format!("{PREFIX}{suffix}_FILE"), root.join(&name).display());
+                    jail.env(format!("{PREFIX}{suffix}_FILE"), root.join(&name).display());
                 }
                 Directive::Env { suffix, value } => {
                     if !is_safe_env(suffix, value) {
@@ -192,7 +196,7 @@ pub fn check(data: &str) {
                     {
                         continue;
                     }
-                    jail.set_env(&name, value);
+                    jail.env(&name, value);
                 }
             }
         }
@@ -215,7 +219,7 @@ pub fn check(data: &str) {
 
         // (2). Both renderings, because they are two ways for one field to escape and the type's
         // whole claim is that there is no such field.
-        if planted && !sentinel_shadowed {
+        if !sentinel_shadowed {
             for rendered in [format!("{explanation}"), format!("{explanation:?}")] {
                 assert!(
                     !rendered.contains(SENTINEL),
