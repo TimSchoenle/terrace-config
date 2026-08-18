@@ -391,10 +391,19 @@ pub struct Key {
     /// working. Publishing only the canonical spelling turns that compatibility shim into a hard
     /// failure: a chart still using the old name is a *correct* deployment, and a gate that
     /// refuses it is refusing the one thing that made the rename safe.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ///
+    /// Always serialised, empty or not — unlike [`Self::constraint`] and [`Self::default`], which
+    /// are omitted when unset. There, absence *means* something: no check is possible, no default
+    /// exists. Here an absent list and an empty one say the same thing, so omitting it would save
+    /// bytes at the cost of a distinction a reader has to discover is not one. And this is the hot
+    /// path — steps 2 and 3 of the ordered list consult it for every variable on every container —
+    /// which is the worst place to hand a consumer two shapes.
+    #[serde(default)]
     pub env_aliases: Vec<String>,
     /// The `_FILE` spelling of each of [`Self::env_aliases`], where the dialect permits one.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ///
+    /// Always serialised, for [`Self::env_aliases`]' reason.
+    #[serde(default)]
     pub env_file_aliases: Vec<String>,
     /// Every *other* secrets-directory file name this key answers to, one per alias that has one.
     ///
@@ -405,7 +414,9 @@ pub struct Key {
     /// compares *spellings*, so a canonical variable against an alias-named file is not the pair
     /// it reports. `serde` still refuses the load — with `duplicate field`, naming neither source
     /// — so the diagnostic that names both is the one a consumer builds from these fields.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ///
+    /// Always serialised, for [`Self::env_aliases`]' reason.
+    #[serde(default)]
     pub secrets_file_aliases: Vec<String>,
     /// What the value is when nothing supplies it, rendered for display. [`None`] means unset —
     /// or, for a [`required`](Self::required) key, that there is no default to have.

@@ -842,6 +842,46 @@ fn a_key_without_aliases_carries_no_alias_spellings() {
 }
 
 #[test]
+fn the_alias_sets_are_on_every_key_whether_or_not_it_has_any() {
+    // They are the fields the ordered list consults for every variable on every container, so a
+    // consumer reaching them has not yet decided which key it is holding — the worst place to hand
+    // it two shapes. And unlike `constraint` and `default`, which are omitted when unset because
+    // absence *means* something there, an absent list here would say exactly what an empty one
+    // says. `aliases`, which these are derived from, is always present too.
+    let rendered = contract().to_json().expect("renders");
+    let json: Json = serde_json::from_str(&rendered).expect("parses");
+    let keys = json["schema"]["keys"].as_array().expect("an array");
+
+    let fields = |key: &Json| {
+        let mut names: Vec<String> = key
+            .as_object()
+            .expect("an object")
+            .keys()
+            .cloned()
+            .collect();
+        names.sort();
+        names
+    };
+
+    let with = keys
+        .iter()
+        .find(|key| !key["aliases"].as_array().expect("an array").is_empty())
+        .expect("a key with aliases");
+    let without = keys
+        .iter()
+        .find(|key| key["aliases"].as_array().expect("an array").is_empty())
+        .expect("a key without");
+
+    assert_eq!(fields(with), fields(without));
+    for name in ["env_aliases", "env_file_aliases", "secrets_file_aliases"] {
+        assert!(
+            without[name].is_array(),
+            "{name} is absent on a key with none"
+        );
+    }
+}
+
+#[test]
 fn an_alias_with_no_environment_spelling_contributes_nothing() {
     // Which is why the three lists are membership sets rather than arrays parallel to `aliases`:
     // `userName` is folded to lower case on the way in and never comes back, so it has no
