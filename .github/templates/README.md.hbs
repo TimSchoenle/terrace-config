@@ -328,20 +328,45 @@ pipeline at it and render whatever that pipeline wants.
 `to_markdown` is for when the next step is `>> README.md`. It emits GitHub-flavoured tables —
 one for the variables the loader itself reads, one for the keys:
 
-| TOML | Type | Environment | File indirection | Default | Flags | Purpose |
-|---|---|---|---|---|---|---|
-| `github.username` | `String` | `PORTFOLIO_GITHUB__USERNAME` | `PORTFOLIO_GITHUB__USERNAME_FILE` | — | required | User whose repositories `update-repos` lists. |
-| `github.token` | `String` | `PORTFOLIO_GITHUB__TOKEN` | `PORTFOLIO_GITHUB__TOKEN_FILE` | unset | secret | Bearer token lifting the GitHub API rate limit. |
-| `github.ttl_secs` | `u64` | `PORTFOLIO_GITHUB__TTL_SECS` | `PORTFOLIO_GITHUB__TTL_SECS_FILE` | `0` (permanent) | — | Revalidation interval in seconds. |
-| `log_level` | `LogLevel`: `trace` \| `debug` \| `info` \| `warn` | `PORTFOLIO_LOG_LEVEL` | `PORTFOLIO_LOG_LEVEL_FILE` | `info` | — | How much the service says. |
+| TOML | Type | Environment | Default | Flags | Purpose |
+|---|---|---|---|---|---|
+| `github.username` | `String` | `PORTFOLIO_GITHUB__USERNAME` | — | required | User whose repositories `update-repos` lists. |
+| `github.token` | `String` | `PORTFOLIO_GITHUB__TOKEN` | unset | secret | Bearer token lifting the GitHub API rate limit. |
+| `github.ttl_secs` | `u64` | `PORTFOLIO_GITHUB__TTL_SECS` | `0` (permanent) | — | Revalidation interval in seconds. |
+| `log_level` | `LogLevel`: `trace` \| `debug` \| `info` \| `warn` | `PORTFOLIO_LOG_LEVEL` | `info` | — | How much the service says. |
 
 The `Type` column is in the default set because without it a required key shows an em dash for its
-default and the reader has no way to tell whether to supply a string, a number or a list.
+default and the reader has no way to tell whether to supply a string, a number or a list. Neither
+file spelling is, because both are mechanical: `Column::EnvFile` is the `Environment` cell plus the
+dialect's documented suffix (`_FILE`), and `Column::SecretsFile` is the `TOML` cell with the
+separator substituted. One sentence of prose covers both, where two columns push the table past
+the width of a page.
 
-`to_markdown_with` takes a `&[Column]` when those are not the columns you want — including
-`Column::Aliases`, which is out of the default set because it is empty for almost every key. A
-`#[serde(alias = "user")]` on `github.username` reports `github.user` as a full key path, so its
-environment and file spellings derive exactly as the canonical one's do.
+The `Purpose` column carries the **summary** of the `///` comment — its first paragraph, on
+rustdoc's own convention — rather than the whole of it. Write each field's documentation for
+whoever reads the type; the paragraphs below the summary stay in `to_json`'s `docs` field, out of
+the table, and no extra annotation is needed to keep the two in step.
+
+`to_markdown_with` takes a `&[Column]` when those are not the columns you want — either file
+spelling, or `Column::Aliases`, which is out of the default set because it is empty for almost
+every key. A `#[serde(alias = "user")]` on `github.username` reports `github.user` as a full key
+path, so its environment and file spellings derive exactly as the canonical one's do.
+
+The two tables are also reachable separately, for a page that does not want them welded together:
+
+```rust
+let loader = schema.to_markdown_loader();                  // the variables, once
+let keys = schema.subset("csp").to_markdown_keys(Column::DEFAULT);  // one subsystem, no preamble
+```
+
+A README with one key table per subsystem wants the loader variables above the first of them, not
+repeated over every table. `to_markdown_loader` renders an empty string rather than a bare header
+when a schema has no loader variables; `to_markdown_keys` always renders its header, because an
+empty configuration section is a real shape and the header is what says it was generated rather
+than forgotten.
+
+Every rendering ends with a newline, so a template pipeline that appends another section needs no
+separator of its own.
 
 ### A whole crate, a whole workspace, or one subsystem
 

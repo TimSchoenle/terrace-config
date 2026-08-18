@@ -18,7 +18,10 @@
 //! pipeline at it and render whatever that pipeline wants.
 //!
 //! [`Schema::to_markdown`] is for the case where the pipeline is `>> README.md`. It emits GitHub
-//! -flavoured tables that can be pasted in unmodified.
+//! -flavoured tables that can be pasted in unmodified. Its documentation column carries the
+//! summary — the first paragraph — of each `///` comment, on rustdoc's own convention: whatever a
+//! field says below its summary line belongs on the field's own documentation page, not inside a
+//! table cell, and [`Schema::to_json`] still carries all of it.
 //!
 //! ```no_run
 //! use serde::Deserialize;
@@ -398,8 +401,9 @@ impl Schema {
     /// empty `prefix` keeps everything.
     ///
     /// The loader variables are kept, because they are not part of any subtree and an operator
-    /// reading one page still has to know where the configuration file comes from. Clear
-    /// [`Schema::loader`] to drop them.
+    /// reading one page still has to know where the configuration file comes from. A page that
+    /// says so elsewhere renders [`Self::to_markdown_keys`] instead of [`Self::to_markdown`],
+    /// which leaves them out without removing them from [`Self::to_json`]'s contract.
     #[must_use]
     pub fn subset(mut self, prefix: &str) -> Self {
         if !prefix.is_empty() {
@@ -472,36 +476,87 @@ impl Schema {
     ///
     /// Two tables: the variables the loader reads, then the configuration keys under
     /// [`Column::DEFAULT`]. Use [`Self::to_markdown_with`] to choose the columns.
+    ///
+    /// A [`Column::Docs`] cell carries the *summary* of the `///` comment — its first paragraph,
+    /// as rustdoc means the word — rather than the whole of it. [`Key::docs`] keeps the whole
+    /// text for [`Self::to_json`], so nothing is lost; a table cell is simply not where the four
+    /// paragraphs below the summary belong.
+    ///
+    /// Ends with a newline, so appending another section needs no separator of its own.
     #[must_use]
     pub fn to_markdown(&self) -> String {
         self.to_markdown_with(Column::DEFAULT)
     }
 
-    /// The schema as Markdown, with a chosen set of key columns.
+    /// Both tables, with a chosen set of key columns.
     ///
-    /// The loader-variable table is emitted unconditionally when there is one: its three columns
-    /// are not the key columns, and an operator who cannot find `<PREFIX>CONFIG` cannot use any
-    /// of the rest.
+    /// The loader-variable table leads when there is one: its three columns are not the key
+    /// columns, and an operator who cannot find `<PREFIX>CONFIG` cannot use any of the rest.
+    ///
+    /// [`Self::to_markdown_loader`] and [`Self::to_markdown_keys`] are the two halves on their
+    /// own, for a page that wants them apart.
+    ///
+    /// Ends with a newline, as [`Self::to_markdown`] does.
     #[must_use]
     pub fn to_markdown_with(&self, columns: &[Column]) -> String {
-        let mut out = String::new();
+        let loader = self.to_markdown_loader();
+        let keys = self.to_markdown_keys(columns);
+        if loader.is_empty() {
+            keys
+        } else {
+            // The blank line between them: two tables run together are one malformed table.
+            format!("{loader}\n{keys}")
+        }
+    }
 
-        if !self.loader.is_empty() {
-            out.push_str("| Variable | Role | Default | Purpose |\n");
-            out.push_str("|---|---|---|---|\n");
-            for var in &self.loader {
-                let _ = writeln!(
-                    out,
-                    "| `{}` | {} | {} | {} |",
-                    escape(&var.env),
-                    var.role.label(),
-                    optional_code(var.default.as_deref()),
-                    cell(&var.docs),
-                );
-            }
-            out.push('\n');
+    /// The loader-variable table alone.
+    ///
+    /// A documentation page with one key table per subsystem wants these variables once, not
+    /// repeated above every table — and the subsystem pages want [`Self::to_markdown_keys`] with
+    /// no loader table at all. Emitting the pair together is the common case, not the only one,
+    /// so each half is reachable on its own rather than through clearing a field.
+    ///
+    /// Empty when the schema has no loader variables, which is what
+    /// [`Schema::describe`](Self::describe) produces on its own — a header with no rows under it
+    /// would be a table promising variables that do not exist.
+    ///
+    /// Ends with a newline when it is not empty.
+    #[must_use]
+    pub fn to_markdown_loader(&self) -> String {
+        let mut out = String::new();
+        if self.loader.is_empty() {
+            return out;
         }
 
+        out.push_str("| Variable | Role | Default | Purpose |\n");
+        out.push_str("|---|---|---|---|\n");
+        for var in &self.loader {
+            let _ = writeln!(
+                out,
+                "| `{}` | {} | {} | {} |",
+                escape(&var.env),
+                var.role.label(),
+                optional_code(var.default.as_deref()),
+                cell(&var.docs),
+            );
+        }
+
+        out
+    }
+
+    /// The configuration-key table alone, with a chosen set of columns.
+    ///
+    /// The counterpart to [`Self::to_markdown_loader`]: the table for a page that documents one
+    /// subsystem and has said where the configuration file comes from somewhere else.
+    ///
+    /// A schema with no keys still renders its header, unlike the loader table. An empty
+    /// configuration section is a real shape — a subsystem that reads nothing yet — and the
+    /// header is what says the section was generated rather than forgotten.
+    ///
+    /// Ends with a newline.
+    #[must_use]
+    pub fn to_markdown_keys(&self, columns: &[Column]) -> String {
+        let mut out = String::new();
         let header: Vec<&str> = columns.iter().map(|c| c.heading()).collect();
         let _ = writeln!(out, "| {} |", header.join(" | "));
         let _ = writeln!(out, "|{}|", vec!["---"; columns.len()].join("|"));
@@ -568,9 +623,14 @@ impl Column {
     /// The columns [`Schema::to_markdown`] emits: everything an operator needs, and nothing that
     /// pushes the table past the width of a page.
     ///
-    /// [`Self::SecretsFile`] is left out because it is mechanically `path` with the separator
-    /// substituted, [`Self::Flags`] carries what [`Self::Required`] and [`Self::Secret`] would
-    /// have taken two columns to say, and [`Self::Aliases`] is empty for almost every key.
+    /// The two file spellings are left out because both are mechanical — [`Self::SecretsFile`]
+    /// is `path` with the separator substituted, and [`Self::EnvFile`] is [`Self::Env`] with the
+    /// dialect's documented suffix appended. Neither adds anything the reader cannot derive from
+    /// a column already in front of them plus one sentence of prose, and dropping the pair keeps
+    /// the table inside a page. Ask for either by name through [`Schema::to_markdown_with`].
+    ///
+    /// [`Self::Flags`] carries what [`Self::Required`] and [`Self::Secret`] would have taken two
+    /// columns to say, and [`Self::Aliases`] is empty for almost every key.
     ///
     /// [`Self::Type`] *is* here, because without it a required key shows an em dash for its
     /// default and the reader has no way to tell whether to supply a string, a number or a list.
@@ -578,7 +638,6 @@ impl Column {
         Self::Path,
         Self::Type,
         Self::Env,
-        Self::EnvFile,
         Self::Default,
         Self::Flags,
         Self::Docs,
@@ -672,7 +731,7 @@ impl Column {
             Self::Required => yes_or_dash(key.required),
             Self::Secret => yes_or_dash(key.secret),
             Self::Note => key.note.as_deref().map_or_else(|| "—".to_owned(), cell),
-            Self::Docs => cell(&key.docs),
+            Self::Docs => summary_cell(&key.docs),
         }
     }
 }
@@ -692,6 +751,30 @@ fn cell(text: &str) -> String {
         return "—".to_owned();
     }
     escape(text).replace('\n', "<br>")
+}
+
+/// A doc comment in a table cell: its summary, on one line.
+///
+/// The whole comment used to go in, which put every paragraph of a field's rustdoc into one cell
+/// and made a table out of an essay. The fix is rustdoc's own convention rather than a new
+/// annotation to keep in step: the first paragraph is the summary, and a comment written the way
+/// rustdoc asks for one already reads correctly here with nothing to change.
+///
+/// [`Key::docs`] keeps the whole text, so the JSON contract loses nothing and a pipeline that
+/// wants the paragraphs below the summary can still render them.
+///
+/// Soft wraps inside that paragraph become spaces rather than `<br>`: they are the author's line
+/// width, not a break they asked a reader to see. A comment opening with a list or a fenced block
+/// has no leading paragraph to find, so its first block comes out instead, flattened the same way.
+fn summary_cell(text: &str) -> String {
+    let summary: Vec<&str> = text
+        .lines()
+        .take_while(|line| !line.trim().is_empty())
+        .collect();
+    if summary.is_empty() {
+        return "—".to_owned();
+    }
+    escape(&summary.join(" "))
 }
 
 /// The characters that would otherwise be read as table structure.

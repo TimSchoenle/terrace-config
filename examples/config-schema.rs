@@ -26,7 +26,7 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
-use terrace_config::schema::Describe;
+use terrace_config::schema::{Column, Describe};
 
 /// The root. Everything under it lives somewhere else.
 #[derive(Deserialize, Serialize, Describe)]
@@ -79,6 +79,14 @@ mod csp {
     #[derive(Deserialize, Serialize, Default, Describe)]
     pub(crate) struct Csp {
         /// Hash the document's inline scripts instead of allowing `'unsafe-inline'`.
+        ///
+        /// The two are mutually exclusive by specification: a `script-src` carrying any hash
+        /// makes a browser ignore `'unsafe-inline'` entirely, so turning this on and leaving an
+        /// inline script unhashed blocks the script rather than falling back.
+        ///
+        /// Only the first paragraph reaches the Markdown table. The rest is here for whoever
+        /// reads the type, which is what the rest of a `///` comment is always for — and
+        /// `to_json` carries all of it for a pipeline that wants to render more.
         #[serde(default)]
         pub(crate) hash_inline_scripts: bool,
         #[config(nested)]
@@ -154,6 +162,12 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
 
     match options.format {
         Format::Json => schema.to_json(),
+        // A subsystem page gets the key table alone. The loader variables belong once, on the
+        // page that documents the whole configuration, rather than repeated above every slice —
+        // and `to_json` still carries them whichever page this is.
+        Format::Markdown if !options.only.is_empty() => {
+            Ok(schema.to_markdown_keys(Column::DEFAULT))
+        }
         Format::Markdown => Ok(schema.to_markdown()),
     }
 }

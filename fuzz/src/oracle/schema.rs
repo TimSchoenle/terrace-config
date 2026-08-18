@@ -520,8 +520,9 @@ fn rendering_is_well_formed(schema: &Schema) {
         widths.windows(2).all(|w| w[0] == w[1]),
         "a Markdown row has a different number of cells than its header:\n{table}"
     );
-    // A `///` comment is prose and contains newlines; `cell` turns them into `<br>`. One that
-    // survived would end its row early, which shows up as a line that is not a table row at all.
+    // A `///` comment is prose and contains newlines: the `Purpose` column folds its summary onto
+    // one line and every other prose cell turns them into `<br>`. One that survived either would
+    // end its row early, which shows up as a line that is not a table row at all.
     for line in table.lines().filter(|line| !line.is_empty()) {
         assert!(
             line.starts_with('|') && line.ends_with('|'),
