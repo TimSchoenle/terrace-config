@@ -306,22 +306,34 @@ impl App {
 ///
 /// 1. **Form.** The text must satisfy `text_constraint`, when there is one. `"http"` is not an
 ///    integer in any spelling, and this is the check that says so.
-/// 2. **Range.** Read the text according to `text_form` — [`TextForm::Integer`] means parse it as
-///    an integer — and check the result against `constraint`. This is where `minimum` and
-///    `maximum` live, and it is the only step that can reach them: a pattern matches characters,
-///    so `99999` is a perfectly well-formed integer and only a bound catches it not fitting a
-///    `u16`.
+/// 2. **Range.** *Read* the text according to `text_form`, then check the result against
+///    `constraint`. This is where `minimum`, `maximum`, `minLength` and a document-space `enum`
+///    live, and it is the only step that can reach them: a pattern matches characters, so `99999`
+///    is a perfectly well-formed integer and only a bound catches it not fitting a `u16`.
 ///
-/// `text_form` is what says which parse, rather than the shape of the constraint object: a
-/// consumer inferring "pattern means integer" was right while there were two shapes and wrong as
-/// soon as [`TextForm::Structured`] arrived.
+/// | `text_form` | read |
+/// |---|---|
+/// | [`Integer`](TextForm::Integer) | trim, drop a leading `+`, parse as an integer |
+/// | [`Boolean`](TextForm::Boolean) | trim, compare to `true` |
+/// | [`Choice`](TextForm::Choice) | trim |
+/// | [`Structured`](TextForm::Structured) | trim, parse as a TOML literal |
+/// | [`Text`](TextForm::Text), [`Unknown`](TextForm::Unknown) | trim |
 ///
-/// **When `constraint` is a string type, the text *is* the value.** Text space and document space
-/// are the same there, so apply `constraint` to the raw characters directly and skip the parse —
-/// which is how a `char` key's `minLength`/`maxLength` is reached, and where a future pattern for
-/// a `Uuid` or an address would be. Otherwise [`TextForm::Text`] and [`TextForm::Unknown`] have no
-/// second step: the first because there is nothing to parse, the second because nothing is known
-/// to parse it as.
+/// **Every read begins by trimming**, because the environment layer trimmed before it parsed
+/// anything — measured, and it holds for a plain `String` and a `char` as much as for an integer.
+/// A read that skipped it would refuse `" x "` for a `char` key against a `minLength` of 1, on a
+/// value that loads.
+///
+/// `text_form` is what says which read, rather than the shape of the constraint object. Two
+/// spellings of that mistake have already been made here: inferring "a pattern means integer",
+/// which was right for two forms and wrong once there were three; and "when `constraint` is a
+/// string type the text *is* the value, so skip the read", which was right while `char` was the
+/// only such form and wrong the moment [`TextForm::Choice`] gained a trim. The table is the rule;
+/// the shape of `constraint` is not.
+///
+/// [`Text`](TextForm::Text) and [`Unknown`](TextForm::Unknown) still reach `constraint` — their
+/// read is a trim rather than nothing — which is how a `char` key's `minLength`/`maxLength` is
+/// checked, and where a future pattern for a `Uuid` or an address would apply.
 ///
 /// Skipping the second leaves every bound in the document decorative, which is a deployment that
 /// passes every gate and fails at boot. Skipping the first, or applying `constraint` to the raw
