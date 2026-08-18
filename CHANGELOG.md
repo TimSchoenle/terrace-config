@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/TimSchoenle/terrace-config/compare/v0.3.0...v0.4.0) (2026-08-18)
+
+
+### Features
+
+* **schema:** render the Markdown tables for reading ([#24](https://github.com/TimSchoenle/terrace-config/issues/24)) ([cb9e15e](https://github.com/TimSchoenle/terrace-config/commit/cb9e15ecf709a70918dcbecf7448fc6a44bd6231))
+
 ## [0.3.0](https://github.com/TimSchoenle/terrace-config/compare/v0.2.0...v0.3.0) (2026-08-17)
 
 
