@@ -10,9 +10,15 @@
 // which is the whole point of the feature and not something to work around by adding uses.
 #![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
 
+use figment::Figment;
+use figment::providers::{Format, Toml};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use terrace_config::Terrace;
-use terrace_config::schema::{Column, Describe, Key, SCHEMA_VERSION, Schema};
+use terrace_config::schema::{
+    Column, DRAFT_07, DRAFT_2020_12, Describe, JsonSchema, Key, Leaf, SCHEMA_VERSION, Schema, Sink,
+    TomlExample,
+};
 
 #[derive(Deserialize, Serialize, Describe)]
 struct Config {
@@ -1406,5 +1412,424 @@ fn an_empty_loader_table_is_empty_rather_than_a_bare_header() {
     assert_eq!(
         keyless.to_markdown_keys(Column::DEFAULT),
         "| TOML | Type | Environment | Default | Flags | Purpose |\n|---|---|---|---|---|---|\n"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The two renderings that write a *file*.
+//
+// These are the tests that matter most, because the failure mode is worse. A reference table that
+// has drifted reads wrong; a `config.example.toml` that has drifted is *copied* — into a
+// deployment, as the config a service actually loads — and a JSON Schema that has drifted tells an
+// editor to underline a key that is perfectly valid.
+//
+// So the property under test is not "the string looks right". It is that the generated file goes
+// back through a real TOML parse and a real `serde` extraction and arrives at the values it was
+// rendered from.
+// ---------------------------------------------------------------------------------------------
+
+/// The example, from the same fixture every other test uses.
+fn example() -> String {
+    schema()
+        .with_defaults_from(&Config::default())
+        .expect("the default config serialises")
+        .to_toml_example()
+}
+
+/// Uncomment every assignment in a generated example, leaving its prose alone.
+///
+/// What an operator does to the file, mechanically: it is how the claim "a commented line and a
+/// deleted line mean the same thing" is checked rather than asserted.
+fn uncomment(example: &str) -> String {
+    example
+        .lines()
+        .map(|line| {
+            line.strip_prefix("# ")
+                .filter(|rest| is_assignment(rest))
+                .unwrap_or(line)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Whether a line is `key = value` rather than prose that happens to contain an `=`.
+fn is_assignment(line: &str) -> bool {
+    line.split_once(" = ").is_some_and(|(key, _)| {
+        !key.is_empty()
+            && key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '"')
+    })
+}
+
+/// Extract a `Config` from TOML text, as the loader's own TOML layer would.
+fn load(toml: &str) -> Config {
+    Figment::new()
+        .merge(Toml::string(toml))
+        .extract()
+        .unwrap_or_else(|e| panic!("the generated example does not load: {e}\n\n{toml}"))
+}
+
+/// The whole point of the rendering: what it writes is a file the loader reads.
+///
+/// Everything with a default is commented out, so this is the *empty* case — the generated file
+/// with nothing filled in has to load, carrying the placeholder at each required key and the
+/// serde default everywhere else.
+#[test]
+fn the_generated_example_loads_unedited() {
+    let loaded = load(&example());
+
+    assert_eq!(loaded.github.username, "<value>");
+    assert_eq!(loaded.dist_dir, "public");
+    assert_eq!(loaded.github.ttl_secs, 0);
+    assert_eq!(loaded.github.token, None);
+}
+
+/// Uncommenting the file gives back the values it was rendered from.
+///
+/// This is what makes a commented line and a deleted line the same thing, and it is the assertion
+/// that catches a default written as the wrong *type* — `dist_dir = public` does not parse, and
+/// `ttl_secs = "0"` parses and then fails to deserialise.
+#[test]
+fn uncommenting_the_example_reproduces_the_defaults() {
+    let loaded = load(&uncomment(&example()));
+
+    assert_eq!(loaded.dist_dir, "public");
+    assert_eq!(loaded.github.ttl_secs, 0);
+    assert!(!loaded.csp.hash_inline_scripts);
+    assert!(!loaded.csp.cloudflare.turnstile);
+    // The one value that does not come back, because it was never written down.
+    assert_eq!(loaded.github.token.as_deref(), Some("<secret>"));
+}
+
+/// A default that *is* a credential is exactly the case this file must not carry: it is committed.
+#[test]
+fn a_secret_default_never_reaches_the_example() {
+    let example = example();
+
+    assert!(!example.contains("hunter2"), "{example}");
+    assert!(example.contains(r#"# token = "<secret>""#), "{example}");
+    assert!(
+        example.contains("Secret: the value below is a placeholder."),
+        "{example}"
+    );
+}
+
+/// The uncommented lines are exactly the required keys, so the generated file is both the whole
+/// reference and the shortest file that loads.
+#[test]
+fn only_required_keys_are_uncommented() {
+    for line in example()
+        .lines()
+        .filter(|line| !(line.is_empty() || line.starts_with('#') || line.starts_with('[')))
+    {
+        assert!(line.starts_with("username = "), "{line}");
+    }
+}
+
+/// A reserved key is read from the environment before this file exists, so the file says so
+/// rather than offering a key that a file may not supply.
+#[test]
+fn a_reserved_key_is_commented_out_with_its_reason() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Reserved {
+        /// Which profile the service runs under.
+        #[serde(default)]
+        profile: String,
+    }
+
+    let example = Terrace::new("PORTFOLIO_")
+        .reserve("PORTFOLIO_PROFILE")
+        .schema::<Reserved>()
+        .to_toml_example();
+
+    assert!(
+        example.contains("# Reserved: only PORTFOLIO_PROFILE supplies this key; a file may not."),
+        "{example}"
+    );
+    assert!(example.contains(r#"# profile = "<value>""#), "{example}");
+}
+
+/// An unquoted key containing a space is not a key at all, and one containing a dot is a
+/// different key. `#[serde(rename = "…")]` accepts both.
+#[test]
+fn a_key_that_cannot_be_bare_is_quoted() {
+    struct Renamed;
+    impl Describe for Renamed {
+        fn describe(sink: &mut Sink) {
+            sink.leaf(Leaf {
+                name: "log level",
+                docs: "",
+                ty: Some("String"),
+                values: None,
+                aliases: &[],
+                note: None,
+                required: true,
+                secret: false,
+            });
+        }
+    }
+
+    let example = Terrace::new("T_")
+        .schema::<Renamed>()
+        .to_toml_example_with(&TomlExample::new().header(false).spellings(false));
+
+    assert_eq!(
+        example,
+        concat!(
+            "# Type: String\n",
+            "# Required: nothing loads until this key is supplied.\n",
+            "\"log level\" = \"<value>\"\n",
+        )
+    );
+}
+
+/// The renderings are one walk over one schema, so the file grouped into tables and the flat
+/// table of paths cannot disagree about what the configuration is.
+#[test]
+fn the_example_carries_every_key_the_table_does() {
+    let schema = schema().with_defaults_from(&Config::default()).unwrap();
+    let example = schema.to_toml_example();
+
+    for key in &schema.keys {
+        let name = key.path.rsplit('.').next().expect("a path has a segment");
+        assert!(
+            example.contains(&format!("{name} = ")),
+            "`{}` is in the table and not in the file:\n{example}",
+            key.path
+        );
+    }
+}
+
+/// The preamble names the variables that decide whether this file is read at all — the ones no
+/// derive can see, and the ones an operator needs before any key matters.
+#[test]
+fn the_preamble_names_the_loader_variables() {
+    let example = example();
+    assert!(example.contains("PORTFOLIO_CONFIG"), "{example}");
+    assert!(example.contains("PORTFOLIO_SECRETS_DIR"), "{example}");
+
+    let bare = schema()
+        .with_defaults_from(&Config::default())
+        .unwrap()
+        .to_toml_example_with(&TomlExample::new().header(false));
+    assert!(!bare.contains("PORTFOLIO_CONFIG"), "{bare}");
+    assert!(bare.starts_with("# Bundle directory"), "{bare}");
+}
+
+// ---- the JSON Schema ----
+
+/// The document, from the same fixture.
+fn json_schema() -> serde_json::Value {
+    let rendered = schema()
+        .with_defaults_from(&Config::default())
+        .expect("the default config serialises")
+        .to_json_schema()
+        .expect("the document serialises");
+    serde_json::from_str(&rendered).expect("the rendering is JSON")
+}
+
+/// A nested key is a nested object, exactly as it is in the file it validates.
+#[test]
+fn the_json_schema_nests_the_way_the_file_does() {
+    let document = json_schema();
+
+    assert_eq!(document["$schema"], json!(DRAFT_2020_12));
+    assert_eq!(document["type"], json!("object"));
+    assert_eq!(
+        document["properties"]["csp"]["properties"]["cloudflare"]["properties"]["turnstile"]["type"],
+        json!("boolean")
+    );
+    assert_eq!(
+        document["properties"]["dist_dir"]["default"],
+        json!("public")
+    );
+    assert_eq!(
+        document["properties"]["github"]["properties"]["ttl_secs"]["minimum"],
+        json!(0)
+    );
+}
+
+/// A key with no default makes the table holding it mandatory too: an operator cannot supply
+/// `github.username` without writing `[github]`.
+#[test]
+fn a_required_key_makes_its_table_required() {
+    let document = json_schema();
+
+    assert_eq!(document["required"], json!(["github"]));
+    assert_eq!(
+        document["properties"]["github"]["required"],
+        json!(["username"])
+    );
+    assert!(
+        document["properties"]["csp"].get("required").is_none(),
+        "{document}"
+    );
+}
+
+/// A secret is annotated rather than valued. The default was redacted before it reached the
+/// schema, and there is nothing here to put back.
+#[test]
+fn a_secret_is_write_only_and_has_no_default() {
+    let token = &json_schema()["properties"]["github"]["properties"]["token"];
+
+    assert_eq!(token["writeOnly"], json!(true));
+    assert!(token.get("default").is_none(), "{token}");
+}
+
+/// A misspelled key is silently ignored by `serde`, which is the silent misconfiguration these
+/// layers exist to remove. Closed by default, and openable for a document that is only part of a
+/// larger one.
+#[test]
+fn the_document_is_closed_by_default() {
+    assert_eq!(json_schema()["additionalProperties"], json!(false));
+
+    let open = schema()
+        .to_json_schema_with(&JsonSchema::new().closed(false))
+        .unwrap();
+    let open: serde_json::Value = serde_json::from_str(&open).unwrap();
+    assert!(open.get("additionalProperties").is_none(), "{open}");
+    assert!(
+        open["properties"]["csp"]
+            .get("additionalProperties")
+            .is_none(),
+        "{open}"
+    );
+}
+
+/// A fixed set of values is stronger than any type, and it is the one thing an editor can
+/// complete for the operator.
+#[test]
+fn a_choice_becomes_an_enum() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    #[serde(rename_all = "lowercase")]
+    enum Level {
+        Trace,
+        #[default]
+        Info,
+    }
+
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Observability {
+        /// How much the service says.
+        #[config(values)]
+        #[serde(default)]
+        log_level: Level,
+    }
+
+    let rendered = Terrace::new("T_")
+        .schema::<Observability>()
+        .to_json_schema()
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+    let level = &document["properties"]["log_level"];
+
+    assert_eq!(level["type"], json!("string"));
+    assert_eq!(level["enum"], json!(["trace", "info"]));
+}
+
+/// A type this crate cannot interpret constrains nothing, rather than being guessed at. A schema
+/// that rejects a file the loader would have accepted stops a deployment that was correct.
+#[test]
+fn an_unknown_type_constrains_nothing() {
+    struct Opaque;
+    impl Describe for Opaque {
+        fn describe(sink: &mut Sink) {
+            sink.leaf(Leaf {
+                name: "pool",
+                docs: "",
+                ty: Some("crate::db::Pool"),
+                values: None,
+                aliases: &[],
+                note: None,
+                required: false,
+                secret: false,
+            });
+        }
+    }
+
+    let rendered = Terrace::new("T_")
+        .schema::<Opaque>()
+        .to_json_schema()
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+    assert!(
+        document["properties"]["pool"].get("type").is_none(),
+        "{document}"
+    );
+}
+
+/// A reserved key is not a property. With the document closed, a file that sets one is flagged —
+/// which is what the loader says about it too.
+#[test]
+fn a_reserved_key_is_not_a_property() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Reserved {
+        /// Which profile the service runs under.
+        #[serde(default)]
+        profile: String,
+        /// Anything else.
+        #[serde(default)]
+        other: String,
+    }
+
+    let rendered = Terrace::new("PORTFOLIO_")
+        .reserve("PORTFOLIO_PROFILE")
+        .schema::<Reserved>()
+        .to_json_schema()
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+    assert!(
+        document["properties"].get("profile").is_none(),
+        "{document}"
+    );
+    assert!(document["properties"].get("other").is_some(), "{document}");
+}
+
+/// An alias is a spelling the loader accepts, so a closed schema that left it out would underline
+/// a file that loads. Either spelling satisfies a required key, which `required` alone cannot say.
+#[test]
+fn an_alias_is_a_property_of_its_own() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Aliased {
+        /// User whose repositories are listed.
+        #[serde(alias = "user")]
+        username: String,
+    }
+
+    let rendered = Terrace::new("T_")
+        .schema::<Aliased>()
+        .to_json_schema()
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+    assert_eq!(document["properties"]["user"]["type"], json!("string"));
+    assert_eq!(
+        document["properties"]["user"]["description"],
+        json!("Another spelling of `username`.")
+    );
+    // Not `required`, which would demand the canonical spelling and reject the alias.
+    assert!(document.get("required").is_none(), "{document}");
+    assert_eq!(
+        document["allOf"],
+        json!([{ "anyOf": [{ "required": ["username"] }, { "required": ["user"] }] }])
+    );
+}
+
+/// Draft-07 is what Helm validates `values.schema.json` against, and the only thing that changes
+/// is the URI naming the dialect.
+#[test]
+fn the_dialect_is_a_choice() {
+    let latest = schema().to_json_schema().unwrap();
+    let helm = schema()
+        .to_json_schema_with(&JsonSchema::new().meta_schema(DRAFT_07))
+        .unwrap();
+
+    assert_eq!(
+        helm.replace(DRAFT_07, DRAFT_2020_12),
+        latest,
+        "only the dialect differs"
     );
 }

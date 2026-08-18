@@ -30,6 +30,7 @@
 //! k:<a>/<b>/<c>=docs declare a leaf at `a.b.c`, with `docs` as its `///` comment
 //! m:<a>/<b>=note     annotate that leaf
 //! S:<a>/<b>          mark that leaf secret
+//! R:<a>/<b>          mark that leaf required
 //! t:<a>/<b>=Type      the type the key takes
 //! v:<a>/<b>=x,y,z     the values the key accepts
 //! A:<a>/<b>=alt       an extra name the key answers to
@@ -69,6 +70,9 @@ struct LeafSpec {
     note: Option<String>,
     /// Whether it is marked secret.
     secret: bool,
+    /// Whether loading fails when nothing supplies it — which is what leaves it uncommented in
+    /// the generated example, and so the half of that file the loader actually reads.
+    required: bool,
     /// The field's type as written.
     ty: Option<String>,
     /// The values the key accepts, when it is a choice.
@@ -124,7 +128,7 @@ fn describe_one(sink: &mut Sink, segments: &[String], leaf: &LeafSpec) {
                 values: (!values.is_empty()).then_some(values.as_slice()),
                 aliases: &aliases,
                 note: leaf.note.as_deref(),
-                required: false,
+                required: leaf.required,
                 secret: leaf.secret,
             });
         }
@@ -184,6 +188,11 @@ fn parse(data: &str) -> Spec {
             "S" => {
                 if let Some(index) = segments(rest).and_then(|s| by_path.get(&s.join("."))) {
                     spec.leaves[*index].secret = true;
+                }
+            }
+            "R" => {
+                if let Some(index) = segments(rest).and_then(|s| by_path.get(&s.join("."))) {
+                    spec.leaves[*index].required = true;
                 }
             }
             "t" => {
@@ -249,6 +258,7 @@ pub fn check(data: &str) {
     aliases_sit_beside_the_key_they_alias(&spec, &schema);
     rendering_is_well_formed(&schema);
     json_round_trips(&schema);
+    json_schema_lists_every_reachable_key(&schema);
     subsets_are_prefixes(&schema);
 
     // The end-to-end passes. Only over keys that can be set *independently* — see `settable`.
@@ -257,6 +267,7 @@ pub fn check(data: &str) {
     secrets_file_reaches_its_key(&spec, &settable);
     indirection_reaches_its_key(&spec, &settable);
     an_unreachable_key_stays_unreachable(&spec, &schema);
+    the_example_is_a_file_the_loader_reads(&spec, &schema, &settable);
 }
 
 /// The loader the schema was built from, rebuilt identically.
@@ -595,5 +606,91 @@ fn subsets_are_prefixes(schema: &Schema) {
             .map(|k| k.path.clone())
             .collect();
         assert_eq!(actual, expected, "subset(`{head}`) kept the wrong keys");
+    }
+}
+
+/// The generated `config.toml` must be a file the loader reads, and read as itself.
+///
+/// The same question as the three spelling passes, asked of the fourth mechanism: this rendering
+/// *writes a file*, so a key whose name needed quoting and did not get it is a key the file puts
+/// somewhere else — under a table it accidentally opened, or nowhere, because the file no longer
+/// parses at all. The fuzzer reaches that directly, since a `k:` directive names a segment
+/// containing anything at all.
+///
+/// Both directions, because both are claims the file makes:
+///
+/// - A key left **uncommented** — a required one — must arrive at [`Key::path`].
+/// - A key **commented out** must not arrive anywhere, which is what makes a commented line and
+///   a deleted line the same thing.
+fn the_example_is_a_file_the_loader_reads(spec: &Spec, schema: &Schema, settable: &[Key]) {
+    let example = schema.to_toml_example();
+    let named: Vec<&Key> = settable.iter().filter(|key| !key.reserved).collect();
+    if named.is_empty() {
+        return;
+    }
+
+    figment::Jail::expect_with(|jail| {
+        let path = jail.directory().join("config.toml");
+        jail.clear_env();
+        if std::fs::write(&path, &example).is_err() {
+            return Ok(());
+        }
+        jail.set_env(format!("{PREFIX}CONFIG"), path.display());
+
+        // Not a legitimate outcome, unlike a refusal in the spelling passes: the TOML layer is
+        // the only source in this jail, so the only thing that can fail here is the parse of a
+        // file this crate itself just wrote.
+        let value = terrace(spec)
+            .figment()
+            .map_err(|e| e.to_string())
+            .and_then(|figment| {
+                figment
+                    .extract::<figment::value::Value>()
+                    .map_err(|e| e.to_string())
+            })
+            .unwrap_or_else(|e| {
+                panic!("the generated example is not a file the loader can read: {e}\n\n{example}")
+            });
+
+        for key in &named {
+            let found = lookup(&value, &key.path).is_some();
+            assert_eq!(
+                found,
+                key.required,
+                "`{}` is {} in the generated example, and {} after loading it.\n\n{example}",
+                key.path,
+                if key.required {
+                    "uncommented"
+                } else {
+                    "commented out"
+                },
+                if found { "arrived" } else { "did not arrive" },
+            );
+        }
+        Ok(())
+    });
+}
+
+/// Every key a file may supply is a property of the JSON Schema, at the depth its path describes.
+///
+/// A closed schema is a set of refusals, so a key missing from it is a key an editor underlines
+/// in a file that loads perfectly well. The path walk is the point: a segment containing a `.`
+/// nests in the loader, and the document has to nest it the same way or the property it lists is
+/// not the property the file writes.
+fn json_schema_lists_every_reachable_key(schema: &Schema) {
+    let rendered = schema.to_json_schema().expect("a schema serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("what it wrote, it can read");
+
+    for key in schema.keys.iter().filter(|key| !key.reserved) {
+        let mut node = &document;
+        for segment in key.path.split('.') {
+            node = &node["properties"][segment];
+        }
+        assert!(
+            !node.is_null(),
+            "`{}` is a key the loader reads and not a property of the JSON Schema:\n{rendered}",
+            key.path,
+        );
     }
 }

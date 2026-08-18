@@ -11,17 +11,40 @@
 //! all three are gone before any runtime sees the type: the sentence saying what the key is
 //! *for*, the type it takes, and the variants an enum-valued key accepts.
 //!
-//! # Two outputs
+//! # Four renderings, one walk
+//!
+//! Walking the type is the expensive half and it happens once. What comes out of it is a
+//! [`Schema`], and every artefact a service hand-maintains beside its configuration is a
+//! rendering of that one value:
+//!
+//! | Rendering | For | Replaces |
+//! |---|---|---|
+//! | [`Schema::to_json`] | a documentation pipeline | — |
+//! | [`Schema::to_markdown`] | `>> README.md` | the hand-written reference table |
+//! | [`Schema::to_toml_example`] | the operator | `config.example.toml` |
+//! | [`Schema::to_json_schema`] | an editor, or a Helm chart's `values.schema.json` | nothing that existed |
 //!
 //! [`Schema::to_json`] is the contract: a versioned document with every field of every key,
-//! including the ones [`Schema::to_markdown`] leaves out to stay readable. Point a documentation
-//! pipeline at it and render whatever that pipeline wants.
+//! including the ones the other three leave out. Point a documentation pipeline at it and render
+//! whatever that pipeline wants.
 //!
-//! [`Schema::to_markdown`] is for the case where the pipeline is `>> README.md`. It emits GitHub
-//! -flavoured tables that can be pasted in unmodified. Its documentation column carries the
-//! summary — the first paragraph — of each `///` comment, on rustdoc's own convention: whatever a
-//! field says below its summary line belongs on the field's own documentation page, not inside a
-//! table cell, and [`Schema::to_json`] still carries all of it.
+//! [`Schema::to_markdown`] emits GitHub-flavoured tables that can be pasted in unmodified. Its
+//! documentation column carries the summary — the first paragraph — of each `///` comment, on
+//! rustdoc's own convention: whatever a field says below its summary line belongs on the field's
+//! own documentation page, not inside a table cell, and [`Schema::to_json`] still carries all of
+//! it.
+//!
+//! [`Schema::to_toml_example`] emits the file itself: every key as a comment carrying its
+//! purpose, its type and its environment spelling, above an assignment showing the value it
+//! already has. A key with a default is commented out, because setting it changes nothing; a
+//! required key is not, because the file does not load without it. A secret is a placeholder,
+//! never a value — this file is committed, and [`Key::secret`] exists to say which keys must not
+//! be in it.
+//!
+//! [`Schema::to_json_schema`] emits a JSON Schema over the same keys, which is what makes an
+//! editor complete and validate the TOML file, and what a Helm chart's `values.schema.json`
+//! consumes. It is the only rendering that has to *interpret* [`Key::ty`] — see [`JsonSchema`]
+//! for how far that interpretation goes and where it stops.
 //!
 //! # More than one root
 //!
@@ -53,15 +76,23 @@
 //! # Ok::<(), terrace_config::Error>(())
 //! ```
 
+mod json_schema;
+mod markdown;
+mod rust_type;
+mod toml_example;
+mod tree;
+
+pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
+pub use markdown::Column;
+pub use terrace_config_macros::Describe;
+pub use toml_example::TomlExample;
+
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
 
 use crate::dialect::Dialect;
 use crate::error::Error;
-
-pub use terrace_config_macros::Describe;
 
 /// The version of the JSON document [`Schema::to_json`] produces.
 ///
@@ -190,6 +221,7 @@ impl Sink {
                 .collect(),
             aliases: alias_paths(&self.prefix, leaf.aliases),
             default: None,
+            default_value: None,
             note: leaf.note.map(str::to_owned),
             required: leaf.required,
             secret: leaf.secret,
@@ -222,7 +254,9 @@ impl Sink {
 /// at all — `#[serde(rename_all = "camelCase")]` produces exactly this, because an environment
 /// key is folded to lower case on the way in and `distDir` never comes back. A table that
 /// printed a spelling nobody can use would be worse than one that says there is none.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No `Eq`: [`Self::default_value`] can hold a float, and a float is not reflexively equal to
+// itself. Deriving the marker anyway would be a claim about `NaN` that this type cannot keep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Key {
     /// The figment/TOML path, e.g. `csp.cloudflare.turnstile`.
     pub path: String,
@@ -255,6 +289,20 @@ pub struct Key {
     ///
     /// Filled in by [`Schema::with_defaults_from`]; the exact value, never prose.
     pub default: Option<String>,
+    /// That same default as the value it *is*, rather than as the text a table prints.
+    ///
+    /// The two are not redundant, because the rendering is lossy on purpose: a table cell reads
+    /// better as `public` than as `"public"`, and `[a, b]` than as `["a", "b"]`. That is the
+    /// right trade for a cell and the wrong one for a file — a generated `config.toml` in which
+    /// a string default lost its quotes does not parse, and one in which a number gained them
+    /// does not load. [`Schema::to_toml_example`] and [`Schema::to_json_schema`] therefore read
+    /// this, and [`Schema::to_markdown`] reads [`Self::default`].
+    ///
+    /// [`None`] whenever [`Self::default`] is, and *also* when the key is
+    /// [`secret`](Self::secret): the display string redacts the value, so keeping the value
+    /// itself beside it would hand every consumer of the document the credential the redaction
+    /// exists to withhold.
+    pub default_value: Option<figment::value::Value>,
     /// The `#[config(note = "…")]` prose explaining what that default *means*.
     ///
     /// Separate from [`Self::default`] because they answer different questions — `0` is what an
@@ -310,7 +358,8 @@ pub struct DialectInfo {
 }
 
 /// The whole configuration surface of one application.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No `Eq`, for [`Key`]'s reason: a schema holds keys, and a key can hold a float default.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Schema {
     /// The version of this document's shape. See [`SCHEMA_VERSION`].
     pub schema_version: u32,
@@ -428,10 +477,10 @@ impl Schema {
     /// should pass whatever `serde` would actually produce. Keys absent from it stay unset, and
     /// a `#[config(default = "…")]` override is left alone.
     ///
-    /// A [`secret`](Key::secret) key renders `<redacted>` rather than its value. The rendering
-    /// here is not a debugging aid — it is written into documentation, which is the last place a
-    /// credential should end up, and a default that *is* a credential is exactly the case where
-    /// this matters.
+    /// A [`secret`](Key::secret) key renders `<redacted>` rather than its value, and keeps no
+    /// [`default_value`](Key::default_value) at all. The rendering here is not a debugging aid —
+    /// it is written into documentation, which is the last place a credential should end up, and
+    /// a default that *is* a credential is exactly the case where this matters.
     ///
     /// A type holding a secret is the case this bound bites on: `secrecy::SecretString` refuses
     /// to implement [`Serialize`] on purpose, so a config struct containing one cannot derive it
@@ -497,17 +546,23 @@ impl Schema {
             if key.required {
                 continue;
             }
-            let Some(rendered) = root.find_ref(&key.path).and_then(|v| render_value(v, 0)) else {
+            let Some(observed) = root.find_ref(&key.path) else {
+                continue;
+            };
+            let Some(rendered) = render_value(observed, 0) else {
                 continue;
             };
             // Redaction after rendering, not before: a secret that is *unset* by default is not
             // a secret worth hiding, and `<redacted>` in place of "unset" would read as though
             // the service ships with a credential baked in.
-            key.default = Some(if key.secret {
-                "<redacted>".to_owned()
-            } else {
-                rendered
-            });
+            if key.secret {
+                key.default = Some("<redacted>".to_owned());
+                continue;
+            }
+            key.default = Some(rendered);
+            // Kept beside the rendering rather than in place of it: the renderings that write a
+            // *file* need the value's type, and the one that writes a table cell needs it gone.
+            key.default_value = Some(observed.clone());
         }
         self
     }
@@ -609,106 +664,10 @@ impl Schema {
         serde_json::to_string_pretty(self)
             .map_err(|e| Error::Invalid(format!("the schema could not be written as JSON: {e}")))
     }
-
-    /// The schema as GitHub-flavoured Markdown, ready to paste into a README.
-    ///
-    /// Two tables: the variables the loader reads, then the configuration keys under
-    /// [`Column::DEFAULT`]. Use [`Self::to_markdown_with`] to choose the columns.
-    ///
-    /// A [`Column::Docs`] cell carries the *summary* of the `///` comment — its first paragraph,
-    /// as rustdoc means the word — rather than the whole of it. [`Key::docs`] keeps the whole
-    /// text for [`Self::to_json`], so nothing is lost; a table cell is simply not where the four
-    /// paragraphs below the summary belong.
-    ///
-    /// Ends with a newline, so appending another section needs no separator of its own.
-    #[must_use]
-    pub fn to_markdown(&self) -> String {
-        self.to_markdown_with(Column::DEFAULT)
-    }
-
-    /// Both tables, with a chosen set of key columns.
-    ///
-    /// The loader-variable table leads when there is one: its three columns are not the key
-    /// columns, and an operator who cannot find `<PREFIX>CONFIG` cannot use any of the rest.
-    ///
-    /// [`Self::to_markdown_loader`] and [`Self::to_markdown_keys`] are the two halves on their
-    /// own, for a page that wants them apart.
-    ///
-    /// Ends with a newline, as [`Self::to_markdown`] does.
-    #[must_use]
-    pub fn to_markdown_with(&self, columns: &[Column]) -> String {
-        let loader = self.to_markdown_loader();
-        let keys = self.to_markdown_keys(columns);
-        if loader.is_empty() {
-            keys
-        } else {
-            // The blank line between them: two tables run together are one malformed table.
-            format!("{loader}\n{keys}")
-        }
-    }
-
-    /// The loader-variable table alone.
-    ///
-    /// A documentation page with one key table per subsystem wants these variables once, not
-    /// repeated above every table — and the subsystem pages want [`Self::to_markdown_keys`] with
-    /// no loader table at all. Emitting the pair together is the common case, not the only one,
-    /// so each half is reachable on its own rather than through clearing a field.
-    ///
-    /// Empty when the schema has no loader variables, which is what
-    /// [`Schema::describe`](Self::describe) produces on its own — a header with no rows under it
-    /// would be a table promising variables that do not exist.
-    ///
-    /// Ends with a newline when it is not empty.
-    #[must_use]
-    pub fn to_markdown_loader(&self) -> String {
-        let mut out = String::new();
-        if self.loader.is_empty() {
-            return out;
-        }
-
-        out.push_str("| Variable | Role | Default | Purpose |\n");
-        out.push_str("|---|---|---|---|\n");
-        for var in &self.loader {
-            let _ = writeln!(
-                out,
-                "| `{}` | {} | {} | {} |",
-                escape(&var.env),
-                var.role.label(),
-                optional_code(var.default.as_deref()),
-                cell(&var.docs),
-            );
-        }
-
-        out
-    }
-
-    /// The configuration-key table alone, with a chosen set of columns.
-    ///
-    /// The counterpart to [`Self::to_markdown_loader`]: the table for a page that documents one
-    /// subsystem and has said where the configuration file comes from somewhere else.
-    ///
-    /// A schema with no keys still renders its header, unlike the loader table. An empty
-    /// configuration section is a real shape — a subsystem that reads nothing yet — and the
-    /// header is what says the section was generated rather than forgotten.
-    ///
-    /// Ends with a newline.
-    #[must_use]
-    pub fn to_markdown_keys(&self, columns: &[Column]) -> String {
-        let mut out = String::new();
-        let header: Vec<&str> = columns.iter().map(|c| c.heading()).collect();
-        let _ = writeln!(out, "| {} |", header.join(" | "));
-        let _ = writeln!(out, "|{}|", vec!["---"; columns.len()].join("|"));
-        for key in &self.keys {
-            let cells: Vec<String> = columns.iter().map(|c| c.render(key)).collect();
-            let _ = writeln!(out, "| {} |", cells.join(" | "));
-        }
-
-        out
-    }
 }
 
 impl LoaderRole {
-    /// The word this role goes by in a rendered table.
+    /// The word this role goes by in a rendering.
     fn label(self) -> &'static str {
         match self {
             Self::Config => "config",
@@ -718,206 +677,50 @@ impl LoaderRole {
     }
 }
 
-/// One column of the Markdown key table.
+/// How much of a key's `///` comment a rendering carries.
 ///
-/// The full set is deliberately wider than [`Self::DEFAULT`]: everything is available to a
-/// caller who wants it, and the default stays narrow enough to read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Rustdoc's own convention, made a parameter: the first paragraph of a comment is its summary
+/// and the rest is detail. Which of the two a rendering wants is a property of the *rendering*
+/// rather than of the comment — a Markdown table cell has a page width to stay inside, a
+/// generated `config.toml` has a reader who is about to edit the key, and a JSON Schema
+/// `description` is read in an editor's hover where length costs nothing.
+///
+/// [`Key::docs`] keeps the whole text whatever this is set to, so nothing chosen here is lost
+/// from [`Schema::to_json`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
-pub enum Column {
-    /// The TOML/figment key path.
-    Path,
-    /// What kind of value the key takes — its type, or the choices it accepts.
-    Type,
-    /// Other key paths that supply the same key.
-    Aliases,
-    /// The environment variable supplying the value directly.
-    Env,
-    /// The variable naming a file holding the value.
-    EnvFile,
-    /// The file name inside the secrets directory.
-    SecretsFile,
-    /// The value when nothing supplies the key, with its note in parentheses.
-    Default,
-    /// That value alone, with no note folded in. Pair it with [`Self::Note`].
-    DefaultValue,
-    /// The `#[config(note = "…")]` prose on its own, for a table that keeps the two apart.
-    ///
-    /// Pair it with [`Self::DefaultValue`], not [`Self::Default`], which already carries the
-    /// note. A column that rendered differently depending on which *other* columns were asked
-    /// for would be the kind of surprise a generated table cannot afford.
-    Note,
-    /// `required`, `secret` and `reserved`, collapsed into one cell.
-    Flags,
-    /// Whether the key must be supplied.
-    Required,
-    /// Whether the value is secret.
-    Secret,
-    /// The `///` comment.
-    Docs,
+pub enum Docs {
+    /// Leave the comment out.
+    None,
+    /// The summary alone: the first paragraph, soft wraps flattened to spaces.
+    #[default]
+    Summary,
+    /// The whole comment, its paragraphs and line breaks intact.
+    Full,
 }
 
-impl Column {
-    /// The columns [`Schema::to_markdown`] emits: everything an operator needs, and nothing that
-    /// pushes the table past the width of a page.
-    ///
-    /// The two file spellings are left out because both are mechanical — [`Self::SecretsFile`]
-    /// is `path` with the separator substituted, and [`Self::EnvFile`] is [`Self::Env`] with the
-    /// dialect's documented suffix appended. Neither adds anything the reader cannot derive from
-    /// a column already in front of them plus one sentence of prose, and dropping the pair keeps
-    /// the table inside a page. Ask for either by name through [`Schema::to_markdown_with`].
-    ///
-    /// [`Self::Flags`] carries what [`Self::Required`] and [`Self::Secret`] would have taken two
-    /// columns to say, and [`Self::Aliases`] is empty for almost every key.
-    ///
-    /// [`Self::Type`] *is* here, because without it a required key shows an em dash for its
-    /// default and the reader has no way to tell whether to supply a string, a number or a list.
-    pub const DEFAULT: &'static [Self] = &[
-        Self::Path,
-        Self::Type,
-        Self::Env,
-        Self::Default,
-        Self::Flags,
-        Self::Docs,
-    ];
-
-    fn heading(self) -> &'static str {
-        match self {
-            Self::Path => "TOML",
-            Self::Type => "Type",
-            Self::Aliases => "Also accepts",
-            Self::Env => "Environment",
-            Self::EnvFile => "File indirection",
-            Self::SecretsFile => "Secrets file",
-            Self::Default | Self::DefaultValue => "Default",
-            Self::Note => "Note",
-            Self::Flags => "Flags",
-            Self::Required => "Required",
-            Self::Secret => "Secret",
-            Self::Docs => "Purpose",
-        }
-    }
-
-    fn render(self, key: &Key) -> String {
-        match self {
-            // Escaped like every other cell. A key path is not prose, but it is not the
-            // table author's to choose either — `#[serde(rename = "a|b")]` puts a cell
-            // separator in it, and an unescaped one adds a column to the row.
-            Self::Path => format!("`{}`", escape(&key.path)),
-            // The choices when there are any, because `LogLevel` tells an operator nothing they
-            // can act on and `trace | debug | info` tells them exactly what to type. The type
-            // name stays in front of them, since it is what they will see in the source.
-            Self::Type => match (&key.ty, key.values.as_slice()) {
-                (_, []) => optional_code(key.ty.as_deref()),
-                (ty, values) => {
-                    let choices = values
-                        .iter()
-                        .map(|value| format!("`{}`", escape(value)))
-                        .collect::<Vec<_>>()
-                        .join(r" \| ");
-                    match ty {
-                        Some(ty) => format!("`{}`: {choices}", escape(ty)),
-                        None => choices,
-                    }
-                }
-            },
-            Self::Aliases => {
-                if key.aliases.is_empty() {
-                    "—".to_owned()
-                } else {
-                    key.aliases
-                        .iter()
-                        .map(|alias| format!("`{}`", escape(alias)))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                }
-            }
-            Self::Env => optional_code(key.env.as_deref()),
-            Self::EnvFile => optional_code(key.env_file.as_deref()),
-            Self::SecretsFile => optional_code(key.secrets_file.as_deref()),
-            // The exact value leads, because that is what an operator compares against what they
-            // set; the note explains what it means. An unset default is written as prose rather
-            // than as an empty code span, so `unset (ISR off)` reads as one phrase.
-            Self::Default | Self::DefaultValue => {
-                let value = match &key.default {
-                    Some(default) => format!("`{}`", escape(default)),
-                    None if key.required => "—".to_owned(),
-                    None => "unset".to_owned(),
-                };
-                match (self, &key.note) {
-                    (Self::Default, Some(note)) => format!("{value} ({})", cell(note)),
-                    _ => value,
-                }
-            }
-            Self::Flags => {
-                let mut notes = Vec::new();
-                if key.required {
-                    notes.push("required");
-                }
-                if key.secret {
-                    notes.push("secret");
-                }
-                if key.reserved {
-                    notes.push("reserved");
-                }
-                if notes.is_empty() {
-                    "—".to_owned()
-                } else {
-                    notes.join(", ")
-                }
-            }
-            Self::Required => yes_or_dash(key.required),
-            Self::Secret => yes_or_dash(key.secret),
-            Self::Note => key.note.as_deref().map_or_else(|| "—".to_owned(), cell),
-            Self::Docs => summary_cell(&key.docs),
-        }
+impl Docs {
+    /// The text this setting takes from `docs`, or [`None`] when there is nothing to take.
+    fn of(self, docs: &str) -> Option<String> {
+        let text = match self {
+            Self::None => return None,
+            Self::Summary => summary(docs),
+            Self::Full => docs.trim_end().to_owned(),
+        };
+        (!text.is_empty()).then_some(text)
     }
 }
 
-fn yes_or_dash(flag: bool) -> String {
-    if flag { "yes" } else { "—" }.to_owned()
-}
-
-/// A spelling as inline code, or an em dash when there is none.
-fn optional_code(value: Option<&str>) -> String {
-    value.map_or_else(|| "—".to_owned(), |value| format!("`{}`", escape(value)))
-}
-
-/// Prose in a table cell: newlines become breaks, and `|` stops ending the cell early.
-fn cell(text: &str) -> String {
-    if text.is_empty() {
-        return "—".to_owned();
-    }
-    escape(text).replace('\n', "<br>")
-}
-
-/// A doc comment in a table cell: its summary, on one line.
+/// The summary of a `///` comment: its first paragraph, on one line.
 ///
-/// The whole comment used to go in, which put every paragraph of a field's rustdoc into one cell
-/// and made a table out of an essay. The fix is rustdoc's own convention rather than a new
-/// annotation to keep in step: the first paragraph is the summary, and a comment written the way
-/// rustdoc asks for one already reads correctly here with nothing to change.
-///
-/// [`Key::docs`] keeps the whole text, so the JSON contract loses nothing and a pipeline that
-/// wants the paragraphs below the summary can still render them.
-///
-/// Soft wraps inside that paragraph become spaces rather than `<br>`: they are the author's line
+/// Soft wraps inside that paragraph become spaces rather than breaks — they are the author's line
 /// width, not a break they asked a reader to see. A comment opening with a list or a fenced block
 /// has no leading paragraph to find, so its first block comes out instead, flattened the same way.
-fn summary_cell(text: &str) -> String {
-    let summary: Vec<&str> = text
-        .lines()
+fn summary(docs: &str) -> String {
+    docs.lines()
         .take_while(|line| !line.trim().is_empty())
-        .collect();
-    if summary.is_empty() {
-        return "—".to_owned();
-    }
-    escape(&summary.join(" "))
-}
-
-/// The characters that would otherwise be read as table structure.
-fn escape(text: &str) -> String {
-    text.replace('\\', r"\\").replace('|', r"\|")
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A default value as a table would show it.
@@ -1070,7 +873,7 @@ fn secrets_file_name(dialect: &Dialect, path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Dialect, env_spelling, escape, render_value, secrets_file_name};
+    use super::{Dialect, env_spelling, render_value, secrets_file_name};
 
     #[test]
     fn a_lower_case_path_gets_all_three_spellings() {
@@ -1118,11 +921,5 @@ mod tests {
     fn absent_and_null_defaults_render_the_same() {
         let null = figment::value::Value::serialize(Option::<u8>::None).unwrap();
         assert_eq!(render_value(&null, 0), None);
-    }
-
-    #[test]
-    fn a_pipe_in_a_doc_comment_does_not_end_the_cell() {
-        assert_eq!(escape("a | b"), r"a \| b");
-        assert_eq!(escape(r"a \ b"), r"a \\ b");
     }
 }
