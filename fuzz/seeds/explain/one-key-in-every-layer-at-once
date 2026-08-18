@@ -1,0 +1,4 @@
+f:00-first.toml=[auth]\njwt_secret = "from-toml"\n
+f:auth__jwt_secret=from-the-mount
+e:AUTH__JWT_SECRET=from-the-environment
+p:auth__jwt_secret=from-indirection

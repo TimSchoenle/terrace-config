@@ -72,6 +72,22 @@ impl FileLayers {
         Ok(layers)
     }
 
+    /// The secrets-directory layer, when one was configured.
+    ///
+    /// Exposed for [`Explanation`](crate::explain::Explanation), which has to name the file each
+    /// value came out of and cannot get that from the merged figment: a `Provider` carries one
+    /// [`Metadata`] for a whole layer, so figment can say "file-backed configuration" and no more.
+    #[cfg(feature = "explain")]
+    pub(crate) fn secrets(&self) -> Option<&SecretsDir> {
+        self.secrets.as_ref()
+    }
+
+    /// The `<PREFIX><KEY><SUFFIX>` indirection layer. As [`Self::secrets`].
+    #[cfg(feature = "explain")]
+    pub(crate) fn indirections(&self) -> Option<&FileSuffixEnv> {
+        self.files.as_ref()
+    }
+
     /// Whether any file-backed value was found. Callers skip the provider entirely when not.
     pub(crate) fn is_empty(&self) -> bool {
         self.secrets.as_ref().is_none_or(SecretsDir::is_empty)

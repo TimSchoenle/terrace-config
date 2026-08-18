@@ -52,6 +52,7 @@ jobs:
           - "--all-features"
           - "--no-default-features --features loader"
           - "--no-default-features --features schema"
+          - "--no-default-features --features explain"
           - "--no-default-features --features testing"
           - "--no-default-features --features reload"
     steps:
@@ -105,6 +106,7 @@ jobs:
           - "--no-default-features"
           - "--no-default-features --features loader"
           - "--no-default-features --features schema"
+          - "--no-default-features --features explain"
           - "--no-default-features --features testing"
           - "--no-default-features --features reload"
           - "--all-features"
@@ -139,6 +141,7 @@ jobs:
       - run: cargo doc --all-features --no-deps
       - run: cargo doc --no-default-features --features loader --no-deps
       - run: cargo doc --no-default-features --features schema --no-deps
+      - run: cargo doc --no-default-features --features explain --no-deps
       - run: cargo doc --no-default-features --features testing --no-deps
       - run: cargo doc --no-default-features --features reload --no-deps
 
@@ -182,7 +185,7 @@ jobs:
       - name: Short campaign
         run: |
           host="$(rustc -vV | sed -n 's/^host: //p')"
-          for target in env_load secrets_dir toml_layers schema; do
+          for target in env_load secrets_dir toml_layers schema explain; do
             cargo fuzz run --target "$host" "$target" \
               "fuzz/corpus/$target" "fuzz/seeds/$target" \
               -- -dict=fuzz/dictionaries/config.dict -max_total_time=60

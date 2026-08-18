@@ -5,7 +5,7 @@
 //! layers exist. It is the whole of the parameterisation that turned a project-specific loader
 //! into a crate — in the original there were four `const`s here and a hardcoded array.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The default separator between nesting levels in an environment key.
 const DEFAULT_SEPARATOR: &str = "__";
@@ -184,7 +184,22 @@ impl Dialect {
     /// Excludes the `_FILE` indirections, which are the mechanism rather than a value, and the
     /// reserved keys, which are not part of the layered config at all.
     pub(crate) fn plain_env_keys(&self) -> BTreeSet<String> {
-        let mut keys = BTreeSet::new();
+        self.plain_env_entries().into_keys().collect()
+    }
+
+    /// Every key the environment supplies directly, against the variables that supply it.
+    ///
+    /// The set [`Self::plain_env_keys`] returns, with the spelling each key was found under kept
+    /// rather than discarded — which is the whole of what an operator asking "where did this
+    /// value come from" needs back.
+    ///
+    /// A key maps to a *set* of variables because more than one can produce it: environment
+    /// names are case-sensitive on Linux and this dialect's key paths are not, so `MYAPP_PORT`
+    /// and `MYAPP_port` are two variables and one key. Reporting both is the honest answer —
+    /// figment reads both and one of them wins — and a set keeps the report deterministic where
+    /// picking one out of `env::vars_os` order would not.
+    pub(crate) fn plain_env_entries(&self) -> BTreeMap<String, BTreeSet<String>> {
+        let mut keys: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (name, _) in std::env::vars_os() {
             let Some(name) = name.to_str() else { continue };
             if self.is_reserved(name) {
@@ -199,7 +214,9 @@ impl Dialect {
             if let Some(suffix) = name.strip_prefix(&self.prefix)
                 && !suffix.is_empty()
             {
-                keys.insert(self.key_path(suffix));
+                keys.entry(self.key_path(suffix))
+                    .or_default()
+                    .insert(name.to_owned());
             }
         }
         keys

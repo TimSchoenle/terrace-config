@@ -84,6 +84,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "explain"
+path = "fuzz_targets/explain.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "secrets_dir"
 path = "fuzz_targets/secrets_dir.rs"
 test = false
