@@ -248,10 +248,8 @@ because every spelling it reports is derived from the loader's dialect.
 ## Generating the configuration reference
 
 The loader never learns the shape of a config — it hands the merged figment to `serde` and takes
-back a `T`. The `schema` feature inverts that, so the four artefacts every service keeps beside
-its configuration — the reference table, the machine-readable contract, `config.example.toml`,
-and the JSON Schema an editor validates it against — are generated from the type instead of
-maintained beside it.
+back a `T`. The `schema` feature inverts that, so the reference table every service needs is
+generated from the type instead of maintained beside it.
 
 ```toml
 terrace-config = { git = "…", tag = "v0.4.0", features = ["schema"] }
@@ -311,10 +309,7 @@ struct Observability {
 }
 ```
 
-### Four renderings, one walk
-
-Walking the type is the expensive half, and it happens once. What comes out of it is a `Schema`,
-and every artefact is a rendering of that one value:
+### Two outputs
 
 ```rust
 let schema = Terrace::new("PORTFOLIO_")
@@ -322,15 +317,9 @@ let schema = Terrace::new("PORTFOLIO_")
     .schema::<Config>()
     .with_defaults_from(&Config::default())?;
 
-std::fs::write("docs/config.json", schema.to_json()?)?;          // the contract
-std::fs::write("docs/config.md", schema.to_markdown())?;         // ready to paste
-std::fs::write("config.example.toml", schema.to_toml_example())?;// ready to copy
-std::fs::write("config.schema.json", schema.to_json_schema()?)?; // ready to validate
+std::fs::write("docs/config.json", schema.to_json()?)?;   // the contract
+std::fs::write("docs/config.md", schema.to_markdown())?;  // ready to paste
 ```
-
-The last two are the ones worth a `--check`-style diff in CI. A reference table that has drifted
-reads wrong; an example file that has drifted is copied into a deployment, and a JSON Schema that
-has drifted underlines a key that is perfectly valid.
 
 `to_json` is the machine-readable contract: a versioned document carrying every field of every
 key, including the ones the Markdown renderer leaves out to stay readable. Point a documentation
@@ -378,88 +367,6 @@ than forgotten.
 
 Every rendering ends with a newline, so a template pipeline that appends another section needs no
 separator of its own.
-
-#### The example file
-
-`to_toml_example` writes the file itself. This is the artefact that drifts fastest and costs most
-when it does: a reference table that has drifted reads wrong, whereas `config.example.toml` gets
-*copied* — into a deployment, as the config a service actually loads — so a key added six months
-after the example was written is a key nobody in that deployment knows exists.
-
-```toml
-[github]
-# User whose repositories `update-repos` lists.
-# Type: String
-# Also accepted as: github.user
-# Also from: PORTFOLIO_GITHUB__USERNAME, PORTFOLIO_GITHUB__USERNAME_FILE=/path/to/file,
-#   github__username in the secrets directory
-# Required: nothing loads until this key is supplied.
-username = "<value>"
-
-# Bearer token lifting the GitHub API rate limit.
-# Type: SecretString
-# Also from: PORTFOLIO_GITHUB__TOKEN, PORTFOLIO_GITHUB__TOKEN_FILE=/path/to/file, github__token
-#   in the secrets directory
-# Secret: the value below is a placeholder.
-# token = "<secret>"
-
-# Revalidation interval in seconds.
-# Type: u64
-# Also from: PORTFOLIO_GITHUB__TTL_SECS, PORTFOLIO_GITHUB__TTL_SECS_FILE=/path/to/file,
-#   github__ttl_secs in the secrets directory
-# ttl_secs = 0
-```
-
-Three rules, each of which is about the output being a file rather than a page:
-
-- **A key with a default is commented out.** Setting it changes nothing, so a commented line and a
-  deleted line mean the same thing to the loader. What is left uncommented is exactly the set of
-  required keys, which makes the generated file both the whole reference and the shortest file
-  that loads.
-- **A secret is a placeholder, never a value.** This file is committed. The spellings on the line
-  above it are where the real value belongs, and all three of them win over this file — which is
-  what lets a rotated `Secret` reach a running service.
-- **Defaults are written as the values they are.** The Markdown table renders `public`, because
-  that reads better in a cell; a file that says `dist_dir = public` does not parse. The schema
-  carries both — `Key::default` for the cell, `Key::default_value` for the file.
-
-A key the loader [reserves](#the-layers) is written as a comment saying so rather than as a key,
-because no file may supply one. `TomlExample` turns the preamble, the `///` comments and the
-spellings off for a shorter file.
-
-#### The JSON Schema
-
-`to_json_schema` describes the same keys to a *program*: point a TOML language server at it and
-every key completes, every `///` comment is the hover text, and `port = "8080"` is underlined in
-the editor rather than at the next deployment. `helm install` validates a chart's
-`values.schema.json` the same way, before anything reaches a cluster.
-
-```rust
-std::fs::write("config.schema.json", schema.to_json_schema()?)?;
-
-// For a Helm chart: draft-07, and open to the keys the chart itself carries.
-let helm = schema.to_json_schema_with(
-    &JsonSchema::new().meta_schema(DRAFT_07).closed(false),
-)?;
-```
-
-Nested keys become nested `properties` objects — `csp.cloudflare.turnstile` is three levels deep,
-exactly as it is in the file — and a key with no default lands in its object's `required` list,
-which makes the table holding it required in turn. `#[config(values)]` becomes an `enum`, a
-`#[config(secret)]` key becomes `writeOnly` with no default, and every `#[serde(alias)]` is a
-property of its own.
-
-This is the one rendering that has to *interpret* a type, since `"type": "integer"` has nowhere
-else to come from — and it is written to fail closed, because a schema that rejects a file the
-loader would have accepted stops a deployment that was correct. `u16` becomes an integer bounded
-to `0..=65535`, `Vec<String>` an array of strings, `BTreeSet<_>` an array with `uniqueItems`; a
-spelling it does not recognise, such as a domain newtype, produces no `type` at all rather than a
-guess. A 64-bit bound is left off rather than written down as the different number an IEEE double
-would make of it.
-
-The document is closed by default — `additionalProperties: false` — because a misspelled key in a
-config file is otherwise ignored in silence, which is the failure this crate exists to remove.
-`JsonSchema::closed(false)` opens it for a document that describes only part of a file.
 
 ### A whole crate, a whole workspace, or one subsystem
 
@@ -529,18 +436,14 @@ use myservice::Config;              // the root; nested types need only `Describ
 use terrace_config::Terrace;
 
 fn main() -> ExitCode {
+    let markdown = std::env::args().any(|a| a == "--markdown");
     let schema = Terrace::new("MYSERVICE_")
         .reserve("MYSERVICE_PROFILE")
         .schema::<Config>()
         .with_defaults_from(&Config::default())
         .expect("the default config serialises");
 
-    println!("{}", match std::env::args().nth(1).as_deref() {
-        Some("--markdown") => schema.to_markdown(),
-        Some("--toml") => schema.to_toml_example(),
-        Some("--json-schema") => schema.to_json_schema().unwrap(),
-        _ => schema.to_json().unwrap(),
-    });
+    println!("{}", if markdown { schema.to_markdown() } else { schema.to_json().unwrap() });
     ExitCode::SUCCESS
 }
 ```
@@ -575,10 +478,8 @@ When the type is not yours to annotate, `Schema::with_defaults_from_value` takes
 **3. Generate**, from the crate that owns the root type:
 
 ```bash
-cargo run --example config-schema -- --markdown    > docs/config.md
-cargo run --example config-schema -- --toml        > config.example.toml
-cargo run --example config-schema -- --json-schema > config.schema.json
-cargo run --example config-schema                  > docs/config.json
+cargo run --example config-schema -- --markdown > docs/config.md
+cargo run --example config-schema              > docs/config.json
 ```
 
 In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
@@ -588,15 +489,13 @@ generator per *dialect*: two binaries reading one prefix are one document, joine
 **4. Fail the build when the checked-in copy goes stale:**
 
 ```yaml
-- run: cargo run --example config-schema -- --markdown    > docs/config.md
-- run: cargo run --example config-schema -- --toml        > config.example.toml
-- run: cargo run --example config-schema -- --json-schema > config.schema.json
+- run: cargo run --example config-schema -- --markdown > docs/config.md
 - name: Configuration reference is current
-  run: git diff --exit-code -- docs/config.md config.example.toml config.schema.json
+  run: git diff --exit-code -- docs/config.md
 ```
 
-That is the whole point of generating them: none of the three can drift from the code, because a
-pull request that changes a key without regenerating fails.
+That is the whole point of generating it: the table cannot drift from the code, because a pull
+request that changes a key without regenerating fails.
 
 ### Keeping it out of the production build
 
@@ -656,11 +555,6 @@ JSON keeps them as separate `default` and `note` fields, and `Column::DefaultVal
 A default that is a secret renders `<redacted>` regardless of what the value is, and a *required*
 key reports no default at all — whatever `Default` put in the field is an artefact of building
 the value, and printing it would tell an operator they can leave the key out.
-
-`Key::default` is that rendering; `Key::default_value` beside it is the value itself. The two are
-not redundant, because the rendering is lossy on purpose — a cell reads better as `public` than
-as `"public"` — and the renderings that write a *file* need the value's type back. A secret keeps
-no `default_value` at all, so the redaction cannot be undone by a consumer of the JSON.
 
 ## Secrets and `Debug`
 
