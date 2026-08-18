@@ -35,6 +35,11 @@ struct Config {
 #[derive(Deserialize, Serialize, Default, Describe)]
 struct Github {
     /// User whose repositories are listed.
+    ///
+    /// `userName` is deliberately unspellable in the environment — a key folded to lower case on
+    /// the way in never comes back — so this field carries one alias that has environment and file
+    /// spellings and one that has neither.
+    #[serde(alias = "user", alias = "userName")]
     username: String,
     /// Bearer token lifting the rate limit.
     #[config(secret)]
@@ -800,6 +805,54 @@ fn matches_pattern(pattern: &str, text: &str) -> bool {
         },
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Aliases, which are live spellings in every layer and not only in the document
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn an_alias_is_published_in_every_spelling_that_supplies_it() {
+    // Measured: with `#[serde(alias = "user")]` on `github.username`, the loader answers to
+    // `PORTFOLIO_GITHUB__USER` in the environment and to a secrets file named `github__user`,
+    // exactly as it answers to the canonical spellings.
+    //
+    // An alias is what a maintainer adds when renaming a key so existing deployments keep working.
+    // Publishing only the canonical spelling would send the old name to the ordered list's step 4
+    // — "a key spelling nothing in this image reads" — and reject a correct deployment, turning
+    // the shim that makes a rename safe into the thing that fails the gate.
+    let contract = contract();
+    let key = key_of(&contract, "github.username");
+
+    assert_eq!(key.aliases, ["github.user", "github.userName"]);
+    assert_eq!(key.env_aliases, ["PORTFOLIO_GITHUB__USER"]);
+    assert_eq!(key.env_file_aliases, ["PORTFOLIO_GITHUB__USER_FILE"]);
+    assert_eq!(key.secrets_file_aliases, ["github__user"]);
+}
+
+#[test]
+fn a_key_without_aliases_carries_no_alias_spellings() {
+    let contract = contract();
+    let key = key_of(&contract, "ttl_secs");
+
+    assert!(key.aliases.is_empty());
+    assert!(key.env_aliases.is_empty());
+    assert!(key.env_file_aliases.is_empty());
+    assert!(key.secrets_file_aliases.is_empty());
+}
+
+#[test]
+fn an_alias_with_no_environment_spelling_contributes_nothing() {
+    // Which is why the three lists are membership sets rather than arrays parallel to `aliases`:
+    // `userName` is folded to lower case on the way in and never comes back, so it has no
+    // environment spelling at all. A consumer indexing `env_aliases` by an `aliases` position
+    // would read the wrong one.
+    let contract = contract();
+    let key = key_of(&contract, "github.username");
+
+    assert_eq!(key.aliases, ["github.user", "github.userName"]);
+    assert_eq!(key.env_aliases, ["PORTFOLIO_GITHUB__USER"]);
+    assert_eq!(key.secrets_file_aliases, ["github__user"]);
 }
 
 // ---------------------------------------------------------------------------------------------

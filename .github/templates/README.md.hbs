@@ -975,10 +975,11 @@ exists to prevent, reached through evaluation order instead of pattern syntax. F
 variable on a container, first match winning:
 
 1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
-2. some `schema.keys[].env` — that key, from the environment layer. Check it in two steps; see
-   below.
-3. some `schema.keys[].env_file` — that key, by indirection. The value is a path, so neither
-   constraint applies; what applies is that the path is mounted.
+2. some `schema.keys[].env` **or one of that key's `env_aliases`** — that key, from the
+   environment layer. Check it in two steps; see below.
+3. some `schema.keys[].env_file` **or one of its `env_file_aliases`** — that key, by
+   indirection. The value is a path, so neither constraint applies; what applies is that the path
+   is mounted.
 4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
    image reads. Neither `external.env` nor `external.ignore` can reach this step, because `build`
    refuses both when they carry the prefix.
@@ -989,6 +990,14 @@ variable on a container, first match winning:
 
 That list is repeated verbatim in `External`'s own documentation, and the two must be edited
 together: two normative statements that disagree is the same defect as none, and harder to notice.
+
+The alias spellings in steps 2 and 3 matter more than they look. A key with `#[serde(alias = "…")]`
+answers to every one of them — measured, in the environment layer and in the secrets directory
+alike — so a chart still using a name kept alive by an alias is a *correct* deployment. Publishing
+only the canonical spelling would send it to step 4 and reject it, turning the shim that makes a
+rename safe into the thing that fails the gate. `env_aliases`, `env_file_aliases` and
+`secrets_file_aliases` are those spellings, derived by the same rules as the canonical three
+because a derivation left to prose is one each consumer gets differently wrong.
 
 **Steps 2 and 5 are two checks, and both are needed.** A variable holds text and a configuration
 holds a value:

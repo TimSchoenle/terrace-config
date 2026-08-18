@@ -232,6 +232,9 @@ impl Sink {
                 .map(str::to_owned)
                 .collect(),
             aliases: alias_paths(&self.prefix, leaf.aliases),
+            env_aliases: Vec::new(),
+            env_file_aliases: Vec::new(),
+            secrets_file_aliases: Vec::new(),
             // Filled in by `describe_at`, beside the spellings: all three are derived from what
             // the derive collected rather than collected themselves, and doing it in one place is
             // what keeps a hand-built `Sink` from producing a key whose constraint disagrees with
@@ -369,10 +372,41 @@ pub struct Key {
     pub text_form: TextForm,
     /// Other key paths that supply this same key, from `#[serde(alias = "…")]`.
     ///
-    /// Full paths, so each one's environment and file spellings derive exactly as
-    /// [`Self::path`]'s do. An alias left out of the schema is a spelling that works and is
-    /// documented nowhere.
+    /// Full paths. An alias left out of the schema is a spelling that works and is documented
+    /// nowhere — which is why the spellings derived from these are published too, rather than
+    /// left to a consumer to derive: see [`Self::env_aliases`].
     pub aliases: Vec<String>,
+    /// Every *other* environment spelling this key answers to, one per [`Self::aliases`] entry
+    /// that has one.
+    ///
+    /// [`Self::env`] is the spelling derived from [`Self::path`]; these are the spellings derived
+    /// from the aliases, and **the loader reads all of them equally**. A validator deciding
+    /// whether a variable is a key has to check these too.
+    ///
+    /// It is a membership set, not a parallel array: an alias whose path cannot be spelled in the
+    /// environment at all contributes nothing here, so the indices do not line up with
+    /// [`Self::aliases`] and nothing should assume they do.
+    ///
+    /// An alias is what a maintainer adds when renaming a key so that existing deployments keep
+    /// working. Publishing only the canonical spelling turns that compatibility shim into a hard
+    /// failure: a chart still using the old name is a *correct* deployment, and a gate that
+    /// refuses it is refusing the one thing that made the rename safe.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env_aliases: Vec<String>,
+    /// The `_FILE` spelling of each of [`Self::env_aliases`], where the dialect permits one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env_file_aliases: Vec<String>,
+    /// Every *other* secrets-directory file name this key answers to, one per alias that has one.
+    ///
+    /// Same reasoning as [`Self::env_aliases`], and measured the same way: a file named for an
+    /// alias supplies the key exactly as one named for [`Self::path`] does.
+    ///
+    /// Worth knowing when checking for a key supplied twice: the loader's own shadow check
+    /// compares *spellings*, so a canonical variable against an alias-named file is not the pair
+    /// it reports. `serde` still refuses the load — with `duplicate field`, naming neither source
+    /// — so the diagnostic that names both is the one a consumer builds from these fields.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets_file_aliases: Vec<String>,
     /// What the value is when nothing supplies it, rendered for display. [`None`] means unset —
     /// or, for a [`required`](Self::required) key, that there is no default to have.
     ///
@@ -572,15 +606,40 @@ impl Schema {
                 // variable usable — `_FILE` could just as easily be `=`.
                 .filter(|name| is_settable_env_name(name));
             key.secrets_file = secrets_file_name(dialect, &key.path);
+
+            // The same three derivations over the aliases, because the loader answers to all of
+            // them. Deriving them here rather than describing the rule and letting each consumer
+            // apply it is the reason `secrets_file` is a field at all: a derivation written in
+            // prose is a derivation every implementation gets slightly differently wrong.
+            key.env_aliases = key
+                .aliases
+                .iter()
+                .filter_map(|alias| env_spelling(dialect, alias))
+                .collect();
+            key.env_file_aliases = key
+                .env_aliases
+                .iter()
+                .map(|env| format!("{env}{}", dialect.indirection_suffix()))
+                .filter(|name| is_settable_env_name(name))
+                .collect();
+            key.secrets_file_aliases = key
+                .aliases
+                .iter()
+                .filter_map(|alias| secrets_file_name(dialect, alias))
+                .collect();
+
             key.reserved = key
                 .env
                 .as_deref()
                 .is_some_and(|env| dialect.is_reserved(env));
             // A reserved key is read straight from the environment, so neither file mechanism
-            // can supply it. Saying otherwise would document a path that errors on use.
+            // can supply it. Saying otherwise would document a path that errors on use — and the
+            // alias spellings of one are file mechanisms just as much as the canonical.
             if key.reserved {
                 key.env_file = None;
                 key.secrets_file = None;
+                key.env_file_aliases.clear();
+                key.secrets_file_aliases.clear();
             }
         }
 

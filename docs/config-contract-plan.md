@@ -153,6 +153,12 @@ report them — and a gate that flagged everything it could not account for woul
 | `External::ignore` | nobody here owns it | skips it; only a trailing `*` is a wildcard |
 | `External::unknown` | what to do with everything else | `Reject` by default |
 
+A key with `#[serde(alias = "…")]` answers to every alias spelling in every layer — measured, in
+the environment and in the secrets directory alike — so the contract publishes `env_aliases`,
+`env_file_aliases` and `secrets_file_aliases` beside the canonical three. Gates 2 and 3 check all
+of them. An alias is what a maintainer adds to keep existing deployments working across a rename,
+and a gate that refused the old spelling would fail the one thing that made the rename safe.
+
 The distinction is the whole value. A declared `PORT` with `ty("u16")` means a chart passing
 `PORT: "http"` fails the same gate a chart passing `PORTFOLIO_ISR__TTL_SECS: "soon"` fails. An
 *ignored* `PORT` is a variable the chart may misspell freely. So the chart's `server.port`,
@@ -549,8 +555,8 @@ false`". The contract names the fix, so the gate can too.
 
 For every declared container, every variable matching the document's prefix must be one of:
 
-- a key's `env` spelling,
-- a key's `env_file` spelling,
+- a key's `env` spelling **or one of its `env_aliases`**,
+- a key's `env_file` spelling **or one of its `env_file_aliases`**,
 - a `loader` variable (`PORTFOLIO_CONFIG`, `PORTFOLIO_SECRETS_DIR`),
 - a `reserved` key.
 
@@ -564,11 +570,24 @@ failed `helm template` naming both spellings. No other tool in the repository ca
 seeing it requires knowing that `PORTFOLIO_GITHUB__TOKEN` and the file `github__token` are the same
 key.
 
+Include the alias spellings on both sides. A canonical variable beside an alias-named file is the
+same defect and the least visible version of it: the loader's own shadow check compares spellings,
+so it does not report that pair, and `serde` refuses the load with `duplicate field`, naming
+neither source. A gate holding both spelling sets is the only thing that can say which two.
+
+Include the alias spellings on both sides. A canonical variable beside an alias-named file is the
+same defect and the *least* visible version of it: the loader's own shadow check compares
+spellings, so it does not report that pair, and `serde` refuses the load with `duplicate field`,
+naming neither source. A gate holding both spelling sets is the only thing that can say which two.
+
 ### Gate 3 — file spellings
 
 Per container, for gate 2's reason.
 
-- every file name in a rendered Secret mounted at `secretsDir` must equal some key's `secrets_file`
+- every file name in a rendered Secret mounted at `secretsDir` must equal some key's
+  `secrets_file` **or one of its `secrets_file_aliases`** — a `#[serde(alias)]` is a live file name
+  as much as a live variable, and refusing one refuses a chart that has not finished a rename the
+  service deliberately kept working
 - every `*_FILE` variable must equal some key's `env_file` and point inside a mounted volume
 - and the key it names must have a **string `constraint`** — `{"type": "string"}`, whatever else
   it carries. See §2.5. A key whose document-space type is not a string cannot be file-supplied at

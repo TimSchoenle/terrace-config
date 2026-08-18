@@ -276,10 +276,11 @@ impl App {
 ///
 /// 1. it is one of `schema.loader[].env` — a variable the loader reads to decide what the layers
 ///    are. Valid.
-/// 2. it equals some `schema.keys[].env` — that key, supplied by the environment layer. Check it
-///    in two steps; see *Two constraints* below.
-/// 3. it equals some `schema.keys[].env_file` — that key, supplied by indirection. The value is a
-///    path, so neither constraint applies to it; what applies is that the path is mounted.
+/// 2. it equals some `schema.keys[].env` **or one of that key's `env_aliases`** — that key,
+///    supplied by the environment layer. Check it in two steps; see *Two constraints* below.
+/// 3. it equals some `schema.keys[].env_file` **or one of its `env_file_aliases`** — that key,
+///    supplied by indirection. The value is a path, so neither constraint applies to it; what
+///    applies is that the path is mounted.
 /// 4. it begins with `schema.dialect.prefix` and matched none of the above — **reject**. It is a
 ///    key spelling nothing in this image reads: a rename nobody finished, or a typo. Neither
 ///    [`Self::env`] nor [`Self::ignore`] can reach this step, because [`ContractBuilder::build`]
@@ -292,6 +293,12 @@ impl App {
 ///
 /// Step 4 sitting above 5 and 6 is the load-bearing part. After `build`'s refusals the two cannot
 /// disagree, so stating the order costs nothing and removes the question.
+///
+/// The alias spellings in steps 2 and 3 are the other half of that. A key with
+/// `#[serde(alias = "…")]` answers to every one of them, so a chart still using a name kept alive
+/// by an alias is a *correct* deployment — and step 4 would otherwise reject it, turning the shim
+/// that makes a rename safe into the thing that fails the gate. See
+/// [`Key::env_aliases`](super::Key::env_aliases).
 ///
 /// # Two constraints, and both are needed
 ///
@@ -326,6 +333,16 @@ impl App {
 /// `u64` key given `18446744073709551616` therefore satisfies everything published here and still
 /// fails to load. Running the real binary against the rendered configuration is what closes that,
 /// and there is no arrangement of these fields that would.
+///
+/// # Two spellings of one key
+///
+/// A chart setting a key's canonical variable *and* one of its aliases has supplied one key twice.
+/// So has one setting the canonical variable beside a file named for an alias. The loader's own
+/// shadow check compares spellings, so it does not report the second pair as a shadow — `serde`
+/// refuses the load with `duplicate field`, naming neither source. A consumer holding
+/// [`Key::env_aliases`](super::Key::env_aliases) and
+/// [`secrets_file_aliases`](super::Key::secrets_file_aliases) can name both, which is the whole
+/// reason to publish them rather than describe how to derive them.
 ///
 /// # The file layers are a separate question
 ///
