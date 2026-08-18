@@ -481,8 +481,16 @@ pub enum TextForm {
     /// is where a `minimum` and `maximum` live.
     Integer,
     /// `true` or `false`, and nothing else — not `TRUE`, not `1`, not `yes`.
+    ///
+    /// Surrounding whitespace is permitted for [`Self::Choice`]'s reason and measured the same
+    /// way: `"true "` and `" false"` both load through the environment layer.
     Boolean,
     /// One of [`Key::values`], spelled as `serde` accepts it.
+    ///
+    /// [`Key::constraint`] carries the bare set, because a TOML document must spell a variant
+    /// exactly. [`Key::text_constraint`] carries the same set with surrounding whitespace
+    /// permitted, because figment's `Env` provider trims before it compares — measured, `"info "`
+    /// and `"\tinfo\n"` both load. The two differ, which is why they are two fields.
     Choice,
     /// A TOML literal: an array, an inline table. Only the environment layer can carry one at all
     /// — the file layers deliver text with no parse, so a key of this form cannot be supplied by a

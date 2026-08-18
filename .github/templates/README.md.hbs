@@ -897,6 +897,13 @@ For a `u64` it takes `0`, `42`, `007`, `+5` and `7` with surrounding whitespace,
 `TRUE`, not `1`, not `yes`. The emitted pattern is a superset of what was measured, because a
 pattern that rejects text the loader accepts stops a deployment that was correct.
 
+**That provider also trims**, which is where the two spaces part company for a choice. `constraint`
+for one is a bare `enum` — a TOML document must spell a variant exactly, and `level = "info "` in a
+file really is refused. `text_constraint` is the same set with surrounding whitespace permitted,
+because `PORTFOLIO_LOG_LEVEL="info "` loads. Trailing whitespace in a chart value is the ordinary
+YAML footgun — a block scalar, a value interpolated from a file — so a copy of the bare enum would
+refuse deployments that work. Booleans are the same shape for the same measured reason.
+
 **`text_form` is what says how to read the text**, and it is always present: `text`, `integer`,
 `boolean`, `choice`, `structured` or `unknown`. A consumer reads it to choose the parse for the
 range step rather than inferring one from which keywords `text_constraint` happens to carry — an

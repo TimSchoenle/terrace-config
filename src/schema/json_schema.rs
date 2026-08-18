@@ -393,14 +393,10 @@ pub(super) fn text_constraint(
         return ty.map_or((TextForm::Unknown, None), rust_type::in_text);
     }
 
-    // A fixed set of spellings is already a set of strings, so it applies to the text unchanged —
-    // and it has to be repeated here rather than left to `constraint`, because a consumer reading
-    // an absent text constraint as "unconstrained" would otherwise lose the check entirely on the
-    // one layer where every value is text.
-    let mut schema = Map::new();
-    schema.insert("type".to_owned(), json!("string"));
-    schema.insert("enum".to_owned(), json!(values));
-    (TextForm::Choice, Some(schema))
+    // Not the bare `enum` `constraint` carries. figment's `Env` provider trims, so `"info "` loads
+    // where the same text in a TOML document does not — and copying the enum into both fields was
+    // the one thing the two-field design exists to prevent. See `rust_type::one_of`.
+    (TextForm::Choice, Some(rust_type::one_of(values)))
 }
 
 /// The `description` for a key: its comment, and what its default means.

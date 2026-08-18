@@ -752,20 +752,117 @@ fn a_declared_variable_is_checkable_against_the_text_it_actually_carries() {
     assert!(!matches_pattern(pattern, "http"));
 }
 
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum Level {
+    Off,
+    #[default]
+    Info,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Choices {
+    /// How much.
+    #[config(values)]
+    #[serde(default)]
+    level: Level,
+    /// A flag.
+    #[serde(default)]
+    flag: bool,
+}
+
 #[test]
-fn a_choice_repeats_its_spellings_in_text_space() {
-    // Not redundant with `constraint`: a consumer reading an absent text constraint as
-    // "unconstrained" would otherwise lose the check entirely on the one layer where every value
-    // is text.
+fn a_choice_admits_the_whitespace_the_environment_layer_trims() {
+    // The two spaces differ, and a bare enum in both fields was wrong in one of them. Measured:
+    // figment's Env provider trims, so an environment value of `info` with a trailing space, a
+    // leading space, or surrounding tabs and newlines all load. The document layer trims nothing,
+    // so the same spelling inside a TOML string really is refused — which is why `constraint`
+    // keeps the bare set and only the text form widens.
+    let schema = Terrace::new("CHOICES_").schema::<Choices>();
+    let key = |path: &str| {
+        schema
+            .keys
+            .iter()
+            .find(|key| key.path == path)
+            .unwrap_or_else(|| panic!("no such key"))
+    };
+
+    assert_eq!(
+        key("level").constraint,
+        Some(json!({ "type": "string", "enum": ["off", "info"] }))
+    );
+    assert_eq!(
+        key("level").text_constraint,
+        Some(json!({ "type": "string", "pattern": PATTERN_LEVEL }))
+    );
+
+    // A boolean is the same shape and was measured the same way: `true` and `false` load with
+    // surrounding whitespace, and `TRUE` does not.
+    assert_eq!(key("flag").constraint, Some(json!({ "type": "boolean" })));
+    assert_eq!(
+        key("flag").text_constraint,
+        Some(json!({ "type": "string", "pattern": PATTERN_FLAG }))
+    );
+}
+
+const PATTERN_LEVEL: &str = r"^\s*(off|info)\s*$";
+const PATTERN_FLAG: &str = r"^\s*(true|false)\s*$";
+const PATTERN_AWKWARD: &str = r"^\s*(a\.b|c\+d)\s*$";
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+enum Awkward {
+    #[default]
+    #[serde(rename = "a.b")]
+    Dotted,
+    #[serde(rename = "c+d")]
+    Plus,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Renamed {
+    /// A choice whose spellings carry regular-expression metacharacters.
+    #[config(values)]
+    #[serde(default)]
+    mode: Awkward,
+}
+
+#[test]
+fn a_spelling_carrying_regex_metacharacters_is_escaped() {
+    // A rename takes any string, so a variant can carry a dot or a plus. Left unescaped, the first
+    // would match any character in that position — accepting a spelling the loader refuses — and
+    // the second would make the preceding character optional. Escaping the ECMA-262 metacharacter
+    // set is always correct, and getting it wrong in the strict direction would reject a
+    // deployment that works.
+    let schema = Terrace::new("RENAMED_").schema::<Renamed>();
+    let pattern = schema.keys[0].text_constraint.as_ref().expect("carried")["pattern"]
+        .as_str()
+        .expect("a string value");
+
+    assert_eq!(pattern, PATTERN_AWKWARD);
+}
+
+#[test]
+fn a_choice_states_its_spellings_in_both_spaces_differently() {
+    // Not redundant with `constraint`, and not a copy of it either: a consumer reading an absent
+    // text constraint as "unconstrained" would lose the check entirely on the one layer where
+    // every value is text, and a copy of the bare enum would refuse the whitespace that layer
+    // trims before it compares.
     let contract =
         with_external(External::new().var(ExternalVar::new("MODE").values(["fast", "slow"])))
             .expect("builds");
+    let var = &contract.external.env[0];
 
     assert_eq!(
-        contract.external.env[0].text_constraint,
+        var.constraint,
         Some(json!({ "type": "string", "enum": ["fast", "slow"] }))
     );
+    assert_eq!(
+        var.text_constraint,
+        Some(json!({ "type": "string", "pattern": PATTERN_MODE }))
+    );
 }
+
+const PATTERN_MODE: &str = r"^\s*(fast|slow)\s*$";
 
 #[test]
 fn a_stated_constraint_survives_the_derive() {

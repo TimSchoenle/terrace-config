@@ -177,12 +177,7 @@ pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
         }
         ("Cow", [_lifetime, inner]) => in_text(inner),
 
-        ("bool", []) => (
-            TextForm::Boolean,
-            Some(json_map(
-                &json!({ "type": "string", "enum": ["true", "false"] }),
-            )),
-        ),
+        ("bool", []) => (TextForm::Boolean, Some(one_of(&["true", "false"]))),
 
         // Accepts any text, and the loader agrees: none of these parses on the way in, so there
         // is nothing a validator could have caught. `Text` says exactly that — no check possible
@@ -222,6 +217,43 @@ pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
         },
         _ => (TextForm::Unknown, None),
     }
+}
+
+/// A fixed set of spellings, as the *text* of an environment variable — which is the same set
+/// with the whitespace figment's `Env` provider strips before anything compares it.
+///
+/// A bare `enum` is what belongs in [`interpret`]'s output and it is wrong here, which is the
+/// whole reason the two constraints are separate fields. Measured: `PROBE_LEVEL="info "`,
+/// `" info"` and `"\tinfo\n"` all load, and so do `"true "` and `" false"` for a boolean — the
+/// provider trims. The *document* layer trims nothing, so `level = "info "` in a TOML file really
+/// is refused, and `constraint` stays a bare `enum` for exactly that reason.
+///
+/// A pattern rather than a widened enum because there is no widened enum to write: the set of
+/// strings that trim to a variant is infinite.
+pub(super) fn one_of(values: &[impl AsRef<str>]) -> Map<String, Json> {
+    let alternatives: Vec<String> = values.iter().map(|value| escape(value.as_ref())).collect();
+    json_map(&json!({
+        "type": "string",
+        "pattern": format!(r"^\s*({})\s*$", alternatives.join("|")),
+    }))
+}
+
+/// `value` as a regular expression matching itself.
+///
+/// JSON Schema's `pattern` is ECMA-262, where a backslash before any of these is always the
+/// literal character — so escaping the whole set is correct without knowing which of them a
+/// `#[serde(rename = "…")]` might contain. Getting this wrong in the permissive direction would
+/// accept a spelling the loader refuses; getting it wrong in the strict direction would reject a
+/// deployment that works, which is the one this module is written to avoid.
+fn escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if r"\^$.|?*+()[]{}".contains(character) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 /// The one thing certainly true of a sequence or a map in an environment variable: it is a TOML
