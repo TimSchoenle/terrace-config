@@ -232,11 +232,12 @@ impl Sink {
                 .map(str::to_owned)
                 .collect(),
             aliases: alias_paths(&self.prefix, leaf.aliases),
-            // Filled in by `describe_at`, beside the spellings: both are derived from what the
-            // derive collected rather than collected themselves, and doing it in one place is what
-            // keeps a hand-built `Sink` from producing a key whose constraint disagrees with its
-            // type.
+            // Filled in by `describe_at`, beside the spellings: all three are derived from what
+            // the derive collected rather than collected themselves, and doing it in one place is
+            // what keeps a hand-built `Sink` from producing a key whose constraint disagrees with
+            // its type.
             constraint: None,
+            text_constraint: None,
             default: None,
             default_value: None,
             note: leaf.note.map(str::to_owned),
@@ -273,7 +274,14 @@ impl Sink {
 /// printed a spelling nobody can use would be worse than one that says there is none.
 // No `Eq`: [`Self::default_value`] can hold a float, and a float is not reflexively equal to
 // itself. Deriving the marker anyway would be a claim about `NaN` that this type cannot keep.
+//
+// `non_exhaustive` because this type grows: `constraint` and `text_constraint` were both added
+// after it shipped, and the document's own versioning rule says an added field is not a breaking
+// change. It cannot be one for a consumer of the *JSON* and a breaking change for a consumer of
+// the *struct* — so construction goes through [`Sink::leaf`], which is where the invariants
+// between these fields are maintained anyway.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Key {
     /// The figment/TOML path, e.g. `csp.cloudflare.turnstile`.
     pub path: String,
@@ -295,8 +303,14 @@ pub struct Key {
     /// The fixed set of values the key accepts, spelled as `serde` accepts them. Empty when the
     /// key is not a choice.
     pub values: Vec<String>,
-    /// What a value of this key must be, as JSON Schema keywords — `type`, `enum`, the numeric
-    /// bounds, `items`.
+    /// What a value of this key must be **once it is in the document**, as JSON Schema keywords
+    /// — `type`, `enum`, the numeric bounds, `items`.
+    ///
+    /// Document space, not text space. A TOML file holds an integer and this describes it; an
+    /// environment variable holds `"0"`, which fails `{"type": "integer"}` under every conforming
+    /// validator. [`Self::text_constraint`] is the one that applies there, and the two are
+    /// complementary rather than alternatives — a consumer checking a variable applies the text
+    /// constraint to the raw characters and this one to whatever the parse produced.
     ///
     /// [`Schema::to_json_schema`] carries the same keywords *nested*, at the key's position in the
     /// document. This carries them flat, and the reason is the environment: a consumer checking
@@ -310,6 +324,22 @@ pub struct Key {
     /// newtype: the key exists and nothing here can check its value.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub constraint: Option<serde_json::Value>,
+    /// What the **unparsed text** supplying this key must be, for the layers that supply text.
+    ///
+    /// [`Self::env`] is the layer this is about. It is emitted only where it says something the
+    /// text does not already say: a pattern for an integer, the two spellings of a boolean, the
+    /// variants of a choice. [`None`] means the text is unconstrained — which is the answer for
+    /// every string-like type, since an environment value is a string to begin with.
+    ///
+    /// **The file layers are a different question, and the answer is usually "not at all".**
+    /// [`Self::secrets_file`] and [`Self::env_file`] deliver their contents as strings with no
+    /// parse, and `Figment::extract` does not coerce a string into a number or a boolean — so a
+    /// key whose [`Self::constraint`] is anything but a string type cannot be supplied by either,
+    /// whatever the file contains. That is deliberate, and [`provider`](crate::provider) explains
+    /// it: those layers exist to carry secrets, and a secret is an opaque byte string. A chart
+    /// mounting a key-named file for a numeric key has made a mistake no file contents can fix.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub text_constraint: Option<serde_json::Value>,
     /// Other key paths that supply this same key, from `#[serde(alias = "…")]`.
     ///
     /// Full paths, so each one's environment and file spellings derive exactly as
@@ -373,6 +403,7 @@ pub enum LoaderRole {
 /// These never appear in the config struct, so no derive can find them — but an operator setting
 /// the service up needs them more than they need any single key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LoaderVar {
     /// The full environment spelling, e.g. `PORTFOLIO_CONFIG`.
     pub env: String,
@@ -386,6 +417,7 @@ pub struct LoaderVar {
 
 /// The environment spelling this loader reads, minus the keys.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct DialectInfo {
     /// The prefix every configuration variable carries, e.g. `PORTFOLIO_`.
     pub prefix: String,
@@ -454,6 +486,8 @@ impl Schema {
         let mut keys = sink.keys;
         for key in &mut keys {
             key.constraint = json_schema::constraint(key.ty.as_deref(), &key.values)
+                .map(serde_json::Value::Object);
+            key.text_constraint = json_schema::text_constraint(key.ty.as_deref(), &key.values)
                 .map(serde_json::Value::Object);
             key.env = env_spelling(dialect, &key.path);
             key.env_file = key

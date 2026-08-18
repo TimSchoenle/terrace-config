@@ -347,6 +347,32 @@ pub(super) fn constraint(ty: Option<&str>, values: &[String]) -> Option<Map<Stri
     Some(schema)
 }
 
+/// What the *unparsed text* supplying this key must be, as JSON Schema keywords.
+///
+/// [`constraint`] describes the value once it is in the document; this describes the characters
+/// an environment variable holds before anything parses them. `"0"` satisfies the second and
+/// fails the first, and a consumer told only the first has to know that `u64` means "TOML-parse
+/// the text, then check" — the Rust-type vocabulary [`rust_type`] exists to stop publishing.
+///
+/// [`None`] means the text is unconstrained, and is the answer for every string-like type: an
+/// environment value is already a string, so `{"type": "string"}` would say nothing. See
+/// [`rust_type::in_text`] for what is emitted, and for why the measured accepted set rather than
+/// TOML's grammar is what decides it.
+pub(super) fn text_constraint(ty: Option<&str>, values: &[String]) -> Option<Map<String, Json>> {
+    if values.is_empty() {
+        return ty.and_then(rust_type::in_text);
+    }
+
+    // A fixed set of spellings is already a set of strings, so it applies to the text unchanged —
+    // and it has to be repeated here rather than left to `constraint`, because a consumer reading
+    // an absent text constraint as "unconstrained" would otherwise lose the check entirely on the
+    // one layer where every value is text.
+    let mut schema = Map::new();
+    schema.insert("type".to_owned(), json!("string"));
+    schema.insert("enum".to_owned(), json!(values));
+    Some(schema)
+}
+
 /// The `description` for a key: its comment, and what its default means.
 ///
 /// The [`note`](Key::note) is here rather than left to [`Schema::to_json`] because this is the

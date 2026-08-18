@@ -827,17 +827,21 @@ std::fs::write("contract.json", contract.to_json()?)?;
 
 ```json
 {
-  "terraceContract": 1,
+  "terrace_contract": 1,
   "app": { "name": "portfolio", "version": "v2.5.0" },
   "schema": { "schema_version": 1, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
-  "jsonSchema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
+  "json_schema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
   "external": { "env": [ … ], "ignore": ["KUBERNETES_*", "HOSTNAME"], "unknown": "reject" }
 }
 ```
 
-Both halves, because neither is enough on its own. `jsonSchema` is the only one a stock JSON Schema
-validator can act on, and it carries no environment spellings at all — so it cannot tell a chart
-that the `PORTFOLIO_ISR__CACHE_DIR` it sets is no longer read, or that the file it mounts as
+Every field is `snake_case`, the envelope's own included. One document in two conventions —
+`text_constraint` on a key and `textConstraint` on the variable beside it — is a field name a
+consumer gets right from memory under one convention and guesses at under two.
+
+Both halves, because neither is enough on its own. `json_schema` is the only one a stock JSON
+Schema validator can act on, and it carries no environment spellings at all — so it cannot tell a
+chart that the `PORTFOLIO_ISR__CACHE_DIR` it sets is no longer read, or that the file it mounts as
 `github__token` is now named something else. `schema` carries every spelling and can be handed to
 no validator. Published as two artefacts they would be two hashes and two chances to be half-stale.
 
@@ -851,26 +855,53 @@ that union asserts the runtime image reads a build-time credential no deployment
 can check this: both schemas are well-formed and only you know which binary is in the image. Use
 `Schema::merge` when several binaries really are.
 
-### Every key says what its value must be
+### Every key says what its value must be — in both spaces
 
-`Key::constraint` and `ExternalVar::constraint` carry JSON Schema keywords — `type`, `enum`, the
-numeric bounds, `items` — flat, beside the spellings:
+A configuration value exists in two forms and a validator meets both. In a TOML file
+`ttl_secs = 0` is an integer; in the environment `PORTFOLIO_ISR__TTL_SECS=0` is the two characters
+`"0"`, and `"0"` fails `{"type": "integer"}` under every conforming JSON Schema validator. So each
+key carries two constraints, flat, beside the spellings:
 
 ```json
 { "path": "isr.ttl_secs", "env": "PORTFOLIO_ISR__TTL_SECS", "ty": "u64",
-  "constraint": { "type": "integer", "minimum": 0 } }
+  "constraint":      { "type": "integer", "minimum": 0 },
+  "text_constraint": { "type": "string", "pattern": "^\\s*\\+?[0-9]+\\s*$" } }
 ```
 
-`jsonSchema` carries the same keywords nested, at the key's position in the rendered document. This
-carries them where a consumer checking an *environment variable* can reach them: it has a variable
-name and a string, not a document. Without it, every consumer in every language reimplements a
-vocabulary of Rust type names by reading the service's source — with `PathBuf` as the trap, since
-it is a string and nothing in the name says so.
+`constraint` describes the parsed value; `text_constraint` describes the characters an environment
+variable holds before anything parses them. They are complementary, not alternatives — a consumer
+checking a variable applies the second to the raw text and the first to whatever the parse
+produced.
 
-`null` means declared but unconstrained: a domain newtype, or a type this crate does not recognise.
-Inventing a constraint for one would reject values the image accepts, which is the one thing a
-schema here must never do — so an untyped `ExternalVar` is closer to `ignore` than the declaration
-reads, and a variable worth declaring is usually worth typing.
+`json_schema` carries `constraint` again, nested, at the key's position in the document. The flat
+copies are for the consumer that has a variable name and a string rather than a document. Without
+them every consumer in every language reimplements a vocabulary of Rust type names by reading the
+service's source — with `PathBuf` as the trap, since it is a string and nothing in the name says
+so.
+
+The text patterns were **measured against the loader**, not derived from TOML's grammar, because
+figment's `Env` provider is what decides them and its parse is neither TOML's nor `str::parse`'s.
+For a `u64` it takes `0`, `42`, `007`, `+5` and `7` with surrounding whitespace, and refuses
+`1_000`, `0x1F`, `0b1` and `1e3`; for a `bool` it takes `true` and `false` and nothing else — not
+`TRUE`, not `1`, not `yes`. The emitted pattern is a superset of what was measured, because a
+pattern that rejects text the loader accepts stops a deployment that was correct.
+
+`null` means unconstrained. For `constraint` that is a domain newtype, or a type this crate does
+not recognise — inventing one would reject values the image accepts, which is the one thing a
+schema here must never do. For `text_constraint` it is also every string-like type: an environment
+value is a string already, so `{"type": "string"}` would constrain nothing, and saying nothing is
+more honest than saying that.
+
+`ExternalVar::constraint` sets both by hand for a type the crate cannot interpret — a duration, a
+connection string — and the derive leaves whatever it finds alone.
+
+**The file layers are a blunter question.** A key-named file in the secrets directory and a `_FILE`
+target both deliver their contents as strings with no parse, and `Figment::extract` does not coerce
+a string into a number or a boolean. A key whose `constraint` is anything but a string type
+therefore **cannot be supplied by either, whatever the file contains** — not "must match a
+pattern", cannot be supplied at all. That is deliberate: those layers exist to carry secrets, and a
+secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file has made a
+mistake no file contents can fix, and a validator can say so from `constraint` alone.
 
 ### The half no derive can see
 
@@ -896,7 +927,7 @@ owner — an operator's `TZ`, the platform's `KUBERNETES_*` — and note that on
 wildcard, because every consumer of this document implements the matching itself and a pattern
 language is a place for two implementations to disagree about what is exempt from a check.
 
-`build` refuses five things outright, all of them ways a contract could quietly stop being one:
+`build` refuses six things outright, all of them ways a contract could quietly stop being one:
 
 - an external variable **carrying the loader's prefix** — everything in that namespace is a
   configuration key, and declaring one external would leave it governed and exempt at once;
@@ -908,6 +939,11 @@ language is a place for two implementations to disagree about what is exempt fro
   matches that name and nothing else, and no key is spelled that;
 - an external variable **colliding with a spelling the loader reads**, which is the first case
   reached through a `reserve`d name;
+- an ignore pattern **covering a spelling the loader reads**, which is the second case reached the
+  same way. The prefix is not the whole namespace: a key's environment spelling is derived from the
+  prefix, but `config_var`, `secrets_dir_var` and `reserve` all take arbitrary names, so
+  `ignore("CREDENTIALS_*")` against `secrets_dir_var("CREDENTIALS_DIR")` would exempt the variable
+  that decides where every credential is read from;
 - an external variable **declared twice**, on `Schema::merge`'s reasoning: refusing to build beats
   picking one of two descriptions;
 - a **secret carrying a default**, in either order the two were declared in, and anywhere in the
@@ -923,13 +959,16 @@ exists to prevent, reached through evaluation order instead of pattern syntax. F
 variable on a container, first match winning:
 
 1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
-2. some `schema.keys[].env` — that key, from the environment layer. Check it against that key's
-   `constraint`.
-3. some `schema.keys[].env_file` — that key, by indirection. The value is a path.
+2. some `schema.keys[].env` — that key, from the environment layer. Check the text against that
+   key's `text_constraint`; `constraint` describes the value after figment's parse, so applying it
+   to the raw characters would reject `"0"` for an integer key.
+3. some `schema.keys[].env_file` — that key, by indirection. The value is a path, so neither
+   constraint applies; what applies is that the path is mounted.
 4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
    image reads. Neither `external.env` nor `external.ignore` can reach this step, because `build`
    refuses both when they carry the prefix.
-5. some `external.env[].name` — check it against that entry's `constraint`.
+5. some `external.env[].name` — check the text against that entry's `text_constraint`. An
+   external variable is only ever text, so that is the one that catches `PORT: "http"`.
 6. some `external.ignore` pattern — skip it.
 7. otherwise — `external.unknown`.
 

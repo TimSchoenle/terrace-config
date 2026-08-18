@@ -72,14 +72,14 @@ fn contract() -> Contract {
 fn the_envelope_carries_both_machine_readable_halves() {
     let json: Json = serde_json::from_str(&contract().to_json().expect("renders")).expect("parses");
 
-    assert_eq!(json["terraceContract"], Json::from(CONTRACT_VERSION));
+    assert_eq!(json["terrace_contract"], Json::from(CONTRACT_VERSION));
     assert_eq!(json["app"]["name"], Json::from("portfolio"));
     assert_eq!(json["app"]["version"], Json::from("v2.5.0"));
     // The schema half is what lets a validator check an environment variable and a secrets file
     // name; the JSON Schema half is the only one a stock validator can act on. Publishing one
     // without the other is what the envelope exists to prevent.
     assert!(json["schema"]["keys"].is_array());
-    assert!(json["jsonSchema"]["properties"].is_object());
+    assert!(json["json_schema"]["properties"].is_object());
     assert_eq!(json["external"]["unknown"], Json::from("reject"));
 }
 
@@ -98,9 +98,12 @@ fn nothing_in_the_document_names_the_image() {
     // be written after the push — changing the bytes `LABEL_SHA256` was computed over before it,
     // which §3.3 of the plan defines as a hard error. The tie is the attachment: whatever comes
     // back from asking a digest for its `ARTIFACT_TYPE` referrers is that digest's contract.
-    assert!(json["app"].get("digest").is_none());
-    let rendered = serde_json::to_string(&json).expect("renders");
-    assert!(!rendered.contains("sha256:"), "{rendered}");
+    // Scoped to `app`, not to the whole document: a `///` comment on a key about image pinning
+    // or checksum verification would legitimately contain `sha256:`, and an assertion that fails
+    // on a fixture's prose is testing the fixture.
+    let app = serde_json::to_string(&json["app"]).expect("renders");
+    assert!(!app.contains("digest"), "{app}");
+    assert!(!app.contains("sha256"), "{app}");
 }
 
 #[test]
@@ -303,6 +306,60 @@ fn an_ignore_pattern_may_not_reach_into_the_loaders_namespace() {
     }
 }
 
+/// A loader whose variables are deliberately spelled outside the prefix, which is what
+/// `config_var`, `secrets_dir_var` and `reserve` are for and what this crate's own README shows.
+fn renamed() -> Terrace {
+    Terrace::new("PORTFOLIO_")
+        .config_var("APP_CONFIG_PATH")
+        .secrets_dir_var("CREDENTIALS_DIR")
+        .reserve("DEPLOY_PROFILE")
+}
+
+#[test]
+fn an_ignore_pattern_may_not_cover_a_variable_the_loader_reads() {
+    // The prefix is not the whole namespace. A *key's* environment spelling is derived from the
+    // prefix and so is always caught by the check above; a *loader* variable's is whatever the
+    // caller passed. Exempting one of those is worse than exempting a key — `CREDENTIALS_DIR`
+    // decides where every credential is read from, so a chart misspelling it loses all of them at
+    // once, silently.
+    for pattern in [
+        "CREDENTIALS_*",
+        "CREDENTIALS_DIR",
+        "APP_CONFIG_PATH",
+        "DEPLOY_*",
+        "APP_*",
+    ] {
+        let error = renamed()
+            .schema::<Config>()
+            .with_defaults_from(&Config::default())
+            .expect("serialises")
+            .into_contract(App::new("portfolio"))
+            .external(External::new().ignore(pattern))
+            .build()
+            .expect_err(&format!("`{pattern}` was accepted"));
+        assert!(error.to_string().contains("the loader reads"), "{pattern}");
+    }
+}
+
+#[test]
+fn a_pattern_beside_the_loaders_variables_is_still_fine() {
+    // The mirror-image mistake would be a rule so broad it rejects correct declarations. None of
+    // these covers a spelling the loader reads.
+    renamed()
+        .schema::<Config>()
+        .with_defaults_from(&Config::default())
+        .expect("serialises")
+        .into_contract(App::new("portfolio"))
+        .external(
+            External::new()
+                .ignore("CREDENTIAL")
+                .ignore("APP_CONFIG_PATHS")
+                .ignore("DEPLOYMENT_*"),
+        )
+        .build()
+        .expect("builds");
+}
+
 #[test]
 fn an_exact_pattern_the_prefix_merely_starts_with_is_fine() {
     // `PORT` matches the name `PORT` and nothing else, and no key is spelled that. Refusing it
@@ -486,4 +543,139 @@ fn the_flat_constraint_agrees_with_the_nested_one() {
     for (keyword, value) in flat.as_object().expect("an object") {
         assert_eq!(&nested[keyword], value, "{keyword}");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The text constraints, which are what an environment variable is actually checked against
+// ---------------------------------------------------------------------------------------------
+
+fn key_of<'a>(contract: &'a Contract, path: &str) -> &'a terrace_config::schema::Key {
+    contract
+        .schema
+        .keys
+        .iter()
+        .find(|key| key.path == path)
+        .unwrap_or_else(|| panic!("{path} is described"))
+}
+
+#[test]
+fn an_integer_key_says_what_its_text_must_look_like() {
+    let contract = contract();
+
+    // The document-space constraint describes the parsed value; `"0"` fails it under every
+    // conforming validator, which is why a second one is needed at all.
+    assert_eq!(
+        key_of(&contract, "ttl_secs").constraint,
+        Some(json!({ "type": "integer", "minimum": 0 }))
+    );
+    assert_eq!(
+        key_of(&contract, "ttl_secs").text_constraint,
+        Some(json!({ "type": "string", "pattern": r"^\s*\+?[0-9]+\s*$" }))
+    );
+}
+
+#[test]
+fn the_text_pattern_admits_everything_the_loader_admits() {
+    let pattern = key_of(&contract(), "ttl_secs")
+        .text_constraint
+        .clone()
+        .expect("carried");
+    let pattern = pattern["pattern"].as_str().expect("a string");
+
+    // Measured against the loader rather than reasoned from TOML's grammar: figment's `Env`
+    // provider takes all of these for a `u64` key, so a pattern rejecting one would stop a
+    // deployment that was correct — the failure this whole module is written to avoid.
+    for text in ["0", "42", "007", "+5", " 7", "7 "] {
+        assert!(matches_pattern(pattern, text), "{text} must be admitted");
+    }
+    // And refuses all of these, so rejecting them costs nothing and catches a real mistake.
+    for text in ["-1", "1_000", "0x1F", "1e3", "", "http"] {
+        assert!(!matches_pattern(pattern, text), "{text} must be refused");
+    }
+}
+
+#[test]
+fn a_string_key_carries_no_text_constraint() {
+    // An environment value is a string already, so `{"type": "string"}` would constrain nothing.
+    // `None` says the same thing without inviting a consumer to think a check happened.
+    assert_eq!(key_of(&contract(), "dist_dir").text_constraint, None);
+    assert_eq!(key_of(&contract(), "github.username").text_constraint, None);
+}
+
+#[test]
+fn a_declared_variable_is_checkable_against_the_text_it_actually_carries() {
+    // `PORT: "http"` is the motivating case, and it is catchable because of this field rather
+    // than because of `constraint`: an external variable is only ever text.
+    let contract =
+        with_external(External::new().var(ExternalVar::new("PORT").ty("u16"))).expect("builds");
+    let var = &contract.external.env[0];
+
+    assert_eq!(
+        var.constraint,
+        Some(json!({ "type": "integer", "minimum": 0, "maximum": 65535 }))
+    );
+    let pattern = var.text_constraint.as_ref().expect("carried")["pattern"]
+        .as_str()
+        .expect("a string");
+    assert!(matches_pattern(pattern, "8080"));
+    assert!(!matches_pattern(pattern, "http"));
+}
+
+#[test]
+fn a_choice_repeats_its_spellings_in_text_space() {
+    // Not redundant with `constraint`: a consumer reading an absent text constraint as
+    // "unconstrained" would otherwise lose the check entirely on the one layer where every value
+    // is text.
+    let contract =
+        with_external(External::new().var(ExternalVar::new("MODE").values(["fast", "slow"])))
+            .expect("builds");
+
+    assert_eq!(
+        contract.external.env[0].text_constraint,
+        Some(json!({ "type": "string", "enum": ["fast", "slow"] }))
+    );
+}
+
+#[test]
+fn a_stated_constraint_survives_the_derive() {
+    // The escape hatch for a domain type. Deriving over the top of it would leave a `Duration` or
+    // a connection string permanently uncheckable, which is the gap `constraint: None` documents
+    // and this is the way out of.
+    let contract = with_external(External::new().var(
+        ExternalVar::new("TIMEOUT").ty("Duration").constraint(
+            Some(json!({ "type": "string" })),
+            Some(json!({ "type": "string", "pattern": "^[0-9]+(ms|s|m)$" })),
+        ),
+    ))
+    .expect("builds");
+
+    let var = &contract.external.env[0];
+    assert_eq!(var.constraint, Some(json!({ "type": "string" })));
+    assert_eq!(
+        var.text_constraint,
+        Some(json!({ "type": "string", "pattern": "^[0-9]+(ms|s|m)$" }))
+    );
+}
+
+/// A deliberately tiny matcher for the anchored patterns this crate emits.
+///
+/// Not a regex engine: every pattern here is `^\s*<sign><digits>\s*$`, and pulling in a regex
+/// crate as a dev-dependency to assert six strings against one shape would be a dependency in the
+/// manifest for a property this can state directly.
+fn matches_pattern(pattern: &str, text: &str) -> bool {
+    assert!(
+        pattern.starts_with(r"^\s*") && pattern.ends_with(r"\s*$"),
+        "this matcher only understands the shape this crate emits: {pattern}"
+    );
+    let signed = pattern.contains("[-+]?");
+    let text = text.trim();
+    let digits = match text.strip_prefix('+') {
+        Some(rest) => rest,
+        None => match text.strip_prefix('-') {
+            Some(rest) if signed => rest,
+            Some(_) => return false,
+            None => text,
+        },
+    };
+    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }

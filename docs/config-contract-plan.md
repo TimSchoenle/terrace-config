@@ -74,7 +74,7 @@ one document:
 
 ```json
 {
-  "terraceContract": 1,
+  "terrace_contract": 1,
   "app": {
     "name": "portfolio",
     "version": "v2.5.0",
@@ -82,13 +82,15 @@ one document:
     "created": "2026-08-18T09:12:44Z"
   },
   "schema": { "schema_version": 1, "dialect": {…}, "loader": […], "keys": […] },
-  "jsonSchema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
+  "json_schema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
   "external": { "env": […], "ignore": ["KUBERNETES_*"], "unknown": "reject" }
 }
 ```
 
-`terraceContract` is the envelope's own version, independent of the `schema_version` inside it.
-A consumer that does not recognise it refuses the document by name instead of misreading it.
+`terrace_contract` is the envelope's own version, independent of the `schema_version` inside it.
+A consumer that does not recognise it refuses the document by name instead of misreading it. Every
+field is `snake_case`, the envelope's own included — one document in two conventions is a field
+name a consumer gets right from memory under one and guesses at under two.
 
 **Status: implemented**, and revised after a full Phase 0 + Phase 1 implementation against
 `TimSchoenle/Portfolio` found four blockers in the design below. See §2.4 for `external`, the piece
@@ -167,6 +169,12 @@ and the pipeline covers every variable a pod carries rather than only the prefix
   the gate that owns it.
 - an external variable **colliding with a spelling the loader reads**, the same defect reached
   through a `reserve`d name or a renamed prefix;
+- an **ignore pattern covering a spelling the loader reads**, which is that defect through the
+  suppression list. The prefix is not the whole namespace: a key's environment spelling is derived
+  from it, but `config_var`, `secrets_dir_var` and `reserve` take arbitrary names, so
+  `ignore("CREDENTIALS_*")` against `secrets_dir_var("CREDENTIALS_DIR")` exempts the variable that
+  decides where every credential is read from — worse than exempting a key, because it loses all of
+  them at once;
 - an external variable **declared twice**, on `Schema::merge`'s reasoning;
 - a **secret carrying a default**, anywhere in the document, checked at the boundary the document
   crosses into a public registry rather than trusted to the code paths that build it.
@@ -178,23 +186,44 @@ writes a mapping table — `bool`, `u8`…`usize`, `String`, `PathBuf`, `IpAddr`
 `Option<T>` — by reading the service's source, in whatever language it is written in, once per
 consumer. `PathBuf` is the trap: it is a string and nothing in the name says so.
 
-So every key and every declared external variable carries a `constraint`, the JSON Schema keywords
-its value must satisfy:
+So every key and every declared external variable carries its constraints as JSON Schema keywords —
+**two of them, because a value exists in two forms and a validator meets both**:
 
 ```json
 { "path": "isr.ttl_secs", "env": "PORTFOLIO_ISR__TTL_SECS", "ty": "u64",
-  "constraint": { "type": "integer", "minimum": 0 } }
+  "constraint":      { "type": "integer", "minimum": 0 },
+  "text_constraint": { "type": "string", "pattern": "^\s*\+?[0-9]+\s*$" } }
 ```
 
-`jsonSchema` already carries the same keywords, *nested*, at the key's position in the rendered
-document. This carries them where the gates that check the **environment** can reach them: gate 2
-has a variable name and a string, not a document. `external.env` has no `jsonSchema` at all, and
-that is where it matters most — `PORT: "http"` is catchable only because `u16` was rendered to
-`{"type": "integer", "maximum": 65535}` by the producer rather than re-derived by every consumer.
+In a TOML file `ttl_secs = 0` is an integer. In the environment it is the characters `"0"`, and
+`"0"` fails `{"type": "integer"}` under every conforming validator — so a document carrying only
+the first would have gate 2 either rejecting correct deployments or silently coercing by a rule
+nobody wrote down. That is the §2.4 ordering failure one level down, and it is what a first
+implementation of this section actually hit.
 
-Both come from one function, and a test asserts the flat and nested renderings agree. `null` means
-declared but unconstrained: a domain newtype, or a type the crate does not recognise. Inventing one
-would reject values the image accepts, which is the one thing a schema here must never do.
+`json_schema` carries `constraint` again, nested, at the key's position in the document. The flat
+copies are for the gates that check the **environment**: gate 2 has a variable name and a string,
+not a document, and `external.env` has no nested schema at all. `PORT: "http"` is catchable because
+of `text_constraint` and not because of `constraint`.
+
+The text patterns are **measured against the loader**, not derived from TOML's grammar, because
+figment's `Env` provider decides them and its parse is neither TOML's nor `str::parse`'s. For a
+`u64` it takes `0`, `42`, `007`, `+5` and `7` with surrounding whitespace and refuses `1_000`,
+`0x1F`, `0b1`, `1e3`; for a `bool` it takes `true` and `false` and nothing else. The emitted pattern
+is a superset of what was measured, because a pattern rejecting text the loader accepts stops a
+deployment that was correct.
+
+`null` means unconstrained, and for `text_constraint` that includes every string-like type — an
+environment value is a string already, so `{"type": "string"}` would constrain nothing.
+`ExternalVar::constraint` states both by hand for a type the crate cannot interpret, and the derive
+leaves what it finds alone.
+
+**Gate 3 gets a blunter rule than a pattern.** The secrets directory and `_FILE` targets deliver
+their contents as strings with no parse, and `Figment::extract` does not coerce a string into a
+number or a boolean — so a key whose `constraint` is anything but a string type *cannot be supplied
+by either*, whatever the file holds. Not "must match a pattern": cannot be supplied. A chart
+mounting `isr__ttl_secs` as a secret file has made a mistake no file contents can fix, and the gate
+can say so from `constraint` alone.
 
 ### 2.6 What the contract cannot say: platform-injected variables
 
@@ -461,8 +490,8 @@ scalar belongs.
 
 Classification is the ordered list in §2.4's implementation — first match wins, and the step that
 rejects an unaccounted-for prefixed variable sits *above* both external lists, so the two cannot
-disagree about what is exempt. Requires `enableServiceLinks: false` on every pod it checks; see
-§2.6.
+disagree about what is exempt. Values are checked against `text_constraint`, never `constraint`;
+see §2.5. Requires `enableServiceLinks: false` on every pod it checks; see §2.6.
 
 For every declared container, every variable matching the document's prefix must be one of:
 
@@ -485,6 +514,8 @@ key.
 
 - every file name in a rendered Secret mounted at `secretsDir` must equal some key's `secrets_file`
 - every `*_FILE` variable must equal some key's `env_file` and point inside a mounted volume
+- and the key it names must be string-typed — see §2.5, a numeric key cannot be file-supplied at
+  all, so a mount for one is a defect the file's contents cannot repair
 
 Catches a `github.token` → `github.api_token` rename breaking a mount with no error at either end.
 

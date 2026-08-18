@@ -126,6 +126,79 @@ fn integer(name: &str) -> Option<Map<String, Json>> {
     Some(schema)
 }
 
+/// The keywords the *unparsed text* of an environment variable must satisfy, or [`None`] when
+/// nothing certain can be said about it.
+///
+/// [`interpret`] describes a value once it is in the document — an integer, a boolean, an array.
+/// A variable holds none of those; it holds text, and `"0"` fails `{"type": "integer"}` under
+/// every conforming validator. A consumer told only the document-space constraint has to know
+/// that `u64` means "parse the text first, TOML-ish, then check", which is the Rust-type
+/// vocabulary this module exists to stop publishing.
+///
+/// Every rule below was measured against the loader rather than reasoned from TOML's grammar,
+/// because figment's `Env` provider is what decides this and its parse is neither TOML's nor
+/// `str::parse`'s. Against a `u64` key it accepts `0`, `42`, `007`, `+5` and `7` with surrounding
+/// whitespace, and refuses `1_000`, `0x1F`, `0b1` and `1e3` — so the pattern permits leading
+/// zeros, a leading `+` and outer whitespace, and does not permit the separators and radix
+/// prefixes TOML itself would. Against a `bool` it accepts `true` and `false` and nothing else:
+/// not `TRUE`, not `1`, not `yes`.
+///
+/// Erring towards permissive is not a stylistic choice here. A pattern that rejects text the
+/// loader accepts stops a deployment that was correct, which is the failure this whole module is
+/// written to avoid — so a spelling whose accepted set is not known exactly gets [`None`].
+///
+/// # Why a string type gets nothing
+///
+/// `{"type": "string"}` is what every environment value already is, so emitting it would be a
+/// constraint that constrains nothing. The interesting rule for a string-typed key is the
+/// opposite one — figment parses `12345678` into a number and `Figment::extract` will not coerce
+/// it back, so an all-digit password supplied this way fails to load (see
+/// [`provider`](crate::provider)). Expressing that needs a `not` over the forms that parse, and
+/// the boundary of "what parses" is exactly what is not known exactly enough to reject on. It is
+/// documented instead of guessed.
+pub(super) fn in_text(ty: &str) -> Option<Map<String, Json>> {
+    let ty = strip_reference(ty.trim());
+    let (head, args) = split_generic(ty);
+    let name = head.rsplit("::").next()?;
+
+    match (name, args.as_slice()) {
+        ("Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock", [inner]) => {
+            in_text(inner)
+        }
+        ("Cow", [_lifetime, inner]) => in_text(inner),
+
+        ("bool", []) => Some(json_map(&json!({
+            "type": "string",
+            "enum": ["true", "false"],
+        }))),
+
+        (name, []) => integer_text(name),
+        _ => None,
+    }
+}
+
+/// The text form of an integer spelling: a sign, digits, and the whitespace figment trims.
+///
+/// No bounds. A pattern cannot express a numeric range, and half-expressing one — digits capped
+/// at five characters for a `u16`, say — would reject `00080`, which the loader takes. The range
+/// lives in [`interpret`]'s output and applies to the parsed value; this applies to the text, and
+/// the two are complementary rather than alternatives.
+fn integer_text(name: &str) -> Option<Map<String, Json>> {
+    // Reuses the same table, so a spelling this crate stops recognising stops being described in
+    // both places at once rather than in one of them.
+    integer(name)?;
+
+    // Unsigned by name: the loader refuses `-1` for one, and refusing it here catches the sign a
+    // chart put in the wrong place before the pod does.
+    let signed = !name.starts_with('u') && !name.starts_with("NonZeroU");
+    let sign = if signed { "[-+]?" } else { r"\+?" };
+
+    Some(json_map(&json!({
+        "type": "string",
+        "pattern": format!(r"^\s*{sign}[0-9]+\s*$"),
+    })))
+}
+
 /// An array of `item`, with the element schema when `item` is a spelling this understands.
 fn sequence(item: &str, unique: bool) -> Map<String, Json> {
     let mut schema = json_map(&json!({ "type": "array" }));

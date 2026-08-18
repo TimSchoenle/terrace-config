@@ -93,6 +93,12 @@ use super::{Error, Schema};
 /// Bumped when an existing field changes meaning or disappears — never when one is added, on the
 /// same reasoning and with the same obligation on consumers: ignore what you do not recognise,
 /// and refuse a version you were not written against rather than guessing at it.
+///
+/// Every field in this document is `snake_case`, including the ones the envelope adds. The
+/// alternative was `camelCase` for the envelope and `snake_case` for the [`Schema`] it wraps,
+/// which is what this started as — one document in two conventions, `text_constraint` on a key
+/// and `textConstraint` on the variable beside it. A consumer writing a field name from memory
+/// gets it right under one convention and guesses under two.
 pub const CONTRACT_VERSION: u32 = 1;
 
 /// The OCI artifact type a published contract is attached to its image under.
@@ -148,7 +154,6 @@ pub const DEFAULT_PATH: &str = "/config/contract.json";
 /// belong to the image being deployed, which is a property of how it was published rather than of
 /// what it says: see [`ARTIFACT_TYPE`] and [`Self::labels`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct Contract {
     /// The version of this envelope's shape. See [`CONTRACT_VERSION`].
@@ -170,7 +175,6 @@ pub struct Contract {
 /// collected rather than scattered: a consumer diffing two contracts to see whether the
 /// *configuration* changed diffs everything except this.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct App {
     /// The service's name, as its image is named.
@@ -260,9 +264,11 @@ impl App {
 /// 1. it is one of `schema.loader[].env` — a variable the loader reads to decide what the layers
 ///    are. Valid.
 /// 2. it equals some `schema.keys[].env` — that key, supplied by the environment layer. Check the
-///    value against that key's [`constraint`](super::Key::constraint).
+///    text against that key's [`text_constraint`](super::Key::text_constraint); the
+///    [`constraint`](super::Key::constraint) beside it describes the value *after* figment's
+///    parse, so applying it to the raw characters would reject `"0"` for an integer key.
 /// 3. it equals some `schema.keys[].env_file` — that key, supplied by indirection. The value is a
-///    path, so the constraint does not apply to it; what applies is that the path is mounted.
+///    path, so neither constraint applies to it; what applies is that the path is mounted.
 /// 4. it begins with `schema.dialect.prefix` and matched none of the above — **reject**. It is a
 ///    key spelling nothing in this image reads: a rename nobody finished, or a typo. Neither
 ///    [`Self::env`] nor [`Self::ignore`] can reach this step, because [`ContractBuilder::build`]
@@ -274,6 +280,19 @@ impl App {
 ///
 /// Step 4 sitting above 5 and 6 is the load-bearing part. After `build`'s refusals the two cannot
 /// disagree, so stating the order costs nothing and removes the question.
+///
+/// # The file layers are a separate question
+///
+/// The list above is about variables. A chart also mounts *files* — a key-named file in the
+/// secrets directory, or a path a `_FILE` variable points at — and the rule there is blunter than
+/// a constraint: those layers deliver their contents as strings with no parse, and
+/// `Figment::extract` does not coerce a string into a number or a boolean. **A key whose
+/// [`constraint`](super::Key::constraint) is anything but a string type cannot be supplied by
+/// either, whatever the file contains.** Not "must match a pattern" — cannot be supplied at all.
+///
+/// That is deliberate rather than a limitation: those layers exist to carry secrets, and a secret
+/// is an opaque byte string. So a chart mounting `isr__ttl_secs` as a secret file has made a
+/// mistake no file contents can fix, and a validator can say so from the constraint alone.
 ///
 /// # What this deliberately cannot say
 ///
@@ -291,7 +310,6 @@ impl App {
 /// so a service link would *supply* that key, from the environment layer, outranking the mounted
 /// file. That is a live misconfiguration this document cannot fix and can only refuse to hide.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct External {
     /// Variables this image reads outside the loader's namespace, described well enough to be
@@ -358,7 +376,6 @@ impl External {
 // `Eq`, unlike [`Key`](super::Key): every field here is a string or a flag. A key cannot derive it
 // because its default is a figment `Value`, which can hold a float.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ExternalVar {
     /// The variable's exact spelling, e.g. `PORT`.
@@ -389,9 +406,23 @@ pub struct ExternalVar {
     /// [`External::ignore`] than the declaration reads, so a variable worth declaring is usually
     /// worth typing.
     ///
+    /// Derived from [`Self::ty`] unless [`Self::constraint`](Self::constraint()) set one, which
+    /// is the escape hatch for a domain type this crate cannot interpret.
+    ///
     /// [`Key::constraint`]: super::Key::constraint
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub constraint: Option<Json>,
+    /// What the **unparsed text** of this variable must be, as [`Key::text_constraint`] carries it
+    /// for a configuration key.
+    ///
+    /// The one that matters for an external variable, because an environment variable is *only*
+    /// ever text — nothing parses it on the way in the way figment's `Env` provider parses a
+    /// prefixed one. A `PORT` declared `ty("u16")` is checkable against `"http"` because of this
+    /// field and not because of [`Self::constraint`].
+    ///
+    /// [`Key::text_constraint`]: super::Key::text_constraint
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub text_constraint: Option<Json>,
     /// What the image does when it is unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
@@ -415,6 +446,7 @@ impl ExternalVar {
             // Derived by `build`, for `Key::constraint`'s reason: one place decides what a type
             // means, so a variable's constraint cannot disagree with the key's for one spelling.
             constraint: None,
+            text_constraint: None,
             default: None,
             required: false,
             secret: false,
@@ -446,6 +478,27 @@ impl ExternalVar {
     #[must_use]
     pub fn values(mut self, values: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.values = values.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// State the constraints outright, for a type [`Self::ty`] cannot express.
+    ///
+    /// [`ContractBuilder::build`] derives both constraints from the type token and leaves whatever
+    /// is set here alone, so this is the escape hatch for a domain type — a duration, a
+    /// connection string, anything whose shape the crate refuses to guess at. Pass the document
+    /// form first and the text form second; pass [`None`] for either to keep the derived answer.
+    ///
+    /// Whatever is passed here is published verbatim and acted on by a validator, so the rule the
+    /// rest of this module is written to is the caller's now: a constraint that rejects a value
+    /// the image accepts stops a deployment that was correct.
+    #[must_use]
+    pub fn constraint(mut self, document: Option<Json>, text: Option<Json>) -> Self {
+        if document.is_some() {
+            self.constraint = document;
+        }
+        if text.is_some() {
+            self.text_constraint = text;
+        }
         self
     }
 
@@ -562,10 +615,19 @@ impl ContractBuilder {
         validate_external(&schema, &external)?;
         validate_secrets(&schema, &external)?;
 
+        // Derived where the caller said nothing, never over the top of what they did say:
+        // `ExternalVar::constraint` is the only way to describe a type this crate cannot
+        // interpret, and clobbering it would leave a domain type permanently uncheckable.
         let mut external = external;
         for var in &mut external.env {
-            var.constraint =
-                json_schema::constraint(var.ty.as_deref(), &var.values).map(Json::Object);
+            if var.constraint.is_none() {
+                var.constraint =
+                    json_schema::constraint(var.ty.as_deref(), &var.values).map(Json::Object);
+            }
+            if var.text_constraint.is_none() {
+                var.text_constraint =
+                    json_schema::text_constraint(var.ty.as_deref(), &var.values).map(Json::Object);
+            }
         }
 
         let options = json_schema.or_title(format!("{} configuration", app.name));
@@ -721,21 +783,40 @@ fn validate_external(schema: &Schema, external: &External) -> Result<(), Error> 
         }
     }
 
+    // Collected once and reused: the loader half is walked twice below and a pattern is checked
+    // against all of it, which is the difference between this and the `var` check above — a name
+    // either equals a spelling or it does not, while a pattern can cover one it does not equal.
+    let spellings: Vec<&str> = loader_spellings(schema).collect();
     for pattern in &external.ignore {
-        validate_pattern(pattern, prefix)?;
+        validate_pattern(pattern, prefix, &spellings)?;
     }
 
     Ok(())
 }
 
+/// Whether `name` is covered by `pattern`.
+///
+/// The whole matching rule, and it is a function rather than three inline characters because the
+/// document tells every consumer to implement it: a trailing `*` matches any suffix, and anything
+/// else is an exact name. Having the reference implementation in the crate is what a consumer can
+/// check itself against, and it is what the refusals below are written in terms of, so the rule
+/// that decides what a *validator* skips and the rule that decides what `build` *refuses* cannot
+/// come apart.
+fn pattern_matches(pattern: &str, name: &str) -> bool {
+    match pattern.strip_suffix('*') {
+        Some(stem) => name.starts_with(stem),
+        None => pattern == name,
+    }
+}
+
 /// Check that an ignore pattern is one a consumer can match without inventing a glob dialect, and
-/// that it stays out of the loader's namespace.
+/// that it covers nothing the loader reads.
 ///
 /// Exactly one wildcard form is supported — a trailing `*` — because every consumer of this
 /// document has to implement the matching, in whatever language it is written in, and a pattern
 /// language is a place for two implementations to disagree about what is exempt from a security
 /// check.
-fn validate_pattern(pattern: &str, prefix: &str) -> Result<(), Error> {
+fn validate_pattern(pattern: &str, prefix: &str, spellings: &[&str]) -> Result<(), Error> {
     let wildcard = pattern.ends_with('*');
     let stem = pattern.strip_suffix('*').unwrap_or(pattern);
 
@@ -777,6 +858,25 @@ fn validate_pattern(pattern: &str, prefix: &str) -> Result<(), Error> {
              freely — which is the exemption `External::var` is refused for. If these are names a \
              platform injects rather than keys, they belong to whatever renders the deployment: \
              see `External` on service links."
+        )));
+    }
+
+    // The prefix is not the whole namespace. A *key's* environment spelling is derived from the
+    // prefix, so the check above covers every one of them — but a *loader* variable's spelling is
+    // whatever the caller passed, and `config_var`, `secrets_dir_var` and `reserve` all take
+    // arbitrary names. `secrets_dir_var("CREDENTIALS_DIR")` is in this crate's own README.
+    //
+    // Exempting one of those is worse than exempting a key: the variable naming the secrets
+    // directory decides where *every* credential is read from, so a chart misspelling it loses
+    // all of them at once, silently.
+    if let Some(covered) = spellings
+        .iter()
+        .find(|spelling| pattern_matches(pattern, spelling))
+    {
+        return Err(Error::Invalid(format!(
+            "`{pattern}` ignores `{covered}`, which the loader reads itself to decide what the \
+             layers are. A variable a chart may misspell freely cannot be one the configuration \
+             is loaded through."
         )));
     }
 
@@ -822,4 +922,32 @@ fn is_env_name(name: &str) -> bool {
 /// Whether `c` may appear after the first character of an environment variable name.
 fn is_env_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pattern_matches;
+
+    #[test]
+    fn a_pattern_is_a_trailing_star_or_an_exact_name() {
+        // The rule every consumer of this document has to reimplement, so the reference
+        // implementation is worth pinning: anything looser here and `build`'s refusals stop
+        // covering what a validator will actually skip.
+        assert!(pattern_matches("KUBERNETES_*", "KUBERNETES_SERVICE_HOST"));
+        assert!(pattern_matches("KUBERNETES_*", "KUBERNETES_"));
+        assert!(pattern_matches("HOSTNAME", "HOSTNAME"));
+
+        assert!(!pattern_matches("HOSTNAME", "HOSTNAMES"));
+        assert!(!pattern_matches("HOSTNAME", "HOST"));
+        assert!(!pattern_matches("KUBERNETES_*", "MY_KUBERNETES_PORT"));
+    }
+
+    #[test]
+    fn a_bare_star_matches_everything() {
+        // Never reachable through `build`, which refuses the pattern by name — but the matcher is
+        // the thing a consumer copies, and it has to behave the way the sentence describing it
+        // does rather than the way the refusal makes convenient.
+        assert!(pattern_matches("*", "ANYTHING"));
+        assert!(pattern_matches("*", ""));
+    }
 }

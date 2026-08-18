@@ -11,6 +11,8 @@
 //! cargo run --example config-schema -- --format json-schema       > config.schema.json
 //! cargo run --example config-schema -- --format contract          > contract.json
 //! cargo run --example config-schema -- --format labels            > contract.labels
+//! cargo run --example config-schema -- --format contract --revision "$(git rev-parse HEAD)" \
+//!                                       --created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
 //! ```
 //!
@@ -218,8 +220,8 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
         // Whole-image outputs, so a slice of the configuration is not a thing either can be —
         // `Options::from_args` refuses the combination rather than publishing a contract that
         // silently omits the keys `--only` cut.
-        Format::Contract => contract(schema)?.to_json(),
-        Format::Labels => Ok(contract(schema)?
+        Format::Contract => contract(schema, options)?.to_json(),
+        Format::Labels => Ok(contract(schema, options)?
             .labels(DEFAULT_PATH)
             .into_iter()
             .map(|(name, value)| format!("{name}={value}"))
@@ -236,16 +238,27 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
 /// a validator told only about the `PORTFOLIO_` namespace would have to either flag them or ignore
 /// every variable outside it. Declared here, they are checked like any key: a chart passing
 /// `PORT: "http"` fails the same gate a chart passing `PORTFOLIO_GITHUB__TTL_SECS: "soon"` fails.
-fn contract(schema: Schema) -> Result<Contract, terrace_config::Error> {
+fn contract(schema: Schema, options: &Options) -> Result<Contract, terrace_config::Error> {
+    // Spelled as the image tag spells it. `CARGO_PKG_VERSION` alone yields `2.5.0` where the
+    // images are tagged `v2.5.0`, and the field exists to be compared against a tag.
+    let mut app = App::new("portfolio")
+        .version(concat!("v", env!("CARGO_PKG_VERSION")))
+        .source("https://github.com/TimSchoenle/Portfolio");
+
+    // The two fields that legitimately differ between builds of one source tree, and the reason
+    // they are flags rather than something read here: this generator reads nothing from its
+    // environment, so that a documentation job and a container build produce the same bytes.
+    // Passing them makes that difference explicit and keeps `--format contract` reproducible when
+    // they are omitted.
+    if let Some(revision) = &options.revision {
+        app = app.revision(revision);
+    }
+    if let Some(created) = &options.created {
+        app = app.created(created);
+    }
+
     schema
-        .into_contract(
-            // Spelled as the image tag spells it. `CARGO_PKG_VERSION` alone yields `2.5.0`
-            // where the images are tagged `v2.5.0`, and the field exists to be compared against
-            // a tag.
-            App::new("portfolio")
-                .version(concat!("v", env!("CARGO_PKG_VERSION")))
-                .source("https://github.com/TimSchoenle/Portfolio"),
-        )
+        .into_contract(app)
         .external(
             External::new()
                 .var(
@@ -283,6 +296,10 @@ struct Options {
     format: Format,
     /// The subtree to keep. Empty means the whole configuration.
     only: String,
+    /// The commit this build is of, for `--format contract`.
+    revision: Option<String>,
+    /// When this build happened, RFC 3339, for `--format contract`.
+    created: Option<String>,
 }
 
 /// Which rendering to emit.
@@ -318,6 +335,8 @@ impl Options {
         let mut options = Self {
             format: Format::Json,
             only: String::new(),
+            revision: None,
+            created: None,
         };
         let mut args = std::env::args().skip(1);
         while let Some(flag) = args.next() {
@@ -338,6 +357,18 @@ impl Options {
                     options.only = args
                         .next()
                         .ok_or_else(|| format!("--only takes a key prefix; {USAGE}"))?;
+                }
+                "--revision" => {
+                    options.revision = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--revision takes a commit; {USAGE}"))?,
+                    );
+                }
+                "--created" => {
+                    options.created = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--created takes a timestamp; {USAGE}"))?,
+                    );
                 }
                 other => return Err(format!("unknown argument `{other}`; {USAGE}")),
             }
@@ -360,4 +391,4 @@ impl Options {
 
 const USAGE: &str = "usage: config-schema \
                      [--format json|markdown|toml|json-schema|contract|labels] \
-                     [--only <key-prefix>]";
+                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";
