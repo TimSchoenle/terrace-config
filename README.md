@@ -387,6 +387,29 @@ let csp = Terrace::new("PORTFOLIO_").schema::<Config>().subset("csp");
 because `schema::<Csp>()` alone would produce `cloudflare.turnstile` — a path that appears in no
 configuration file anywhere.
 
+Some workspaces have no single root at all — one binary reads `assets`, `csp` and `isr`, another
+reads `github`, and keeping the two apart is the point of the split. `Schema::merge` unions the
+schemas of the roots those binaries actually load, so one document covers the workspace without an
+aggregate struct that exists only for the generator and can drift from every root it stands in for:
+
+```rust
+let terrace = Terrace::new("PORTFOLIO_").reserve("PORTFOLIO_PROFILE");
+let everything = terrace
+    .schema::<server::Config>()
+    .with_defaults_from(&server::Config::default())?
+    .merge(
+        terrace
+            .schema::<updater::Config>()
+            .with_defaults_from(&updater::Config::default())?,
+    );
+```
+
+Keys keep declaration order within each half, and a key both roots describe identically — the
+shared key two binaries genuinely both read — is kept once. Anything else is refused: two different
+descriptions of one path, two different dialects, or two different schema versions all panic, on
+the same reasoning as the duplicate-path check inside `describe`. A table that quietly picks one of
+two descriptions is worse than one that refuses to be generated.
+
 ### Wiring it into your own crate
 
 Nothing here reads the environment, so a documentation job produces the same answer on a runner
@@ -460,7 +483,8 @@ cargo run --example config-schema              > docs/config.json
 ```
 
 In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
-generator per service — two binaries with two prefixes are two schemas, not one merged document.
+generator per *dialect*: two binaries reading one prefix are one document, joined with
+`Schema::merge`, while two binaries with two prefixes are two schemas and merging them is refused.
 
 **4. Fail the build when the checked-in copy goes stale:**
 

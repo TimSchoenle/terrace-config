@@ -1287,6 +1287,83 @@ fn a_config_holding_a_secret_type_can_still_supply_defaults() {
     assert_eq!(key(&schema, "ttl_secs").default.as_deref(), Some("0"));
 }
 
+/// A workspace whose binaries read different halves of one configuration has no single root type.
+/// Merging the roots they actually load is what keeps the document tied to them, rather than to
+/// an aggregate struct that exists for the generator and can drift from both.
+#[test]
+fn merging_two_roots_unions_their_keys_and_loader_variables() {
+    #[derive(Describe)]
+    struct Server {
+        #[config(nested)]
+        csp: Csp,
+    }
+
+    #[derive(Describe)]
+    struct Updater {
+        #[config(nested)]
+        github: Github,
+    }
+
+    let terrace = Terrace::new("PORTFOLIO_").reserve("PORTFOLIO_PROFILE");
+    let merged = terrace
+        .schema::<Server>()
+        .merge(terrace.schema::<Updater>());
+
+    // `self` first, then what `other` adds — declaration order survives within each half.
+    assert_eq!(
+        paths(&merged),
+        [
+            "csp.hash_inline_scripts",
+            "csp.cloudflare.turnstile",
+            "github.username",
+            "github.token",
+            "github.ttl_secs",
+        ]
+    );
+    // The loader variables are the same on both sides, so they are kept once rather than doubled.
+    assert_eq!(merged.loader.len(), terrace.schema::<Server>().loader.len());
+    assert_eq!(merged.schema_version, SCHEMA_VERSION);
+}
+
+/// Two binaries reading one shared key is the normal case in a workspace, not a mistake — so an
+/// identical description on both sides is kept once rather than refused.
+#[test]
+fn a_key_described_the_same_way_on_both_sides_is_kept_once() {
+    let merged = schema().merge(schema());
+    assert_eq!(paths(&merged), paths(&schema()));
+}
+
+/// Two *different* descriptions of one key is the collision `Sink::leaf` already refuses, for the
+/// same reason: a table that quietly picks one is worse than one that refuses to be generated.
+#[test]
+#[should_panic(expected = "described twice and differently")]
+fn a_key_described_differently_on_each_side_is_refused() {
+    #[derive(Describe)]
+    struct Left {
+        /// One thing.
+        shared: bool,
+    }
+
+    #[derive(Describe)]
+    struct Right {
+        /// Something else entirely.
+        shared: bool,
+    }
+
+    let terrace = Terrace::new("T_");
+    let _ = terrace.schema::<Left>().merge(terrace.schema::<Right>());
+}
+
+/// Every environment spelling in a schema is derived from its dialect, so merging across two
+/// dialects would produce a document whose rows have to be read under two sets of rules.
+#[test]
+#[should_panic(expected = "different dialects")]
+fn schemas_of_different_dialects_cannot_be_merged() {
+    let _ = Terrace::new("A_")
+        .schema::<Github>()
+        .merge(Terrace::new("B_").schema::<Csp>());
+}
+
 /// A README with one key table per subsystem wants the loader variables once, above the first of
 /// them — not repeated over every table, and not reachable only by clearing a public field.
 #[test]

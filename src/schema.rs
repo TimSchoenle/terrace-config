@@ -23,6 +23,12 @@
 //! field says below its summary line belongs on the field's own documentation page, not inside a
 //! table cell, and [`Schema::to_json`] still carries all of it.
 //!
+//! # More than one root
+//!
+//! A workspace whose binaries read different parts of one configuration has no single root type
+//! to describe. [`Schema::merge`] unions the schemas of the roots those binaries actually load,
+//! so the document stays tied to them instead of to an aggregate type invented for the generator.
+//!
 //! ```no_run
 //! use serde::Deserialize;
 //! use terrace_config::{Terrace, schema::Describe};
@@ -216,7 +222,7 @@ impl Sink {
 /// at all — `#[serde(rename_all = "camelCase")]` produces exactly this, because an environment
 /// key is folded to lower case on the way in and `distDir` never comes back. A table that
 /// printed a spelling nobody can use would be worse than one that says there is none.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Key {
     /// The figment/TOML path, e.g. `csp.cloudflare.turnstile`.
     pub path: String,
@@ -280,7 +286,7 @@ pub enum LoaderRole {
 ///
 /// These never appear in the config struct, so no derive can find them — but an operator setting
 /// the service up needs them more than they need any single key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoaderVar {
     /// The full environment spelling, e.g. `PORTFOLIO_CONFIG`.
     pub env: String,
@@ -293,7 +299,7 @@ pub struct LoaderVar {
 }
 
 /// The environment spelling this loader reads, minus the keys.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DialectInfo {
     /// The prefix every configuration variable carries, e.g. `PORTFOLIO_`.
     pub prefix: String,
@@ -304,7 +310,7 @@ pub struct DialectInfo {
 }
 
 /// The whole configuration surface of one application.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schema {
     /// The version of this document's shape. See [`SCHEMA_VERSION`].
     pub schema_version: u32,
@@ -503,6 +509,91 @@ impl Schema {
                 rendered
             });
         }
+        self
+    }
+
+    /// The union of this schema and `other`.
+    ///
+    /// A workspace whose binaries each read part of one configuration surface has no single root
+    /// type to describe — the point of the split is that neither binary sees the other's keys.
+    /// Describing each root and merging is how such a workspace gets one document without
+    /// inventing an aggregate type that exists only for the generator and can silently drift from
+    /// every root it stands in for.
+    ///
+    /// `self`'s keys keep their order and `other`'s new ones are appended, so declaration order
+    /// survives within each half. A key both halves describe is kept once — two binaries reading
+    /// one shared key is the normal case, not a mistake.
+    ///
+    /// ```
+    /// # use terrace_config::Terrace;
+    /// # use terrace_config::schema::{Describe, Leaf, Sink};
+    /// # struct Csp;
+    /// # impl Describe for Csp {
+    /// #     fn describe(sink: &mut Sink) {
+    /// #         sink.leaf(Leaf { name: "csp", docs: "", ty: None, values: None,
+    /// #             aliases: &[], note: None, required: false, secret: false });
+    /// #     }
+    /// # }
+    /// # struct Github;
+    /// # impl Describe for Github {
+    /// #     fn describe(sink: &mut Sink) {
+    /// #         sink.leaf(Leaf { name: "github", docs: "", ty: None, values: None,
+    /// #             aliases: &[], note: None, required: false, secret: false });
+    /// #     }
+    /// # }
+    /// let terrace = Terrace::new("PORTFOLIO_");
+    /// let everything = terrace.schema::<Csp>().merge(terrace.schema::<Github>());
+    ///
+    /// assert_eq!(everything.keys.len(), 2);
+    /// ```
+    ///
+    /// # Panics
+    /// If the two schemas disagree — a different [`schema_version`](Self::schema_version) or
+    /// [`dialect`](Self::dialect), or one key path or loader variable described differently on
+    /// each side. Merging those would produce a document carrying two answers to one question,
+    /// and the same reasoning applies as in [`Sink::leaf`]: a table that quietly picks one is
+    /// worse than one that refuses to be generated. Describing both halves from the same
+    /// [`Terrace`](crate::Terrace) rules out the version and dialect cases; a path described
+    /// differently by two roots is a real disagreement between them, and is meant to be loud.
+    #[must_use]
+    pub fn merge(mut self, other: Self) -> Self {
+        assert_eq!(
+            self.schema_version, other.schema_version,
+            "two schemas of different versions cannot be merged: one of them describes a \
+             document shape the other does not."
+        );
+        assert_eq!(
+            self.dialect, other.dialect,
+            "two schemas of different dialects cannot be merged: every environment spelling in \
+             the result would have to be read under two different sets of rules."
+        );
+
+        for var in other.loader {
+            match self.loader.iter().find(|held| held.env == var.env) {
+                Some(held) => assert!(
+                    *held == var,
+                    "`{}` is described twice and differently, so the merged schema cannot say \
+                     which description the documentation is about.",
+                    var.env
+                ),
+                None => self.loader.push(var),
+            }
+        }
+
+        for key in other.keys {
+            match self.keys.iter().find(|held| held.path == key.path) {
+                // Identical is the shared-key case and is kept once. Anything else is two
+                // descriptions of one key, which is the collision `Sink::leaf` refuses.
+                Some(held) => assert!(
+                    *held == key,
+                    "`{}` is described twice and differently, so the merged schema cannot say \
+                     which description the documentation is about.",
+                    key.path
+                ),
+                None => self.keys.push(key),
+            }
+        }
+
         self
     }
 
