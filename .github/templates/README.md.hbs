@@ -849,6 +849,16 @@ The JSON Schema half defaults to draft-07 — the dialect Helm validates `values
 against — and to `additionalProperties: false`, because an unknown key is the defect the document
 exists to catch and an open schema catches none of them.
 
+**It carries no `required` list**, and that default differs from `Schema::to_json_schema`'s for a
+reason about meaning rather than strictness. JSON Schema's `required` says *this document must
+carry the property*; `Key::required` says *some layer must supply the key*, and the loader takes the
+environment or a mounted file just as readily. So a chart supplying a required **secret** from a
+mount — the only way to supply a secret — renders a document a `required` list refuses and a
+deployment that starts. A consumer checks `required` per key across every layer it can see instead,
+which is where the evidence is, and can then say "no layer supplies this" rather than "add it to the
+file". `ContractBuilder::require_present(true)` turns it back on; the standalone
+`to_json_schema`, whose reader is an editor validating a hand-written file, is unchanged.
+
 **The schema you pass is a claim about what *this image's binary* loads.** A workspace with several
 aggregates has a generator that naturally reaches for the union of them, and a contract built from
 that union asserts the runtime image reads a build-time credential no deployment supplies. Nothing

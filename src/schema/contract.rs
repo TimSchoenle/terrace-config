@@ -684,6 +684,29 @@ impl ContractBuilder {
         self
     }
 
+    /// Whether the JSON Schema half marks a required key `required`. Defaults to `false`.
+    ///
+    /// Off, and this is the one default that differs from
+    /// [`Schema::to_json_schema`](Schema::to_json_schema)'s for a reason about *meaning* rather
+    /// than strictness. A JSON Schema `required` says this document must carry the property.
+    /// [`Key::required`](super::Key::required) says some layer must supply the key, and the loader
+    /// takes the environment or a mounted file just as readily.
+    ///
+    /// So a chart supplying a required **secret** from a mounted file — which is the only way to
+    /// supply a secret, and the arrangement the secrets-directory layer exists for — renders a
+    /// document that a `required` list refuses and a deployment that starts. Turning it on for a
+    /// contract asks a validator to reject correct charts.
+    ///
+    /// What replaces it is better than what it was: `required` is published per key, and a
+    /// consumer walking the document *and* the environment *and* the mounted files can say "no
+    /// layer supplies this" — where a `required` list can only say "add it to the file", which for
+    /// a credential is the wrong advice.
+    #[must_use]
+    pub fn require_present(mut self, require_present: bool) -> Self {
+        self.json_schema = self.json_schema.require_present(require_present);
+        self
+    }
+
     /// Assemble the contract, checking the claims it is about to publish.
     ///
     /// # Errors
@@ -768,7 +791,12 @@ impl Schema {
             // fails only when a pipeline pins a draft-07 engine, or when two contracts of one
             // document refuse to merge. `closed` and `title` are the two knobs that override
             // meaningfully, so they are the two that exist.
-            json_schema: JsonSchema::new().meta_schema(DRAFT_07).closed(true),
+            json_schema: JsonSchema::new()
+                .meta_schema(DRAFT_07)
+                .closed(true)
+                // See `Self::require_present`: the two meanings of "required" differ, and this
+                // rendering's reader is the one for whom the document is not the only layer.
+                .require_present(false),
         }
     }
 }

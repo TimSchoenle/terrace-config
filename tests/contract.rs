@@ -139,6 +139,10 @@ fn the_json_schema_half_is_the_json_schema_rendering() {
     let options = JsonSchema::new()
         .meta_schema(DRAFT_07)
         .closed(true)
+        // The contract's defaults, restated: a contract asserts nothing about which layer supplies
+        // a required key, so its `required` lists — and the `anyOf` an aliased required key would
+        // produce — are both off.
+        .require_present(false)
         .title("portfolio configuration");
     let standalone: Json =
         serde_json::from_str(&schema().to_json_schema_with(&options).expect("renders"))
@@ -805,6 +809,60 @@ fn matches_pattern(pattern: &str, text: &str) -> bool {
         },
     };
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Requiredness, which the document cannot establish and does not claim to
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Mandatory {
+    /// A mandatory credential — the ordinary shape of one.
+    #[config(secret)]
+    endpoint: String,
+}
+
+#[test]
+fn a_contract_marks_nothing_required_in_its_json_schema() {
+    // Measured: the loader takes a required key from the document, from the environment, or from a
+    // secrets file, and refuses only when nothing supplies it. JSON Schema's `required` says the
+    // *document* must carry it, so a chart supplying a required secret from a mount — the only way
+    // to supply a secret — renders a document a `required` list refuses and a deployment that
+    // starts. A false rejection of the arrangement the secrets-directory layer exists for.
+    let contract = Terrace::new("MANDATORY_")
+        .schema::<Mandatory>()
+        .into_contract(App::new("mandatory"))
+        .build()
+        .expect("builds");
+
+    assert!(contract.json_schema.get("required").is_none());
+    // The fact a consumer checks instead, published per key, checkable across every layer.
+    assert!(contract.schema.keys[0].required);
+}
+
+#[test]
+fn the_standalone_rendering_still_marks_them() {
+    // Its reader is an editor validating a hand-written `config.toml`, where the document is the
+    // only layer there is. Nothing about this change touches that.
+    let rendered = Terrace::new("MANDATORY_")
+        .schema::<Mandatory>()
+        .to_json_schema()
+        .expect("renders");
+    let json: Json = serde_json::from_str(&rendered).expect("parses");
+
+    assert_eq!(json["required"], json!(["endpoint"]));
+}
+
+#[test]
+fn requiredness_can_be_switched_back_on() {
+    let contract = Terrace::new("MANDATORY_")
+        .schema::<Mandatory>()
+        .into_contract(App::new("mandatory"))
+        .require_present(true)
+        .build()
+        .expect("builds");
+
+    assert_eq!(contract.json_schema["required"], json!(["endpoint"]));
 }
 
 // ---------------------------------------------------------------------------------------------

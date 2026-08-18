@@ -79,6 +79,8 @@ pub struct JsonSchema {
     defaults: bool,
     /// Whether a key the configuration does not have is an error.
     closed: bool,
+    /// Whether a key that must be supplied must be supplied *by this document*.
+    require_present: bool,
 }
 
 impl Default for JsonSchema {
@@ -92,6 +94,9 @@ impl Default for JsonSchema {
             docs: Docs::Full,
             defaults: true,
             closed: true,
+            // True, because the reader this rendering was written for is an editor validating a
+            // hand-written `config.toml`, and there the document is the only layer there is.
+            require_present: true,
         }
     }
 }
@@ -166,6 +171,26 @@ impl JsonSchema {
     #[must_use]
     pub fn closed(mut self, closed: bool) -> Self {
         self.closed = closed;
+        self
+    }
+
+    /// Whether a key that must be supplied must be supplied *by this document*. Defaults to
+    /// `true`.
+    ///
+    /// The two meanings of "required" are not the same and this is where they part. A JSON Schema
+    /// `required` says **this document must carry the property**. [`Key::required`] says **some
+    /// layer must supply the key** — and the loader is satisfied by the environment or by a
+    /// mounted file just as well as by the file this schema describes.
+    ///
+    /// On for an editor validating a hand-written `config.toml`, where the document is the only
+    /// layer there is. Off for a [`Contract`](super::Contract), whose reader is checking what a
+    /// chart rendered — because a chart supplying a required *secret* from a mounted file, which
+    /// is the only way to supply a secret, renders a document that fails this and a deployment
+    /// that starts. That consumer checks [`Key::required`] across every layer it can see instead,
+    /// which is where the evidence is.
+    #[must_use]
+    pub fn require_present(mut self, require_present: bool) -> Self {
+        self.require_present = require_present;
         self
     }
 }
@@ -248,7 +273,7 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
 
         properties.insert(name.to_owned(), Json::Object(schema));
 
-        if key.required {
+        if key.required && options.require_present {
             if key.aliases.is_empty() {
                 required.push(json!(name));
             } else {
@@ -268,7 +293,9 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
             child.segment.to_owned(),
             Json::Object(object(child, options)),
         );
-        if child.required() {
+        // A table is required because something inside it is, so it follows the same switch: with
+        // `require_present` off there is nothing inside making it mandatory *here*.
+        if child.required() && options.require_present {
             required.push(json!(child.segment));
         }
     }

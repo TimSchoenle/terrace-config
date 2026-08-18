@@ -488,7 +488,6 @@ structurally, over the `json_schema` halves:
 |---|---|---|
 | a path in one schema only | keep | it belongs to that binary |
 | a path in several, identical | keep once | the shared key both binaries read |
-| `required` | union | a key any reader requires must be present |
 | `additionalProperties` | `false` at every level | after the union, an unknown key is unknown to *all* of them |
 | `title` and `description` | keep the first | prose, not an assertion — see below |
 | **any other keyword present in two schemas with different values** | **hard error** | two binaries disagree about one key |
@@ -534,8 +533,14 @@ byte-identical to the ones `kubeconform` and `kube-linter` see:
 3. parse TOML → JSON
 4. validate against the union, `additionalProperties: false`
 
-Catches: unknown key, wrong type, missing required key, value outside an enum, a table where a
-scalar belongs.
+Catches: unknown key, wrong type, value outside an enum, a table where a scalar belongs.
+
+**Not a missing required key.** A contract's `json_schema` carries no `required` list, on purpose.
+JSON Schema's `required` means *this document must carry the property*; the contract's `required`
+means *some layer must supply the key*, and the loader is satisfied by the environment or a mounted
+file just as well. A chart supplying a required **secret** from a mount — the only way to supply a
+secret, and what the secrets-directory layer exists for — renders a document a `required` list
+refuses and a deployment that starts. Requiredness is checked across the layers instead, below.
 
 ### Gate 2 — the environment
 
@@ -579,6 +584,17 @@ Include the alias spellings on both sides. A canonical variable beside an alias-
 same defect and the *least* visible version of it: the loader's own shadow check compares
 spellings, so it does not report that pair, and `serde` refuses the load with `duplicate field`,
 naming neither source. A gate holding both spelling sets is the only thing that can say which two.
+
+### Gate 2b — requiredness, across every layer
+
+Every key with `required: true` must be supplied by *something*: the rendered document, one of its
+environment spellings (`env`, `env_aliases`, `env_file`, `env_file_aliases`), or a mounted file
+named for it (`secrets_file`, `secrets_file_aliases`). None of the three alone is the answer, which
+is why this cannot live in gate 1 — see there.
+
+It replaces a `required` list and improves on it. `'endpoint' is a required property` tells an
+operator to add the key to the ConfigMap, which for a credential is exactly the wrong advice.
+Naming all three layers tells them they have a choice.
 
 ### Gate 3 — file spellings
 
