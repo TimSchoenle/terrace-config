@@ -18,7 +18,16 @@
 //! pipeline at it and render whatever that pipeline wants.
 //!
 //! [`Schema::to_markdown`] is for the case where the pipeline is `>> README.md`. It emits GitHub
-//! -flavoured tables that can be pasted in unmodified.
+//! -flavoured tables that can be pasted in unmodified. Its documentation column carries the
+//! summary — the first paragraph — of each `///` comment, on rustdoc's own convention: whatever a
+//! field says below its summary line belongs on the field's own documentation page, not inside a
+//! table cell, and [`Schema::to_json`] still carries all of it.
+//!
+//! # More than one root
+//!
+//! A workspace whose binaries read different parts of one configuration has no single root type
+//! to describe. [`Schema::merge`] unions the schemas of the roots those binaries actually load,
+//! so the document stays tied to them instead of to an aggregate type invented for the generator.
 //!
 //! ```no_run
 //! use serde::Deserialize;
@@ -213,7 +222,7 @@ impl Sink {
 /// at all — `#[serde(rename_all = "camelCase")]` produces exactly this, because an environment
 /// key is folded to lower case on the way in and `distDir` never comes back. A table that
 /// printed a spelling nobody can use would be worse than one that says there is none.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Key {
     /// The figment/TOML path, e.g. `csp.cloudflare.turnstile`.
     pub path: String,
@@ -277,7 +286,7 @@ pub enum LoaderRole {
 ///
 /// These never appear in the config struct, so no derive can find them — but an operator setting
 /// the service up needs them more than they need any single key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoaderVar {
     /// The full environment spelling, e.g. `PORTFOLIO_CONFIG`.
     pub env: String,
@@ -290,7 +299,7 @@ pub struct LoaderVar {
 }
 
 /// The environment spelling this loader reads, minus the keys.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DialectInfo {
     /// The prefix every configuration variable carries, e.g. `PORTFOLIO_`.
     pub prefix: String,
@@ -301,7 +310,7 @@ pub struct DialectInfo {
 }
 
 /// The whole configuration surface of one application.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schema {
     /// The version of this document's shape. See [`SCHEMA_VERSION`].
     pub schema_version: u32,
@@ -398,8 +407,9 @@ impl Schema {
     /// empty `prefix` keeps everything.
     ///
     /// The loader variables are kept, because they are not part of any subtree and an operator
-    /// reading one page still has to know where the configuration file comes from. Clear
-    /// [`Schema::loader`] to drop them.
+    /// reading one page still has to know where the configuration file comes from. A page that
+    /// says so elsewhere renders [`Self::to_markdown_keys`] instead of [`Self::to_markdown`],
+    /// which leaves them out without removing them from [`Self::to_json`]'s contract.
     #[must_use]
     pub fn subset(mut self, prefix: &str) -> Self {
         if !prefix.is_empty() {
@@ -423,10 +433,57 @@ impl Schema {
     /// credential should end up, and a default that *is* a credential is exactly the case where
     /// this matters.
     ///
+    /// A type holding a secret is the case this bound bites on: `secrecy::SecretString` refuses
+    /// to implement [`Serialize`] on purpose, so a config struct containing one cannot derive it
+    /// either. Mark the field `#[serde(skip_serializing)]` — a secret has no default worth
+    /// printing, and [`Key::secret`] would redact it anyway — or, when the type is not yours to
+    /// annotate, build the value yourself and use [`Self::with_defaults_from_value`].
+    ///
     /// # Errors
     /// Returns [`Error::Figment`] if `value` cannot be serialised.
-    pub fn with_defaults_from<T: Serialize + ?Sized>(mut self, value: &T) -> Result<Self, Error> {
+    pub fn with_defaults_from<T: Serialize + ?Sized>(self, value: &T) -> Result<Self, Error> {
         let root = figment::value::Value::serialize(value).map_err(Box::new)?;
+        Ok(self.with_defaults_from_value(&root))
+    }
+
+    /// Fill in each key's default from an already-serialised value.
+    ///
+    /// [`Self::with_defaults_from`] is this with the serialisation done for you, and is what a
+    /// caller who owns the config type should reach for. This is the escape hatch for the case
+    /// where the root type cannot implement [`Serialize`] at all — a field whose type is from
+    /// another crate and refuses to, `secrecy::SecretString` being the one that turns up in a
+    /// configuration — and the value has to be assembled by hand:
+    ///
+    /// ```
+    /// # use terrace_config::Terrace;
+    /// use figment::value::{Dict, Value};
+    ///
+    /// # struct Config;
+    /// # impl terrace_config::schema::Describe for Config {
+    /// #     fn describe(sink: &mut terrace_config::schema::Sink) {
+    /// #         sink.leaf(terrace_config::schema::Leaf {
+    /// #             name: "ttl_secs", docs: "", ty: Some("u64"), values: None,
+    /// #             aliases: &[], note: None, required: false, secret: false,
+    /// #         });
+    /// #     }
+    /// # }
+    /// let mut defaults = Dict::new();
+    /// defaults.insert("ttl_secs".to_owned(), Value::from(0u64));
+    ///
+    /// let schema = Terrace::new("MYSERVICE_")
+    ///     .schema::<Config>()
+    ///     .with_defaults_from_value(&Value::from(defaults));
+    ///
+    /// assert_eq!(schema.keys[0].default.as_deref(), Some("0"));
+    /// ```
+    ///
+    /// `figment::util::nest` builds the same thing from a dotted path when the keys are nested.
+    ///
+    /// The rules are [`Self::with_defaults_from`]'s, because that is a thin wrapper over this: a
+    /// required key keeps no default, a [`secret`](Key::secret) one renders `<redacted>`, and a
+    /// path `root` does not carry stays unset.
+    #[must_use]
+    pub fn with_defaults_from_value(mut self, root: &figment::value::Value) -> Self {
         for key in &mut self.keys {
             // A required key has no default *by definition* — loading fails when nothing
             // supplies it. Whatever `Default` happened to put in the field is an artefact of
@@ -452,7 +509,92 @@ impl Schema {
                 rendered
             });
         }
-        Ok(self)
+        self
+    }
+
+    /// The union of this schema and `other`.
+    ///
+    /// A workspace whose binaries each read part of one configuration surface has no single root
+    /// type to describe — the point of the split is that neither binary sees the other's keys.
+    /// Describing each root and merging is how such a workspace gets one document without
+    /// inventing an aggregate type that exists only for the generator and can silently drift from
+    /// every root it stands in for.
+    ///
+    /// `self`'s keys keep their order and `other`'s new ones are appended, so declaration order
+    /// survives within each half. A key both halves describe is kept once — two binaries reading
+    /// one shared key is the normal case, not a mistake.
+    ///
+    /// ```
+    /// # use terrace_config::Terrace;
+    /// # use terrace_config::schema::{Describe, Leaf, Sink};
+    /// # struct Csp;
+    /// # impl Describe for Csp {
+    /// #     fn describe(sink: &mut Sink) {
+    /// #         sink.leaf(Leaf { name: "csp", docs: "", ty: None, values: None,
+    /// #             aliases: &[], note: None, required: false, secret: false });
+    /// #     }
+    /// # }
+    /// # struct Github;
+    /// # impl Describe for Github {
+    /// #     fn describe(sink: &mut Sink) {
+    /// #         sink.leaf(Leaf { name: "github", docs: "", ty: None, values: None,
+    /// #             aliases: &[], note: None, required: false, secret: false });
+    /// #     }
+    /// # }
+    /// let terrace = Terrace::new("PORTFOLIO_");
+    /// let everything = terrace.schema::<Csp>().merge(terrace.schema::<Github>());
+    ///
+    /// assert_eq!(everything.keys.len(), 2);
+    /// ```
+    ///
+    /// # Panics
+    /// If the two schemas disagree — a different [`schema_version`](Self::schema_version) or
+    /// [`dialect`](Self::dialect), or one key path or loader variable described differently on
+    /// each side. Merging those would produce a document carrying two answers to one question,
+    /// and the same reasoning applies as in [`Sink::leaf`]: a table that quietly picks one is
+    /// worse than one that refuses to be generated. Describing both halves from the same
+    /// [`Terrace`](crate::Terrace) rules out the version and dialect cases; a path described
+    /// differently by two roots is a real disagreement between them, and is meant to be loud.
+    #[must_use]
+    pub fn merge(mut self, other: Self) -> Self {
+        assert_eq!(
+            self.schema_version, other.schema_version,
+            "two schemas of different versions cannot be merged: one of them describes a \
+             document shape the other does not."
+        );
+        assert_eq!(
+            self.dialect, other.dialect,
+            "two schemas of different dialects cannot be merged: every environment spelling in \
+             the result would have to be read under two different sets of rules."
+        );
+
+        for var in other.loader {
+            match self.loader.iter().find(|held| held.env == var.env) {
+                Some(held) => assert!(
+                    *held == var,
+                    "`{}` is described twice and differently, so the merged schema cannot say \
+                     which description the documentation is about.",
+                    var.env
+                ),
+                None => self.loader.push(var),
+            }
+        }
+
+        for key in other.keys {
+            match self.keys.iter().find(|held| held.path == key.path) {
+                // Identical is the shared-key case and is kept once. Anything else is two
+                // descriptions of one key, which is the collision `Sink::leaf` refuses.
+                Some(held) => assert!(
+                    *held == key,
+                    "`{}` is described twice and differently, so the merged schema cannot say \
+                     which description the documentation is about.",
+                    key.path
+                ),
+                None => self.keys.push(key),
+            }
+        }
+
+        self
     }
 
     /// The schema as a JSON document — the machine-readable contract.
@@ -472,36 +614,87 @@ impl Schema {
     ///
     /// Two tables: the variables the loader reads, then the configuration keys under
     /// [`Column::DEFAULT`]. Use [`Self::to_markdown_with`] to choose the columns.
+    ///
+    /// A [`Column::Docs`] cell carries the *summary* of the `///` comment — its first paragraph,
+    /// as rustdoc means the word — rather than the whole of it. [`Key::docs`] keeps the whole
+    /// text for [`Self::to_json`], so nothing is lost; a table cell is simply not where the four
+    /// paragraphs below the summary belong.
+    ///
+    /// Ends with a newline, so appending another section needs no separator of its own.
     #[must_use]
     pub fn to_markdown(&self) -> String {
         self.to_markdown_with(Column::DEFAULT)
     }
 
-    /// The schema as Markdown, with a chosen set of key columns.
+    /// Both tables, with a chosen set of key columns.
     ///
-    /// The loader-variable table is emitted unconditionally when there is one: its three columns
-    /// are not the key columns, and an operator who cannot find `<PREFIX>CONFIG` cannot use any
-    /// of the rest.
+    /// The loader-variable table leads when there is one: its three columns are not the key
+    /// columns, and an operator who cannot find `<PREFIX>CONFIG` cannot use any of the rest.
+    ///
+    /// [`Self::to_markdown_loader`] and [`Self::to_markdown_keys`] are the two halves on their
+    /// own, for a page that wants them apart.
+    ///
+    /// Ends with a newline, as [`Self::to_markdown`] does.
     #[must_use]
     pub fn to_markdown_with(&self, columns: &[Column]) -> String {
-        let mut out = String::new();
+        let loader = self.to_markdown_loader();
+        let keys = self.to_markdown_keys(columns);
+        if loader.is_empty() {
+            keys
+        } else {
+            // The blank line between them: two tables run together are one malformed table.
+            format!("{loader}\n{keys}")
+        }
+    }
 
-        if !self.loader.is_empty() {
-            out.push_str("| Variable | Role | Default | Purpose |\n");
-            out.push_str("|---|---|---|---|\n");
-            for var in &self.loader {
-                let _ = writeln!(
-                    out,
-                    "| `{}` | {} | {} | {} |",
-                    escape(&var.env),
-                    var.role.label(),
-                    optional_code(var.default.as_deref()),
-                    cell(&var.docs),
-                );
-            }
-            out.push('\n');
+    /// The loader-variable table alone.
+    ///
+    /// A documentation page with one key table per subsystem wants these variables once, not
+    /// repeated above every table — and the subsystem pages want [`Self::to_markdown_keys`] with
+    /// no loader table at all. Emitting the pair together is the common case, not the only one,
+    /// so each half is reachable on its own rather than through clearing a field.
+    ///
+    /// Empty when the schema has no loader variables, which is what
+    /// [`Schema::describe`](Self::describe) produces on its own — a header with no rows under it
+    /// would be a table promising variables that do not exist.
+    ///
+    /// Ends with a newline when it is not empty.
+    #[must_use]
+    pub fn to_markdown_loader(&self) -> String {
+        let mut out = String::new();
+        if self.loader.is_empty() {
+            return out;
         }
 
+        out.push_str("| Variable | Role | Default | Purpose |\n");
+        out.push_str("|---|---|---|---|\n");
+        for var in &self.loader {
+            let _ = writeln!(
+                out,
+                "| `{}` | {} | {} | {} |",
+                escape(&var.env),
+                var.role.label(),
+                optional_code(var.default.as_deref()),
+                cell(&var.docs),
+            );
+        }
+
+        out
+    }
+
+    /// The configuration-key table alone, with a chosen set of columns.
+    ///
+    /// The counterpart to [`Self::to_markdown_loader`]: the table for a page that documents one
+    /// subsystem and has said where the configuration file comes from somewhere else.
+    ///
+    /// A schema with no keys still renders its header, unlike the loader table. An empty
+    /// configuration section is a real shape — a subsystem that reads nothing yet — and the
+    /// header is what says the section was generated rather than forgotten.
+    ///
+    /// Ends with a newline.
+    #[must_use]
+    pub fn to_markdown_keys(&self, columns: &[Column]) -> String {
+        let mut out = String::new();
         let header: Vec<&str> = columns.iter().map(|c| c.heading()).collect();
         let _ = writeln!(out, "| {} |", header.join(" | "));
         let _ = writeln!(out, "|{}|", vec!["---"; columns.len()].join("|"));
@@ -568,9 +761,14 @@ impl Column {
     /// The columns [`Schema::to_markdown`] emits: everything an operator needs, and nothing that
     /// pushes the table past the width of a page.
     ///
-    /// [`Self::SecretsFile`] is left out because it is mechanically `path` with the separator
-    /// substituted, [`Self::Flags`] carries what [`Self::Required`] and [`Self::Secret`] would
-    /// have taken two columns to say, and [`Self::Aliases`] is empty for almost every key.
+    /// The two file spellings are left out because both are mechanical — [`Self::SecretsFile`]
+    /// is `path` with the separator substituted, and [`Self::EnvFile`] is [`Self::Env`] with the
+    /// dialect's documented suffix appended. Neither adds anything the reader cannot derive from
+    /// a column already in front of them plus one sentence of prose, and dropping the pair keeps
+    /// the table inside a page. Ask for either by name through [`Schema::to_markdown_with`].
+    ///
+    /// [`Self::Flags`] carries what [`Self::Required`] and [`Self::Secret`] would have taken two
+    /// columns to say, and [`Self::Aliases`] is empty for almost every key.
     ///
     /// [`Self::Type`] *is* here, because without it a required key shows an em dash for its
     /// default and the reader has no way to tell whether to supply a string, a number or a list.
@@ -578,7 +776,6 @@ impl Column {
         Self::Path,
         Self::Type,
         Self::Env,
-        Self::EnvFile,
         Self::Default,
         Self::Flags,
         Self::Docs,
@@ -672,7 +869,7 @@ impl Column {
             Self::Required => yes_or_dash(key.required),
             Self::Secret => yes_or_dash(key.secret),
             Self::Note => key.note.as_deref().map_or_else(|| "—".to_owned(), cell),
-            Self::Docs => cell(&key.docs),
+            Self::Docs => summary_cell(&key.docs),
         }
     }
 }
@@ -692,6 +889,30 @@ fn cell(text: &str) -> String {
         return "—".to_owned();
     }
     escape(text).replace('\n', "<br>")
+}
+
+/// A doc comment in a table cell: its summary, on one line.
+///
+/// The whole comment used to go in, which put every paragraph of a field's rustdoc into one cell
+/// and made a table out of an essay. The fix is rustdoc's own convention rather than a new
+/// annotation to keep in step: the first paragraph is the summary, and a comment written the way
+/// rustdoc asks for one already reads correctly here with nothing to change.
+///
+/// [`Key::docs`] keeps the whole text, so the JSON contract loses nothing and a pipeline that
+/// wants the paragraphs below the summary can still render them.
+///
+/// Soft wraps inside that paragraph become spaces rather than `<br>`: they are the author's line
+/// width, not a break they asked a reader to see. A comment opening with a list or a fenced block
+/// has no leading paragraph to find, so its first block comes out instead, flattened the same way.
+fn summary_cell(text: &str) -> String {
+    let summary: Vec<&str> = text
+        .lines()
+        .take_while(|line| !line.trim().is_empty())
+        .collect();
+    if summary.is_empty() {
+        return "—".to_owned();
+    }
+    escape(&summary.join(" "))
 }
 
 /// The characters that would otherwise be read as table structure.

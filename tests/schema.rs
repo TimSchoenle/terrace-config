@@ -1137,3 +1137,274 @@ fn a_path_with_an_empty_segment_has_no_environment_spelling() {
     let schema = Schema::describe::<Empties>(&Terrace::new("T_").dialect());
     assert_eq!(key(&schema, "outer.").env, None);
 }
+
+/// A `///` comment is rustdoc first and table prose second. The whole of it used to go into the
+/// `Purpose` cell, which forced a field carrying four paragraphs of load-bearing explanation to
+/// choose between documenting its type properly and rendering a readable table.
+#[test]
+fn only_the_summary_paragraph_reaches_the_table() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Documented {
+        /// Hash the document's inline scripts instead
+        /// of allowing `'unsafe-inline'`.
+        ///
+        /// The two are mutually exclusive: a `script-src` carrying any hash makes a browser
+        /// ignore `'unsafe-inline'` entirely.
+        ///
+        /// So leaving an inline script unhashed blocks it rather than falling back.
+        #[serde(default)]
+        hash_inline_scripts: bool,
+    }
+
+    let schema = Terrace::new("T_").schema::<Documented>();
+
+    // Nothing is lost: the contract carries the whole comment, paragraph breaks and all.
+    let docs = &key(&schema, "hash_inline_scripts").docs;
+    assert!(docs.contains("mutually exclusive"), "{docs}");
+    assert!(
+        docs.contains("blocks it rather than falling back"),
+        "{docs}"
+    );
+
+    let markdown = schema.to_markdown();
+    // The summary's own soft wrap is the author's line width, not a break to render.
+    assert!(
+        markdown
+            .contains("Hash the document's inline scripts instead of allowing `'unsafe-inline'`."),
+        "{markdown}"
+    );
+    assert!(!markdown.contains("mutually exclusive"), "{markdown}");
+    assert!(!markdown.contains("<br>"), "{markdown}");
+}
+
+/// A comment that opens with a list has no leading paragraph. Taking the first block is still the
+/// answer — an empty cell would be worse than a flattened one.
+#[test]
+fn a_comment_with_no_leading_paragraph_still_renders_a_cell() {
+    #[derive(Describe)]
+    struct Listed {
+        /// - one
+        /// - two
+        ///
+        /// Prose below.
+        thing: bool,
+        // No `///` at all, so there is no summary to find.
+        blank: bool,
+    }
+
+    let markdown = Schema::describe::<Listed>(&Terrace::new("T_").dialect()).to_markdown();
+    assert!(markdown.contains("- one - two"), "{markdown}");
+    assert!(!markdown.contains("Prose below"), "{markdown}");
+    // An empty comment falls back to the em dash every other empty cell uses.
+    assert!(markdown.contains("| — |"), "{markdown}");
+}
+
+/// Both file spellings are mechanical — the secrets file is the path with the separator
+/// substituted, the indirection variable is the environment name plus a documented suffix — so
+/// neither is in the default set. Both are still in the contract, and still available by name.
+#[test]
+fn the_default_columns_leave_the_file_spellings_out() {
+    let markdown = schema().to_markdown();
+    let header = markdown
+        .lines()
+        .find(|line| line.starts_with("| TOML |"))
+        .expect("a key table");
+
+    assert_eq!(
+        header,
+        "| TOML | Type | Environment | Default | Flags | Purpose |"
+    );
+    assert!(!markdown.contains("_FILE"), "{markdown}");
+
+    // Dropped from the table, not from the schema.
+    assert_eq!(
+        key(&schema(), "github.token").env_file.as_deref(),
+        Some("PORTFOLIO_GITHUB__TOKEN_FILE")
+    );
+    assert!(
+        schema()
+            .to_markdown_with(&[Column::Path, Column::EnvFile])
+            .contains("PORTFOLIO_GITHUB__TOKEN_FILE")
+    );
+}
+
+/// A template pipeline concatenating sections has to know whether it must add a separator.
+#[test]
+fn the_rendered_markdown_ends_with_exactly_one_newline() {
+    let markdown = schema().to_markdown();
+    assert!(markdown.ends_with("|\n"), "{markdown:?}");
+}
+
+/// The escape hatch for a root type that cannot implement `Serialize`: the caller assembles the
+/// value, and the schema reads it exactly as it reads a serialised one.
+#[test]
+fn defaults_can_be_supplied_as_an_already_serialised_value() {
+    use figment::value::{Dict, Value};
+
+    let mut github = Dict::new();
+    github.insert("ttl_secs".to_owned(), Value::from(30u64));
+    let mut root = Dict::new();
+    root.insert("github".to_owned(), Value::from(github));
+
+    let schema = schema().with_defaults_from_value(&Value::from(root));
+
+    assert_eq!(
+        key(&schema, "github.ttl_secs").default.as_deref(),
+        Some("30")
+    );
+    // A path the value does not carry stays unset rather than inventing one.
+    assert_eq!(key(&schema, "csp.hash_inline_scripts").default, None);
+}
+
+/// The case the `Serialize` bound bites on, and the reason it is worth documenting: a config
+/// holding a secret is what this crate exists for. `secrecy::SecretString` refuses to implement
+/// `Serialize` on purpose, so the struct cannot derive it either — unless the field is skipped,
+/// which costs nothing because a secret's default is never rendered anyway.
+#[test]
+fn a_config_holding_a_secret_type_can_still_supply_defaults() {
+    use secrecy::SecretString;
+
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct WithSecret {
+        /// Bearer token lifting the GitHub API rate limit.
+        #[config(secret)]
+        #[serde(skip_serializing)]
+        token: Option<SecretString>,
+        /// Revalidation interval in seconds.
+        #[serde(default)]
+        ttl_secs: u64,
+    }
+
+    let schema = Terrace::new("T_")
+        .schema::<WithSecret>()
+        .with_defaults_from(&WithSecret::default())
+        .expect("the default config serialises");
+
+    // The skipped field supplies no value, so the key is documented with no default at all —
+    // which is the truth, and is what `secret` would have redacted to anyway.
+    assert!(key(&schema, "token").secret);
+    assert_eq!(key(&schema, "token").default, None);
+    assert_eq!(key(&schema, "ttl_secs").default.as_deref(), Some("0"));
+}
+
+/// A workspace whose binaries read different halves of one configuration has no single root type.
+/// Merging the roots they actually load is what keeps the document tied to them, rather than to
+/// an aggregate struct that exists for the generator and can drift from both.
+#[test]
+fn merging_two_roots_unions_their_keys_and_loader_variables() {
+    #[derive(Describe)]
+    struct Server {
+        #[config(nested)]
+        csp: Csp,
+    }
+
+    #[derive(Describe)]
+    struct Updater {
+        #[config(nested)]
+        github: Github,
+    }
+
+    let terrace = Terrace::new("PORTFOLIO_").reserve("PORTFOLIO_PROFILE");
+    let merged = terrace
+        .schema::<Server>()
+        .merge(terrace.schema::<Updater>());
+
+    // `self` first, then what `other` adds — declaration order survives within each half.
+    assert_eq!(
+        paths(&merged),
+        [
+            "csp.hash_inline_scripts",
+            "csp.cloudflare.turnstile",
+            "github.username",
+            "github.token",
+            "github.ttl_secs",
+        ]
+    );
+    // The loader variables are the same on both sides, so they are kept once rather than doubled.
+    assert_eq!(merged.loader.len(), terrace.schema::<Server>().loader.len());
+    assert_eq!(merged.schema_version, SCHEMA_VERSION);
+}
+
+/// Two binaries reading one shared key is the normal case in a workspace, not a mistake — so an
+/// identical description on both sides is kept once rather than refused.
+#[test]
+fn a_key_described_the_same_way_on_both_sides_is_kept_once() {
+    let merged = schema().merge(schema());
+    assert_eq!(paths(&merged), paths(&schema()));
+}
+
+/// Two *different* descriptions of one key is the collision `Sink::leaf` already refuses, for the
+/// same reason: a table that quietly picks one is worse than one that refuses to be generated.
+#[test]
+#[should_panic(expected = "described twice and differently")]
+fn a_key_described_differently_on_each_side_is_refused() {
+    #[derive(Describe)]
+    struct Left {
+        /// One thing.
+        shared: bool,
+    }
+
+    #[derive(Describe)]
+    struct Right {
+        /// Something else entirely.
+        shared: bool,
+    }
+
+    let terrace = Terrace::new("T_");
+    let _ = terrace.schema::<Left>().merge(terrace.schema::<Right>());
+}
+
+/// Every environment spelling in a schema is derived from its dialect, so merging across two
+/// dialects would produce a document whose rows have to be read under two sets of rules.
+#[test]
+#[should_panic(expected = "different dialects")]
+fn schemas_of_different_dialects_cannot_be_merged() {
+    let _ = Terrace::new("A_")
+        .schema::<Github>()
+        .merge(Terrace::new("B_").schema::<Csp>());
+}
+
+/// A README with one key table per subsystem wants the loader variables once, above the first of
+/// them — not repeated over every table, and not reachable only by clearing a public field.
+#[test]
+fn each_table_renders_on_its_own() {
+    let schema = schema();
+
+    let loader = schema.to_markdown_loader();
+    assert!(loader.starts_with("| Variable | Role |"), "{loader}");
+    assert!(loader.contains("PORTFOLIO_CONFIG"), "{loader}");
+    assert!(!loader.contains("github.username"), "{loader}");
+    assert!(loader.ends_with("|\n"), "{loader:?}");
+
+    let keys = schema.to_markdown_keys(Column::DEFAULT);
+    assert!(keys.starts_with("| TOML | Type |"), "{keys}");
+    assert!(keys.contains("github.username"), "{keys}");
+    assert!(!keys.contains("PORTFOLIO_CONFIG |"), "{keys}");
+    assert!(keys.ends_with("|\n"), "{keys:?}");
+
+    // The pair is still exactly what it was: the halves, one blank line apart.
+    assert_eq!(schema.to_markdown(), format!("{loader}\n{keys}"));
+}
+
+/// The loader table has no header of its own to render when there are no variables — a header
+/// with no rows promises variables that do not exist. The key table is the opposite case, and the
+/// two are deliberately not symmetric.
+#[test]
+fn an_empty_loader_table_is_empty_rather_than_a_bare_header() {
+    struct Empty;
+    impl Describe for Empty {
+        fn describe(_sink: &mut terrace_config::schema::Sink) {}
+    }
+
+    let bare = Schema::describe::<Config>(&Terrace::new("T_").dialect());
+    assert!(bare.loader.is_empty());
+    assert_eq!(bare.to_markdown_loader(), "");
+    // With nothing above it, the whole rendering is the key table, with no leading blank line.
+    assert_eq!(bare.to_markdown(), bare.to_markdown_keys(Column::DEFAULT));
+
+    let keyless = Terrace::new("T_").schema::<Empty>();
+    assert_eq!(
+        keyless.to_markdown_keys(Column::DEFAULT),
+        "| TOML | Type | Environment | Default | Flags | Purpose |\n|---|---|---|---|---|---|\n"
+    );
+}

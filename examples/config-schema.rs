@@ -26,7 +26,7 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
-use terrace_config::schema::Describe;
+use terrace_config::schema::{Column, Describe};
 
 /// The root. Everything under it lives somewhere else.
 #[derive(Deserialize, Serialize, Describe)]
@@ -79,6 +79,14 @@ mod csp {
     #[derive(Deserialize, Serialize, Default, Describe)]
     pub(crate) struct Csp {
         /// Hash the document's inline scripts instead of allowing `'unsafe-inline'`.
+        ///
+        /// The two are mutually exclusive by specification: a `script-src` carrying any hash
+        /// makes a browser ignore `'unsafe-inline'` entirely, so turning this on and leaving an
+        /// inline script unhashed blocks the script rather than falling back.
+        ///
+        /// Only the first paragraph reaches the Markdown table. The rest is here for whoever
+        /// reads the type, which is what the rest of a `///` comment is always for — and
+        /// `to_json` carries all of it for a pipeline that wants to render more.
         #[serde(default)]
         pub(crate) hash_inline_scripts: bool,
         #[config(nested)]
@@ -98,6 +106,7 @@ mod csp {
 
 /// Stands in for a `github` module, which knows nothing about `csp`.
 mod github {
+    use secrecy::SecretString;
     use serde::{Deserialize, Serialize};
     use terrace_config::schema::Describe;
 
@@ -109,8 +118,24 @@ mod github {
         /// Explicit repository set. Every active repository when unset.
         pub(crate) repos: Option<Vec<String>>,
         /// Bearer token lifting the GitHub API rate limit.
+        ///
+        /// A real secret type, not a `String`, because that is what a service holding one uses —
+        /// and `SecretString` deliberately does not implement `Serialize`, which would otherwise
+        /// stop the whole struct from deriving it and `with_defaults_from` from taking a
+        /// `Config`. `skip_serializing` is the answer and costs nothing: a secret has no default
+        /// worth printing, and `#[config(secret)]` renders `<redacted>` in place of one anyway.
+        ///
+        /// This field is here in the shape a consumer will have it so that
+        /// `cargo clippy --all-targets` fails if that ever stops being true.
         #[config(secret)]
-        pub(crate) token: Option<String>,
+        #[serde(skip_serializing)]
+        #[expect(
+            dead_code,
+            reason = "skipping serialisation is what leaves it unread here: this example only \
+                      dumps a schema, so every other field is read by the `Serialize` derive and \
+                      this one is not. A real service reads it."
+        )]
+        pub(crate) token: Option<SecretString>,
         /// Revalidation interval in seconds.
         #[config(note = "permanent")]
         #[serde(default)]
@@ -154,6 +179,12 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
 
     match options.format {
         Format::Json => schema.to_json(),
+        // A subsystem page gets the key table alone. The loader variables belong once, on the
+        // page that documents the whole configuration, rather than repeated above every slice —
+        // and `to_json` still carries them whichever page this is.
+        Format::Markdown if !options.only.is_empty() => {
+            Ok(schema.to_markdown_keys(Column::DEFAULT))
+        }
         Format::Markdown => Ok(schema.to_markdown()),
     }
 }

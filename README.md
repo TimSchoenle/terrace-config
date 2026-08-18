@@ -328,20 +328,45 @@ pipeline at it and render whatever that pipeline wants.
 `to_markdown` is for when the next step is `>> README.md`. It emits GitHub-flavoured tables —
 one for the variables the loader itself reads, one for the keys:
 
-| TOML | Type | Environment | File indirection | Default | Flags | Purpose |
-|---|---|---|---|---|---|---|
-| `github.username` | `String` | `PORTFOLIO_GITHUB__USERNAME` | `PORTFOLIO_GITHUB__USERNAME_FILE` | — | required | User whose repositories `update-repos` lists. |
-| `github.token` | `String` | `PORTFOLIO_GITHUB__TOKEN` | `PORTFOLIO_GITHUB__TOKEN_FILE` | unset | secret | Bearer token lifting the GitHub API rate limit. |
-| `github.ttl_secs` | `u64` | `PORTFOLIO_GITHUB__TTL_SECS` | `PORTFOLIO_GITHUB__TTL_SECS_FILE` | `0` (permanent) | — | Revalidation interval in seconds. |
-| `log_level` | `LogLevel`: `trace` \| `debug` \| `info` \| `warn` | `PORTFOLIO_LOG_LEVEL` | `PORTFOLIO_LOG_LEVEL_FILE` | `info` | — | How much the service says. |
+| TOML | Type | Environment | Default | Flags | Purpose |
+|---|---|---|---|---|---|
+| `github.username` | `String` | `PORTFOLIO_GITHUB__USERNAME` | — | required | User whose repositories `update-repos` lists. |
+| `github.token` | `String` | `PORTFOLIO_GITHUB__TOKEN` | unset | secret | Bearer token lifting the GitHub API rate limit. |
+| `github.ttl_secs` | `u64` | `PORTFOLIO_GITHUB__TTL_SECS` | `0` (permanent) | — | Revalidation interval in seconds. |
+| `log_level` | `LogLevel`: `trace` \| `debug` \| `info` \| `warn` | `PORTFOLIO_LOG_LEVEL` | `info` | — | How much the service says. |
 
 The `Type` column is in the default set because without it a required key shows an em dash for its
-default and the reader has no way to tell whether to supply a string, a number or a list.
+default and the reader has no way to tell whether to supply a string, a number or a list. Neither
+file spelling is, because both are mechanical: `Column::EnvFile` is the `Environment` cell plus the
+dialect's documented suffix (`_FILE`), and `Column::SecretsFile` is the `TOML` cell with the
+separator substituted. One sentence of prose covers both, where two columns push the table past
+the width of a page.
 
-`to_markdown_with` takes a `&[Column]` when those are not the columns you want — including
-`Column::Aliases`, which is out of the default set because it is empty for almost every key. A
-`#[serde(alias = "user")]` on `github.username` reports `github.user` as a full key path, so its
-environment and file spellings derive exactly as the canonical one's do.
+The `Purpose` column carries the **summary** of the `///` comment — its first paragraph, on
+rustdoc's own convention — rather than the whole of it. Write each field's documentation for
+whoever reads the type; the paragraphs below the summary stay in `to_json`'s `docs` field, out of
+the table, and no extra annotation is needed to keep the two in step.
+
+`to_markdown_with` takes a `&[Column]` when those are not the columns you want — either file
+spelling, or `Column::Aliases`, which is out of the default set because it is empty for almost
+every key. A `#[serde(alias = "user")]` on `github.username` reports `github.user` as a full key
+path, so its environment and file spellings derive exactly as the canonical one's do.
+
+The two tables are also reachable separately, for a page that does not want them welded together:
+
+```rust
+let loader = schema.to_markdown_loader();                  // the variables, once
+let keys = schema.subset("csp").to_markdown_keys(Column::DEFAULT);  // one subsystem, no preamble
+```
+
+A README with one key table per subsystem wants the loader variables above the first of them, not
+repeated over every table. `to_markdown_loader` renders an empty string rather than a bare header
+when a schema has no loader variables; `to_markdown_keys` always renders its header, because an
+empty configuration section is a real shape and the header is what says it was generated rather
+than forgotten.
+
+Every rendering ends with a newline, so a template pipeline that appends another section needs no
+separator of its own.
 
 ### A whole crate, a whole workspace, or one subsystem
 
@@ -361,6 +386,29 @@ let csp = Terrace::new("PORTFOLIO_").schema::<Config>().subset("csp");
 `Terrace::schema_at::<Csp>("csp")` does the same from the subsystem's own type, which matters
 because `schema::<Csp>()` alone would produce `cloudflare.turnstile` — a path that appears in no
 configuration file anywhere.
+
+Some workspaces have no single root at all — one binary reads `assets`, `csp` and `isr`, another
+reads `github`, and keeping the two apart is the point of the split. `Schema::merge` unions the
+schemas of the roots those binaries actually load, so one document covers the workspace without an
+aggregate struct that exists only for the generator and can drift from every root it stands in for:
+
+```rust
+let terrace = Terrace::new("PORTFOLIO_").reserve("PORTFOLIO_PROFILE");
+let everything = terrace
+    .schema::<server::Config>()
+    .with_defaults_from(&server::Config::default())?
+    .merge(
+        terrace
+            .schema::<updater::Config>()
+            .with_defaults_from(&updater::Config::default())?,
+    );
+```
+
+Keys keep declaration order within each half, and a key both roots describe identically — the
+shared key two binaries genuinely both read — is kept once. Anything else is refused: two different
+descriptions of one path, two different dialects, or two different schema versions all panic, on
+the same reasoning as the duplicate-path check inside `describe`. A table that quietly picks one of
+two descriptions is worse than one that refuses to be generated.
 
 ### Wiring it into your own crate
 
@@ -404,6 +452,29 @@ fn main() -> ExitCode {
 `Serialize` as well as `Deserialize`. Pass whatever represents "nothing was supplied" — if your
 `Default` and your `#[serde(default = "…")]` functions disagree, pass what serde would produce.
 
+**A field holding a secret needs one more attribute.** `secrecy::SecretString` refuses to
+implement `Serialize` on purpose, so a config that holds one cannot derive `Serialize` either —
+which is the crate's own audience, since a config holding secrets is the reason to reach for
+`terrace-config` over bare figment. The compiler says so in terms of `SerializableSecret` and
+`SerializeStruct::serialize_field`, and mentions nothing about schemas:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Github {
+    /// Bearer token lifting the GitHub API rate limit.
+    #[config(secret)]
+    #[serde(skip_serializing)]
+    token: Option<SecretString>,
+}
+```
+
+`skip_serializing` costs nothing here: a secret has no default worth printing, and
+`#[config(secret)]` renders `<redacted>` in place of one anyway. The key keeps its row, its
+spellings and its `secret` flag; only the observed value is left out, which is where it belongs.
+
+When the type is not yours to annotate, `Schema::with_defaults_from_value` takes an already-built
+`figment::value::Value` and asks for no `Serialize` bound on the root at all.
+
 **3. Generate**, from the crate that owns the root type:
 
 ```bash
@@ -412,7 +483,8 @@ cargo run --example config-schema              > docs/config.json
 ```
 
 In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
-generator per service — two binaries with two prefixes are two schemas, not one merged document.
+generator per *dialect*: two binaries reading one prefix are one document, joined with
+`Schema::merge`, while two binaries with two prefixes are two schemas and merging them is refused.
 
 **4. Fail the build when the checked-in copy goes stale:**
 
@@ -428,9 +500,10 @@ request that changes a key without regenerating fails.
 ### Keeping it out of the production build
 
 `serde_json` is linked and the derive costs compile time, which for a service that ships in a
-container may be worth avoiding. Put the whole thing behind a feature of your own — but gate the
-helper attributes too, or the build fails with `cannot find attribute config` the moment the
-derive is not applied:
+container may be worth avoiding. Put the whole thing behind a feature of your own — but gate three
+things, not one: the derive, the `#[config(...)]` helper attributes (or the build fails with
+`cannot find attribute config` the moment the derive is not applied), and `derive(Serialize)`,
+which the loader never needs and `with_defaults_from` does:
 
 ```toml
 [features]
@@ -445,18 +518,31 @@ required-features = ["config-schema"]
 ```
 
 ```rust
-#[derive(Deserialize, Serialize, Default)]
-#[cfg_attr(feature = "config-schema", derive(terrace_config::schema::Describe))]
+#[derive(Deserialize, Default)]
+#[cfg_attr(
+    feature = "config-schema",
+    derive(serde::Serialize, terrace_config::schema::Describe)
+)]
 struct Github {
     /// Bearer token lifting the GitHub API rate limit.
     #[cfg_attr(feature = "config-schema", config(secret))]
-    token: Option<String>,
+    #[serde(skip_serializing)]
+    token: Option<SecretString>,
 }
 ```
 
+Both derives go in one `cfg_attr`, because both exist for the same job: `Describe` reports the
+keys and `Serialize` is what `with_defaults_from` reads the `Default` column out of. A config
+struct that is only ever deserialised has no other reason to carry `Serialize`, so leaving it
+ungated links serde's serialiser into the production build for nothing.
+
+`#[serde(skip_serializing)]` stays ungated: it is inert without a `Serialize` impl, and a
+`cfg_attr` around it would gate the one attribute that has to agree with the field's type either
+way.
+
 Then `cargo run --features config-schema --example config-schema`. The `cfg_attr` on every
-`#[config(...)]` is the price; a struct with no `#[config(...)]` attributes needs only the derive
-gated.
+`#[config(...)]` is the price; a struct with no `#[config(...)]` attributes needs only the two
+derives gated.
 
 ### What the columns mean
 
