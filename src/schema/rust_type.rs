@@ -184,16 +184,33 @@ pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
             )),
         ),
 
-        // Every one of these deserialises from a TOML string, so any text is a candidate and the
-        // only honest constraint is none. The form is what carries the meaning: `Text` says "no
-        // check possible and none needed", where [`TextForm::Unknown`] says "no check possible and
-        // one might have been".
+        // Accepts any text, and the loader agrees: none of these parses on the way in, so there
+        // is nothing a validator could have caught. `Text` says exactly that — no check possible
+        // and none needed.
         (
             "String" | "str" | "PathBuf" | "Path" | "OsString" | "OsStr" | "CString" | "CStr"
-            | "SecretString" | "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr"
-            | "SocketAddrV4" | "SocketAddrV6" | "char",
+            | "SecretString",
             [],
         ) => (TextForm::Text, None),
+
+        // A string in TOML and a *parse* in Rust, which is a different thing. Measured against the
+        // loader: given `!!!`, an `IpAddr` key fails with "invalid IP address syntax", a
+        // `SocketAddr` with "invalid socket address syntax", and a `char` with "expected a
+        // character" — while `String` and `PathBuf` take it.
+        //
+        // So `Text` here would be the same defect `TextForm` was introduced to fix, one field
+        // over: a value meaning "checked and fine" used for values that were never checked. This
+        // crate has no pattern for a URL and would rather publish nothing than publish a wrong
+        // one, so the honest answer is that a check exists and this document does not describe it.
+        //
+        // `Uuid` and `Ipv4Addr` are a few characters of regex and could move back to a described
+        // form later; the rule for doing that is the rule everywhere else in this module — measure
+        // what the loader accepts first, and emit a superset or nothing.
+        (
+            "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr" | "SocketAddrV4"
+            | "SocketAddrV6" | "char",
+            [],
+        ) => (TextForm::Unknown, None),
 
         ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [_]) | ("HashMap" | "BTreeMap", [_, _]) => {
             (TextForm::Structured, Some(bracketed()))

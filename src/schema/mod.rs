@@ -425,7 +425,12 @@ pub struct Key {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum TextForm {
-    /// Any text. A `String`, a `PathBuf`, a `Url` — nothing to check and nothing to parse.
+    /// Any text. A `String`, a `PathBuf`, a `SecretString` — nothing to check and nothing to
+    /// parse.
+    ///
+    /// Only for types that genuinely accept anything. A type whose `Deserialize` parses and can
+    /// refuse — `IpAddr`, `Url`, `char` — is [`Self::Unknown`], because `Text` promises a check
+    /// was not needed and the loader would be contradicting it.
     Text,
     /// Digits with an optional sign. Read it as an integer, then check [`Key::constraint`], which
     /// is where a `minimum` and `maximum` live.
@@ -437,6 +442,12 @@ pub enum TextForm {
     /// A TOML literal: an array, an inline table. Only the environment layer can carry one at all
     /// — the file layers deliver text with no parse, so a key of this form cannot be supplied by a
     /// secrets file or a `_FILE` path whatever it contains.
+    ///
+    /// The one form whose second step needs a parser. [`Self::Integer`], [`Self::Boolean`] and
+    /// [`Self::Choice`] are read with any language's own primitives; reading one of these means
+    /// parsing TOML. A consumer without a TOML parser can still apply
+    /// [`Key::text_constraint`] — the bracket form is the half that catches `a,b` — and should
+    /// skip [`Key::constraint`] rather than guess at the value.
     Structured,
     /// Nothing certain is known: a domain newtype, a float, a type this crate does not interpret.
     /// No check is possible, and unlike [`Self::Text`] that is a gap rather than an answer.

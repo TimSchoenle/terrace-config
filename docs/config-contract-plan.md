@@ -484,18 +484,29 @@ structurally, over the `json_schema` halves:
 | a path in several, identical | keep once | the shared key both binaries read |
 | `required` | union | a key any reader requires must be present |
 | `additionalProperties` | `false` at every level | after the union, an unknown key is unknown to *all* of them |
+| `title` and `description` | keep the first | prose, not an assertion — see below |
 | **any other keyword present in two schemas with different values** | **hard error** | two binaries disagree about one key |
 
-The last row is a catch-all on purpose, and it is the row to get right. An earlier draft named
-`type` and `enum` and left everything else to last-one-wins, which is a rule nobody wrote down: two
-images disagreeing about a key's `maximum` is the same defect as disagreeing about its `type` —
-one contract accepts a value the other refuses — and enumerating keywords means the next one added
-to the producer falls through the gap silently. `minimum`, `maximum`, `items`, `uniqueItems`,
-`default`, `description`, `$schema` and `$id` are all covered by saying it once.
+The catch-all is the row to get right. An earlier draft named `type` and `enum` and left everything
+else to last-one-wins, which is a rule nobody wrote down: two images disagreeing about a key's
+`maximum` is the same defect as disagreeing about its `type` — one contract accepts a value the
+other refuses — and enumerating keywords means the next one the producer grows falls through the
+gap silently.
 
-`$schema` in particular: two contracts of one document declaring different dialects is a real
-signal, not a formatting difference, and refusing it is what caught a producer bug where relaxing
-one option silently moved a document off draft-07.
+**Two exemptions, and only two.** `title` is derived from `app.name`, so two contracts of one
+document differ in it *by construction* — refusing on it would refuse every union this section
+exists for, at the root node, before reaching a single key. `description` comes from a doc comment,
+so two binaries describing one shared key differ whenever two people wrote the prose; that is a
+difference and not a disagreement, and it is silent until the two contracts share a key, which the
+eight-binary case does constantly.
+
+Everything else asserts something about which values are accepted. **`default` included**, and
+deliberately against JSON Schema's own annotation/assertion split: two binaries with different
+fallbacks for one key means the value an operator gets depends on which binary read the document
+first, which is exactly a disagreement worth refusing. `$schema` and `$id` likewise — two contracts
+of one document declaring different dialects is a real signal, not a formatting difference, and
+refusing it is what caught a producer bug where relaxing one option silently moved a document off
+draft-07.
 
 Same reasoning as `Schema::merge`'s: refusing to build is better than quietly picking one of two
 descriptions. About sixty lines of Python, deterministic, unit-testable without a registry —

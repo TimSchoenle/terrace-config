@@ -71,6 +71,13 @@
 //! and the `dev.terrace.config.*` labels are the two halves of that publication, and they are
 //! constants here so that the producer and the consumer cannot spell them differently.
 //!
+//! It is also not a claim about the *image*, only about the program inside it. A
+//! [`Key::default`](super::Key::default) is what the code falls back to when nothing supplies a
+//! key — and an image's own `ENV` block can supply one on every run, which no derive can see. What
+//! a deployment actually gets is the two together, and only the first is in here. A pipeline that
+//! wants both reads the image's environment from its config blob, beside the labels it is already
+//! reading.
+//!
 //! Nothing inside the document names the image, and that is deliberate rather than an omission:
 //! the tie is the attachment. A consumer asks a digest for its [`ARTIFACT_TYPE`] referrers and
 //! whatever comes back is that digest's contract, by construction — and the registry

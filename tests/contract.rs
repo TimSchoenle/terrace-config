@@ -859,6 +859,64 @@ fn every_key_says_how_to_read_its_text() {
     assert_eq!(form("endpoint"), TextForm::Unknown);
 }
 
+#[derive(Deserialize, Serialize, Describe)]
+struct Parsing {
+    /// Accepts anything.
+    #[serde(default)]
+    text: String,
+    /// Accepts anything.
+    #[serde(default)]
+    path: std::path::PathBuf,
+    /// Parses, and refuses.
+    listen: std::net::IpAddr,
+    /// Parses, and refuses.
+    peer: std::net::SocketAddr,
+    /// Parses, and refuses.
+    marker: char,
+}
+
+#[test]
+fn a_type_that_parses_its_string_is_not_unconstrained_text() {
+    // Measured against the loader: given `!!!`, a `String` and a `PathBuf` key load, while an
+    // `IpAddr` fails with "invalid IP address syntax", a `SocketAddr` with "invalid socket address
+    // syntax" and a `char` with "expected a character".
+    //
+    // `Text` promises no check was needed. For the last three that is a claim the loader
+    // contradicts — the same "one value, two meanings" defect `TextForm` exists to remove, one
+    // field over. `Unknown` says the true thing: a check exists and this document does not
+    // describe it.
+    let schema = Terrace::new("PARSING_").schema::<Parsing>();
+    let form = |path: &str| {
+        schema
+            .keys
+            .iter()
+            .find(|key| key.path == path)
+            .unwrap_or_else(|| panic!("{path} is described"))
+            .text_form
+    };
+
+    assert_eq!(form("text"), TextForm::Text);
+    assert_eq!(form("path"), TextForm::Text);
+    assert_eq!(form("listen"), TextForm::Unknown);
+    assert_eq!(form("peer"), TextForm::Unknown);
+    assert_eq!(form("marker"), TextForm::Unknown);
+}
+
+#[test]
+fn the_document_half_still_calls_them_strings() {
+    // Only the *form* claim was wrong. In document space every one of these is a TOML string, and
+    // `constraint` saying so is correct — a TOML file writing `listen = "127.0.0.1"` is right.
+    let schema = Terrace::new("PARSING_").schema::<Parsing>();
+    for path in ["text", "path", "listen", "peer"] {
+        let key = schema
+            .keys
+            .iter()
+            .find(|key| key.path == path)
+            .expect("described");
+        assert_eq!(key.constraint, Some(json!({ "type": "string" })), "{path}");
+    }
+}
+
 #[test]
 fn a_list_key_requires_the_bracket_form_rather_than_accepting_anything() {
     // The case that made the form necessary. `text_constraint: null` used to mean both "any text
