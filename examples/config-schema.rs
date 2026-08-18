@@ -7,8 +7,15 @@
 //! ```text
 //! cargo run --example config-schema -- --format json              > docs/config.json
 //! cargo run --example config-schema -- --format markdown          > docs/config.md
+//! cargo run --example config-schema -- --format toml              > config.example.toml
+//! cargo run --example config-schema -- --format json-schema       > config.schema.json
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
 //! ```
+//!
+//! The last two are the ones worth wiring into CI with a `--check`-style diff. A reference table
+//! that has drifted reads wrong; an example file that has drifted gets *copied* into a
+//! deployment, and a JSON Schema that has drifted tells an editor to underline a key that is
+//! perfectly valid.
 //!
 //! It reads nothing from the environment, so it produces the same answer on a developer's
 //! machine and on a runner where none of the variables it describes exist.
@@ -26,7 +33,7 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
-use terrace_config::schema::{Column, Describe};
+use terrace_config::schema::{Column, Describe, JsonSchema};
 
 /// The root. Everything under it lives somewhere else.
 #[derive(Deserialize, Serialize, Describe)]
@@ -186,6 +193,15 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
             Ok(schema.to_markdown_keys(Column::DEFAULT))
         }
         Format::Markdown => Ok(schema.to_markdown()),
+        // A slice of the configuration is a slice of the file too, so nothing here needs the
+        // `--only` special case the Markdown arm does: `subset` has already cut the keys, and
+        // both renderings are built from whatever keys are left.
+        Format::Toml => Ok(schema.to_toml_example()),
+        Format::JsonSchema => schema.to_json_schema_with(
+            &JsonSchema::new()
+                .title("portfolio configuration")
+                .id("https://github.com/TimSchoenle/terrace-config/config.schema.json"),
+        ),
     }
 }
 
@@ -202,6 +218,10 @@ enum Format {
     Json,
     /// GitHub-flavoured tables, for a pipeline whose next step is `>> README.md`.
     Markdown,
+    /// The commented file an operator copies to `config.toml`.
+    Toml,
+    /// A JSON Schema, for an editor to validate that file against.
+    JsonSchema,
 }
 
 impl Options {
@@ -218,6 +238,8 @@ impl Options {
                     options.format = match args.next().as_deref() {
                         Some("json") => Format::Json,
                         Some("markdown" | "md") => Format::Markdown,
+                        Some("toml") => Format::Toml,
+                        Some("json-schema" | "jsonschema") => Format::JsonSchema,
                         Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
                         None => return Err(format!("--format takes a value; {USAGE}")),
                     };
@@ -234,4 +256,5 @@ impl Options {
     }
 }
 
-const USAGE: &str = "usage: config-schema [--format json|markdown] [--only <key-prefix>]";
+const USAGE: &str =
+    "usage: config-schema [--format json|markdown|toml|json-schema] [--only <key-prefix>]";

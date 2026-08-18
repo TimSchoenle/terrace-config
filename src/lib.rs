@@ -94,9 +94,10 @@ credential. No error in this crate prints a value either.
 # Documenting the configuration
 
 The loader never learns the shape of a config: it hands the merged figment to `serde` and takes
-back a `T`. [`schema`] inverts that, so the reference table every service needs — key,
-environment spelling, default, and what the key is *for* — is generated from the type instead of
-maintained beside it.
+back a `T`. [`schema`] inverts that, so the four artefacts every service keeps beside its
+configuration — the reference table, the machine-readable contract, the example file, and the
+JSON Schema an editor validates against — are generated from the type instead of maintained
+beside it.
 
 ```no_run
 use serde::{Deserialize, Serialize};
@@ -120,13 +121,21 @@ let schema = Terrace::new("PORTFOLIO_")
 
 // The contract, for a documentation pipeline to render however it likes:
 println!("{}", schema.to_json()?);
-// Or the table itself, ready to paste:
+// The table itself, ready to paste into a README:
 println!("{}", schema.to_markdown());
+// The file an operator copies to `config.toml`, commented, with the defaults shown:
+println!("{}", schema.to_toml_example());
+// A JSON Schema, so an editor completes and validates that file:
+println!("{}", schema.to_json_schema()?);
 # Ok::<(), terrace_config::Error>(())
 ```
 
 The `///` comment is the reason this is a derive and not runtime reflection: it is the one column
 that exists nowhere but the source.
+
+The two file renderings are the ones worth a `--check`-style diff in CI. A reference table that
+has drifted reads wrong; an example file that has drifted is *copied* into a deployment, and a
+JSON Schema that has drifted underlines a key that is perfectly valid.
 "#
 )]
 #![cfg_attr(

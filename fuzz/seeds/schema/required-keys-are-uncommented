@@ -1,0 +1,12 @@
+k:api/port=The port. Required, so the generated example leaves it uncommented.
+t:api/port=u16
+R:api/port
+k:api/host=Optional, so it stays commented out and the file still loads.
+t:api/host=String
+k:name=A required key at the root, beside a table that has one of its own.
+t:name=String
+R:name
+k:token=A required secret: uncommented, and still a placeholder.
+t:token=SecretString
+S:token
+R:token
