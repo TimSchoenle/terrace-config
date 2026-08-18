@@ -441,7 +441,11 @@ pub enum TextForm {
     Choice,
     /// A TOML literal: an array, an inline table. Only the environment layer can carry one at all
     /// — the file layers deliver text with no parse, so a key of this form cannot be supplied by a
-    /// secrets file or a `_FILE` path whatever it contains.
+    /// secrets file or a `_FILE` path whatever it contains. That is a consequence of the general
+    /// rule rather than a rule of its own: an array is not a string in document space, and
+    /// [`Key::constraint`] is where "can a file supply this key" is answered. **Do not read this
+    /// form as that rule** — a key can be [`Self::Unknown`] and still mount from a file, which is
+    /// every type whose `Deserialize` parses a string.
     ///
     /// The one form whose second step needs a parser. [`Self::Integer`], [`Self::Boolean`] and
     /// [`Self::Choice`] are read with any language's own primitives; reading one of these means

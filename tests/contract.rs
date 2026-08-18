@@ -903,6 +903,35 @@ fn a_type_that_parses_its_string_is_not_unconstrained_text() {
 }
 
 #[test]
+fn a_string_constraint_is_what_says_a_file_can_supply_a_key() {
+    // Measured against the loader, supplying each key as a secrets-directory file: `text`, `path`,
+    // `listen`, `peer` and `marker` all load; a float and a `Vec` are refused with "invalid type:
+    // found string". `constraint.type == "string"` predicts every row; `text_form: text` gets
+    // `IpAddr`, `SocketAddr` and `char` wrong, because those parse a string rather than being
+    // anything but one in the document.
+    //
+    // The two rules agreed until the parsing types were reclassified, and a gate written against
+    // the wrong one turned a false accept into a false rejection of a correct deployment.
+    let schema = Terrace::new("PARSING_").schema::<Parsing>();
+    let is_string = |path: &str| {
+        schema
+            .keys
+            .iter()
+            .find(|key| key.path == path)
+            .unwrap_or_else(|| panic!("{path} is described"))
+            .constraint
+            .as_ref()
+            .and_then(|c| c.get("type"))
+            .and_then(Json::as_str)
+            == Some("string")
+    };
+
+    for path in ["text", "path", "listen", "peer", "marker"] {
+        assert!(is_string(path), "{path} mounts from a secrets file");
+    }
+}
+
+#[test]
 fn the_document_half_still_calls_them_strings() {
     // Only the *form* claim was wrong. In document space every one of these is a TOML string, and
     // `constraint` saying so is correct — a TOML file writing `listen = "127.0.0.1"` is right.

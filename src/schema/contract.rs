@@ -307,8 +307,13 @@ impl App {
 ///
 /// `text_form` is what says which parse, rather than the shape of the constraint object: a
 /// consumer inferring "pattern means integer" was right while there were two shapes and wrong as
-/// soon as [`TextForm::Structured`] arrived. [`TextForm::Text`] and [`TextForm::Unknown`] have no
-/// second step — the first because there is nothing to parse, the second because nothing is known
+/// soon as [`TextForm::Structured`] arrived.
+///
+/// **When `constraint` is a string type, the text *is* the value.** Text space and document space
+/// are the same there, so apply `constraint` to the raw characters directly and skip the parse —
+/// which is how a `char` key's `minLength`/`maxLength` is reached, and where a future pattern for
+/// a `Uuid` or an address would be. Otherwise [`TextForm::Text`] and [`TextForm::Unknown`] have no
+/// second step: the first because there is nothing to parse, the second because nothing is known
 /// to parse it as.
 ///
 /// Skipping the second leaves every bound in the document decorative, which is a deployment that

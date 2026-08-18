@@ -570,8 +570,17 @@ Per container, for gate 2's reason.
 
 - every file name in a rendered Secret mounted at `secretsDir` must equal some key's `secrets_file`
 - every `*_FILE` variable must equal some key's `env_file` and point inside a mounted volume
-- and the key it names must have `text_form: text` — see §2.5. A key of any other form cannot be
-  file-supplied at all, so a mount for one is a defect the file's contents cannot repair
+- and the key it names must have a **string `constraint`** — `{"type": "string"}`, whatever else
+  it carries. See §2.5. A key whose document-space type is not a string cannot be file-supplied at
+  all, so a mount for one is a defect the file's contents cannot repair.
+
+  **Not `text_form`.** That answers a different question — what parse the *environment* layer
+  needs — and the two differ for every type whose `Deserialize` parses a string. An `IpAddr` key is
+  `text_form: unknown`, because no pattern in this document describes an address, and it is a
+  string in the document and mounts from a secrets file perfectly well. The two rules agreed until
+  the parsing types were reclassified, and this bullet followed them by accident: measured against
+  the loader, `constraint.type == "string"` predicts file-supplyability on every shape tested and
+  `text_form: text` gets `IpAddr`, `SocketAddr` and `char` wrong.
 
 Catches a `github.token` → `github.api_token` rename breaking a mount with no error at either end.
 

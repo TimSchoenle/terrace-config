@@ -908,9 +908,14 @@ connection string — and the derive leaves whatever it finds alone.
 
 **The file layers are a blunter question.** A key-named file in the secrets directory and a `_FILE`
 target both deliver their contents as strings with no parse, and `Figment::extract` does not coerce
-a string into a number or a boolean. A key whose `text_form` is anything but `text` therefore
+a string into a number or a boolean. A key whose **`constraint` is not a string type** therefore
 **cannot be supplied by either, whatever the file contains** — not "must match a pattern", cannot
-be supplied at all. That is deliberate: those layers exist to carry secrets, and a
+be supplied at all.
+
+Keyed on `constraint`, not on `text_form`: that field answers what parse the *environment* layer
+needs, and the two differ for every type whose `Deserialize` parses a string. An `IpAddr` key is
+`text_form: unknown` — no pattern here describes an address — and it is a string in the document
+and mounts from a secrets file perfectly well. That is deliberate: those layers exist to carry secrets, and a
 secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file has made a
 mistake no file contents can fix, and a validator can say so from `constraint` alone.
 
@@ -993,9 +998,13 @@ holds a value:
 2. **Range.** Read the text according to `text_form` — `integer` means parse it as an integer —
    then check the result against `constraint`. This is where `minimum` and `maximum` live, and it
    is the only step that can reach them: a pattern matches characters, so `99999` is a well-formed
-   integer and only a bound catches it not fitting a `u16`. `text` and `unknown` have no second
-   step, the first because there is nothing to parse and the second because nothing is known to
-   parse it as.
+   integer and only a bound catches it not fitting a `u16`.
+
+**When `constraint` is a string type, the text *is* the value.** Text space and document space are
+the same there, so apply `constraint` to the raw characters directly and skip the parse — which is
+how a `char` key's `minLength`/`maxLength` is reached. Otherwise `text` and `unknown` have no second
+step, the first because there is nothing to parse and the second because nothing is known to parse
+it as.
 
 Skipping the second leaves every bound in the document decorative: a deployment that passes every
 gate and fails at boot. Applying `constraint` to the raw text instead rejects `"0"` for an integer
