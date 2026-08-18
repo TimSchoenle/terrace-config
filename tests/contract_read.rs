@@ -16,10 +16,6 @@
 //! in somebody's cluster.
 
 #![cfg(all(feature = "schema", feature = "testing"))]
-#![expect(
-    dead_code,
-    reason = "fixtures are read by the derive and by serde, not at runtime"
-)]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
