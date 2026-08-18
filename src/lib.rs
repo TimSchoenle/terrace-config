@@ -105,9 +105,13 @@ configuration — the reference table, the machine-readable contract, the exampl
 JSON Schema an editor validates against — are generated from the type instead of maintained
 beside it.
 
+[`schema::Contract`] is the fifth, and the only one whose reader is not a person or an editor: the
+document a container build embeds in its image and attaches to its digest, so that a deployment
+pipeline holding nothing but that digest can check the configuration it is about to mount.
+
 ```no_run
 use serde::{Deserialize, Serialize};
-use terrace_config::{Terrace, schema::Describe};
+use terrace_config::{Terrace, schema::App, schema::Describe};
 
 #[derive(Deserialize, Serialize, Default, Describe)]
 struct Config {
@@ -133,6 +137,8 @@ println!("{}", schema.to_markdown());
 println!("{}", schema.to_toml_example());
 // A JSON Schema, so an editor completes and validates that file:
 println!("{}", schema.to_json_schema()?);
+// Both machine-readable halves in one document, for the image to publish:
+println!("{}", schema.into_contract(App::new("portfolio")).build()?.to_json()?);
 # Ok::<(), terrace_config::Error>(())
 ```
 

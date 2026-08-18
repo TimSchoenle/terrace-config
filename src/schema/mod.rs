@@ -23,6 +23,7 @@
 //! | [`Schema::to_markdown`] | `>> README.md` | the hand-written reference table |
 //! | [`Schema::to_toml_example`] | the operator | `config.example.toml` |
 //! | [`Schema::to_json_schema`] | an editor, or a Helm chart's `values.schema.json` | nothing that existed |
+//! | [`Schema::into_contract`] | the image, and whatever deploys it | nothing that existed |
 //!
 //! [`Schema::to_json`] is the contract: a versioned document with every field of every key,
 //! including the ones the other three leave out. Point a documentation pipeline at it and render
@@ -45,6 +46,12 @@
 //! editor complete and validate the TOML file, and what a Helm chart's `values.schema.json`
 //! consumes. It is the only rendering that has to *interpret* [`Key::ty`] — see [`JsonSchema`]
 //! for how far that interpretation goes and where it stops.
+//!
+//! [`Schema::into_contract`] is the fifth and the odd one out: not a rendering of the schema but a
+//! document *containing* two of them, published with the image rather than with the source. It
+//! exists because the reader is a deployment pipeline holding an image digest and nothing else —
+//! see [`Contract`] for what that reader needs that no single rendering above supplies, and
+//! [`External`] for the variables an image reads that no derive can find.
 //!
 //! # More than one root
 //!
@@ -76,12 +83,17 @@
 //! # Ok::<(), terrace_config::Error>(())
 //! ```
 
+mod contract;
 mod json_schema;
 mod markdown;
 mod rust_type;
 mod toml_example;
 mod tree;
 
+pub use contract::{
+    ARTIFACT_TYPE, App, CONTRACT_VERSION, Contract, ContractBuilder, DEFAULT_PATH, External,
+    ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, Unknown,
+};
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;
 pub use terrace_config_macros::Describe;
@@ -220,6 +232,17 @@ impl Sink {
                 .map(str::to_owned)
                 .collect(),
             aliases: alias_paths(&self.prefix, leaf.aliases),
+            env_aliases: Vec::new(),
+            env_file_aliases: Vec::new(),
+            secrets_file_aliases: Vec::new(),
+            unreachable: None,
+            // Filled in by `describe_at`, beside the spellings: all three are derived from what
+            // the derive collected rather than collected themselves, and doing it in one place is
+            // what keeps a hand-built `Sink` from producing a key whose constraint disagrees with
+            // its type.
+            constraint: None,
+            text_constraint: None,
+            text_form: TextForm::Unknown,
             default: None,
             default_value: None,
             note: leaf.note.map(str::to_owned),
@@ -256,11 +279,24 @@ impl Sink {
 /// printed a spelling nobody can use would be worse than one that says there is none.
 // No `Eq`: [`Self::default_value`] can hold a float, and a float is not reflexively equal to
 // itself. Deriving the marker anyway would be a claim about `NaN` that this type cannot keep.
+//
+// `non_exhaustive` because this type grows: `constraint` and `text_constraint` were both added
+// after it shipped, and the document's own versioning rule says an added field is not a breaking
+// change. It cannot be one for a consumer of the *JSON* and a breaking change for a consumer of
+// the *struct* — so construction goes through [`Sink::leaf`], which is where the invariants
+// between these fields are maintained anyway.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Key {
     /// The figment/TOML path, e.g. `csp.cloudflare.turnstile`.
     pub path: String,
     /// The environment variable supplying it directly, e.g. `PORTFOLIO_CSP__CLOUDFLARE__TURNSTILE`.
+    ///
+    /// [`None`] means **no environment variable is published for this key**, and
+    /// [`Self::unreachable`] says why — the two reasons differ in whether the environment can
+    /// reach the key at all. A consumer that treats a missing `env` as "skip this key" is right
+    /// for one of them and wrong for the other, which is why the reason is published rather than
+    /// left to be inferred from a `null`.
     pub env: Option<String>,
     /// The variable naming a *file* holding it, e.g. `PORTFOLIO_GITHUB__TOKEN_FILE`.
     pub env_file: Option<String>,
@@ -278,16 +314,139 @@ pub struct Key {
     /// The fixed set of values the key accepts, spelled as `serde` accepts them. Empty when the
     /// key is not a choice.
     pub values: Vec<String>,
+    /// What a value of this key must be **once it is in the document**, as JSON Schema keywords
+    /// — `type`, `enum`, the numeric bounds, `items`.
+    ///
+    /// Document space, not text space. A TOML file holds an integer and this describes it; an
+    /// environment variable holds `"0"`, which fails `{"type": "integer"}` under every conforming
+    /// validator. [`Self::text_constraint`] is the one that applies there, and the two are
+    /// complementary rather than alternatives — a consumer checking a variable applies the text
+    /// constraint to the raw characters and this one to whatever the parse produced.
+    ///
+    /// [`Schema::to_json_schema`] carries the same keywords *nested*, at the key's position in the
+    /// document. This carries them flat, and the reason is the environment: a consumer checking
+    /// [`Self::env`] has a variable name and a string, not a document, and digging the constraint
+    /// out of a nested schema by dotted path is a step every consumer would reimplement. Without
+    /// it they reimplement something worse — a vocabulary of Rust type names, in whatever language
+    /// they are written in, with `PathBuf` as the trap: it is a string and nothing in the name
+    /// says so.
+    ///
+    /// [`None`] means unconstrained, and says exactly as much as [`Self::ty`] does about a domain
+    /// newtype: the key exists and nothing here can check its value.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub constraint: Option<serde_json::Value>,
+    /// What the **unparsed text** supplying this key must be, for the layers that supply text.
+    ///
+    /// [`Self::env`] is the layer this is about. It is emitted only where it says something the
+    /// text does not already say: a pattern for an integer, the two spellings of a boolean, the
+    /// variants of a choice. [`None`] means the text is unconstrained — which is the answer for
+    /// every string-like type, since an environment value is a string to begin with.
+    ///
+    /// [`None`] here means there is no pattern to match, which [`Self::text_form`] disambiguates:
+    /// [`TextForm::Text`] means any text is fine, and [`TextForm::Unknown`] means nothing could be
+    /// said. The two used to be indistinguishable, and a list-typed key was the case that made the
+    /// difference cost a deployment.
+    ///
+    /// **It constrains form, not range.** A pattern matches characters, so `99999` is a
+    /// well-formed integer and only [`Self::constraint`]'s `maximum` catches it not fitting a
+    /// `u16` — which means a validator has to do both, in the order
+    /// [`External`] sets out: match the text, parse it by the form that
+    /// matched, then check the parsed value. Doing only the first leaves every bound in this
+    /// document decorative.
+    ///
+    /// And a 64-bit range is not checkable from this document at all, by either constraint:
+    /// `u64::MAX` is not representable as an IEEE double, so no `maximum` is published rather than
+    /// one that is a different number than the type accepts. A `u64` key given
+    /// `18446744073709551616` satisfies everything here and still fails to load. Loading the
+    /// configuration with the real binary is what closes that gap, and no arrangement of these
+    /// fields would.
+    ///
+    /// **The file layers are a different question, and the answer is usually "not at all".**
+    /// [`Self::secrets_file`] and [`Self::env_file`] deliver their contents as strings with no
+    /// parse, and `Figment::extract` does not coerce a string into a number or a boolean — so a
+    /// key whose [`Self::constraint`] is anything but a string type cannot be supplied by either,
+    /// whatever the file contains. That is deliberate, and [`provider`](crate::provider) explains
+    /// it: those layers exist to carry secrets, and a secret is an opaque byte string. A chart
+    /// mounting a key-named file for a numeric key has made a mistake no file contents can fix.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub text_constraint: Option<serde_json::Value>,
+    /// How to read the text this key is supplied as. See [`TextForm`].
+    ///
+    /// Always present, which is what makes it usable as the discriminator: a consumer reads this
+    /// to decide how to parse before checking [`Self::constraint`], instead of inferring the parse
+    /// from which keywords [`Self::text_constraint`] happens to carry.
+    #[serde(default)]
+    pub text_form: TextForm,
     /// Other key paths that supply this same key, from `#[serde(alias = "…")]`.
     ///
-    /// Full paths, so each one's environment and file spellings derive exactly as
-    /// [`Self::path`]'s do. An alias left out of the schema is a spelling that works and is
-    /// documented nowhere.
+    /// Full paths. An alias left out of the schema is a spelling that works and is documented
+    /// nowhere — which is why the spellings derived from these are published too, rather than
+    /// left to a consumer to derive: see [`Self::env_aliases`].
     pub aliases: Vec<String>,
+    /// Every *other* environment spelling this key answers to, one per [`Self::aliases`] entry
+    /// that has one.
+    ///
+    /// [`Self::env`] is the spelling derived from [`Self::path`]; these are the spellings derived
+    /// from the aliases, and **the loader reads all of them equally**. A validator deciding
+    /// whether a variable is a key has to check these too.
+    ///
+    /// It is a membership set, not a parallel array: an alias whose path cannot be spelled in the
+    /// environment at all contributes nothing here, so the indices do not line up with
+    /// [`Self::aliases`] and nothing should assume they do.
+    ///
+    /// An alias is what a maintainer adds when renaming a key so that existing deployments keep
+    /// working. Publishing only the canonical spelling turns that compatibility shim into a hard
+    /// failure: a chart still using the old name is a *correct* deployment, and a gate that
+    /// refuses it is refusing the one thing that made the rename safe.
+    ///
+    /// Always serialised, empty or not — unlike [`Self::constraint`] and [`Self::default`], which
+    /// are omitted when unset. There, absence *means* something: no check is possible, no default
+    /// exists. Here an absent list and an empty one say the same thing, so omitting it would save
+    /// bytes at the cost of a distinction a reader has to discover is not one. And this is the hot
+    /// path — steps 2 and 3 of the ordered list consult it for every variable on every container —
+    /// which is the worst place to hand a consumer two shapes.
+    #[serde(default)]
+    pub env_aliases: Vec<String>,
+    /// The `_FILE` spelling of each of [`Self::env_aliases`], where the dialect permits one.
+    ///
+    /// Always serialised, for [`Self::env_aliases`]' reason.
+    #[serde(default)]
+    pub env_file_aliases: Vec<String>,
+    /// Every *other* secrets-directory file name this key answers to, one per alias that has one.
+    ///
+    /// Same reasoning as [`Self::env_aliases`], and measured the same way: a file named for an
+    /// alias supplies the key exactly as one named for [`Self::path`] does.
+    ///
+    /// Worth knowing when checking for a key supplied twice: the loader's own shadow check
+    /// compares *spellings*, so a canonical variable against an alias-named file is not the pair
+    /// it reports. `serde` still refuses the load — with `duplicate field`, naming neither source
+    /// — so the diagnostic that names both is the one a consumer builds from these fields.
+    ///
+    /// Always serialised, for [`Self::env_aliases`]' reason.
+    #[serde(default)]
+    pub secrets_file_aliases: Vec<String>,
+    /// Whether some layer cannot reach this key, and why. See [`Unreachable`].
+    ///
+    /// **A fact about the key, not about [`Self::env`].** A key answers to every one of its
+    /// [`aliases`](Self::aliases), so [`Unreachable::Unnameable`] appears only when *no* spelling
+    /// names it — a camelCase path with a working `#[serde(alias)]` beside it has an absent `env`
+    /// and is perfectly reachable, and saying otherwise would tell an operator a configuration
+    /// that works is impossible.
+    ///
+    /// [`Unreachable::Indirection`] is the other quantifier: any spelling colliding is enough,
+    /// because the hazard it names does not go away when another spelling works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unreachable: Option<Unreachable>,
     /// What the value is when nothing supplies it, rendered for display. [`None`] means unset —
     /// or, for a [`required`](Self::required) key, that there is no default to have.
     ///
     /// Filled in by [`Schema::with_defaults_from`]; the exact value, never prose.
+    ///
+    /// "Nothing supplies it" means nothing in the *program*. A container image that sets the key's
+    /// environment variable in its own `ENV` block supplies it on every run, so what an operator
+    /// omitting the key actually gets is this value only when the image is silent about it. The
+    /// derive cannot see an `ENV` line, so a [`Contract`] is a claim about the code's defaults and
+    /// not about the image's — see [`Contract`] for where that gap is recorded.
     pub default: Option<String>,
     /// That same default as the value it *is*, rather than as the text a table prints.
     ///
@@ -318,9 +477,113 @@ pub struct Key {
     pub reserved: bool,
 }
 
+/// What form the text supplying a key takes, and so how to read it.
+///
+/// The reason this is a field rather than something a consumer infers from
+/// [`Key::text_constraint`]: inference works while the crate emits two shapes and becomes a guess
+/// the moment it emits a third — which it now does. And a bare [`None`] constraint used to mean
+/// two incompatible things, "any text is fine" and "this needs a structured literal nobody
+/// described"; a chart setting `PORTFOLIO_GITHUB__REPOS=a,b` passed every gate and failed at boot
+/// because a validator could not tell them apart. This is what tells them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum TextForm {
+    /// Any text. A `String`, a `PathBuf`, a `SecretString` — nothing to check and nothing to
+    /// parse.
+    ///
+    /// Only for types that genuinely accept anything. A type whose `Deserialize` parses and can
+    /// refuse — `IpAddr`, `Url`, `char` — is [`Self::Unknown`], because `Text` promises a check
+    /// was not needed and the loader would be contradicting it.
+    Text,
+    /// Digits with an optional sign. Read it as an integer, then check [`Key::constraint`], which
+    /// is where a `minimum` and `maximum` live.
+    Integer,
+    /// `true` or `false`, and nothing else — not `TRUE`, not `1`, not `yes`.
+    ///
+    /// Surrounding whitespace is permitted for [`Self::Choice`]'s reason and measured the same
+    /// way: `"true "` and `" false"` both load through the environment layer.
+    Boolean,
+    /// One of [`Key::values`], spelled as `serde` accepts it.
+    ///
+    /// [`Key::constraint`] carries the bare set, because a TOML document must spell a variant
+    /// exactly. [`Key::text_constraint`] carries the same set with surrounding whitespace
+    /// permitted, because figment's `Env` provider trims before it compares — measured, `"info "`
+    /// and `"\tinfo\n"` both load. The two differ, which is why they are two fields.
+    Choice,
+    /// A TOML literal: an array, an inline table. Only the environment layer can carry one at all
+    /// — the file layers deliver text with no parse, so a key of this form cannot be supplied by a
+    /// secrets file or a `_FILE` path whatever it contains. That is a consequence of the general
+    /// rule rather than a rule of its own: an array is not a string in document space, and
+    /// [`Key::constraint`] is where "can a file supply this key" is answered. **Do not read this
+    /// form as that rule** — a key can be [`Self::Unknown`] and still mount from a file, which is
+    /// every type whose `Deserialize` parses a string.
+    ///
+    /// The one form whose second step needs a parser. [`Self::Integer`], [`Self::Boolean`] and
+    /// [`Self::Choice`] are read with any language's own primitives; reading one of these means
+    /// parsing TOML. A consumer without a TOML parser can still apply
+    /// [`Key::text_constraint`] — the bracket form is the half that catches `a,b` — and should
+    /// skip [`Key::constraint`] rather than guess at the value.
+    Structured,
+    /// Nothing certain is known: a domain newtype, a float, a type this crate does not interpret.
+    /// No check is possible, and unlike [`Self::Text`] that is a gap rather than an answer.
+    ///
+    /// Also where a form a *later* version of this crate emits lands, which is the same answer for
+    /// the same reason: a check exists and this document cannot describe it to you. Without the
+    /// fallback, one unfamiliar form on one key would make the whole document unreadable — see
+    /// [`CONTRACT_VERSION`].
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Why a key has no environment spelling, when it has none.
+///
+/// [`Key::env`] is [`None`] for more than one reason and they do not mean the same thing to a
+/// deployment. Without this a consumer meets a bare `null` on a key with a perfectly good path and
+/// has to guess, which is how a variable that supplies *two* keys went unnoticed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Unreachable {
+    /// No environment variable maps back to this key at all — not its path, and not any of its
+    /// [`aliases`](Key::aliases).
+    ///
+    /// `#[serde(rename_all = "camelCase")]` is the common cause — an environment key is folded to
+    /// lower case on the way in and `distDir` never comes back — and a path carrying the dialect's
+    /// own nesting separator, or surrounding whitespace, or an empty segment does the same. The
+    /// key is real and the document can supply it; the environment cannot.
+    ///
+    /// Says nothing about the file layers, which derive separately and do not fold or trim:
+    /// [`Key::secrets_file`] is the field that answers whether a mounted file can reach the key,
+    /// and for a camelCase path it is [`None`] too while for a whitespace path it is not.
+    Unnameable,
+    /// A name this key would take is another key's `_FILE` variable.
+    ///
+    /// Reported when *any* spelling collides, canonical or alias, even beside a spelling that
+    /// works — the opposite quantifier to [`Self::Unnameable`], and deliberately so. This is not
+    /// "the key is out of reach"; it is "a name this schema gave to another key also fills this
+    /// one", which stays true however many other ways the key can be reached.
+    ///
+    /// The one case where [`Key::env`] being [`None`] does **not** mean the environment cannot
+    /// reach the key. It can, under a name this document gives to somebody else: with `token` and
+    /// `token_file` both present, setting `<PREFIX>TOKEN_FILE` fills `token` from the file it
+    /// points at *and* fills `token_file` with the path. One variable, two keys, and a validator
+    /// reading this document stops at the first.
+    ///
+    /// [`ContractBuilder::build`](crate::schema::ContractBuilder::build) refuses a schema carrying
+    /// one, because a contract that cannot describe an effect should not be published claiming to
+    /// describe the surface. The fix belongs to the application: rename the field.
+    Indirection,
+    /// A reason a later version of this crate names and this one does not.
+    #[serde(other)]
+    Other,
+}
+
 /// What a variable the loader itself reads is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum LoaderRole {
     /// Names the TOML layer.
     Config,
@@ -328,6 +591,15 @@ pub enum LoaderRole {
     SecretsDir,
     /// Read directly from the environment, so no file may supply it.
     Reserved,
+    /// A role a later version of this crate emits and this one has no name for.
+    ///
+    /// A *new* variant rather than folding into one of the three above, and the distinction is
+    /// load-bearing. Every role means "the loader reads this variable", so the ordered list's step
+    /// 1 is satisfied by [`LoaderVar::env`] alone whatever this says — but a consumer looking for
+    /// the secrets directory matches on the role, and an unknown one read as [`Self::Config`]
+    /// would hand it the wrong variable. This keeps step 1 working and that lookup honest.
+    #[serde(other)]
+    Other,
 }
 
 /// A variable the loader reads to decide what the layers *are*, rather than a configuration key.
@@ -335,6 +607,7 @@ pub enum LoaderRole {
 /// These never appear in the config struct, so no derive can find them — but an operator setting
 /// the service up needs them more than they need any single key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LoaderVar {
     /// The full environment spelling, e.g. `PORTFOLIO_CONFIG`.
     pub env: String,
@@ -348,6 +621,7 @@ pub struct LoaderVar {
 
 /// The environment spelling this loader reads, minus the keys.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct DialectInfo {
     /// The prefix every configuration variable carries, e.g. `PORTFOLIO_`.
     pub prefix: String,
@@ -415,7 +689,13 @@ impl Schema {
 
         let mut keys = sink.keys;
         for key in &mut keys {
-            key.env = env_spelling(dialect, &key.path);
+            key.constraint = json_schema::constraint(key.ty.as_deref(), &key.values)
+                .map(serde_json::Value::Object);
+            let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
+            key.text_form = form;
+            key.text_constraint = text.map(serde_json::Value::Object);
+            let (env, canonical_reason) = env_spelling(dialect, &key.path);
+            key.env = env;
             key.env_file = key
                 .env
                 .as_ref()
@@ -424,15 +704,69 @@ impl Schema {
                 // variable usable — `_FILE` could just as easily be `=`.
                 .filter(|name| is_settable_env_name(name));
             key.secrets_file = secrets_file_name(dialect, &key.path);
+
+            // The same three derivations over the aliases, because the loader answers to all of
+            // them. Deriving them here rather than describing the rule and letting each consumer
+            // apply it is the reason `secrets_file` is a field at all: a derivation written in
+            // prose is a derivation every implementation gets slightly differently wrong.
+            let alias_spellings: Vec<_> = key
+                .aliases
+                .iter()
+                .map(|alias| env_spelling(dialect, alias))
+                .collect();
+            key.env_aliases = alias_spellings
+                .iter()
+                .filter_map(|(env, _)| env.clone())
+                .collect();
+
+            // A key answers to every one of its spellings, so both questions this field settles
+            // are asked of all of them rather than of the canonical one alone.
+            //
+            // `Indirection` wins wherever it appears, even beside a spelling that works. It is not
+            // "this key is out of reach" — it is "some name this schema gave to another key also
+            // fills this one", which stays true however many other ways the key can be reached,
+            // and is the thing `ContractBuilder::build` refuses on.
+            //
+            // `Unnameable` is the opposite quantifier: only when *nothing* names the key. Set from
+            // the canonical spelling alone it would say the environment cannot reach a key that a
+            // working alias reaches — which a `rename_all` container with a compatibility alias
+            // produces, and which is worse than the bare `None` it replaced, because a consumer
+            // believing it tells an operator a working configuration is impossible.
+            key.unreachable = if canonical_reason == Some(Unreachable::Indirection)
+                || alias_spellings
+                    .iter()
+                    .any(|(_, reason)| *reason == Some(Unreachable::Indirection))
+            {
+                Some(Unreachable::Indirection)
+            } else if key.env.is_none() && key.env_aliases.is_empty() {
+                canonical_reason
+            } else {
+                None
+            };
+            key.env_file_aliases = key
+                .env_aliases
+                .iter()
+                .map(|env| format!("{env}{}", dialect.indirection_suffix()))
+                .filter(|name| is_settable_env_name(name))
+                .collect();
+            key.secrets_file_aliases = key
+                .aliases
+                .iter()
+                .filter_map(|alias| secrets_file_name(dialect, alias))
+                .collect();
+
             key.reserved = key
                 .env
                 .as_deref()
                 .is_some_and(|env| dialect.is_reserved(env));
             // A reserved key is read straight from the environment, so neither file mechanism
-            // can supply it. Saying otherwise would document a path that errors on use.
+            // can supply it. Saying otherwise would document a path that errors on use — and the
+            // alias spellings of one are file mechanisms just as much as the canonical.
             if key.reserved {
                 key.env_file = None;
                 key.secrets_file = None;
+                key.env_file_aliases.clear();
+                key.secrets_file_aliases.clear();
             }
         }
 
@@ -673,6 +1007,7 @@ impl LoaderRole {
             Self::Config => "config",
             Self::SecretsDir => "secrets dir",
             Self::Reserved => "reserved",
+            Self::Other => "other",
         }
     }
 }
@@ -819,18 +1154,27 @@ fn is_nameable_file(name: &str) -> bool {
 /// same key is the question. It does not when a path segment is not already lower case, when it
 /// contains the separator, or when the whole name ends in the indirection suffix — the last
 /// because such a variable is read as a path to a file rather than as a value.
-fn env_spelling(dialect: &Dialect, path: &str) -> Option<String> {
+fn env_spelling(dialect: &Dialect, path: &str) -> (Option<String>, Option<Unreachable>) {
     let name = dialect.env_spelling(path);
     if !is_settable_env_name(&name) {
-        return None;
+        return (None, Some(Unreachable::Unnameable));
     }
     // Asked of the dialect rather than tested here, because "ends with the suffix" is not the
     // same question: `MYAPP_FILE` ends with `_FILE` and is still an ordinary key called `file`,
     // since the indirection layer needs something *between* the prefix and the suffix.
+    //
+    // Reported separately from the case below, and the difference is not cosmetic: there the
+    // environment genuinely cannot reach the key, while here it reaches it under a name this
+    // schema hands to another key. Publishing both as a bare `None` is what let one variable
+    // supply two keys with every gate passing.
     if dialect.indirection_target(&name).is_some() {
-        return None;
+        return (None, Some(Unreachable::Indirection));
     }
-    (env_layer_key(dialect, &name).as_deref() == Some(path)).then_some(name)
+    if env_layer_key(dialect, &name).as_deref() == Some(path) {
+        (Some(name), None)
+    } else {
+        (None, Some(Unreachable::Unnameable))
+    }
 }
 
 /// The key figment's environment layer makes of `name`, or [`None`] if it drops it.
@@ -873,14 +1217,14 @@ fn secrets_file_name(dialect: &Dialect, path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Dialect, env_spelling, render_value, secrets_file_name};
+    use super::{Dialect, Unreachable, env_spelling, render_value, secrets_file_name};
 
     #[test]
     fn a_lower_case_path_gets_all_three_spellings() {
         let dialect = Dialect::new("TEST_");
         assert_eq!(
-            env_spelling(&dialect, "auth.jwt_secret").as_deref(),
-            Some("TEST_AUTH__JWT_SECRET")
+            env_spelling(&dialect, "auth.jwt_secret"),
+            (Some("TEST_AUTH__JWT_SECRET".to_owned()), None)
         );
         assert_eq!(
             secrets_file_name(&dialect, "auth.jwt_secret").as_deref(),
@@ -893,7 +1237,10 @@ mod tests {
     #[test]
     fn a_path_that_does_not_survive_the_fold_has_no_environment_spelling() {
         let dialect = Dialect::new("TEST_");
-        assert_eq!(env_spelling(&dialect, "assets.distDir"), None);
+        assert_eq!(
+            env_spelling(&dialect, "assets.distDir"),
+            (None, Some(Unreachable::Unnameable))
+        );
         assert_eq!(secrets_file_name(&dialect, "assets.distDir"), None);
     }
 
@@ -902,10 +1249,16 @@ mod tests {
     #[test]
     fn a_key_ending_in_the_indirection_suffix_has_no_environment_spelling() {
         let dialect = Dialect::new("TEST_");
-        assert_eq!(env_spelling(&dialect, "unit.file"), None);
+        // Reported as `Indirection` rather than `Unnameable`, and the difference is the one
+        // `ContractBuilder::build` refuses on: the environment *does* reach `unit.file`, under the
+        // name this dialect gives to `unit`'s indirection variable.
         assert_eq!(
-            env_spelling(&dialect, "unit.filename").as_deref(),
-            Some("TEST_UNIT__FILENAME")
+            env_spelling(&dialect, "unit.file"),
+            (None, Some(Unreachable::Indirection))
+        );
+        assert_eq!(
+            env_spelling(&dialect, "unit.filename"),
+            (Some("TEST_UNIT__FILENAME".to_owned()), None)
         );
     }
 

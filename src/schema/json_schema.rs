@@ -30,7 +30,7 @@
 use serde_json::{Map, Value as Json, json};
 
 use super::tree::{self, Node};
-use super::{Docs, Error, Key, Schema, rust_type};
+use super::{Docs, Error, Key, Schema, TextForm, rust_type};
 
 /// The meta-schema URI for JSON Schema 2020-12 — what a current editor implements.
 pub const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -79,6 +79,8 @@ pub struct JsonSchema {
     defaults: bool,
     /// Whether a key the configuration does not have is an error.
     closed: bool,
+    /// Whether a key that must be supplied must be supplied *by this document*.
+    require_present: bool,
 }
 
 impl Default for JsonSchema {
@@ -92,6 +94,9 @@ impl Default for JsonSchema {
             docs: Docs::Full,
             defaults: true,
             closed: true,
+            // True, because the reader this rendering was written for is an editor validating a
+            // hand-written `config.toml`, and there the document is the only layer there is.
+            require_present: true,
         }
     }
 }
@@ -122,6 +127,16 @@ impl JsonSchema {
     #[must_use]
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+
+    /// The document's `title`, unless one was already chosen.
+    ///
+    /// For a caller supplying a default the user is expected to override rather than one that
+    /// overrides the user — which is [`Contract`](super::Contract), whose title falls back to the
+    /// app's name and must not silently replace a title the generator asked for.
+    pub(super) fn or_title(mut self, title: impl Into<String>) -> Self {
+        self.title = self.title.or_else(|| Some(title.into()));
         self
     }
 
@@ -158,6 +173,26 @@ impl JsonSchema {
         self.closed = closed;
         self
     }
+
+    /// Whether a key that must be supplied must be supplied *by this document*. Defaults to
+    /// `true`.
+    ///
+    /// The two meanings of "required" are not the same and this is where they part. A JSON Schema
+    /// `required` says **this document must carry the property**. [`Key::required`] says **some
+    /// layer must supply the key** — and the loader is satisfied by the environment or by a
+    /// mounted file just as well as by the file this schema describes.
+    ///
+    /// On for an editor validating a hand-written `config.toml`, where the document is the only
+    /// layer there is. Off for a [`Contract`](super::Contract), whose reader is checking what a
+    /// chart rendered — because a chart supplying a required *secret* from a mounted file, which
+    /// is the only way to supply a secret, renders a document that fails this and a deployment
+    /// that starts. That consumer checks [`Key::required`] across every layer it can see instead,
+    /// which is where the evidence is.
+    #[must_use]
+    pub fn require_present(mut self, require_present: bool) -> Self {
+        self.require_present = require_present;
+        self
+    }
 }
 
 impl Schema {
@@ -183,21 +218,31 @@ impl Schema {
     /// # Errors
     /// As [`Self::to_json_schema`].
     pub fn to_json_schema_with(&self, options: &JsonSchema) -> Result<String, Error> {
-        let reachable = self.keys.iter().filter(|key| !key.reserved);
-        let mut document = object(&Node::of(reachable), options);
-
-        document.insert("$schema".to_owned(), json!(options.meta_schema));
-        if let Some(id) = &options.id {
-            document.insert("$id".to_owned(), json!(id));
-        }
-        if let Some(title) = &options.title {
-            document.insert("title".to_owned(), json!(title));
-        }
-
-        serde_json::to_string_pretty(&Json::Object(document)).map_err(|e| {
+        serde_json::to_string_pretty(&Json::Object(document(self, options))).map_err(|e| {
             Error::Invalid(format!("the JSON Schema could not be written as JSON: {e}"))
         })
     }
+}
+
+/// The document itself, before anything decides how to write it out.
+///
+/// Split from [`Schema::to_json_schema_with`] because a JSON Schema has two destinations and only
+/// one of them is a file: [`Contract`](super::Contract) carries this one *inside* a larger
+/// document, and serialising it to a string only to parse it back would be both slower and a
+/// second place for the two to disagree about what was rendered.
+pub(super) fn document(schema: &Schema, options: &JsonSchema) -> Map<String, Json> {
+    let reachable = schema.keys.iter().filter(|key| !key.reserved);
+    let mut document = object(&Node::of(reachable), options);
+
+    document.insert("$schema".to_owned(), json!(options.meta_schema));
+    if let Some(id) = &options.id {
+        document.insert("$id".to_owned(), json!(id));
+    }
+    if let Some(title) = &options.title {
+        document.insert("title".to_owned(), json!(title));
+    }
+
+    document
 }
 
 /// One level of the configuration as a JSON Schema object.
@@ -228,7 +273,7 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
 
         properties.insert(name.to_owned(), Json::Object(schema));
 
-        if key.required {
+        if key.required && options.require_present {
             if key.aliases.is_empty() {
                 required.push(json!(name));
             } else {
@@ -248,7 +293,9 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
             child.segment.to_owned(),
             Json::Object(object(child, options)),
         );
-        if child.required() {
+        // A table is required because something inside it is, so it follows the same switch: with
+        // `require_present` off there is nothing inside making it mandatory *here*.
+        if child.required() && options.require_present {
             required.push(json!(child.segment));
         }
     }
@@ -276,17 +323,8 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
         schema.insert("description".to_owned(), json!(description));
     }
 
-    if key.values.is_empty() {
-        if let Some(ty) = &key.ty
-            && let Some(interpreted) = rust_type::interpret(ty)
-        {
-            schema.extend(interpreted);
-        }
-    } else {
-        // A fixed set of values is stronger than any type could be, and it is always a set of
-        // strings: `Values::VARIANTS` holds the spellings `serde` accepts for unit variants.
-        schema.insert("type".to_owned(), json!("string"));
-        schema.insert("enum".to_owned(), json!(key.values));
+    if let Some(constraint) = constraint(key.ty.as_deref(), &key.values) {
+        schema.extend(constraint);
     }
 
     if key.secret {
@@ -307,6 +345,58 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
     }
 
     schema
+}
+
+/// What a value of this type must be, as JSON Schema keywords — `type`, `enum`, the numeric
+/// bounds, `items`, `uniqueItems`.
+///
+/// The whole of what a *type* can say and nothing about the key that has it, which is what makes
+/// it reusable: [`leaf`] adds the description and the default for a key in a rendered document,
+/// and [`Key::constraint`] carries it flat for a consumer checking the *environment variable* that
+/// supplies the same key. Every value in an environment is a string, so that consumer has nothing
+/// but this to check against — and without it, every consumer in every language reimplements a
+/// vocabulary of Rust type names, with `PathBuf` as the trap: it is a string and nothing in the
+/// name says so.
+///
+/// [`None`] means unconstrained: a type [`rust_type::interpret`] does not recognise, and no fixed
+/// set of values. A domain newtype lands here, and a validator can say nothing about it beyond
+/// that the key exists.
+pub(super) fn constraint(ty: Option<&str>, values: &[String]) -> Option<Map<String, Json>> {
+    if values.is_empty() {
+        return ty.and_then(rust_type::interpret);
+    }
+
+    // A fixed set of values is stronger than any type could be, and it is always a set of strings:
+    // `Values::VARIANTS` holds the spellings `serde` accepts for unit variants.
+    let mut schema = Map::new();
+    schema.insert("type".to_owned(), json!("string"));
+    schema.insert("enum".to_owned(), json!(values));
+    Some(schema)
+}
+
+/// What the *unparsed text* supplying this key must be, as JSON Schema keywords.
+///
+/// [`constraint`] describes the value once it is in the document; this describes the characters
+/// an environment variable holds before anything parses them. `"0"` satisfies the second and
+/// fails the first, and a consumer told only the first has to know that `u64` means "TOML-parse
+/// the text, then check" — the Rust-type vocabulary [`rust_type`] exists to stop publishing.
+///
+/// [`None`] means the text is unconstrained, and is the answer for every string-like type: an
+/// environment value is already a string, so `{"type": "string"}` would say nothing. See
+/// [`rust_type::in_text`] for what is emitted, and for why the measured accepted set rather than
+/// TOML's grammar is what decides it.
+pub(super) fn text_constraint(
+    ty: Option<&str>,
+    values: &[String],
+) -> (TextForm, Option<Map<String, Json>>) {
+    if values.is_empty() {
+        return ty.map_or((TextForm::Unknown, None), rust_type::in_text);
+    }
+
+    // Not the bare `enum` `constraint` carries. figment's `Env` provider trims, so `"info "` loads
+    // where the same text in a TOML document does not — and copying the enum into both fields was
+    // the one thing the two-field design exists to prevent. See `rust_type::one_of`.
+    (TextForm::Choice, Some(rust_type::one_of(values)))
 }
 
 /// The `description` for a key: its comment, and what its default means.

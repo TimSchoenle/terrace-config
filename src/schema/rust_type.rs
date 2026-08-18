@@ -17,6 +17,8 @@
 
 use serde_json::{Map, Value as Json, json};
 
+use super::TextForm;
+
 /// The JSON Schema keywords `ty` justifies, or [`None`] for a spelling with no certain meaning.
 ///
 /// Keywords rather than a shape enum of this crate's own: they are the vocabulary the output is
@@ -124,6 +126,173 @@ fn integer(name: &str) -> Option<Map<String, Json>> {
         schema.insert("not".to_owned(), json!({ "const": 0 }));
     }
     Some(schema)
+}
+
+/// What form the *unparsed text* of an environment variable takes, and the keywords that check
+/// it.
+///
+/// [`interpret`] describes a value once it is in the document — an integer, a boolean, an array.
+/// A variable holds none of those; it holds text, and `"0"` fails `{"type": "integer"}` under
+/// every conforming validator. A consumer told only the document-space constraint has to know
+/// that `u64` means "parse the text first, TOML-ish, then check", which is the Rust-type
+/// vocabulary this module exists to stop publishing.
+///
+/// Every rule below was measured against the loader rather than reasoned from TOML's grammar,
+/// because figment's `Env` provider is what decides this and its parse is neither TOML's nor
+/// `str::parse`'s. Against a `u64` key it accepts `0`, `42`, `007`, `+5` and `7` with surrounding
+/// whitespace, and refuses `1_000`, `0x1F`, `0b1` and `1e3` — so the pattern permits leading
+/// zeros, a leading `+` and outer whitespace, and does not permit the separators and radix
+/// prefixes TOML itself would. Against a `bool` it accepts `true` and `false` and nothing else:
+/// not `TRUE`, not `1`, not `yes`.
+///
+/// Erring towards permissive is not a stylistic choice here. A pattern that rejects text the
+/// loader accepts stops a deployment that was correct, which is the failure this whole module is
+/// written to avoid — so a spelling whose accepted set is not known exactly gets [`None`].
+///
+/// # Why a string type gets nothing
+///
+/// `{"type": "string"}` is what every environment value already is, so emitting it would be a
+/// constraint that constrains nothing. The interesting rule for a string-typed key is the
+/// opposite one — figment parses `12345678` into a number and `Figment::extract` will not coerce
+/// it back, so an all-digit password supplied this way fails to load (see
+/// [`provider`](crate::provider)). Expressing that needs a `not` over the forms that parse, and
+/// the boundary of "what parses" is exactly what is not known exactly enough to reject on. It is
+/// documented instead of guessed.
+pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
+    let ty = strip_reference(ty.trim());
+
+    // `[T; N]` and `[T]` have no head to look up, and are sequences like the rest.
+    if ty.starts_with('[') && ty.ends_with(']') {
+        return (TextForm::Structured, Some(bracketed()));
+    }
+
+    let (head, args) = split_generic(ty);
+    let Some(name) = head.rsplit("::").next() else {
+        return (TextForm::Unknown, None);
+    };
+
+    match (name, args.as_slice()) {
+        ("Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock", [inner]) => {
+            in_text(inner)
+        }
+        ("Cow", [_lifetime, inner]) => in_text(inner),
+
+        ("bool", []) => (TextForm::Boolean, Some(one_of(&["true", "false"]))),
+
+        // Accepts any text, and the loader agrees: none of these parses on the way in, so there
+        // is nothing a validator could have caught. `Text` says exactly that — no check possible
+        // and none needed.
+        (
+            "String" | "str" | "PathBuf" | "Path" | "OsString" | "OsStr" | "CString" | "CStr"
+            | "SecretString",
+            [],
+        ) => (TextForm::Text, None),
+
+        // A string in TOML and a *parse* in Rust, which is a different thing. Measured against the
+        // loader: given `!!!`, an `IpAddr` key fails with "invalid IP address syntax", a
+        // `SocketAddr` with "invalid socket address syntax", and a `char` with "expected a
+        // character" — while `String` and `PathBuf` take it.
+        //
+        // So `Text` here would be the same defect `TextForm` was introduced to fix, one field
+        // over: a value meaning "checked and fine" used for values that were never checked. This
+        // crate has no pattern for a URL and would rather publish nothing than publish a wrong
+        // one, so the honest answer is that a check exists and this document does not describe it.
+        //
+        // `Uuid` and `Ipv4Addr` are a few characters of regex and could move back to a described
+        // form later; the rule for doing that is the rule everywhere else in this module — measure
+        // what the loader accepts first, and emit a superset or nothing.
+        (
+            "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr" | "SocketAddrV4"
+            | "SocketAddrV6" | "char",
+            [],
+        ) => (TextForm::Unknown, None),
+
+        ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [_]) | ("HashMap" | "BTreeMap", [_, _]) => {
+            (TextForm::Structured, Some(bracketed()))
+        }
+
+        (name, []) => match integer_text(name) {
+            Some(schema) => (TextForm::Integer, Some(schema)),
+            None => (TextForm::Unknown, None),
+        },
+        _ => (TextForm::Unknown, None),
+    }
+}
+
+/// A fixed set of spellings, as the *text* of an environment variable — which is the same set
+/// with the whitespace figment's `Env` provider strips before anything compares it.
+///
+/// A bare `enum` is what belongs in [`interpret`]'s output and it is wrong here, which is the
+/// whole reason the two constraints are separate fields. Measured: `PROBE_LEVEL="info "`,
+/// `" info"` and `"\tinfo\n"` all load, and so do `"true "` and `" false"` for a boolean — the
+/// provider trims. The *document* layer trims nothing, so `level = "info "` in a TOML file really
+/// is refused, and `constraint` stays a bare `enum` for exactly that reason.
+///
+/// A pattern rather than a widened enum because there is no widened enum to write: the set of
+/// strings that trim to a variant is infinite.
+pub(super) fn one_of(values: &[impl AsRef<str>]) -> Map<String, Json> {
+    let alternatives: Vec<String> = values.iter().map(|value| escape(value.as_ref())).collect();
+    json_map(&json!({
+        "type": "string",
+        "pattern": format!(r"^\s*({})\s*$", alternatives.join("|")),
+    }))
+}
+
+/// `value` as a regular expression matching itself.
+///
+/// JSON Schema's `pattern` is ECMA-262, where a backslash before any of these is always the
+/// literal character — so escaping the whole set is correct without knowing which of them a
+/// `#[serde(rename = "…")]` might contain. Getting this wrong in the permissive direction would
+/// accept a spelling the loader refuses; getting it wrong in the strict direction would reject a
+/// deployment that works, which is the one this module is written to avoid.
+fn escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if r"\^$.|?*+()[]{}".contains(character) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+/// The one thing certainly true of a sequence or a map in an environment variable: it is a TOML
+/// literal, so it is bracketed.
+///
+/// Measured, like the rest. Against a `Vec<String>` key figment takes `[]` and `["a","b"]` and
+/// refuses `a,b`, `a` and the empty string — so `PORTFOLIO_GITHUB__REPOS=a,b`, which is the first
+/// thing anyone would try, is caught here rather than at boot. The pattern says nothing about what
+/// is *between* the brackets, because that is TOML's grammar and this is not a TOML parser.
+fn bracketed() -> Map<String, Json> {
+    json_map(&json!({
+        "type": "string",
+        // `[\s\S]` rather than `.`, which does not match a newline in most engines — and a
+        // multi-line array is legal TOML, so a pattern that refused one would refuse a value the
+        // loader takes.
+        "pattern": r"^\s*[\[\{][\s\S]*[\]\}]\s*$",
+    }))
+}
+
+/// The text form of an integer spelling: a sign, digits, and the whitespace figment trims.
+///
+/// No bounds. A pattern cannot express a numeric range, and half-expressing one — digits capped
+/// at five characters for a `u16`, say — would reject `00080`, which the loader takes. The range
+/// lives in [`interpret`]'s output and applies to the parsed value; this applies to the text, and
+/// the two are complementary rather than alternatives.
+fn integer_text(name: &str) -> Option<Map<String, Json>> {
+    // Reuses the same table, so a spelling this crate stops recognising stops being described in
+    // both places at once rather than in one of them.
+    integer(name)?;
+
+    // Unsigned by name: the loader refuses `-1` for one, and refusing it here catches the sign a
+    // chart put in the wrong place before the pod does.
+    let signed = !name.starts_with('u') && !name.starts_with("NonZeroU");
+    let sign = if signed { "[-+]?" } else { r"\+?" };
+
+    Some(json_map(&json!({
+        "type": "string",
+        "pattern": format!(r"^\s*{sign}[0-9]+\s*$"),
+    })))
 }
 
 /// An array of `item`, with the element schema when `item` is a spelling this understands.
