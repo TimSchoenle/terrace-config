@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/v0.5.0...v0.6.0) (2026-08-18)
+
+
+### Features
+
+* **schema:** publish a config contract with the image ([#31](https://github.com/TimSchoenle/terrace-config/issues/31)) ([3074f1a](https://github.com/TimSchoenle/terrace-config/commit/3074f1aa9edce441d5cf851937afbea250c2f919))
+
+
+### Miscellaneous
+
+* **deps:** update taiki-e/install-action action to v2.85.14 ([#33](https://github.com/TimSchoenle/terrace-config/issues/33)) ([0070103](https://github.com/TimSchoenle/terrace-config/commit/0070103cd44304093291bce4dfcfb598ca60dac1))
+* **deps:** update taiki-e/install-action action to v2.86.0 ([#34](https://github.com/TimSchoenle/terrace-config/issues/34)) ([c43263a](https://github.com/TimSchoenle/terrace-config/commit/c43263ab8d3d8b387f00c609245fd09f5f2d66fd))
+
 ## [0.5.0](https://github.com/TimSchoenle/terrace-config/compare/v0.4.0...v0.5.0) (2026-08-18)
 
 
