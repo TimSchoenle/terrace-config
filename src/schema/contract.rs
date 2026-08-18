@@ -1049,6 +1049,15 @@ fn loader_spellings(schema: &Schema) -> impl Iterator<Item = &str> {
             ]
         })
         .flatten()
+        // Every alias spelling too: the loader answers to them equally, so an external
+        // declaration or an ignore pattern covering one is the same defect through another door.
+        .chain(
+            schema
+                .keys
+                .iter()
+                .flat_map(|key| key.env_aliases.iter().chain(key.env_file_aliases.iter()))
+                .map(String::as_str),
+        )
         .chain(schema.loader.iter().map(|var| var.env.as_str()))
 }
 

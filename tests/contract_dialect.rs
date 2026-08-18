@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
-use terrace_config::schema::{App, Describe, Key, Unreachable};
+use terrace_config::schema::{App, Describe, External, ExternalVar, Key, Unreachable};
 use terrace_config::testing::Harness;
 
 /// A name ending in the indirection suffix, beside the key that claims it.
@@ -175,4 +175,121 @@ fn an_ordinary_dialect_still_builds() {
         .into_contract(App::new("ordinary"))
         .build()
         .expect("builds");
+}
+
+// ---------------------------------------------------------------------------------------------
+// The same shapes again, with an alias — the spelling every rule above was written without
+// ---------------------------------------------------------------------------------------------
+
+/// A `rename_all` container whose field keeps the old spelling working. The migration
+/// `env_aliases` exists for, applied to the shape that has no canonical spelling.
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "camelCase")]
+struct CamelWithAlias {
+    /// A key the environment cannot name — under that name.
+    #[serde(default, alias = "cache_dir")]
+    cache_dir: String,
+}
+
+#[test]
+fn a_working_alias_means_the_key_is_reachable() {
+    // `unreachable` is a fact about the *key*, and a key answers to every one of its spellings.
+    // Read off the canonical spelling alone it said the environment could not reach a key that a
+    // working alias reaches — worse than the bare `None` it replaced, because a consumer believing
+    // it tells an operator a working configuration is impossible.
+    let key = key_of(
+        &Terrace::new("PROBE_").schema::<CamelWithAlias>(),
+        "cacheDir",
+    );
+
+    assert_eq!(key.env, None);
+    assert_eq!(key.env_aliases, ["PROBE_CACHE_DIR"]);
+    assert_eq!(key.secrets_file_aliases, ["cache_dir"]);
+    assert_eq!(key.unreachable, None);
+}
+
+#[test]
+fn and_the_alias_really_does_reach_it() {
+    let mut loaded = String::new();
+    Harness::over(Terrace::new("PROBE_")).run(|jail| {
+        jail.env("PROBE_CACHE_DIR", "from-the-environment");
+        loaded = jail.load::<CamelWithAlias>().expect("loads").cache_dir;
+        Ok(())
+    });
+
+    assert_eq!(loaded, "from-the-environment");
+}
+
+/// The indirection collision reached through an alias rather than through a field name.
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct AliasedIndirection {
+    /// The key that claims `<PREFIX>TOKEN_FILE`.
+    #[serde(default)]
+    token: String,
+    /// A key whose *alias* is the name that variable takes.
+    #[serde(default, alias = "token_file")]
+    path: String,
+}
+
+#[test]
+fn an_indirection_collision_through_an_alias_is_refused_too() {
+    // Identical in effect to the canonical case, down to the values — one variable, two keys — and
+    // it built, because the check read canonical spellings only. `Indirection` is reported on any
+    // spelling that collides, even beside one that works, because the hazard does not go away when
+    // another spelling does.
+    let schema = Terrace::new("PROBE_").schema::<AliasedIndirection>();
+    let aliased = key_of(&schema, "path");
+
+    assert_eq!(aliased.env.as_deref(), Some("PROBE_PATH"));
+    assert_eq!(aliased.unreachable, Some(Unreachable::Indirection));
+
+    let mut both = (String::new(), false);
+    Harness::over(Terrace::new("PROBE_")).run(|jail| {
+        let held = jail.write("held", "s3cret")?;
+        jail.env("PROBE_TOKEN_FILE", held.display().to_string());
+        let loaded = jail.load::<AliasedIndirection>().expect("loads");
+        both = (loaded.token, !loaded.path.is_empty());
+        Ok(())
+    });
+    assert_eq!(both.0, "s3cret");
+    assert!(both.1, "the same variable filled the aliased key");
+
+    let error = Terrace::new("PROBE_")
+        .schema::<AliasedIndirection>()
+        .with_defaults_from(&AliasedIndirection::default())
+        .expect("serialises")
+        .into_contract(App::new("collide"))
+        .build()
+        .expect_err("refused");
+    assert!(error.to_string().contains("path"), "{error}");
+}
+
+#[test]
+fn an_external_variable_may_not_take_an_alias_spelling_either() {
+    // The third door the round named: an alias spelling is one the loader answers to, so declaring
+    // it external — or covering it with an ignore pattern — exempts a real key from the check that
+    // owns it, exactly as the canonical spelling would.
+    let schema = || {
+        Terrace::new("PROBE_")
+            .schema::<CamelWithAlias>()
+            .with_defaults_from(&CamelWithAlias::default())
+            .expect("serialises")
+    };
+
+    let declared = schema()
+        .into_contract(App::new("aliased"))
+        .external(External::new().var(ExternalVar::new("PROBE_CACHE_DIR")))
+        .build()
+        .expect_err("refused");
+    assert!(
+        declared.to_string().contains("PROBE_CACHE_DIR"),
+        "{declared}"
+    );
+
+    let ignored = schema()
+        .into_contract(App::new("aliased"))
+        .external(External::new().ignore("PROBE_CACHE_DIR"))
+        .build()
+        .expect_err("refused");
+    assert!(ignored.to_string().contains("PROBE_CACHE_DIR"), "{ignored}");
 }

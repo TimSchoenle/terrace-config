@@ -425,7 +425,16 @@ pub struct Key {
     /// Always serialised, for [`Self::env_aliases`]' reason.
     #[serde(default)]
     pub secrets_file_aliases: Vec<String>,
-    /// Why [`Self::env`] is absent, when it is. [`None`] whenever [`Self::env`] is present.
+    /// Whether some layer cannot reach this key, and why. See [`Unreachable`].
+    ///
+    /// **A fact about the key, not about [`Self::env`].** A key answers to every one of its
+    /// [`aliases`](Self::aliases), so [`Unreachable::Unnameable`] appears only when *no* spelling
+    /// names it — a camelCase path with a working `#[serde(alias)]` beside it has an absent `env`
+    /// and is perfectly reachable, and saying otherwise would tell an operator a configuration
+    /// that works is impossible.
+    ///
+    /// [`Unreachable::Indirection`] is the other quantifier: any spelling colliding is enough,
+    /// because the hazard it names does not go away when another spelling works.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unreachable: Option<Unreachable>,
     /// What the value is when nothing supplies it, rendered for display. [`None`] means unset —
@@ -537,7 +546,8 @@ pub enum TextForm {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Unreachable {
-    /// No environment variable maps back to this path at all.
+    /// No environment variable maps back to this key at all — not its path, and not any of its
+    /// [`aliases`](Key::aliases).
     ///
     /// `#[serde(rename_all = "camelCase")]` is the common cause — an environment key is folded to
     /// lower case on the way in and `distDir` never comes back — and a path carrying the dialect's
@@ -548,7 +558,12 @@ pub enum Unreachable {
     /// [`Key::secrets_file`] is the field that answers whether a mounted file can reach the key,
     /// and for a camelCase path it is [`None`] too while for a whitespace path it is not.
     Unnameable,
-    /// The name this key would take is another key's `_FILE` variable.
+    /// A name this key would take is another key's `_FILE` variable.
+    ///
+    /// Reported when *any* spelling collides, canonical or alias, even beside a spelling that
+    /// works — the opposite quantifier to [`Self::Unnameable`], and deliberately so. This is not
+    /// "the key is out of reach"; it is "a name this schema gave to another key also fills this
+    /// one", which stays true however many other ways the key can be reached.
     ///
     /// The one case where [`Key::env`] being [`None`] does **not** mean the environment cannot
     /// reach the key. It can, under a name this document gives to somebody else: with `token` and
@@ -679,9 +694,8 @@ impl Schema {
             let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
             key.text_form = form;
             key.text_constraint = text.map(serde_json::Value::Object);
-            let (env, unreachable) = env_spelling(dialect, &key.path);
+            let (env, canonical_reason) = env_spelling(dialect, &key.path);
             key.env = env;
-            key.unreachable = unreachable;
             key.env_file = key
                 .env
                 .as_ref()
@@ -695,11 +709,40 @@ impl Schema {
             // them. Deriving them here rather than describing the rule and letting each consumer
             // apply it is the reason `secrets_file` is a field at all: a derivation written in
             // prose is a derivation every implementation gets slightly differently wrong.
-            key.env_aliases = key
+            let alias_spellings: Vec<_> = key
                 .aliases
                 .iter()
-                .filter_map(|alias| env_spelling(dialect, alias).0)
+                .map(|alias| env_spelling(dialect, alias))
                 .collect();
+            key.env_aliases = alias_spellings
+                .iter()
+                .filter_map(|(env, _)| env.clone())
+                .collect();
+
+            // A key answers to every one of its spellings, so both questions this field settles
+            // are asked of all of them rather than of the canonical one alone.
+            //
+            // `Indirection` wins wherever it appears, even beside a spelling that works. It is not
+            // "this key is out of reach" — it is "some name this schema gave to another key also
+            // fills this one", which stays true however many other ways the key can be reached,
+            // and is the thing `ContractBuilder::build` refuses on.
+            //
+            // `Unnameable` is the opposite quantifier: only when *nothing* names the key. Set from
+            // the canonical spelling alone it would say the environment cannot reach a key that a
+            // working alias reaches — which a `rename_all` container with a compatibility alias
+            // produces, and which is worse than the bare `None` it replaced, because a consumer
+            // believing it tells an operator a working configuration is impossible.
+            key.unreachable = if canonical_reason == Some(Unreachable::Indirection)
+                || alias_spellings
+                    .iter()
+                    .any(|(_, reason)| *reason == Some(Unreachable::Indirection))
+            {
+                Some(Unreachable::Indirection)
+            } else if key.env.is_none() && key.env_aliases.is_empty() {
+                canonical_reason
+            } else {
+                None
+            };
             key.env_file_aliases = key
                 .env_aliases
                 .iter()

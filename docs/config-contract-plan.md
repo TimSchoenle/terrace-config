@@ -609,6 +609,10 @@ Per container, for gate 2's reason.
   as much as a live variable, and refusing one refuses a chart that has not finished a rename the
   service deliberately kept working
 - every `*_FILE` variable must equal some key's `env_file` and point inside a mounted volume
+- and every published `secrets_file` must itself be a legal `Secret` key — `[-._a-zA-Z0-9]+`. The
+  crate is not Kubernetes-specific and a bare `docker run -v` can mount a name with a space in it,
+  so a contract may legitimately publish one; this platform cannot render it, and saying so at
+  render time beats finding out at mount time
 - and the key it names must have a **string `constraint`** — `{"type": "string"}`, whatever else
   it carries. See §2.5. A key whose document-space type is not a string cannot be file-supplied at
   all, so a mount for one is a defect the file's contents cannot repair.
