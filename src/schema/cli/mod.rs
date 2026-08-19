@@ -178,7 +178,11 @@ impl<'a> Cli<'a> {
     /// `cloudflare.*` when the file says `csp.cloudflare.*` is worse than no page — and what lets
     /// [`Request::validate`] refuse a slice for a whole-image format.
     ///
-    /// The returned string is what the caller writes, without a trailing newline of its own.
+    /// The returned string is whatever the rendering produced, and the renderings disagree
+    /// about a trailing newline: `to_markdown*` and `to_toml_example` end in one, the
+    /// contract and the two label formats do not. Nothing is normalised here, because a
+    /// caller writing into a build script or a buffer wants what was rendered.
+    /// [`Self::main`] is where it becomes exactly one, for the file a shell redirects into.
     ///
     /// # Errors
     /// Returns whatever the underlying rendering does: [`Error::Invalid`] from
@@ -226,7 +230,8 @@ impl<'a> Cli<'a> {
 
     /// The whole program: parse this process's arguments, render, print, exit.
     ///
-    /// Prints the rendering to stdout with a trailing newline and returns
+    /// Prints the rendering to stdout with exactly one trailing newline — the renderings
+    /// themselves disagree about whether they end in one — and returns
     /// [`ExitCode::SUCCESS`]; on any failure prints the message to stderr and returns
     /// [`ExitCode::FAILURE`]. Nothing is written to stdout on failure, so a step redirecting into
     /// a committed file leaves it untouched rather than half-written.
@@ -239,7 +244,12 @@ impl<'a> Cli<'a> {
 
         match self.render(&request, schema) {
             Ok(rendered) => {
-                println!("{rendered}");
+                // Exactly one trailing newline, whatever the rendering ended with. The renderings
+                // disagree: `to_markdown*` and `to_toml_example` end in one already, the contract
+                // and the two label formats do not. Printing them all with `println!` gave the
+                // first group a trailing blank line, which is invisible on a terminal and a diff
+                // in a committed `config.example.toml`.
+                println!("{}", rendered.trim_end_matches('\n'));
                 ExitCode::SUCCESS
             }
             Err(error) => fail(&error),

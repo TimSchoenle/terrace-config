@@ -420,3 +420,23 @@ fn a_request_can_be_built_without_this_modules_argument_syntax() {
         .expect("rendered");
     assert!(labels.contains("/etc/contract.json"), "{labels}");
 }
+
+#[test]
+fn every_rendering_ends_in_exactly_one_newline() {
+    // The renderings disagree among themselves: `to_markdown*` and `to_toml_example` end in a
+    // newline and the contract and label formats do not. `Cli::main` normalises, because the
+    // difference is invisible on a terminal and a diff in a committed `config.example.toml` —
+    // which is how it was found, in two repositories at once.
+    //
+    // `render` is the layer below and deliberately does not normalise: it returns what the
+    // rendering produced, for a caller writing it somewhere other than stdout.
+    for format in Format::ALL {
+        let request = Request::new(*format);
+        let rendered = cli().render(&request, schema()).expect("rendered");
+        let normalised = rendered.trim_end_matches('\n');
+        assert!(
+            !normalised.ends_with('\n'),
+            "`{format}` would print more than one trailing newline"
+        );
+    }
+}
