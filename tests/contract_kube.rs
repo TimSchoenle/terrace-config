@@ -12,7 +12,6 @@
 //! pass for any answer it gave.
 
 #![cfg(feature = "schema")]
-#![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
 
 use std::collections::BTreeMap;
 
