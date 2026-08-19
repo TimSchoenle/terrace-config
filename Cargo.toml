@@ -6,7 +6,7 @@ members = ["macros"]
 
 [package]
 name = "terrace-config"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 authors = ["Tim Schönle"]
 license = "MIT"
@@ -95,7 +95,7 @@ serde = { version = "1", optional = true }
 # --- schema ---
 # `=`, not `^`: the derive expands to struct literals of `terrace_config::schema` types, so the
 # two crates are one artefact and a version skew between them is a compile error at best.
-terrace-config-macros = { version = "0.6.0", path = "macros", optional = true }
+terrace-config-macros = { version = "0.7.0", path = "macros", optional = true }
 serde_json = { version = "1", optional = true }
 
 # --- reload ---
