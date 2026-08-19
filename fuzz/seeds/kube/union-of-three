@@ -1,0 +1,8 @@
+p:TANKOVAULT_
+n:tankovault
+k:a/b
+k:c
+d:config.toml
+i:ghcr.io/you/a@sha256:48e259cb4d7c1f0a2b3e5d6c7a8b9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d
+i:ghcr.io/you/b@sha256:9f1c0d2e3b4a5968778695a4b3c2d1e0f9e8d7c6b5a4938271605f4e3d2c1b0a
+i:ghcr.io/you/c@sha256:0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9

@@ -85,6 +85,10 @@
 
 mod contract;
 mod json_schema;
+// Public, rather than another line in the flat re-export below. The names in here are Kubernetes
+// vocabulary — `Metadata`, `Target`, `Format` — and flattened they would each need a `Kube`
+// prefix to say which platform they belong to. `schema::kube::Metadata` says it already.
+pub mod kube;
 mod markdown;
 mod rust_type;
 mod toml_example;

@@ -6,6 +6,7 @@
 
 pub mod env_load;
 pub mod explain;
+pub mod kube;
 pub mod schema;
 pub mod secrets_dir;
 pub mod toml_layers;

@@ -92,6 +92,11 @@ fn schema_seeds() {
     replay_target("schema", oracle::schema::check);
 }
 
+#[test]
+fn kube_seeds() {
+    replay_target("kube", oracle::kube::check);
+}
+
 /// A deterministic input generator, standing in for a mutation engine.
 ///
 /// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
@@ -365,5 +370,77 @@ mod generated {
     #[test]
     fn schema_sweep() {
         sweep_with(0x5EED_0004, oracle::schema::check, generate_schema);
+    }
+
+    /// Prefixes and app names chosen to sit on the label-value rule rather than on the loader's:
+    /// a trailing separator (which *every* real prefix has), a leading `-`, a `/`, a `+`, a space,
+    /// non-ASCII, and one that is exactly the 63-character bound.
+    const TOKENS: &[&str] = &[
+        "PORTFOLIO_",
+        "TANKOVAULT_",
+        "P",
+        "-lead",
+        "trail-",
+        "a/b",
+        "a+b",
+        "a b",
+        "a.b_c-d",
+        "ünïcode",
+        "",
+        ".",
+        "..",
+        "config.toml",
+        "00-base.toml",
+        "toml",
+        "yaml",
+        "application/toml",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ];
+
+    /// Image references, most of them things the module must refuse. A sweep that only fed pinned
+    /// references would never reach the guard that is the whole point of the annotation.
+    const REFERENCES: &[&str] = &[
+        "ghcr.io/you/portfolio@sha256:48e259cb4d7c1f0a2b3e5d6c7a8b9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        "ghcr.io/you/sidecar@sha256:9f1c0d2e3b4a5968778695a4b3c2d1e0f9e8d7c6b5a4938271605f4e3d2c1b0a",
+        "ghcr.io/you/portfolio",
+        "ghcr.io/you/portfolio:v2.5.0",
+        "ghcr.io/you/portfolio@sha256:48e2",
+        "ghcr.io/you/portfolio@sha512:48e259cb4d7c1f0a2b3e5d6c7a8b9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        "ghcr.io/you/portfolio@SHA256:48E259CB4D7C1F0A2B3E5D6C7A8B9E0F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D",
+        "@sha256:48e259cb4d7c1f0a2b3e5d6c7a8b9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        "a@sha256:48e259cb4d7c1f0a2b3e5d6c7a8b9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d,b",
+        " leading@sha256:x",
+        "",
+    ];
+
+    /// Build one kube-oracle input.
+    fn generate_kube(rng: &mut Rng) -> String {
+        let mut lines = vec![format!("p:{}", rng.pick(TOKENS))];
+        if rng.next().is_multiple_of(3) {
+            lines.push(format!("n:{}", rng.pick(TOKENS)));
+        }
+        for _ in 0..=rng.next() % 3 {
+            lines.push(format!("k:{}", rng.pick(TOKENS)));
+        }
+        if rng.next().is_multiple_of(4) {
+            lines.push("w".to_owned());
+        } else {
+            if rng.next().is_multiple_of(2) {
+                lines.push(format!("d:{}", rng.pick(TOKENS)));
+            }
+            if rng.next().is_multiple_of(2) {
+                lines.push(format!("f:{}", rng.pick(TOKENS)));
+            }
+        }
+        for _ in 0..=rng.next() % 3 {
+            lines.push(format!("i:{}", rng.pick(REFERENCES)));
+        }
+        lines.join("\n")
+    }
+
+    #[test]
+    fn kube_sweep() {
+        sweep_with(0x5EED_0006, oracle::kube::check, generate_kube);
     }
 }

@@ -109,6 +109,13 @@ beside it.
 document a container build embeds in its image and attaches to its digest, so that a deployment
 pipeline holding nothing but that digest can check the configuration it is about to mount.
 
+Publishing it has two halves, because a digest is what a *pipeline* holds and not what a cluster
+does. [`schema::Contract::labels`] is the image half — three labels in the config blob, discoverable
+without pulling a layer. [`schema::kube`] is the other: the label and annotations a chart stamps
+onto the `ConfigMap` it renders and the pod that mounts it, so that a Kyverno policy or an admission
+webhook holding only an object can still find the images that read the document and refuse a pair
+built a release apart.
+
 ```no_run
 use serde::{Deserialize, Serialize};
 use terrace_config::{Terrace, schema::App, schema::Describe};

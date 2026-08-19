@@ -47,6 +47,7 @@ into, which is why `corpus/` comes before `seeds/`: `seeds/` is committed and on
 | `env_load` | `TEST_*` environment variables | boot and reload extract the same values, and an unchanged environment is not a change |
 | `secrets_dir` | `$TEST_SECRETS_DIR` and `TEST_<KEY>_FILE` | a key supplied twice is never silently accepted; a value loses trailing line terminators and nothing else |
 | `toml_layers` | `$TEST_CONFIG` as a directory of fragments | `..data` and non-`*.toml` entries never contribute; later names win |
+| `kube` | the Kubernetes stamp on a `ConfigMap` or a pod template | every key and value `kube_metadata` emits is legal Kubernetes metadata, and the check that reads it accepts what the generator wrote |
 
 Each target computes, independently of the loader, what the input it built *should* produce, then
 asserts it. Totality — `Ok` or a typed `Error`, never a panic — is the floor, not the point: a

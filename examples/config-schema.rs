@@ -15,6 +15,9 @@
 //! cargo run --example config-schema -- --format contract --revision "$(git rev-parse HEAD)" \
 //!                                       --created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
+//! cargo run --example config-schema -- --format kube --image "ghcr.io/you/portfolio@sha256:48e2…"
+//! cargo run --example config-schema -- --format kube-labels --target workload \
+//!                                       --image "ghcr.io/you/portfolio@sha256:48e2…"
 //! ```
 //!
 //! `json-schema` and `toml` are the two worth wiring into CI with a `--check`-style diff. A
@@ -30,6 +33,16 @@
 //! [`schema::Contract`](terrace_config::schema::Contract) for the shape and
 //! [`External`](terrace_config::schema::External) for the half no derive can see — the variables
 //! this image reads that are nobody's configuration key.
+//!
+//! # The deployment outputs
+//!
+//! `kube` and `kube-labels` are the third audience: neither a documentation job nor a container
+//! build, but the chart that mounts the document. They are the only formats here that cannot be
+//! produced from the source tree alone — a stamp names the images that read the document, each
+//! digest-pinned, and a digest is what the push *produces*. So `--image` is required and repeatable,
+//! and it is the one input to this generator that a build has to feed rather than derive. See
+//! [`schema::kube`](terrace_config::schema::kube) for why the split between a label and three
+//! annotations is the platform's decision rather than this crate's.
 //!
 //! It reads nothing from the environment, so it produces the same answer on a developer's
 //! machine and on a runner where none of the variables it describes exist.
@@ -47,6 +60,7 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
+use terrace_config::schema::kube::{Metadata, Target};
 use terrace_config::schema::{
     App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, Schema,
 };
@@ -232,7 +246,39 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
             .to_dockerfile_labels(DEFAULT_PATH)
             .trim_end()
             .to_owned()),
+        // Two spaces, which is where a `metadata:` block's children sit in every chart anyone
+        // writes. A template nesting it deeper — `spec.template.metadata` is usually eight —
+        // re-indents the paste, which is a thing a person does once and a generator cannot guess.
+        Format::Kube => Ok(kube_metadata(schema, options)?
+            .to_yaml(2)
+            .trim_end()
+            .to_owned()),
+        // Labels first, then annotations, each `NAME=value`. Both halves, despite the name, for
+        // the same reason `--format labels` emits all three image labels: what a shell script does
+        // with this is feed `kubectl label` and `kubectl annotate`, and a stamp missing half of
+        // itself is a stamp no pairing accepts.
+        Format::KubeLabels => {
+            let metadata = kube_metadata(schema, options)?;
+            Ok(metadata
+                .labels()
+                .iter()
+                .chain(metadata.annotations())
+                .map(|(name, value)| format!("{name}={value}"))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
     }
+}
+
+/// The Kubernetes metadata for the object this run is describing.
+///
+/// The images come from the command line and nowhere else. A contract carries no digest — it is
+/// written before the push that produces one — so this is the one output of this generator that a
+/// build has to feed rather than derive, and `Options::from_args` refuses a stamp with no images
+/// rather than emitting one that claims the document is read by nothing.
+fn kube_metadata(schema: Schema, options: &Options) -> Result<Metadata, terrace_config::Error> {
+    let images: Vec<&str> = options.images.iter().map(String::as_str).collect();
+    contract(schema, options)?.kube_metadata(&options.target, &images)
 }
 
 /// The whole contract this image publishes: every configuration key, and everything else it reads.
@@ -305,6 +351,10 @@ struct Options {
     revision: Option<String>,
     /// When this build happened, RFC 3339, for `--format contract`.
     created: Option<String>,
+    /// Every image that reads the document, digest-pinned, for the `kube` formats.
+    images: Vec<String>,
+    /// Which object is being stamped, and — for a document — how it is read.
+    target: Target,
 }
 
 /// Which rendering to emit.
@@ -324,6 +374,10 @@ enum Format {
     Labels,
     /// The same labels as the `LABEL` instruction to paste into a Dockerfile.
     Dockerfile,
+    /// The Kubernetes `labels:` and `annotations:` block to paste into a chart's `metadata:`.
+    Kube,
+    /// The same stamp as `NAME=value` lines, for `kubectl label` and `kubectl annotate`.
+    KubeLabels,
 }
 
 impl Format {
@@ -331,8 +385,20 @@ impl Format {
     ///
     /// A contract that quietly omitted the keys `--only` cut would be a contract asserting the
     /// image does not read them, which is the one claim in the document that must never be wrong.
+    ///
+    /// The `kube` formats are in the list for the same reason one step removed: a stamp is a claim
+    /// that *this* document is what *these* images read, and a stamp built from a slice would send
+    /// a cluster-side validator to check a document against a schema missing the keys `--only` cut.
     fn whole_image(self) -> bool {
-        matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
+        matches!(
+            self,
+            Self::Contract | Self::Labels | Self::Dockerfile | Self::Kube | Self::KubeLabels
+        )
+    }
+
+    /// Whether this rendering stamps a Kubernetes object, and so needs images and a target.
+    fn kubernetes(self) -> bool {
+        matches!(self, Self::Kube | Self::KubeLabels)
     }
 }
 
@@ -344,7 +410,16 @@ impl Options {
             only: String::new(),
             revision: None,
             created: None,
+            images: Vec::new(),
+            // Assembled below, once the three flags that describe it have all been seen.
+            target: Target::Workload,
         };
+        // Held apart from `options.target` because they arrive in any order and only mean
+        // something together — and because "was it given at all" is what the refusals below ask.
+        let mut workload = false;
+        let mut document_key: Option<String> = None;
+        let mut document_format: Option<String> = None;
+
         let mut args = std::env::args().skip(1);
         while let Some(flag) = args.next() {
             match flag.as_str() {
@@ -357,9 +432,37 @@ impl Options {
                         Some("contract") => Format::Contract,
                         Some("labels") => Format::Labels,
                         Some("dockerfile") => Format::Dockerfile,
+                        Some("kube") => Format::Kube,
+                        Some("kube-labels" | "kubelabels") => Format::KubeLabels,
                         Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
                         None => return Err(format!("--format takes a value; {USAGE}")),
                     };
+                }
+                "--image" => {
+                    options.images.push(
+                        args.next()
+                            .ok_or_else(|| format!("--image takes a reference; {USAGE}"))?,
+                    );
+                }
+                "--target" => {
+                    workload = match args.next().as_deref() {
+                        Some("document") => false,
+                        Some("workload") => true,
+                        Some(other) => return Err(format!("unknown target `{other}`; {USAGE}")),
+                        None => return Err(format!("--target takes a value; {USAGE}")),
+                    };
+                }
+                "--document-key" => {
+                    document_key = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--document-key takes a key; {USAGE}"))?,
+                    );
+                }
+                "--document-format" => {
+                    document_format = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--document-format takes a format; {USAGE}"))?,
+                    );
                 }
                 "--only" => {
                     options.only = args
@@ -393,10 +496,74 @@ impl Options {
             ));
         }
 
-        Ok(options)
+        options.resolve_target(workload, document_key, document_format.as_deref())
+    }
+
+    /// Assemble the [`Target`], refusing the flag combinations that cannot produce a valid stamp.
+    ///
+    /// Separate from [`Self::from_args`] because the two answer different questions. That one asks
+    /// what was written on the command line; this one asks whether it describes an object that can
+    /// exist — which is only answerable once every flag has been seen, since they arrive in any
+    /// order.
+    fn resolve_target(
+        mut self,
+        workload: bool,
+        document_key: Option<String>,
+        document_format: Option<&str>,
+    ) -> Result<Self, String> {
+        // Refused rather than ignored, on the same principle as the `--only` check above: an
+        // argument that does nothing is an argument somebody expected to do something.
+        let described = !self.images.is_empty()
+            || workload
+            || document_key.is_some()
+            || document_format.is_some();
+        if described && !self.format.kubernetes() {
+            return Err(format!(
+                "--image, --target, --document-key and --document-format describe a Kubernetes \
+                 object, and this format does not produce one. {USAGE}"
+            ));
+        }
+        if !self.format.kubernetes() {
+            return Ok(self);
+        }
+
+        // A stamp naming no images is a stamp saying the document is read by nothing, which no
+        // pairing can ever satisfy. The crate refuses it too; refusing it here says which flag to
+        // reach for.
+        if self.images.is_empty() {
+            return Err(format!(
+                "a Kubernetes stamp names every image that reads the document, digest-pinned, and \
+                 none were given. Pass --image once per image; a tag can be moved, so only a \
+                 digest names the build that will actually be running. {USAGE}"
+            ));
+        }
+        if workload && (document_key.is_some() || document_format.is_some()) {
+            return Err(format!(
+                "--document-key and --document-format describe a document, and --target workload \
+                 stamps a pod template, which is not one. A pod carries the label and the image \
+                 list alone. {USAGE}"
+            ));
+        }
+
+        self.target = if workload {
+            Target::Workload
+        } else {
+            // `config.toml` and `toml` are what every service using this crate mounts today, so
+            // the two flags exist to be omitted. `Format::from` never fails: an unfamiliar token
+            // becomes `Format::Other` and is carried verbatim, which is the whole point of the
+            // fallback variant.
+            Target::document(
+                document_key.unwrap_or_else(|| "config.toml".to_owned()),
+                document_format.unwrap_or("toml").into(),
+            )
+        };
+        Ok(self)
     }
 }
 
 const USAGE: &str = "usage: config-schema \
-                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
-                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";
+                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile|kube|\
+                     kube-labels] \
+                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>] \
+                     [--image <digest-pinned-ref>]... [--target document|workload] \
+                     [--document-key <key>] [--document-format <fmt>]";

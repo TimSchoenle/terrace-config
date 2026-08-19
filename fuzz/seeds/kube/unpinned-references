@@ -1,0 +1,6 @@
+p:P_
+k:k
+i:ghcr.io/you/x
+i:ghcr.io/you/x:v1
+i:ghcr.io/you/x@sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+i:ghcr.io/you/x@sha256:48e2
