@@ -86,7 +86,9 @@ use std::process::ExitCode;
 pub use format::{Format, UnknownFormat};
 pub use request::{Request, USAGE, UsageError};
 
-use crate::schema::{App, Column, Contract, ContractBuilder, Error, JsonSchema, Schema};
+use crate::schema::{
+    App, Column, Contract, ContractBuilder, Error, JsonSchema, Schema, TomlExample,
+};
 
 /// A configuration generator, configured with the four things that are a service's own.
 ///
@@ -95,6 +97,7 @@ use crate::schema::{App, Column, Contract, ContractBuilder, Error, JsonSchema, S
 pub struct Cli<'a> {
     app: App,
     json_schema: Option<JsonSchema>,
+    toml_example: Option<TomlExample>,
     columns: &'a [Column],
     contract: Option<&'a dyn Fn(ContractBuilder) -> ContractBuilder>,
 }
@@ -111,6 +114,7 @@ impl<'a> Cli<'a> {
         Self {
             app,
             json_schema: None,
+            toml_example: None,
             columns: Column::DEFAULT,
             contract: None,
         }
@@ -124,6 +128,19 @@ impl<'a> Cli<'a> {
     #[must_use]
     pub fn json_schema(mut self, json_schema: JsonSchema) -> Self {
         self.json_schema = Some(json_schema);
+        self
+    }
+
+    /// How `--format toml` renders.
+    ///
+    /// The defaults suit a file kept beside a README. A service whose `config.example.toml` is the
+    /// only documentation an operator gets wants [`Docs::Full`](crate::schema::Docs), because that
+    /// file is read once while being filled in and the paragraph below each summary is the part
+    /// that explains the shape; a service embedding the same rendering into a README wants
+    /// `header(false)`, because the page already has one.
+    #[must_use]
+    pub fn toml_example(mut self, toml_example: TomlExample) -> Self {
+        self.toml_example = Some(toml_example);
         self
     }
 
@@ -179,7 +196,13 @@ impl<'a> Cli<'a> {
                 Ok(schema.to_markdown_keys(self.columns))
             }
             Format::Markdown => Ok(schema.to_markdown_with(self.columns)),
-            Format::Toml => Ok(schema.to_toml_example()),
+            // The loader's variables carry no keys, so the subset above did not touch them
+            // and `Request::validate` has already refused an `--only` that implied it had.
+            Format::MarkdownLoader => Ok(schema.to_markdown_loader()),
+            Format::Toml => Ok(match &self.toml_example {
+                Some(options) => schema.to_toml_example_with(options),
+                None => schema.to_toml_example(),
+            }),
             Format::JsonSchema => match &self.json_schema {
                 Some(options) => schema.to_json_schema_with(options),
                 None => schema.to_json_schema(),

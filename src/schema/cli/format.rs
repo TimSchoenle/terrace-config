@@ -20,6 +20,17 @@ pub enum Format {
     Json,
     /// GitHub-flavoured tables, for a pipeline whose next step is `>> README.md`.
     Markdown,
+    /// The loader's own variables alone, as a GitHub-flavoured table.
+    ///
+    /// A separate format rather than a section of [`Markdown`](Self::Markdown) because a README
+    /// documents the two apart: the five layers are prose in one section and the keys are a table
+    /// in another, and the variables that *select* the layers — `<PREFIX>CONFIG`,
+    /// `<PREFIX>SECRETS_DIR` — belong with the prose. A generator that could only emit them
+    /// together left every consumer slicing one table out of the other.
+    ///
+    /// It contains no configuration keys, so `--only` does not apply to it. See
+    /// [`reads_keys`](Self::reads_keys).
+    MarkdownLoader,
     /// The commented file an operator copies to `config.toml`.
     Toml,
     /// A JSON Schema, for an editor to validate that file against.
@@ -37,6 +48,7 @@ impl Format {
     pub const ALL: &'static [Self] = &[
         Self::Json,
         Self::Markdown,
+        Self::MarkdownLoader,
         Self::Toml,
         Self::JsonSchema,
         Self::Contract,
@@ -50,6 +62,7 @@ impl Format {
         match self {
             Self::Json => "json",
             Self::Markdown => "markdown",
+            Self::MarkdownLoader => "markdown-loader",
             Self::Toml => "toml",
             Self::JsonSchema => "json-schema",
             Self::Contract => "contract",
@@ -70,6 +83,18 @@ impl Format {
     pub const fn whole_image(self) -> bool {
         matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
     }
+
+    /// Whether this rendering contains configuration keys, and so whether `--only` means anything.
+    ///
+    /// False only for [`MarkdownLoader`](Self::MarkdownLoader), which renders the variables that
+    /// select the *layers* rather than anything read out of them. Slicing it is not wrong so much
+    /// as vacuous, and a `--only` that quietly changed nothing is the kind of argument someone
+    /// adds to a CI step and then trusts — so
+    /// [`Request::validate`](super::Request::validate) refuses the pair instead.
+    #[must_use]
+    pub const fn reads_keys(self) -> bool {
+        !matches!(self, Self::MarkdownLoader)
+    }
 }
 
 impl FromStr for Format {
@@ -82,6 +107,7 @@ impl FromStr for Format {
         match spelling {
             "json" => Ok(Self::Json),
             "markdown" | "md" => Ok(Self::Markdown),
+            "markdown-loader" | "loader" => Ok(Self::MarkdownLoader),
             "toml" => Ok(Self::Toml),
             "json-schema" | "jsonschema" => Ok(Self::JsonSchema),
             "contract" => Ok(Self::Contract),

@@ -7,6 +7,7 @@
 //! ```text
 //! cargo run --example config-schema -- --format json              > docs/config.json
 //! cargo run --example config-schema -- --format markdown          > docs/config.md
+//! cargo run --example config-schema -- --format markdown-loader   >> docs/config.md
 //! cargo run --example config-schema -- --format toml              > config.example.toml
 //! cargo run --example config-schema -- --format json-schema       > config.schema.json
 //! cargo run --example config-schema -- --format contract          > contract.json
@@ -48,7 +49,9 @@ use std::process::ExitCode;
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
 use terrace_config::schema::cli::Cli;
-use terrace_config::schema::{App, ContractBuilder, Describe, External, ExternalVar, JsonSchema};
+use terrace_config::schema::{
+    App, ContractBuilder, Describe, Docs, External, ExternalVar, JsonSchema, TomlExample,
+};
 
 /// The root. Everything under it lives somewhere else.
 #[derive(Deserialize, Serialize, Describe)]
@@ -202,6 +205,11 @@ fn main() -> ExitCode {
             .title("portfolio configuration")
             .id("https://github.com/TimSchoenle/terrace-config/config.schema.json"),
     )
+    // The whole `///` comment rather than its summary. A reference table is read at a glance and
+    // wants one sentence per key; `config.example.toml` is read once, while being filled in, and
+    // the paragraph below the summary is where a key with a shape — a list, a map, a duration —
+    // gets to show it.
+    .toml_example(TomlExample::new().docs(Docs::Full))
     .contract_with(&external)
     .main(schema)
 }

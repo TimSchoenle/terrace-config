@@ -672,7 +672,7 @@ use std::process::ExitCode;
 use myservice::Config;              // the root; nested types need only `Describe`
 use terrace_config::Terrace;
 use terrace_config::schema::cli::Cli;
-use terrace_config::schema::{App, JsonSchema};
+use terrace_config::schema::{App, Docs, JsonSchema, TomlExample};
 
 fn main() -> ExitCode {
     let schema = Terrace::new("MYSERVICE_")
@@ -692,6 +692,9 @@ fn main() -> ExitCode {
             .title("myservice configuration")
             .id("https://github.com/you/myservice/config.schema.json"),
     )
+    // Optional. The default suits a file kept beside a README; `Docs::Full` suits one that is the
+    // only documentation an operator gets.
+    .toml_example(TomlExample::new().docs(Docs::Full))
     .main(schema)
 }
 ```
@@ -731,11 +734,18 @@ When the type is not yours to annotate, `Schema::with_defaults_from_value` takes
 **3. Generate**, from the crate that owns the root type:
 
 ```bash
-cargo run --example config-schema -- --format markdown    > docs/config.md
-cargo run --example config-schema -- --format json        > docs/config.json
-cargo run --example config-schema -- --format toml        > config.example.toml
-cargo run --example config-schema -- --format json-schema > config.schema.json
+cargo run --example config-schema -- --format markdown        > docs/config.md
+cargo run --example config-schema -- --format markdown-loader >> docs/config.md
+cargo run --example config-schema -- --format json            > docs/config.json
+cargo run --example config-schema -- --format toml            > config.example.toml
+cargo run --example config-schema -- --format json-schema     > config.schema.json
 ```
+
+`markdown` is the key table and `markdown-loader` is the handful of variables that *select* the
+layers — `<PREFIX>CONFIG`, `<PREFIX>SECRETS_DIR`, anything reserved. Two formats rather than one
+because a README documents them apart: the layers are prose in one section and the keys are a table
+in another. `--only` applies to the first and is refused for the second, which carries no keys to
+slice.
 
 In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
 generator per *dialect*: two binaries reading one prefix are one document, joined with
