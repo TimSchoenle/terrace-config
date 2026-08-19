@@ -31,6 +31,16 @@ pub enum Format {
     /// It contains no configuration keys, so `--only` does not apply to it. See
     /// [`reads_keys`](Self::reads_keys).
     MarkdownLoader,
+    /// The configuration keys alone, as a GitHub-flavoured table.
+    ///
+    /// The third of the trio, and the one that completes it:
+    /// [`Markdown`](Self::Markdown) is both tables, [`MarkdownLoader`](Self::MarkdownLoader)
+    /// is the loader's variables alone, and this is the keys alone.
+    ///
+    /// Reachable before only as [`Markdown`](Self::Markdown) plus `--only`, which is a
+    /// different request: that one slices the keys as well as dropping the loader table, and a
+    /// page wanting every key without the loader's variables above them had no way to ask.
+    MarkdownKeys,
     /// The commented file an operator copies to `config.toml`.
     Toml,
     /// A JSON Schema, for an editor to validate that file against.
@@ -49,6 +59,7 @@ impl Format {
         Self::Json,
         Self::Markdown,
         Self::MarkdownLoader,
+        Self::MarkdownKeys,
         Self::Toml,
         Self::JsonSchema,
         Self::Contract,
@@ -63,6 +74,7 @@ impl Format {
             Self::Json => "json",
             Self::Markdown => "markdown",
             Self::MarkdownLoader => "markdown-loader",
+            Self::MarkdownKeys => "markdown-keys",
             Self::Toml => "toml",
             Self::JsonSchema => "json-schema",
             Self::Contract => "contract",
@@ -108,6 +120,7 @@ impl FromStr for Format {
             "json" => Ok(Self::Json),
             "markdown" | "md" => Ok(Self::Markdown),
             "markdown-loader" | "loader" => Ok(Self::MarkdownLoader),
+            "markdown-keys" | "keys" => Ok(Self::MarkdownKeys),
             "toml" => Ok(Self::Toml),
             "json-schema" | "jsonschema" => Ok(Self::JsonSchema),
             "contract" => Ok(Self::Contract),

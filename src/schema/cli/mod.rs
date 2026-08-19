@@ -199,6 +199,7 @@ impl<'a> Cli<'a> {
             // The loader's variables carry no keys, so the subset above did not touch them
             // and `Request::validate` has already refused an `--only` that implied it had.
             Format::MarkdownLoader => Ok(schema.to_markdown_loader()),
+            Format::MarkdownKeys => Ok(schema.to_markdown_keys(self.columns)),
             Format::Toml => Ok(match &self.toml_example {
                 Some(options) => schema.to_toml_example_with(options),
                 None => schema.to_toml_example(),

@@ -343,3 +343,80 @@ fn the_toml_rendering_takes_the_services_own_options() {
     // `header(false)` is the visible half: the banner the default rendering opens with is gone.
     assert!(default.lines().count() > full.lines().count(), "{full}");
 }
+
+#[test]
+fn the_three_markdown_renderings_are_the_three_a_page_can_want() {
+    // `markdown` is both tables, `markdown-loader` is the loader's variables alone, and
+    // `markdown-keys` is the keys alone. The third was reachable before only as `markdown` plus
+    // `--only`, which is a different request: that one slices the keys as well.
+    let both = cli()
+        .render(&args(&["--format", "markdown"]).expect("parsed"), schema())
+        .expect("rendered");
+    let loader = cli()
+        .render(
+            &args(&["--format", "markdown-loader"]).expect("parsed"),
+            schema(),
+        )
+        .expect("rendered");
+    let keys = cli()
+        .render(
+            &args(&["--format", "markdown-keys"]).expect("parsed"),
+            schema(),
+        )
+        .expect("rendered");
+
+    assert!(
+        both.contains("PORTFOLIO_CONFIG") && both.contains("dist_dir"),
+        "{both}"
+    );
+    assert!(loader.contains("PORTFOLIO_CONFIG") && !loader.contains("dist_dir"));
+    assert!(
+        !keys.contains("PORTFOLIO_CONFIG") && keys.contains("dist_dir"),
+        "{keys}"
+    );
+
+    // Every key, not a slice: this is what distinguishes it from `markdown --only`.
+    assert!(keys.contains("csp.hash_inline_scripts"), "{keys}");
+
+    assert_eq!(
+        args(&["--format", "keys"]).expect("parsed").format(),
+        Format::MarkdownKeys
+    );
+    // It carries keys, so slicing it is a request that means something.
+    assert!(args(&["--format", "markdown-keys", "--only", "csp"]).is_ok());
+}
+
+#[test]
+fn a_request_can_be_built_without_this_modules_argument_syntax() {
+    // The second layer, for a consumer that has its own `--scope` or `--service` flag and so
+    // cannot hand its whole argument list to `Request::parse`. Every field `stamp` reads has a
+    // setter, or the layer would have been usable for a documentation job and not for a build.
+    let request = Request::new(Format::Contract)
+        .with_version("v9.9.9")
+        .with_revision("deadbeef")
+        .with_created("2026-01-01T00:00:00Z")
+        .with_path("/etc/contract.json");
+
+    assert_eq!(request.version(), Some("v9.9.9"));
+    assert_eq!(request.revision(), Some("deadbeef"));
+    assert_eq!(request.created(), Some("2026-01-01T00:00:00Z"));
+    assert_eq!(request.path(), "/etc/contract.json");
+
+    let rendered = cli().render(&request, schema()).expect("rendered");
+    assert!(rendered.contains("\"version\": \"v9.9.9\""), "{rendered}");
+    assert!(
+        rendered.contains("\"revision\": \"deadbeef\""),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("\"created\": \"2026-01-01T00:00:00Z\""),
+        "{rendered}"
+    );
+
+    // The path reaches the label renderings too, which is the point of it being on the request
+    // rather than on the `Cli`: one build, one value, every rendering that mentions it.
+    let labels = cli()
+        .render(&request.clone().with_format(Format::Labels), schema())
+        .expect("rendered");
+    assert!(labels.contains("/etc/contract.json"), "{labels}");
+}
