@@ -83,6 +83,8 @@
 //! # Ok::<(), terrace_config::Error>(())
 //! ```
 
+#[cfg(feature = "schema-cli")]
+pub mod cli;
 mod contract;
 mod json_schema;
 mod markdown;
@@ -92,7 +94,8 @@ mod tree;
 
 pub use contract::{
     ARTIFACT_TYPE, App, CONTRACT_VERSION, Contract, ContractBuilder, DEFAULT_PATH, External,
-    ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, Unknown,
+    ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, LabelFault, MARKER_BEGIN, MARKER_END,
+    Unknown,
 };
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;

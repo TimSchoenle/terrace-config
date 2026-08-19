@@ -649,36 +649,57 @@ where none of the variables it describes are set. `examples/config-schema.rs` in
 is the whole pattern; what follows is that pattern as it looks in *your* project.
 
 **1. Take the feature.** The derive is used on your config structs, so it is a normal dependency,
-not a dev-dependency:
+not a dev-dependency. `schema-cli` adds the generator program on top of `schema`, and costs no
+dependency `schema` did not already pull:
 
 ```toml
 [dependencies]
-terrace-config = { git = "…", tag = "{{tag}}", features = ["schema"] }
+terrace-config = { git = "…", tag = "{{tag}}", features = ["schema-cli"] }
 
 # The generator, so `cargo clippy --all-targets` keeps it compiling.
 [[example]]
 name = "config-schema"
 ```
 
-**2. Add the generator**, `examples/config-schema.rs`, next to the root config type:
+**2. Add the generator**, `examples/config-schema.rs`, next to the root config type. Everything in
+it is your service's own — the root type and the prefix, the app identity, the JSON Schema's
+`title` and `$id`, and the external surface no derive can see. The `--format` vocabulary, the
+argument parsing, the dispatch across the six renderings, the printing and the exit code are
+`schema::cli::Cli`:
 
 ```rust
 use std::process::ExitCode;
 use myservice::Config;              // the root; nested types need only `Describe`
 use terrace_config::Terrace;
+use terrace_config::schema::cli::Cli;
+use terrace_config::schema::{App, JsonSchema};
 
 fn main() -> ExitCode {
-    let markdown = std::env::args().any(|a| a == "--markdown");
     let schema = Terrace::new("MYSERVICE_")
         .reserve("MYSERVICE_PROFILE")
         .schema::<Config>()
         .with_defaults_from(&Config::default())
         .expect("the default config serialises");
 
-    println!("{}", if markdown { schema.to_markdown() } else { schema.to_json().unwrap() });
-    ExitCode::SUCCESS
+    Cli::new(
+        // `v2.5.0`, not `2.5.0`: the field exists to be compared against an image tag.
+        App::new("myservice")
+            .version(concat!("v", env!("CARGO_PKG_VERSION")))
+            .source("https://github.com/you/myservice"),
+    )
+    .json_schema(
+        JsonSchema::new()
+            .title("myservice configuration")
+            .id("https://github.com/you/myservice/config.schema.json"),
+    )
+    .main(schema)
 }
 ```
+
+`Cli::main` is the convenient layer and also the one that decides for you: it reads
+`std::env::args`, prints to stdout and returns an `ExitCode`. A service that already parses
+arguments with `clap` builds a `Request` itself and calls `Cli::render`, which decides none of
+that; a service that wants only the `--format` spellings takes `Format` and nothing else.
 
 `Config::default()` is what supplies the values in the `Default` column, so `Config` needs
 `Serialize` as well as `Deserialize`. Pass whatever represents "nothing was supplied" — if your
@@ -710,8 +731,10 @@ When the type is not yours to annotate, `Schema::with_defaults_from_value` takes
 **3. Generate**, from the crate that owns the root type:
 
 ```bash
-cargo run --example config-schema -- --markdown > docs/config.md
-cargo run --example config-schema              > docs/config.json
+cargo run --example config-schema -- --format markdown    > docs/config.md
+cargo run --example config-schema -- --format json        > docs/config.json
+cargo run --example config-schema -- --format toml        > config.example.toml
+cargo run --example config-schema -- --format json-schema > config.schema.json
 ```
 
 In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
@@ -721,7 +744,7 @@ generator per *dialect*: two binaries reading one prefix are one document, joine
 **4. Fail the build when the checked-in copy goes stale:**
 
 ```yaml
-- run: cargo run --example config-schema -- --markdown > docs/config.md
+- run: cargo run --example config-schema -- --format markdown > docs/config.md
 - name: Configuration reference is current
   run: git diff --exit-code -- docs/config.md
 ```
@@ -739,7 +762,7 @@ which the loader never needs and `with_defaults_from` does:
 
 ```toml
 [features]
-config-schema = ["terrace-config/schema"]
+config-schema = ["terrace-config/schema-cli"]
 
 [dependencies]
 terrace-config = { git = "…", tag = "{{tag}}" }   # no `schema` here
@@ -1122,11 +1145,18 @@ FROM scratch AS runtime
 # Embed it, so the image is self-describing with no registry at all.
 COPY --from=contract-builder /out/contract.json /config/contract.json
 
-# Discovery, from the config blob alone. `--format dockerfile` emits exactly this block.
+# Discovery, from the config blob alone. `--format dockerfile` emits exactly this region,
+# markers included — paste it, never retype it.
+# terrace-config:labels:begin
 LABEL dev.terrace.config.contract.version="1" \
       dev.terrace.config.contract.path="/config/contract.json" \
       dev.terrace.config.prefix="PORTFOLIO_"
+# terrace-config:labels:end
 ```
+
+The markers are what a drift check cuts on. Cutting by line count instead — `grep -A2
+'^LABEL dev\\.terrace'` and its relatives — reads correctly right up until a fourth label is
+added, and then compares two of three lines and passes.
 
 **All three labels are constants for a service**, which is what lets them be a plain `LABEL` block:
 no build argument to interpolate, and no host-side run of the generator to feed `--label`. That
@@ -1147,12 +1177,15 @@ which makes checking it the thing that matters. Check the **image**, not the Doc
 ```bash
 crane config "$image" | jq -c '.config.Labels' > labels.json
 # then, in a test or a small binary:
-#   contract.verify_labels(DEFAULT_PATH, &serde_json::from_str(&labels)?)?
+#   let labels = schema::cli::verify::labels_from_json(&read_to_string("labels.json")?)?;
+#   contract.verify_labels(DEFAULT_PATH, &labels)?
 ```
 
-`Contract::verify_labels` takes what `docker inspect` or `crane config` reports and names the first
+`Contract::verify_labels` takes what `docker inspect` or `crane config` reports and names every
 label that is missing or wrong, ignoring the `org.opencontainers.image.*` and base-image labels
-around it. Checking the built image rather than the source catches what a diff cannot: a build
+around it. `verify::labels_from_json` is the reader in front of it, and it refuses the two inputs
+that otherwise look like success: a `null`, which is what reading the wrong JSON path yields, and
+anything that is not an object at all. Checking the built image rather than the source catches what a diff cannot: a build
 argument that failed to interpolate, a label a base image overrode, a `LABEL` line deleted on the
 branch that was not the one reviewed. Run it after the build and before the push, where a failure
 costs a retry instead of a release.
@@ -1189,6 +1222,21 @@ stake — a chart is about to be validated against this:
 
 A renamed key then shows up in the diff of the pull request that renamed it, which is the cheapest
 possible warning that a chart is about to break.
+
+Both gates and the image check together are one action, if you use GitHub Actions:
+
+```yaml
+- name: Config contract
+  uses: TimSchoenle/actions/actions/rust/config-contract@<sha> # tag=actions-rust-config-contract-v1.0.0
+  with:
+    features: config-schema
+    image: myservice:test    # omit to run only the two checks that need no image
+```
+
+It renders the contract, its labels and its `LABEL` block from one run of one generator over one
+source tree — so the three cannot disagree with each other — then diffs the Dockerfile marked
+region, diffs the committed document, and checks the built image labels, reporting every fault
+rather than the first. Each check is skipped by emptying its input.
 
 ## Secrets and `Debug`
 

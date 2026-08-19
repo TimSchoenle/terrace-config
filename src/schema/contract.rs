@@ -150,6 +150,20 @@ pub const LABEL_PREFIX: &str = "dev.terrace.config.prefix";
 /// Where [`LABEL_PATH`] points unless a build says otherwise.
 pub const DEFAULT_PATH: &str = "/config/contract.json";
 
+/// Opens the region of a Dockerfile that [`Contract::to_dockerfile_block`] owns.
+///
+/// The block is generated and pasted, so something has to say where the pasted text begins and
+/// ends before a drift check can compare it. A comment is the only marker a Dockerfile can carry
+/// that changes nothing about the image it builds.
+///
+/// It exists because the alternative is cutting by line count — `grep -A2 '^LABEL dev\.terrace'`
+/// and its relatives — which reads correctly right up until a fourth label is added, and then
+/// silently compares two of three lines and passes.
+pub const MARKER_BEGIN: &str = "# terrace-config:labels:begin";
+
+/// Closes the region [`MARKER_BEGIN`] opens.
+pub const MARKER_END: &str = "# terrace-config:labels:end";
+
 // There is deliberately no label carrying the document's hash, and the reasoning is worth keeping
 // because the obvious design has one.
 //
@@ -931,11 +945,28 @@ impl Contract {
         rendered
     }
 
-    /// Check that a built image carries these labels.
+    /// [`Self::to_dockerfile_labels`] wrapped in [`MARKER_BEGIN`] and [`MARKER_END`].
     ///
-    /// `labels` is what `docker inspect` or `crane config` reports under `config.Labels`. Extra
-    /// labels are ignored — an image carries `org.opencontainers.image.*` and whatever its base
-    /// contributed, and none of that is this document's business.
+    /// This is the form to paste, and the only form a drift check can find again. The instruction
+    /// alone is enough to *build* the image; the markers are what let a later run of the generator
+    /// cut the committed region back out and diff it, without knowing how many labels the block
+    /// had when it was written.
+    ///
+    /// Ends with a newline, like [`Self::to_dockerfile_labels`].
+    #[must_use]
+    pub fn to_dockerfile_block(&self, path: &str) -> String {
+        format!(
+            "{MARKER_BEGIN}\n{}{MARKER_END}\n",
+            self.to_dockerfile_labels(path)
+        )
+    }
+
+    /// Every label of this contract a built image gets wrong, in declaration order.
+    ///
+    /// Empty means the image carries them all. `labels` is what `docker inspect` or `crane config`
+    /// reports under `config.Labels`. Extra labels are ignored — an image carries
+    /// `org.opencontainers.image.*` and whatever its base contributed, and none of that is this
+    /// document's business.
     ///
     /// Checking the **image** rather than the Dockerfile is the whole value. A source diff sees
     /// the recipe: it cannot see a build argument that failed to interpolate, a label a base image
@@ -943,34 +974,95 @@ impl Contract {
     /// was actually built, which is what a registry will serve.
     ///
     /// Run it after the build and before the push, where a failure costs a retry instead of a
-    /// release.
+    /// release. [`Self::verify_labels`] is this with the reporting decided for you.
+    #[must_use]
+    pub fn check_labels(&self, path: &str, labels: &BTreeMap<String, String>) -> Vec<LabelFault> {
+        let mut faults = Vec::new();
+        for (name, expected) in self.labels(path) {
+            match labels.get(name) {
+                Some(found) if found == &expected => {}
+                Some(found) => faults.push(LabelFault::Mismatch {
+                    name,
+                    found: found.clone(),
+                    expected,
+                }),
+                None => faults.push(LabelFault::Missing { name }),
+            }
+        }
+        faults
+    }
+
+    /// Check that a built image carries these labels.
+    ///
+    /// [`Self::check_labels`] with a single error built from every fault it found. All of them,
+    /// not the first: a build that names one missing label and hides two is a second round trip
+    /// through a pipeline that already took minutes.
     ///
     /// # Errors
-    /// Returns [`Error::Invalid`] naming the first label that is missing or wrong.
+    /// Returns [`Error::Invalid`] naming every label that is missing or wrong.
     pub fn verify_labels(
         &self,
         path: &str,
         labels: &BTreeMap<String, String>,
     ) -> Result<(), Error> {
-        for (name, expected) in self.labels(path) {
-            match labels.get(name) {
-                Some(found) if found == &expected => {}
-                Some(found) => {
-                    return Err(Error::Invalid(format!(
-                        "the image's `{name}` is `{found}`, and this contract's is `{expected}`. \
-                         A label that disagrees with the document is a contract a pipeline will \
-                         look for in the wrong place, or not recognise at all."
-                    )));
-                }
-                None => {
-                    return Err(Error::Invalid(format!(
-                        "the image carries no `{name}`, so nothing can discover this contract \
-                         from its config blob. `Contract::to_dockerfile_labels` emits the block."
-                    )));
-                }
-            }
+        let faults = self.check_labels(path, labels);
+        if faults.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        Err(Error::Invalid(
+            faults
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ))
+    }
+}
+
+/// One label a built image does not carry the way its contract says it should.
+///
+/// A type rather than a formatted string because the two faults call for different remedies and a
+/// caller may want to act on that: a missing label is a `LABEL` block that was never pasted, a
+/// mismatch is one that was pasted and then went stale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum LabelFault {
+    /// The image carries no label of this name at all.
+    Missing {
+        /// The label the contract expected, one of [`LABEL_VERSION`], [`LABEL_PATH`] or
+        /// [`LABEL_PREFIX`].
+        name: &'static str,
+    },
+    /// The image carries the label with a different value.
+    Mismatch {
+        /// The label whose value disagrees.
+        name: &'static str,
+        /// What the image carries.
+        found: String,
+        /// What this contract says it should carry.
+        expected: String,
+    },
+}
+
+impl std::fmt::Display for LabelFault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing { name } => write!(
+                f,
+                "the image carries no `{name}`, so nothing can discover this contract from its \
+                 config blob. `Contract::to_dockerfile_block` emits the block."
+            ),
+            Self::Mismatch {
+                name,
+                found,
+                expected,
+            } => write!(
+                f,
+                "the image's `{name}` is `{found}`, and this contract's is `{expected}`. A label \
+                 that disagrees with the document is a contract a pipeline will look for in the \
+                 wrong place, or not recognise at all."
+            ),
+        }
     }
 }
 
