@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/TimSchoenle/terrace-config/compare/v0.7.0...v0.8.0) (2026-08-19)
+
+
+### Features
+
+* **schema:** give the generator the two renderings its consumers still hand-rolled ([#44](https://github.com/TimSchoenle/terrace-config/issues/44)) ([8ba68e5](https://github.com/TimSchoenle/terrace-config/commit/8ba68e58dd9522f3440488352acead22d47cd0bd))
+
 ## [0.7.0](https://github.com/TimSchoenle/terrace-config/compare/v0.6.0...v0.7.0) (2026-08-19)
 
 
