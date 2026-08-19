@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/TimSchoenle/terrace-config/compare/v0.6.0...v0.7.0) (2026-08-19)
+
+
+### Features
+
+* **schema:** ship the generator every consumer was writing by hand ([#43](https://github.com/TimSchoenle/terrace-config/issues/43)) ([ca21526](https://github.com/TimSchoenle/terrace-config/commit/ca21526cdcc7b1e0644d18dbc0052e5fa84d2871))
+
+
+### Miscellaneous
+
+* **deps:** update taiki-e/install-action action to v2.86.1 ([#35](https://github.com/TimSchoenle/terrace-config/issues/35)) ([97ed80a](https://github.com/TimSchoenle/terrace-config/commit/97ed80a47d0ec7dd339db125b6a387f80555cf34))
+* **deps:** update timschoenle/actions/actions/common/commit-changes to vactions-common-commit-changes-v1.3.2 ([#37](https://github.com/TimSchoenle/terrace-config/issues/37)) ([bdebfab](https://github.com/TimSchoenle/terrace-config/commit/bdebfab2c28df79c8937716053c8a853f84ecca9))
+
 ## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/v0.5.0...v0.6.0) (2026-08-18)
 
 
