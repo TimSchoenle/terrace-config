@@ -185,7 +185,7 @@ jobs:
       - name: Short campaign
         run: |
           host="$(rustc -vV | sed -n 's/^host: //p')"
-          for target in env_load secrets_dir toml_layers schema explain; do
+          for target in env_load secrets_dir toml_layers schema explain kube; do
             cargo fuzz run --target "$host" "$target" \
               "fuzz/corpus/$target" "fuzz/seeds/$target" \
               -- -dict=fuzz/dictionaries/config.dict -max_total_time=60

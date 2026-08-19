@@ -92,6 +92,11 @@ fn schema_seeds() {
     replay_target("schema", oracle::schema::check);
 }
 
+#[test]
+fn kube_seeds() {
+    replay_target("kube", oracle::kube::check);
+}
+
 /// A deterministic input generator, standing in for a mutation engine.
 ///
 /// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
@@ -365,5 +370,79 @@ mod generated {
     #[test]
     fn schema_sweep() {
         sweep_with(0x5EED_0004, oracle::schema::check, generate_schema);
+    }
+
+    /// Image references chosen to sit on the pinning rule: both spellings a chart and a running
+    /// pod produce, a registry port that is not a tag, every way a digest can be almost-right,
+    /// and the two characters that would corrupt the comma-separated list.
+    const REFERENCES: &[&str] = &[
+        "ghcr.io/you/portfolio@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "ghcr.io/you/portfolio:v2.5.0@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "localhost:5000/portfolio@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "ghcr.io/you/sidecar@sha256:9f1c0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7",
+        "ghcr.io/you/portfolio:latest",
+        "ghcr.io/you/portfolio",
+        "ghcr.io/you/portfolio@sha256:48e2",
+        "ghcr.io/you/portfolio@sha256:48E259CB4C9D0E3F1A2B5C6D7E8F9012345678901234567890ABCDEFABCDEF01",
+        "ghcr.io/you/portfolio@sha512:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "a,b@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "a b@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01",
+        "",
+    ];
+
+    /// `ConfigMap` data keys, including the two the API server refuses outright and the ones a
+    /// caller reaches for when the document lives in a subdirectory.
+    const DOCUMENT_KEYS: &[&str] = &[
+        "config.toml",
+        "server.toml",
+        "_leading-underscore",
+        "0",
+        ".",
+        "..",
+        "...",
+        "conf.d/config.toml",
+        "config toml",
+        "cönfig.toml",
+        "",
+    ];
+
+    /// Format spellings, including ones no label value could carry — the annotation is held to
+    /// the label rule anyway, so those must be refused rather than stamped.
+    const FORMATS: &[&str] = &["toml", "yaml", "json", "hcl", "TOML", "a/b", "x+y", "", "-"];
+
+    /// Prefixes and app names hostile to the Kubernetes rules, neither of which may reach a stamp.
+    const PREFIXES: &[&str] = &["TEST_", "PORTFOLIO_", "A", "", "a-b.", "Ünicode_"];
+    const APPS: &[&str] = &[
+        "portfolio",
+        "Portfolio/Web+App",
+        "",
+        "a name with spaces and an em dash — well past sixty-three characters in total, easily",
+    ];
+
+    /// Build one kube-oracle input.
+    fn generate_kube(rng: &mut Rng) -> String {
+        let mut lines = vec![
+            format!("p:{}", rng.pick(PREFIXES)),
+            format!("a:{}", rng.pick(APPS)),
+        ];
+        if rng.next().is_multiple_of(3) {
+            lines.push("w:".to_owned());
+        }
+        for _ in 0..=rng.next() % 3 {
+            lines.push(format!("i:{}", rng.pick(REFERENCES)));
+        }
+        if rng.next().is_multiple_of(2) {
+            lines.push(format!("d:{}", rng.pick(DOCUMENT_KEYS)));
+        }
+        if rng.next().is_multiple_of(2) {
+            lines.push(format!("f:{}", rng.pick(FORMATS)));
+        }
+        lines.join("\n")
+    }
+
+    #[test]
+    fn kube_sweep() {
+        sweep_with(0x5EED_0006, oracle::kube::check, generate_kube);
     }
 }

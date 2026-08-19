@@ -1,0 +1,4 @@
+i:ghcr.io/you/portfolio@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01
+i:ghcr.io/you/sidecar@sha256:9f1c0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7
+i:ghcr.io/you/worker@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01
+d:config.toml

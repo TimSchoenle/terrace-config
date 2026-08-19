@@ -108,6 +108,8 @@ beside it.
 [`schema::Contract`] is the fifth, and the only one whose reader is not a person or an editor: the
 document a container build embeds in its image and attaches to its digest, so that a deployment
 pipeline holding nothing but that digest can check the configuration it is about to mount.
+[`schema::kube`] carries the same pairing into the cluster, for the admission-time reader that
+holds the mounted document rather than the image.
 
 ```no_run
 use serde::{Deserialize, Serialize};

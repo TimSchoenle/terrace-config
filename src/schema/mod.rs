@@ -85,6 +85,10 @@
 
 mod contract;
 mod json_schema;
+// A module rather than another flat `pub use`: `kube::Metadata`, `kube::Target` and
+// `kube::Format` are names that only mean anything beside the namespace they belong to, and
+// lifting them out would force a `Kube` prefix onto every one of them.
+pub mod kube;
 mod markdown;
 mod rust_type;
 mod toml_example;

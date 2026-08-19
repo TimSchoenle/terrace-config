@@ -91,6 +91,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "kube"
+path = "fuzz_targets/kube.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "secrets_dir"
 path = "fuzz_targets/secrets_dir.rs"
 test = false

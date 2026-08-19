@@ -1190,6 +1190,114 @@ stake — a chart is about to be validated against this:
 A renamed key then shows up in the diff of the pull request that renamed it, which is the cheapest
 possible warning that a chart is about to break.
 
+### Pairing the document with the image, in the cluster
+
+Everything above is on the image, which is enough for a CI job holding a digest and no use at all
+to anything standing in the cluster. A Kyverno policy, a validating admission webhook or an
+initContainer looking at a live `ConfigMap` holds the *document* and not the image, and has no way
+to tell that the bytes it is about to mount are the ones the pod's image expects.
+`schema::kube` is the other half of that pairing.
+
+**Labels are what you select on. Annotations are what you read.** That is forced by the platform,
+not chosen, and it decides everything below. A Kubernetes label value is at most 63 characters and
+must begin and end alphanumeric with `-`, `_` and `.` between — a rule that none of the three
+values the image already publishes can satisfy: `PORTFOLIO_` has a trailing underscore,
+`/config/contract.json` and `application/vnd.terrace.config-schema.v1+json` carry a `/`. Annotation
+values are unconstrained. So the one fact worth a selector is a label, and every other fact is an
+annotation.
+
+```yaml
+# templates/configmap.yaml, under `metadata:`
+labels:
+  dev.terrace.config/contract-version: "1"
+annotations:
+  dev.terrace.config/document-key: "config.toml"
+  dev.terrace.config/format: "toml"
+  dev.terrace.config/images: "ghcr.io/you/portfolio@sha256:48e2…,ghcr.io/you/sidecar@sha256:9f1c…"
+```
+
+`cargo run --features config-schema --example config-schema -- --format kube --image "$REF"` emits
+exactly that, indented to paste — `Metadata::to_yaml` takes the width — and the images line is the
+one a chart interpolates from the digests it already pins. Hand-writing a template is unavoidable
+whatever this crate does, so the useful thing is to make writing it a paste and checking it a
+function call, which is the same division as `--format dockerfile` and `Contract::verify_labels`
+above.
+
+| Annotation | What it carries | Why it cannot be a label |
+|---|---|---|
+| `dev.terrace.config/images` | every image that reads this document, digest-pinned, comma-separated | it is multi-valued, and `,`, `/` and a space are all illegal in a label value while `.` and `-` are already legal *inside* one |
+| `dev.terrace.config/document-key` | which key in `data` is the document | a `ConfigMap` key may begin or end with `.` and run to 253 characters |
+| `dev.terrace.config/format` | `toml` today; `yaml` and `json` normalise to the same tree | nothing selects on which parser to reach for |
+
+**Digest-pinned is a requirement, not a preference.** A tag can be moved after the chart was
+rendered, so a pairing keyed on one proves nothing about what is running — the same reasoning that
+makes the contract a referrer of a digest. This crate cannot supply the value, because a contract
+deliberately carries no digest, so a chart passes it in and `kube_metadata` refuses an unpinned
+reference rather than accepting it and checking leniently later.
+
+**There is deliberately no `app` label, and no `prefix` or `contract-path` label.** A document read
+by several binaries — one rendered `ConfigMap`, eight services — makes `app` multi-valued, and a
+multi-valued label needs a separator no label value can hold. `prefix` and `contract-path` are
+facts about an *image*, and the image already carries them; copying them onto a Kubernetes object
+creates a second spelling of a fact that already has one, which is precisely the drift
+`verify_labels` exists to catch — and here nothing would catch it, because the object is rendered
+by a chart this crate never sees.
+
+**Two objects are stamped, and not identically.** The `ConfigMap` (or the `Secret` behind a
+secrets-directory mount) gets the label and all three annotations; the workload's pod template gets
+the label and `images` only, because `document-key` and `format` describe a document and a pod is
+not one. A pod carries the stamp at all so that an admission webhook seeing only the pod — which is
+what an admission webhook usually sees — can reach the image list without walking ownership
+references. `Target` is the enum that makes a caller say which, and
+`verify_kube_metadata` refuses a pod template that grew a document's annotations by copy-paste
+rather than ignoring them.
+
+A policy selects on the label:
+
+```yaml
+match:
+  any:
+    - resources:
+        selector:
+          matchExpressions:
+            - key: dev.terrace.config/contract-version
+              operator: Exists
+```
+
+and then runs the one function this whole module exists for:
+
+```rust
+use terrace_config::schema::DEFAULT_PATH;
+use terrace_config::schema::kube::{Format, Pairing, Target};
+
+Pairing::new(&contract, DEFAULT_PATH)
+    .image(running_image_ref, &image_labels)          // `crane config` → `.config.Labels`
+    .object(
+        &Target::document("config.toml", Format::Toml),
+        &configmap.metadata.labels,
+        &configmap.metadata.annotations,
+    )
+    .check()?;
+```
+
+Five assertions, and each failure names both sides. The image's own labels agree with the contract
+— `verify_labels`, reused rather than reimplemented, so the label names have one spelling. The
+object's `contract-version` agrees with the image's, which is the check that distinguishes "the
+chart is a generation behind" from "the contract you passed is the wrong one". The object's
+`contract-version` agrees with the contract, and its `document-key` and `format` are present and
+well-formed. And the running image is a **member** of the object's image list — membership rather
+than equality, because a document read by eight binaries is the normal case, and compared on
+repository and digest rather than on the exact string, because a chart writes
+`repo:v2.5.0@sha256:…` and a running pod reports `repo@sha256:…`.
+
+Extra labels are ignored on both sides. An object carries `app.kubernetes.io/*` and whatever a
+chart's own conventions add, exactly as an image carries `org.opencontainers.image.*`, and none of
+it is this document's business.
+
+This crate names the protocol and verifies both halves. It renders no manifests: a `ConfigMap` is a
+chart's business, and a crate that emitted one would be guessing at a name, a namespace and a
+release.
+
 ## Secrets and `Debug`
 
 Two public types hold secret material: `provider::FileValue` and `Sources`, whose fingerprint is

@@ -1,0 +1,5 @@
+p:PORTFOLIO_
+a:portfolio
+i:ghcr.io/you/portfolio@sha256:48e259cb4c9d0e3f1a2b5c6d7e8f9012345678901234567890abcdefabcdef01
+d:config.toml
+f:toml

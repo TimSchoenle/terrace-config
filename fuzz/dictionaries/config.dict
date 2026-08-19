@@ -63,3 +63,24 @@
 "filename"
 "/"
 " | "
+
+# --- the `kube` target's grammar ---
+# Its directives, and the tokens that decide whether a stamp is legal: the digest prefix a pinned
+# reference must carry, the two characters that would corrupt the comma-separated image list, and
+# the `ConfigMap` keys the API server refuses outright.
+"i:"
+"d:"
+"f:"
+"w:"
+"a:"
+"@sha256:"
+"@sha512:"
+"ghcr.io/you/portfolio"
+"localhost:5000/portfolio"
+":latest"
+":v2.5.0"
+","
+"+"
+"config.toml"
+"toml"
+"yaml"

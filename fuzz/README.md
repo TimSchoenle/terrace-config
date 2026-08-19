@@ -47,6 +47,7 @@ into, which is why `corpus/` comes before `seeds/`: `seeds/` is committed and on
 | `env_load` | `TEST_*` environment variables | boot and reload extract the same values, and an unchanged environment is not a change |
 | `secrets_dir` | `$TEST_SECRETS_DIR` and `TEST_<KEY>_FILE` | a key supplied twice is never silently accepted; a value loses trailing line terminators and nothing else |
 | `toml_layers` | `$TEST_CONFIG` as a directory of fragments | `..data` and non-`*.toml` entries never contribute; later names win |
+| `kube` | the Kubernetes stamp a chart puts on a rendered object | every key and value it emits is legal object metadata, and an unpinned image reference is refused rather than stamped |
 
 Each target computes, independently of the loader, what the input it built *should* produce, then
 asserts it. Totality — `Ok` or a typed `Error`, never a panic — is the floor, not the point: a
@@ -64,6 +65,8 @@ f:<name>=<content>     a file in the secrets directory       (secrets_dir)
 t:<name>=<content>     a fragment in the config directory    (toml_layers)
 p:<SUFFIX>=<content>   a TEST_<SUFFIX>_FILE indirection      (secrets_dir)
 e:<SUFFIX>=<value>     the environment variable TEST_<SUFFIX>
+i:<reference>          an image that reads the document      (kube)
+d:<key>                the ConfigMap data key it is          (kube)
 ```
 
 `\n`, `\r` and `\\` are decoded in file bodies, so the trailing-terminator rule — the one rule
