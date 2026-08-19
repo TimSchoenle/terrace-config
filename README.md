@@ -704,6 +704,19 @@ fn main() -> ExitCode {
 arguments with `clap` builds a `Request` itself and calls `Cli::render`, which decides none of
 that; a service that wants only the `--format` spellings takes `Format` and nothing else.
 
+Drop to `Request` when the generator has a flag of its own — a `--scope` picking which of two
+schemas to describe, a `--service` picking which binary's — because `Request::parse` refuses an
+argument it does not know, and it is right to. Build one instead:
+
+```rust
+let request = Request::new(Format::Contract)
+    .with_version(tag)
+    .with_revision(sha)
+    .with_created(timestamp);
+
+let rendered = cli.render(&request, schema_for(scope)?)?;
+```
+
 `Config::default()` is what supplies the values in the `Default` column, so `Config` needs
 `Serialize` as well as `Deserialize`. Pass whatever represents "nothing was supplied" — if your
 `Default` and your `#[serde(default = "…")]` functions disagree, pass what serde would produce.
@@ -741,11 +754,10 @@ cargo run --example config-schema -- --format toml            > config.example.t
 cargo run --example config-schema -- --format json-schema     > config.schema.json
 ```
 
-`markdown` is the key table and `markdown-loader` is the handful of variables that *select* the
-layers — `<PREFIX>CONFIG`, `<PREFIX>SECRETS_DIR`, anything reserved. Two formats rather than one
-because a README documents them apart: the layers are prose in one section and the keys are a table
-in another. `--only` applies to the first and is refused for the second, which carries no keys to
-slice.
+Three markdown renderings, because a page wants different combinations of two tables: `markdown` is
+both, `markdown-loader` is the handful of variables that *select* the layers — `<PREFIX>CONFIG`,
+`<PREFIX>SECRETS_DIR`, anything reserved — and `markdown-keys` is the configuration keys alone.
+`--only` slices the two that carry keys and is refused for `markdown-loader`, which has none.
 
 In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
 generator per *dialect*: two binaries reading one prefix are one document, joined with

@@ -7,8 +7,8 @@ use crate::schema::App;
 
 /// The one line to print when an argument is refused.
 pub const USAGE: &str = "usage: config-schema \
-                         [--format json|markdown|markdown-loader|toml|json-schema|contract|\
-                         labels|dockerfile] \
+                         [--format json|markdown|markdown-loader|markdown-keys|toml|\
+                         json-schema|contract|labels|dockerfile] \
                          [--only <key-prefix>] [--path <in-image-path>] \
                          [--version <release>] [--revision <commit>] [--created <rfc3339>]";
 
@@ -155,6 +155,35 @@ impl Request {
     #[must_use]
     pub fn with_path(mut self, path: impl Into<String>) -> Self {
         self.path = Some(path.into());
+        self
+    }
+
+    /// The release this build is of, as the image tag spells it.
+    ///
+    /// This and the two below complete what [`Self::new`] starts, so a consumer parsing arguments
+    /// with `clap` — or one that has its own `--scope` or `--service` flag and therefore cannot
+    /// hand its whole argument list to [`Self::parse`] — can build every field [`stamp`] reads.
+    /// Without them the second layer was usable for a documentation job and not for a container
+    /// build, which is the half that needed it.
+    ///
+    /// [`stamp`]: Self::stamp
+    #[must_use]
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
+    /// The commit this build is of.
+    #[must_use]
+    pub fn with_revision(mut self, revision: impl Into<String>) -> Self {
+        self.revision = Some(revision.into());
+        self
+    }
+
+    /// When this build happened, RFC 3339.
+    #[must_use]
+    pub fn with_created(mut self, created: impl Into<String>) -> Self {
+        self.created = Some(created.into());
         self
     }
 
