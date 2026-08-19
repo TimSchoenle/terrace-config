@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
 use terrace_config::schema::cli::{Cli, Format, Request, verify};
 use terrace_config::schema::{
-    App, ContractBuilder, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, LABEL_PATH,
-    LABEL_PREFIX, LabelFault, MARKER_BEGIN, MARKER_END, Schema,
+    App, ContractBuilder, DEFAULT_PATH, Describe, Docs, External, ExternalVar, JsonSchema,
+    LABEL_PATH, LABEL_PREFIX, LabelFault, MARKER_BEGIN, MARKER_END, Schema, TomlExample,
 };
 
 #[derive(Deserialize, Serialize, Default, Describe)]
@@ -292,4 +292,54 @@ fn what_a_build_generates_is_what_a_built_image_is_checked_against() {
     contract
         .verify_labels(DEFAULT_PATH, &labels)
         .expect("the labels this generator emitted are the ones the contract accepts");
+}
+
+#[test]
+fn the_loader_variables_are_their_own_format() {
+    // A README documents the two apart: the five layers are prose in one section and the keys are
+    // a table in another. A generator that could only emit them together left every consumer
+    // slicing one table out of the other, which is what this format exists to stop.
+    let request = args(&["--format", "markdown-loader"]).expect("parsed");
+    let rendered = cli().render(&request, schema()).expect("rendered");
+
+    assert!(rendered.contains("PORTFOLIO_CONFIG"), "{rendered}");
+    assert!(rendered.contains("PORTFOLIO_SECRETS_DIR"), "{rendered}");
+    // The keys belong to `--format markdown`, and neither table repeats the other.
+    assert!(!rendered.contains("dist_dir"), "{rendered}");
+
+    // `loader` is accepted too: it is what the repositories that had this format called it.
+    assert_eq!(
+        args(&["--format", "loader"]).expect("parsed").format(),
+        Format::MarkdownLoader
+    );
+}
+
+#[test]
+fn slicing_a_rendering_that_has_no_keys_is_refused_rather_than_ignored() {
+    // Vacuous rather than wrong, and refused for that reason: an argument that quietly changes
+    // nothing is one someone adds to a CI step and then trusts.
+    let Err(error) = args(&["--format", "markdown-loader", "--only", "csp"]) else {
+        panic!("`--format markdown-loader` accepted a slice");
+    };
+    assert!(error.message().contains("--only"), "{error}");
+    assert!(!Format::MarkdownLoader.reads_keys(), "reads_keys");
+    assert!(Format::Markdown.reads_keys(), "markdown reads keys");
+}
+
+#[test]
+fn the_toml_rendering_takes_the_services_own_options() {
+    // The gap that blocked two consumers: `json_schema` had a setter and `toml` did not, so a
+    // service whose `config.example.toml` is the only documentation an operator gets could not
+    // ask for the full `///` comment without writing its own dispatch.
+    let request = args(&["--format", "toml"]).expect("parsed");
+
+    let default = cli().render(&request, schema()).expect("rendered");
+    let full = cli()
+        .toml_example(TomlExample::new().header(false).docs(Docs::Full))
+        .render(&request, schema())
+        .expect("rendered");
+
+    assert_ne!(default, full);
+    // `header(false)` is the visible half: the banner the default rendering opens with is gone.
+    assert!(default.lines().count() > full.lines().count(), "{full}");
 }

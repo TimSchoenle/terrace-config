@@ -7,7 +7,8 @@ use crate::schema::App;
 
 /// The one line to print when an argument is refused.
 pub const USAGE: &str = "usage: config-schema \
-                         [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
+                         [--format json|markdown|markdown-loader|toml|json-schema|contract|\
+                         labels|dockerfile] \
                          [--only <key-prefix>] [--path <in-image-path>] \
                          [--version <release>] [--revision <commit>] [--created <rfc3339>]";
 
@@ -179,16 +180,32 @@ impl Request {
     /// Refuse the combinations that would produce a plausible-looking wrong answer.
     ///
     /// # Errors
-    /// Returns [`UsageError`] if a whole-image format was asked for over a subset. See
-    /// [`Format::whole_image`].
+    /// Returns [`UsageError`] if `--only` was given for a rendering it cannot slice — either a
+    /// whole-image format, where the slice would be published as a false claim (see
+    /// [`Format::whole_image`]), or one that carries no keys at all, where it would be silently
+    /// ignored (see [`Format::reads_keys`]).
     pub fn validate(&self) -> Result<(), UsageError> {
-        if self.format.whole_image() && !self.only.is_empty() {
+        if self.only.is_empty() {
+            return Ok(());
+        }
+
+        if self.format.whole_image() {
             return Err(UsageError(format!(
                 "`--only` slices a configuration and `--format {}` describes a whole image; a \
                  contract built from a slice would claim the image does not read the keys it cut",
                 self.format
             )));
         }
+
+        if !self.format.reads_keys() {
+            return Err(UsageError(format!(
+                "`--format {}` renders the variables that select the loader's layers, not the \
+                 keys read out of them, so `--only` would have sliced nothing and changed no \
+                 output",
+                self.format
+            )));
+        }
+
         Ok(())
     }
 }
