@@ -109,6 +109,12 @@ beside it.
 document a container build embeds in its image and attaches to its digest, so that a deployment
 pipeline holding nothing but that digest can check the configuration it is about to mount.
 
+Publishing it has two halves, because a pipeline and a cluster hold different things. The image
+carries three `dev.terrace.config.*` labels that make the document discoverable from a digest;
+[`schema::kube`] is the other half — the label and three annotations a rendered `ConfigMap` or pod
+template carries, and the check that pairs the two — for the admission webhook that holds an object
+and no digest at all.
+
 ```no_run
 use serde::{Deserialize, Serialize};
 use terrace_config::{Terrace, schema::App, schema::Describe};

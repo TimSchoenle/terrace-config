@@ -85,6 +85,7 @@
 
 mod contract;
 mod json_schema;
+pub mod kube;
 mod markdown;
 mod rust_type;
 mod toml_example;

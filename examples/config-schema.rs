@@ -12,10 +12,17 @@
 //! cargo run --example config-schema -- --format contract          > contract.json
 //! cargo run --example config-schema -- --format labels            > contract.labels
 //! cargo run --example config-schema -- --format dockerfile        # paste into the Dockerfile
+//! cargo run --example config-schema -- --format kube --image "$IMAGE" > contract.metadata.yaml
+//! cargo run --example config-schema -- --format kube --target workload --image "$IMAGE"
+//! cargo run --example config-schema -- --format kube-labels --image "$IMAGE"
 //! cargo run --example config-schema -- --format contract --revision "$(git rev-parse HEAD)" \
 //!                                       --created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
 //! ```
+//!
+//! where `IMAGE` is the digest-pinned reference the push produced —
+//! `ghcr.io/you/portfolio@sha256:48e2…`. It is a flag rather than something this generator works
+//! out because a contract deliberately names no image; see the build outputs below.
 //!
 //! `json-schema` and `toml` are the two worth wiring into CI with a `--check`-style diff. A
 //! reference table that has drifted reads wrong; an example file that has drifted gets *copied*
@@ -30,6 +37,11 @@
 //! [`schema::Contract`](terrace_config::schema::Contract) for the shape and
 //! [`External`](terrace_config::schema::External) for the half no derive can see — the variables
 //! this image reads that are nobody's configuration key.
+//!
+//! `kube` and `kube-labels` are consumed by neither: they belong to whatever renders the
+//! deployment, which is the only side that knows the digest an image was pushed under. That is
+//! why `--image` is an argument here and not something this generator can work out — a contract
+//! deliberately names no image. See [`schema::kube`](terrace_config::schema::kube).
 //!
 //! It reads nothing from the environment, so it produces the same answer on a developer's
 //! machine and on a runner where none of the variables it describes exist.
@@ -48,7 +60,7 @@ use std::process::ExitCode;
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
 use terrace_config::schema::{
-    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, Schema,
+    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, Schema, kube,
 };
 
 /// The root. Everything under it lives somewhere else.
@@ -232,6 +244,29 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
             .to_dockerfile_labels(DEFAULT_PATH)
             .trim_end()
             .to_owned()),
+        // Indented by two, because that is where a `metadata:` at the left margin puts its
+        // children and a `ConfigMap`'s is at the left margin. A pod template's is deeper, and
+        // `Metadata::to_yaml` takes the indent rather than guessing — this flagless example
+        // picks the one that is right for the object the stamp is usually going on.
+        Format::Kube => Ok(contract(schema, options)?
+            .kube_metadata(&options.target(), &options.images())?
+            .to_yaml(2)
+            .trim_end()
+            .to_owned()),
+        // Labels first, then annotations, each map in its own order — the same deterministic
+        // output `--format labels` gives, for the same consumer: a shell loop feeding something
+        // that takes one `NAME=value` at a time.
+        Format::KubeLabels => {
+            let metadata =
+                contract(schema, options)?.kube_metadata(&options.target(), &options.images())?;
+            Ok(metadata
+                .labels()
+                .iter()
+                .chain(metadata.annotations())
+                .map(|(name, value)| format!("{name}={value}"))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
     }
 }
 
@@ -305,6 +340,40 @@ struct Options {
     revision: Option<String>,
     /// When this build happened, RFC 3339, for `--format contract`.
     created: Option<String>,
+    /// Every image that reads the document, digest-pinned, for the `kube` formats.
+    ///
+    /// Repeatable and order-preserving: the annotation lists them in declaration order, and a
+    /// generator that sorted them would make a diff out of a chart adding an image at the end.
+    images: Vec<String>,
+    /// The key inside the object's `data` that is the document.
+    document_key: String,
+    /// How that document is spelled.
+    document_format: String,
+    /// Which object the stamp is for.
+    workload: bool,
+}
+
+impl Options {
+    /// The object being stamped.
+    ///
+    /// A workload takes neither the key nor the format — a pod is not a document — and
+    /// `Options::from_args` refuses the flags rather than dropping them here, so that a build
+    /// passing `--document-key` to a pod template is told rather than obeyed.
+    fn target(&self) -> kube::Target {
+        if self.workload {
+            kube::Target::workload()
+        } else {
+            kube::Target::document(
+                self.document_key.clone(),
+                kube::Format::from(self.document_format.as_str()),
+            )
+        }
+    }
+
+    /// The image references, in the order they were given.
+    fn images(&self) -> Vec<&str> {
+        self.images.iter().map(String::as_str).collect()
+    }
 }
 
 /// Which rendering to emit.
@@ -324,6 +393,11 @@ enum Format {
     Labels,
     /// The same labels as the `LABEL` instruction to paste into a Dockerfile.
     Dockerfile,
+    /// The Kubernetes `metadata` block a chart stamps onto the object holding the document, or
+    /// onto the pod template that mounts it — ready to paste into a Helm template.
+    Kube,
+    /// The same block as one `NAME=value` per line, labels first, for a shell loop.
+    KubeLabels,
 }
 
 impl Format {
@@ -332,7 +406,16 @@ impl Format {
     /// A contract that quietly omitted the keys `--only` cut would be a contract asserting the
     /// image does not read them, which is the one claim in the document that must never be wrong.
     fn whole_image(self) -> bool {
-        matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
+        matches!(
+            self,
+            Self::Contract | Self::Labels | Self::Dockerfile | Self::Kube | Self::KubeLabels
+        )
+    }
+
+    /// Whether this rendering stamps a Kubernetes object, and so needs to know which images read
+    /// the document.
+    fn kubernetes(self) -> bool {
+        matches!(self, Self::Kube | Self::KubeLabels)
     }
 }
 
@@ -344,7 +427,18 @@ impl Options {
             only: String::new(),
             revision: None,
             created: None,
+            images: Vec::new(),
+            // The two the loader itself would look for, so the common case passes no flags. A
+            // service that mounts its document somewhere else says so; a service that does not
+            // gets the answer it would have typed.
+            document_key: "config.toml".to_owned(),
+            document_format: "toml".to_owned(),
+            workload: false,
         };
+        // Tracked rather than inferred from the values: the defaults are legitimate values, so
+        // "the key is `config.toml`" cannot distinguish a build that said so from one that said
+        // nothing — and only the first is a mistake worth refusing beside `--target workload`.
+        let mut document_flags = false;
         let mut args = std::env::args().skip(1);
         while let Some(flag) = args.next() {
             match flag.as_str() {
@@ -357,6 +451,8 @@ impl Options {
                         Some("contract") => Format::Contract,
                         Some("labels") => Format::Labels,
                         Some("dockerfile") => Format::Dockerfile,
+                        Some("kube" | "kubernetes") => Format::Kube,
+                        Some("kube-labels") => Format::KubeLabels,
                         Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
                         None => return Err(format!("--format takes a value; {USAGE}")),
                     };
@@ -365,6 +461,34 @@ impl Options {
                     options.only = args
                         .next()
                         .ok_or_else(|| format!("--only takes a key prefix; {USAGE}"))?;
+                }
+                // Repeatable, and the repetition is the point: one document read by a web
+                // binary and a worker is the union case the annotation exists for.
+                "--image" => {
+                    options.images.push(
+                        args.next()
+                            .ok_or_else(|| format!("--image takes an image reference; {USAGE}"))?,
+                    );
+                }
+                "--document-key" => {
+                    options.document_key = args
+                        .next()
+                        .ok_or_else(|| format!("--document-key takes a key; {USAGE}"))?;
+                    document_flags = true;
+                }
+                "--document-format" => {
+                    options.document_format = args
+                        .next()
+                        .ok_or_else(|| format!("--document-format takes a format; {USAGE}"))?;
+                    document_flags = true;
+                }
+                "--target" => {
+                    options.workload = match args.next().as_deref() {
+                        Some("document") => false,
+                        Some("workload") => true,
+                        Some(other) => return Err(format!("unknown target `{other}`; {USAGE}")),
+                        None => return Err(format!("--target takes a value; {USAGE}")),
+                    };
                 }
                 "--revision" => {
                     options.revision = Some(
@@ -393,10 +517,38 @@ impl Options {
             ));
         }
 
+        // Refused rather than defaulted. A stamp naming no image says that nothing reads the
+        // document, and that is not a claim any validator can act on: the annotation exists so
+        // that something holding a running pod can decide whether this document is that pod's
+        // configuration. There is no value this generator could invent either — a contract
+        // deliberately carries no digest, because a digest is what building the image produces.
+        if options.format.kubernetes() && options.images.is_empty() {
+            return Err(format!(
+                "--format kube needs at least one --image, digest-pinned. A stamp naming no \
+                 image says that nothing reads this document, and the digest is the one fact \
+                 about the image this generator cannot know. {USAGE}"
+            ));
+        }
+
+        // A pod is not a document, so a pod template carries neither the key nor the format.
+        // Refused rather than dropped: a build passing these to a workload has the two template
+        // blocks the wrong way round, and quietly emitting the pod's stamp would hide that until
+        // a validator went looking for a document key nobody ever wrote.
+        if options.workload && document_flags {
+            return Err(format!(
+                "--document-key and --document-format describe a document, and --target \
+                 workload stamps a pod template, which is not one. Stamp the object holding the \
+                 document with --target document, and the pod template with neither. {USAGE}"
+            ));
+        }
+
         Ok(options)
     }
 }
 
 const USAGE: &str = "usage: config-schema \
-                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
-                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";
+                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile|kube\
+                     |kube-labels] \
+                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>] \
+                     [--image <name@sha256:...>]... [--target document|workload] \
+                     [--document-key <key>] [--document-format <fmt>]";

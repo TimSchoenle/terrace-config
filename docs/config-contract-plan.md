@@ -271,10 +271,12 @@ will not hide.
 
 ---
 
-## 3. Where it lands on the image
+## 3. Where it lands
 
-Three carriers, one hash. They are not redundancies — each answers a different question, and the
-shared `sha256` is what turns three copies into one consistency guarantee.
+Three carriers on the image, one hash. They are not redundancies — each answers a different
+question, and the shared `sha256` is what turns three copies into one consistency guarantee. §3.4
+is the fourth carrier and the only one that is not on the image at all: it is what a rendered
+Kubernetes object says about which contract governs it.
 
 ### 3.1 Labels — discovery
 
@@ -287,13 +289,13 @@ LABEL dev.terrace.config.contract.version="1" \
       dev.terrace.config.prefix="PORTFOLIO_"
 ```
 
-Three, not four. An earlier draft had a `sha256` label; see §3.4 for why it went and what replaced
+Three, not four. An earlier draft had a `sha256` label; see §3.5 for why it went and what replaced
 it.
 
 This is the *protocol*. "Does this image declare a config contract, and what should it hash to" is
 answerable for any image in any registry without knowing anything about the project. It is also
 what makes the scheme language-agnostic: a Go service that emits the same envelope and sets the
-same four labels participates fully, and `terrace-config` is simply what makes it free for a Rust
+same three labels participates fully, and `terrace-config` is simply what makes it free for a Rust
 service.
 
 ### 3.2 A file in the image — the literal ask, and the offline copy
@@ -308,8 +310,8 @@ buys:
 - The image is self-describing with no registry at all: `crane export`, `docker save`, an air-gapped
   mirror, a tarball on disk.
 - It is the fallback path when a registry does not implement the referrers API.
-- It is what a future initContainer or admission webhook reads to do the same validation
-  *in-cluster* rather than in CI (§7).
+- It is what an initContainer or admission webhook reads to do the same validation *in-cluster*
+  rather than in CI (§3.4).
 
 It does **not** require the binary to grow a `--dump-schema` flag, which matters: the image is
 `FROM scratch` with no shell, and the `schema` feature is deliberately kept out of the production
@@ -344,7 +346,65 @@ their own. What the chart repo does check is that the *image* and the *document*
 `dev.terrace.config.contract.version` must be one it understands. That is `Contract::verify_labels`
 run from the other side, and a mismatch is a hard error rather than a fallback.
 
-### 3.4 Build wiring in `Portfolio`
+### 3.4 Kubernetes object metadata — the cluster-side half
+
+The three labels above are on the *image*. Inside a cluster nothing holds an image: a Kyverno
+policy, a validating admission webhook and an init container all hold an object, and the object
+says nothing about which contract governs it. So the protocol has a second half, and it is not the
+first half restated — Kubernetes will not accept the same values.
+
+A label value is at most 63 bytes and must match `(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`.
+`PORTFOLIO_` fails on the trailing underscore, `/config/contract.json` on the slashes, and
+`application/vnd.terrace.config-schema.v1+json` on both a slash and a `+`. Annotation values are
+unconstrained. That forces the split rather than suggesting it:
+
+> **Labels are what you select on. Annotations are what you read.**
+
+One label:
+
+```yaml
+dev.terrace.config/contract-version: "1"
+```
+
+and three annotations:
+
+```yaml
+dev.terrace.config/images: "ghcr.io/you/portfolio@sha256:48e2...,ghcr.io/you/worker@sha256:9f1c..."
+dev.terrace.config/document-key: "config.toml"
+dev.terrace.config/format: "toml"
+```
+
+The label is the whole selectable surface, and it is what a policy matches on:
+`matchExpressions: [{ key: dev.terrace.config/contract-version, operator: Exists }]`. Nothing else
+needs to be selected on, so nothing else is a label.
+
+**There is deliberately no `prefix` or `contract-path` label.** Both are facts about an image, the
+image already carries them, and copying them onto an object rendered by a chart creates a second
+spelling that no build-time check can compare against the first — which is the drift
+`verify_labels` exists to catch on the image side, reintroduced where nothing can catch it.
+**There is deliberately no `app` label** either: a document may be read by several images (§4.3),
+so the honest field is a list, and every separator a list needs is outside the label character
+class. Anything per-image or multi-valued is an annotation.
+
+Two objects are stamped and they are not stamped identically. The **document object** — the
+ConfigMap, or the Secret for the secrets-directory layer — gets the label and all three
+annotations. The **workload's pod template** gets the label and `images` alone, because
+`document-key` and `format` describe a document and a pod is not one. The pod is stamped at all so
+that an admission webhook, which usually sees only the pod, can find the image list without
+walking ownership references.
+
+`Contract::kube_metadata` renders the block, `Contract::verify_kube_metadata` checks what a chart
+rendered, and `kube::Pairing` is the check a cluster-side actor runs: it takes the contract, the
+image's own labels, the running image's digest-pinned reference and the mounted object's metadata,
+and asserts that all of it describes one configuration surface — the object's version matches the
+contract, the image's labels match the contract (`verify_labels`, reused rather than
+reimplemented), the object's version matches the image's, the running image is a **member** of
+`images`, and the document key and format are present and well-formed.
+
+Same artifacts, no new generation. This is also why the in-image copy (§3.2) is worth its 30 KB: a
+cluster-side actor that cannot reach a registry still has a contract to pair against.
+
+### 3.5 Build wiring in `Portfolio`
 
 A new stage, on the existing builder image so no toolchain is added, and a `COPY` into `runtime`:
 
@@ -662,7 +722,7 @@ failed CI job is a better diagnostic than anything a schema validator can produc
 | 2 | helm-charts | `config-contract.yaml` for portfolio, `just contracts`, `just check-config`, gates 1–3, a `config` CI job | the loop closes end to end on the simplest chart |
 | 3 | helm-charts | tankovault: many documents, many images, the union | it scales past one binary |
 | 4 | both | `--check-config`, gate 4 in e2e; `check-contract-coverage` | fidelity, and no silent opt-out |
-| 5 | optional | cluster-side enforcement (§7) | the same artifacts, a second consumer |
+| 5 | optional | cluster-side enforcement (§3.4) | the same artifacts, a second consumer |
 
 Phase 2 is the one that must be got right; 3 is the one that will find the design errors. Phase 1
 is deliberately a single-image chart so that the first end-to-end run has one moving part.
@@ -675,13 +735,9 @@ key in `_helpers.tpl`, nothing downstream is worth building.
 
 ## 7. Extension points designed for, not built
 
-- **Cluster-side admission.** The rendered ConfigMap carries
-  `dev.terrace.config/contract-version`; a Kyverno policy fetches the same referrer for the running
-  pod's image digest and refuses a mismatched pair. Same artifacts, no new generation — this is why
-  the in-image copy (§3.2) is worth its 30 KB.
 - **Non-TOML documents.** `source.format` is already a field. A YAML or JSON document normalises to
   the same tree, and every gate above is unchanged.
-- **Non-Rust services.** The contract is defined by its media type and its four labels, not by
+- **Non-Rust services.** The contract is defined by its media type and its three labels, not by
   `terrace-config`. Any language that emits the envelope participates.
 - **Third-party images.** A `documents[].contract: { file: contracts/paperless.hand.json }` points
   at a hand-written contract for an upstream image, and every gate runs identically. The

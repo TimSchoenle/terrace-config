@@ -1,0 +1,6 @@
+a:portfolio
+k:dist_dir
+k:github/ttl_secs
+i:ghcr.io/you/portfolio@sha256:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1b3c5d7e9f1a3c5d7e9f1a3c5d7e9f1a3
+i:ghcr.io/you/worker@sha256:9f1c3e5a7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1c
+i:ghcr.io/you/cron@sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b

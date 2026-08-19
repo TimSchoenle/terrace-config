@@ -92,6 +92,11 @@ fn schema_seeds() {
     replay_target("schema", oracle::schema::check);
 }
 
+#[test]
+fn kube_seeds() {
+    replay_target("kube", oracle::kube::check);
+}
+
 /// A deterministic input generator, standing in for a mutation engine.
 ///
 /// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
@@ -365,5 +370,83 @@ mod generated {
     #[test]
     fn schema_sweep() {
         sweep_with(0x5EED_0004, oracle::schema::check, generate_schema);
+    }
+
+    /// References chosen to sit on the one rule that cannot be relaxed: a digest, and the ways a
+    /// template mangles one. A pinned reference, the same by tag, a digest of the wrong length,
+    /// the wrong alphabet, the wrong algorithm, and two that would split when the comma-separated
+    /// annotation is read back.
+    const IMAGES: &[&str] = &[
+        "ghcr.io/you/portfolio@sha256:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1b3c5d7e9f1a3c5d7e9f1a3c5d7e9f1a3",
+        "ghcr.io/you/worker@sha256:9f1c3e5a7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1c",
+        "portfolio@sha256:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1b3c5d7e9f1a3c5d7e9f1a3c5d7e9f1a3",
+        "ghcr.io/you/portfolio:v2.5.0",
+        "ghcr.io/you/portfolio",
+        "p@sha256:short",
+        "p@sha256:48E2C1E7A4C0D4E6B2F8A1C3D5E7F9A1B3C5D7E9F1A3C5D7E9F1A3C5D7E9F1A3",
+        "p@md5:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1",
+        "gh cr.io/p@sha256:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1b3c5d7e9f1a3c5d7e9f1a3c5d7e9f1a3",
+        "a,b@sha256:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1b3c5d7e9f1a3c5d7e9f1a3c5d7e9f1a3",
+        "@sha256:48e2c1e7a4c0d4e6b2f8a1c3d5e7f9a1b3c5d7e9f1a3c5d7e9f1a3c5d7e9f1a3",
+        "",
+    ];
+
+    /// Document keys chosen to sit on the `ConfigMap` key rule: the two that name a directory
+    /// entry, one that reads as a path, one carrying a space, and one at the length bound.
+    const KEYS: &[&str] = &[
+        "config.toml",
+        "00-base.toml",
+        ".",
+        "..",
+        "...",
+        "",
+        "etc/config.toml",
+        "config toml",
+        "ünïcode.toml",
+        "_hidden",
+    ];
+
+    /// Formats, including the two a template that interpolated nothing leaves behind.
+    const FORMATS: &[&str] = &["toml", "yaml", "json", "TOML", "hcl", "", " ", "to ml"];
+
+    /// Prefixes and app names hostile to the label rules, which is what a real service's are: a
+    /// prefix ends in an underscore and a name carries dots and case.
+    const PREFIXES: &[&str] = &["TEST_", "PORTFOLIO_", "A", "", "a-b", "ünïcode_"];
+    const APPS: &[&str] = &[
+        "portfolio",
+        "A.Very.Long-",
+        "MiXeD Case",
+        "",
+        "a|b",
+        // Longer than any label value, so a name that leaked into one could not hide.
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    ];
+
+    /// Build one kube-oracle input.
+    fn generate_kube(rng: &mut Rng) -> String {
+        let mut lines = vec![
+            format!("p:{}", rng.pick(PREFIXES)),
+            format!("a:{}", rng.pick(APPS)),
+            format!("k:{}", rng.pick(SEGMENTS)),
+        ];
+        if rng.next().is_multiple_of(4) {
+            lines.push("w".to_owned());
+        }
+        if rng.next().is_multiple_of(3) {
+            lines.push(format!("K:{}", rng.pick(KEYS)));
+        }
+        if rng.next().is_multiple_of(3) {
+            lines.push(format!("F:{}", rng.pick(FORMATS)));
+        }
+        let listed = 1 + rng.next() % 3;
+        for _ in 0..listed {
+            lines.push(format!("i:{}", rng.pick(IMAGES)));
+        }
+        lines.join("\n")
+    }
+
+    #[test]
+    fn kube_sweep() {
+        sweep_with(0x5EED_0006, oracle::kube::check, generate_kube);
     }
 }

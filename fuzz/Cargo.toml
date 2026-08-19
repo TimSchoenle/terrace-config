@@ -110,3 +110,10 @@ path = "fuzz_targets/schema.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "kube"
+path = "fuzz_targets/kube.rs"
+test = false
+doc = false
+bench = false
