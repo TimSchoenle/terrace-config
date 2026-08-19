@@ -15,6 +15,12 @@
 //! cargo run --example config-schema -- --format contract --revision "$(git rev-parse HEAD)" \
 //!                                       --created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
+//! cargo run --example config-schema -- --format kube --image "ghcr.io/you/portfolio@sha256:48e2…" \
+//!                                       --document-key config.toml   # paste into the chart
+//! cargo run --example config-schema -- --format kube --target workload \
+//!                                       --image "ghcr.io/you/portfolio@sha256:48e2…"
+//! cargo run --example config-schema -- --format kube-labels --document-key config.toml \
+//!                                       --image "ghcr.io/you/portfolio@sha256:48e2…"
 //! ```
 //!
 //! `json-schema` and `toml` are the two worth wiring into CI with a `--check`-style diff. A
@@ -34,6 +40,15 @@
 //! It reads nothing from the environment, so it produces the same answer on a developer's
 //! machine and on a runner where none of the variables it describes exist.
 //!
+//! # The deployment outputs
+//!
+//! `kube` and `kube-labels` are consumed by neither: they are for whoever writes the chart, and
+//! they are the only two formats that need an argument this generator cannot work out for itself.
+//! A contract carries no digest — deliberately, because a digest is what building the image
+//! *produces* — so every `--image` is passed in, and every one has to be pinned. See
+//! [`schema::kube`](terrace_config::schema::kube) for why the stamp is one label and three
+//! annotations rather than four labels.
+//!
 //! # A configuration is not one file
 //!
 //! The types below are deliberately in separate modules, as they would be in a real service —
@@ -47,6 +62,7 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
+use terrace_config::schema::kube;
 use terrace_config::schema::{
     App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, Schema,
 };
@@ -232,6 +248,28 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
             .to_dockerfile_labels(DEFAULT_PATH)
             .trim_end()
             .to_owned()),
+        // The two deployment outputs. `Options::from_args` has already refused every combination
+        // that could not produce a valid stamp, so the only refusals left here are the ones about
+        // the *values* — an unpinned reference, a document key a `ConfigMap` cannot hold — which
+        // belong to the crate rather than to the argument parser.
+        Format::Kube => Ok(contract(schema, options)?
+            .kube_metadata(&options.target()?, &options.images())?
+            .to_yaml(0)
+            .trim_end()
+            .to_owned()),
+        Format::KubeLabels => {
+            let metadata =
+                contract(schema, options)?.kube_metadata(&options.target()?, &options.images())?;
+            // Labels first, then annotations, which is the order `kubectl label` and
+            // `kubectl annotate` take them in. Both maps are `BTreeMap`s, so the output is stable.
+            Ok(metadata
+                .labels()
+                .iter()
+                .chain(metadata.annotations())
+                .map(|(name, value)| format!("{name}={value}"))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
     }
 }
 
@@ -305,6 +343,66 @@ struct Options {
     revision: Option<String>,
     /// When this build happened, RFC 3339, for `--format contract`.
     created: Option<String>,
+    /// Which object is being stamped, for the `kube` formats.
+    stamp: Stamp,
+    /// Every image that reads the document, digest-pinned, in declaration order.
+    ///
+    /// Passed in rather than derived: a contract carries no digest, because a digest is what
+    /// building the image produces and the document is written before the push.
+    images: Vec<String>,
+    /// Which key of the object's `data` map is the document.
+    document_key: Option<String>,
+    /// The document's syntax. [`None`] means nothing was said, which is `toml` — kept distinct
+    /// from an explicit `--document-format toml` so that passing it beside `--target workload` can
+    /// be refused rather than quietly ignored.
+    document_format: Option<String>,
+}
+
+/// The syntax a document has when nothing says otherwise: the only one this crate's layers read.
+///
+/// Stated as a default rather than inferred from the document key's extension, which is a name a
+/// chart chose and not a claim anybody checked.
+const DEFAULT_DOCUMENT_FORMAT: &str = "toml";
+
+/// Which object a `kube` format is describing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stamp {
+    /// The `ConfigMap` — or `Secret` — holding the rendered configuration.
+    Document,
+    /// The workload's pod template, which carries the label and the image list only.
+    Workload,
+}
+
+impl Options {
+    /// The target the `kube` formats stamp.
+    ///
+    /// # Errors
+    /// Only reachable if `from_args` stopped refusing the combination it refuses below; the
+    /// message says so rather than pretending a default would have been fine.
+    fn target(&self) -> Result<kube::Target, terrace_config::Error> {
+        match self.stamp {
+            Stamp::Workload => Ok(kube::Target::Workload),
+            Stamp::Document => {
+                let key = self.document_key.as_ref().ok_or_else(|| {
+                    terrace_config::Error::Invalid(
+                        "a document stamp needs --document-key; a `ConfigMap` may carry several \
+                         files and nothing else says which one this contract describes."
+                            .to_owned(),
+                    )
+                })?;
+                let format = self
+                    .document_format
+                    .as_deref()
+                    .unwrap_or(DEFAULT_DOCUMENT_FORMAT);
+                Ok(kube::Target::document(key, kube::Format::parse(format)))
+            }
+        }
+    }
+
+    /// The image references, borrowed for `Contract::kube_metadata`.
+    fn images(&self) -> Vec<&str> {
+        self.images.iter().map(String::as_str).collect()
+    }
 }
 
 /// Which rendering to emit.
@@ -324,6 +422,19 @@ enum Format {
     Labels,
     /// The same labels as the `LABEL` instruction to paste into a Dockerfile.
     Dockerfile,
+    /// The `labels:` and `annotations:` block a chart stamps onto the object it renders, as YAML.
+    ///
+    /// The cluster-side half of the same protocol the two above are the image-side half of. One
+    /// label, because a label is what a policy selects on and every other value in the protocol
+    /// breaks the character rule a label value is held to; three annotations, because an
+    /// annotation is what a policy reads.
+    Kube,
+    /// The same stamp as `NAME=value` lines, for `kubectl label` and `kubectl annotate`.
+    ///
+    /// The counterpart of `labels` on the other side of the protocol, and useful for the same
+    /// reason: a shell that has to compare what is on a live object against what the chart meant
+    /// to put there needs the pairs, not a YAML block.
+    KubeLabels,
 }
 
 impl Format {
@@ -331,8 +442,20 @@ impl Format {
     ///
     /// A contract that quietly omitted the keys `--only` cut would be a contract asserting the
     /// image does not read them, which is the one claim in the document that must never be wrong.
+    /// The `kube` stamps are built from a contract and inherit the objection: a stamp naming a
+    /// document that was described from half a schema is a stamp that pairs a pod with a promise
+    /// nobody made.
     fn whole_image(self) -> bool {
-        matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
+        matches!(
+            self,
+            Self::Contract | Self::Labels | Self::Dockerfile | Self::Kube | Self::KubeLabels
+        )
+    }
+
+    /// Whether this rendering is a Kubernetes stamp, and so needs the arguments a contract cannot
+    /// supply for itself.
+    fn kubernetes(self) -> bool {
+        matches!(self, Self::Kube | Self::KubeLabels)
     }
 }
 
@@ -344,6 +467,13 @@ impl Options {
             only: String::new(),
             revision: None,
             created: None,
+            // A document rather than a workload, because the document is the object the whole
+            // protocol is about; a pod carries the stamp so that a webhook seeing only the pod can
+            // still find the image list.
+            stamp: Stamp::Document,
+            images: Vec::new(),
+            document_key: None,
+            document_format: None,
         };
         let mut args = std::env::args().skip(1);
         while let Some(flag) = args.next() {
@@ -357,6 +487,8 @@ impl Options {
                         Some("contract") => Format::Contract,
                         Some("labels") => Format::Labels,
                         Some("dockerfile") => Format::Dockerfile,
+                        Some("kube") => Format::Kube,
+                        Some("kube-labels") => Format::KubeLabels,
                         Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
                         None => return Err(format!("--format takes a value; {USAGE}")),
                     };
@@ -378,6 +510,32 @@ impl Options {
                             .ok_or_else(|| format!("--created takes a timestamp; {USAGE}"))?,
                     );
                 }
+                // Repeatable, and order is kept: the annotation lists the images in declaration
+                // order so that two renders of one chart produce one string.
+                "--image" => options.images.push(
+                    args.next()
+                        .ok_or_else(|| format!("--image takes a reference; {USAGE}"))?,
+                ),
+                "--document-key" => {
+                    options.document_key = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--document-key takes a key; {USAGE}"))?,
+                    );
+                }
+                "--document-format" => {
+                    options.document_format = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--document-format takes a syntax; {USAGE}"))?,
+                    );
+                }
+                "--target" => {
+                    options.stamp = match args.next().as_deref() {
+                        Some("document") => Stamp::Document,
+                        Some("workload") => Stamp::Workload,
+                        Some(other) => return Err(format!("unknown target `{other}`; {USAGE}")),
+                        None => return Err(format!("--target takes a value; {USAGE}")),
+                    };
+                }
                 other => return Err(format!("unknown argument `{other}`; {USAGE}")),
             }
         }
@@ -393,10 +551,50 @@ impl Options {
             ));
         }
 
+        options.refuse_an_incomplete_stamp()?;
+
         Ok(options)
+    }
+
+    /// Refuse the combinations that cannot produce a valid Kubernetes stamp.
+    ///
+    /// On the same principle as the `--only` refusal above: a stamp that is *almost* right is
+    /// worse than no stamp at all, because a policy acts on it.
+    fn refuse_an_incomplete_stamp(&self) -> Result<(), String> {
+        if self.format.kubernetes() {
+            if self.images.is_empty() {
+                return Err(format!(
+                    "this format stamps an object with the images that read it, and none were \
+                     given. A contract carries no digest — building the image is what produces one \
+                     — so pass every reader as --image, digest-pinned; a pairing keyed on a tag \
+                     proves nothing, because a tag can be moved. {USAGE}"
+                ));
+            }
+            if self.stamp == Stamp::Document && self.document_key.is_none() {
+                return Err(format!(
+                    "a document stamp needs --document-key. A `ConfigMap` may carry several files, \
+                     and without it a validator has to guess which one this contract describes — \
+                     which it will do confidently, and sometimes wrongly. {USAGE}"
+                ));
+            }
+            if self.stamp == Stamp::Workload
+                && (self.document_key.is_some() || self.document_format.is_some())
+            {
+                return Err(format!(
+                    "--document-key and --document-format describe a document, and --target \
+                     workload stamps a pod template. A pod has neither, and emitting them anyway \
+                     would put a claim on the pod that nothing checked against the file it \
+                     actually mounts. {USAGE}"
+                ));
+            }
+        }
+
+        Ok(())
     }
 }
 
 const USAGE: &str = "usage: config-schema \
-                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
-                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";
+                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile|kube|kube-labels] \
+                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>] \
+                     [--target document|workload] [--image <pinned-ref>]… \
+                     [--document-key <key>] [--document-format <syntax>]";

@@ -108,6 +108,9 @@ beside it.
 [`schema::Contract`] is the fifth, and the only one whose reader is not a person or an editor: the
 document a container build embeds in its image and attaches to its digest, so that a deployment
 pipeline holding nothing but that digest can check the configuration it is about to mount.
+Publication is therefore two-sided — [`schema::kube`] names what the *Kubernetes objects* a chart
+renders carry, and pairs that with the image's own labels, so the same check a CI job makes against
+a rendered file an admission controller can make against a live `ConfigMap`.
 
 ```no_run
 use serde::{Deserialize, Serialize};

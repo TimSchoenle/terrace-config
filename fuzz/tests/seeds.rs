@@ -92,6 +92,11 @@ fn schema_seeds() {
     replay_target("schema", oracle::schema::check);
 }
 
+#[test]
+fn kube_seeds() {
+    replay_target("kube", oracle::kube::check);
+}
+
 /// A deterministic input generator, standing in for a mutation engine.
 ///
 /// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
@@ -365,5 +370,90 @@ mod generated {
     #[test]
     fn schema_sweep() {
         sweep_with(0x5EED_0004, oracle::schema::check, generate_schema);
+    }
+
+    /// Loader prefixes chosen to sit on the label-value rule rather than on the loader's: one that
+    /// is legal as a label value, one that ends in the separator every real prefix ends in, one
+    /// longer than a label value may be, and the empty one the contract builder refuses outright.
+    ///
+    /// None of them reaches the stamp, and that is the property. A sweep that could not vary them
+    /// could not notice one of them starting to.
+    const PREFIXES: &[&str] = &[
+        "TEST_",
+        "PORTFOLIO_",
+        "a",
+        "A_SERVICE_PREFIX_CONSIDERABLY_LONGER_THAN_SIXTY_THREE_CHARACTERS_LONG_",
+        ".",
+        "",
+    ];
+
+    /// App names, for the same reason: prose, a slash, a plus, and one that is only whitespace.
+    const APP_NAMES: &[&str] = &["portfolio", "not/a label+value", "  ", ""];
+
+    /// Document keys chosen to sit on the `ConfigMap` data-key rule: the two names a directory
+    /// already has, a path, a name a projected volume reserves, and one that is only a dot.
+    const DOCUMENT_KEYS: &[&str] = &[
+        "config.toml",
+        "00-base.toml",
+        ".",
+        "..",
+        "..data",
+        "conf/ig.toml",
+        "config toml",
+        "_",
+        "",
+    ];
+
+    /// Syntax names, including the two shapes a format may not take — empty, and a media type.
+    const FORMATS: &[&str] = &["toml", "yaml", "json", "hcl", "TOML", "text/toml", ""];
+
+    /// References chosen to sit on the one rule the pairing rests on: pinned, pinned with a
+    /// registry port, tag-only, a digest of the wrong length, upper case, the wrong algorithm, and
+    /// one carrying the separator the annotation joins on.
+    const REFERENCES: &[&str] = &[
+        "ghcr.io/you/portfolio@sha256:\
+         48e259cb0e5f4b3a6d1c8f97a2b4e6d0c3a5f7192b4d6e8a0c2e4f6a8b0d2e4f",
+        "ghcr.io:5000/you/sidecar:v2.5.0@sha256:\
+         9f1c37ad5e0b2c4d6e8f0a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d",
+        "portfolio@sha256:\
+         c0ffee11223344556677889900aabbccddeeff00112233445566778899aabbcd",
+        "ghcr.io/you/portfolio:v2.5.0",
+        "ghcr.io/you/portfolio@sha256:deadbeef",
+        "ghcr.io/you/portfolio@sha512:0123456789abcdef",
+        "portfolio@sha256:\
+         48E259CB0E5F4B3A6D1C8F97A2B4E6D0C3A5F7192B4D6E8A0C2E4F6A8B0D2E4F",
+        "a@b@sha256:48e259cb0e5f4b3a6d1c8f97a2b4e6d0c3a5f7192b4d6e8a0c2e4f6a8b0d2e4f",
+        "one@sha256:48e259cb0e5f4b3a6d1c8f97a2b4e6d0c3a5f7192b4d6e8a0c2e4f6a8b0d2e4f,two",
+        " portfolio@sha256:48e259cb0e5f4b3a6d1c8f97a2b4e6d0c3a5f7192b4d6e8a0c2e4f6a8b0d2e4f",
+        "",
+    ];
+
+    /// Build one kube-oracle input.
+    fn generate_kube(rng: &mut Rng) -> String {
+        let mut lines = vec![
+            format!("p:{}", rng.pick(PREFIXES)),
+            format!("n:{}", rng.pick(APP_NAMES)),
+            format!("d:{}", rng.pick(DOCUMENT_KEYS)),
+            format!("f:{}", rng.pick(FORMATS)),
+        ];
+        let keys = 1 + rng.next() % 4;
+        for _ in 0..keys {
+            let depth = 1 + rng.next() % 3;
+            let path = (0..depth)
+                .map(|_| (*rng.pick(SEGMENTS)).to_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            lines.push(format!("k:{path}"));
+        }
+        let images = 1 + rng.next() % 3;
+        for _ in 0..images {
+            lines.push(format!("i:{}", rng.pick(REFERENCES)));
+        }
+        lines.join("\n")
+    }
+
+    #[test]
+    fn kube_sweep() {
+        sweep_with(0x5EED_0006, oracle::kube::check, generate_kube);
     }
 }

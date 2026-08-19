@@ -1,0 +1,9 @@
+p:TANKOVAULT_
+n:tankovault
+k:server/bind
+k:worker/queue
+d:config.toml
+f:toml
+i:ghcr.io/you/server@sha256:48e259cb0e5f4b3a6d1c8f97a2b4e6d0c3a5f7192b4d6e8a0c2e4f6a8b0d2e4f
+i:ghcr.io/you/worker@sha256:9f1c37ad5e0b2c4d6e8f0a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d
+i:ghcr.io/you/migrator@sha256:c0ffee11223344556677889900aabbccddeeff00112233445566778899aabbcd

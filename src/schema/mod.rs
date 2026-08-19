@@ -53,6 +53,11 @@
 //! see [`Contract`] for what that reader needs that no single rendering above supplies, and
 //! [`External`] for the variables an image reads that no derive can find.
 //!
+//! [`kube`] is where that document stops being a build-time artefact. It names the labels and
+//! annotations a rendered Kubernetes object carries, and pairs them with the image's own — the same
+//! contract, checked by an admission controller against a live `ConfigMap` rather than by a CI job
+//! against a file.
+//!
 //! # More than one root
 //!
 //! A workspace whose binaries read different parts of one configuration has no single root type
@@ -85,6 +90,13 @@
 
 mod contract;
 mod json_schema;
+// A module rather than a flat re-export, unlike every other name in this file. Its types are
+// `Metadata`, `Target` and `Format` -- words general enough that a flat export would have to
+// prefix each of them with `Kube` to stay unambiguous, and `schema::kube::Metadata` reads better
+// than `schema::KubeMetadata` while saying the same thing. Nothing from it is re-exported below:
+// the two entry points are inherent methods on `Contract`, and a caller who needs one of these
+// names needs the module path with it, because "which `Metadata`?" is what the path answers.
+pub mod kube;
 mod markdown;
 mod rust_type;
 mod toml_example;

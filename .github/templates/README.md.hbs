@@ -1190,6 +1190,164 @@ stake — a chart is about to be validated against this:
 A renamed key then shows up in the diff of the pull request that renamed it, which is the cheapest
 possible warning that a chart is about to break.
 
+## Stamping the objects a chart renders
+
+Everything above is on an *image*, which is enough for a pipeline holding a digest and reaches
+nothing inside a cluster. A Kyverno policy, a validating admission webhook or an initContainer
+inspecting a live `ConfigMap` holds an **object**, and an object that says nothing about the
+contract it was rendered against is an object no policy can decide about. `schema::kube` is the
+other half of the same protocol: what a chart stamps onto what it renders, and the check that pairs
+that stamp with the image.
+
+**Labels are what you select on. Annotations are what you read.** That split is forced by the
+platform rather than chosen, and it is worth stating before the keys, because otherwise the obvious
+design — copy the three image labels across — fails at `kubectl apply` time in a repository nobody
+here can see. A Kubernetes label value is at most 63 characters and, unless it is empty, begins and
+ends with an alphanumeric character with only `-`, `_` and `.` between. Every value the image half
+publishes breaks that rule:
+
+| Value | Why it is not a label value |
+|---|---|
+| `PORTFOLIO_` — the dialect prefix | ends in `_` |
+| `/config/contract.json` — the contract path | `/` is not in the character set |
+| `application/vnd.terrace.config-schema.v1+json` — `ARTIFACT_TYPE` | `/` and `+` |
+
+A label *key* is the looser rule — a DNS-subdomain prefix of up to 253 characters, a `/`, then a
+name under the value rule — which is why the keys below can carry the same words the image labels
+do, with a `/` where those have a `.`. Annotation keys follow the same rule and annotation values
+are unconstrained; the whole map is bounded at 256 KiB and nothing else applies. So anything that
+has to be selected on is a label and has to survive the character rule, and everything else is an
+annotation. There is no third option.
+
+That leaves one label and three annotations:
+
+```rust
+use terrace_config::schema::kube::{Format, Target};
+
+let stamp = contract.kube_metadata(
+    &Target::document("config.toml", Format::Toml),
+    &["ghcr.io/you/portfolio@sha256:48e2…", "ghcr.io/you/sidecar@sha256:9f1c…"],
+)?;
+print!("{}", stamp.to_yaml(2));
+```
+
+```yaml
+labels:
+  "dev.terrace.config/contract-version": "1"
+annotations:
+  "dev.terrace.config/document-key": "config.toml"
+  "dev.terrace.config/format": "toml"
+  "dev.terrace.config/images": "ghcr.io/you/portfolio@sha256:48e2…,ghcr.io/you/sidecar@sha256:9f1c…"
+```
+
+`to_yaml` indents by whatever it is given, so that block is a paste under the `metadata:` of the
+`ConfigMap` the chart already renders — the same bargain `to_dockerfile_labels` makes, and for the
+same reason: the manifest is hand-written in a repository this crate never sees, so the honest
+answer is to make writing it a paste and then check the result. Both halves are quoted, and the
+value quoting is not decoration: `contract-version: 1` is an integer, and the API server refuses a
+label value that is not a string.
+
+| Key | Carries | Why it is where it is |
+|---|---|---|
+| `dev.terrace.config/contract-version` | `CONTRACT_VERSION`, stringified | the whole label surface: a decimal integer is a legal label value for every integer there will ever be, and this is the one question a selector asks |
+| `dev.terrace.config/images` | every image that reads this document, digest-pinned, comma-separated | a reference carries `/`, `:` and `@`, and a *list* needs a separator — every plausible one is outside the label-value character set |
+| `dev.terrace.config/document-key` | which key of the object's `data` map is the document | read, never selected on; and a `ConfigMap` key may be 253 characters where a label value may be 63 |
+| `dev.terrace.config/format` | the document's syntax, `toml` today | read, never selected on. It exists because a YAML or JSON document normalises to the same tree, and a validator has to know which parser to reach for — inferring it from the document key's extension would be inferring it from a name a chart chose |
+
+**Every reference must be digest-pinned**, and that is a refusal rather than a preference: a tag can
+be repointed after the object was rendered, so a pairing keyed on one proves nothing about the image
+that is actually running. The crate cannot supply the value either — a contract deliberately carries
+no digest, because a digest is what building the image *produces* — so the references are passed in,
+and what the crate owns is the annotation's name, the rule the values are held to, and the refusal.
+
+Two objects get stamped and they are not stamped identically. The document object — the `ConfigMap`,
+or the `Secret` behind the secrets-directory layer — gets all four entries. The workload's pod
+template gets the label and the image list only, because a document key and a format are properties
+of a document and a pod is not one. A pod carries the stamp at all so that an admission webhook
+seeing *only* the pod, which is what an admission webhook usually sees, can find the image list
+without walking ownership references to an object that may not exist yet.
+
+```bash
+cargo run --features config-schema --example config-schema -- --format kube \
+  --document-key config.toml --image "ghcr.io/you/portfolio@${DIGEST}"
+cargo run --features config-schema --example config-schema -- --format kube --target workload \
+  --image "ghcr.io/you/portfolio@${DIGEST}"
+cargo run --features config-schema --example config-schema -- --format kube-labels \
+  --document-key config.toml --image "ghcr.io/you/portfolio@${DIGEST}"
+```
+
+`kube-labels` emits the same entries as `NAME=value` lines, for `kubectl label` and
+`kubectl annotate` — the counterpart of `--format labels` on this side of the protocol.
+
+### What the object deliberately does not carry
+
+There is no label or annotation for the loader's prefix, and none for the path the contract is
+embedded at. Both are facts about an image, and the image already publishes both, checked against
+the document by `Contract::verify_labels`. Copying either onto a Kubernetes object creates a second
+spelling of a fact that already has one — the exact drift `verify_labels` exists to catch — and here
+there would be nothing to catch it, because the object is rendered by a chart in a repository this
+crate never sees. A consumer that wants the prefix reads the image's config blob, which it is
+already reading for the version.
+
+There is no `app` label either, and that one is not a matter of taste. A document may be read by
+several images, which is why the image list is a list, so the value would have to be multi-valued —
+and a multi-valued label needs a separator, every candidate for which (`,`, `/`, a space) is outside
+the character set a label value may hold. Anything per-image or multi-valued is an annotation, and
+that rule has no exceptions.
+
+### Selecting on it, and checking it
+
+The label exists to be matched. A policy that wants every object participating in the protocol,
+whatever version it was rendered against, asks whether the key is there at all:
+
+```yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: config-contract-pairing
+spec:
+  rules:
+    - name: every-stamped-configmap-pairs-with-its-image
+      match:
+        any:
+          - resources:
+              kinds: [ConfigMap]
+              selector:
+                matchExpressions:
+                  - key: dev.terrace.config/contract-version
+                    operator: Exists
+```
+
+What the policy then does with the object is one call. `Pairing` takes the contract, the running
+container's digest-pinned reference and the labels its config blob carries, and the mounted object's
+own metadata, and asserts that all of it describes **one** configuration surface:
+
+```rust
+use terrace_config::schema::DEFAULT_PATH;
+use terrace_config::schema::kube::{Format, Pairing, Target};
+
+let target = Target::document("config.toml", Format::Toml);
+Pairing::new(&contract)
+    .image(running_image, DEFAULT_PATH, &image_labels)   // from `crane config`, or the kubelet
+    .object(&target, &object_labels, &object_annotations)
+    .check()?;
+```
+
+Five things have to hold, and each of them can come apart on its own: the object's
+`contract-version` matches the contract; the image's own three labels match it too, via
+`Contract::verify_labels` reused rather than restated; the object and the image agree with each
+other, which is the failure an operator actually sees when an image rolls forward and nothing
+re-renders the `ConfigMap`; the running image is a **member** of the image list, not equal to it,
+because a document read by several binaries lists all of them; and the document key and format are
+present and well-formed. Every refusal names both sides and what to do about it.
+
+Metadata the chart added of its own — `app.kubernetes.io/*`, a checksum annotation, whatever an
+operator set — is ignored, on the same rule `verify_labels` applies to an image's
+`org.opencontainers.image.*`. The one exception is a document key or a format on a **pod template**,
+which is refused rather than ignored: those are not foreign keys this check has no business with,
+they are this protocol's own keys on an object that has no document, claiming something nothing
+verified against the file the pod actually mounts.
+
 ## Secrets and `Debug`
 
 Two public types hold secret material: `provider::FileValue` and `Sources`, whose fingerprint is

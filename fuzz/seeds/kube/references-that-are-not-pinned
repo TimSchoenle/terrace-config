@@ -1,0 +1,7 @@
+p:TEST_
+k:a
+d:config.toml
+f:toml
+i:ghcr.io/you/a:v1
+i:ghcr.io/you/b@sha256:abc
+i:ghcr.io/you/c
