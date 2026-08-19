@@ -1,0 +1,4 @@
+p:PORTFOLIO_
+a:portfolio
+k:dist_dir=Bundle directory.
+i:ghcr.io/you/portfolio@sha256:0000000000000000000000000000000000000000000000000000000000000000

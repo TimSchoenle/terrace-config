@@ -1190,6 +1190,138 @@ stake — a chart is about to be validated against this:
 A renamed key then shows up in the diff of the pull request that renamed it, which is the cheapest
 possible warning that a chart is about to break.
 
+## Stamping the objects a chart renders
+
+Everything above lands on the image, and that is enough for a CI job — it can resolve a digest and
+ask a registry. It is not enough for anything inside the cluster. A Kyverno policy, a validating
+admission webhook, an initContainer inspecting a live `ConfigMap`: all of them see Kubernetes
+objects, and a rendered `ConfigMap` says nothing about which contract it was built against. The
+document and the image that reads it arrive separately, and nothing in the cluster can tell a
+matched pair from a mismatched one.
+
+`schema::kube` is the other half of the protocol. It names what a chart stamps and checks both
+sides of the pair; it renders no manifests, because the chart already knows which object is which
+and has a templating language for saying so.
+
+### Labels are what you select on, annotations are what you read
+
+That sentence is forced by the platform, not chosen, and it is worth stating plainly because the
+obvious design violates it. A Kubernetes label value must be 63 characters or fewer and must match
+`(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`. Three of the strings sitting right next to this code
+fail that rule:
+
+| Value | Why it cannot be a label value |
+|---|---|
+| `PORTFOLIO_` | trailing underscore |
+| `/config/contract.json` | `/` is not in the character class |
+| `application/vnd.terrace.config-schema.v1+json` | `/` and `+` |
+
+Annotation values are unconstrained. So anything a policy needs to *match on* has to survive that
+character class, and everything else is an annotation. Getting this wrong fails at `kubectl apply`,
+on the whole object, in whatever pipeline first renders the chart.
+
+### One label, three annotations
+
+```yaml
+metadata:
+  labels:
+    dev.terrace.config/contract-version: "1"
+  annotations:
+    dev.terrace.config/images: "ghcr.io/you/portfolio@sha256:48e2…,ghcr.io/you/sidecar@sha256:9f1c…"
+    dev.terrace.config/document-key: "config.toml"
+    dev.terrace.config/format: "toml"
+```
+
+| Key | Carries | Why it is where it is |
+|---|---|---|
+| `dev.terrace.config/contract-version` | the contract version, stringified | the one question a selector asks — does this object participate, and in which version — and a decimal integer is always a legal label value |
+| `dev.terrace.config/images` | every image that reads this document, digest-pinned, comma-separated | multi-valued, and every plausible separator (`,`, `/`, space) is illegal in a label value |
+| `dev.terrace.config/document-key` | which key of `data` the document is | a `ConfigMap` may carry several files; without it a validator guesses, reports on the wrong one, and passes |
+| `dev.terrace.config/format` | which parser reads it — `toml` today | a YAML or JSON document normalises to the same tree, but only after something has parsed it |
+
+Digest-pinning is a hard requirement rather than a preference, and it is the same reasoning the
+referrer fetch rests on: a tag can be moved after the pairing was checked and before the pod is
+rescheduled, so a pairing keyed on a tag proves nothing about the image that is actually running.
+An unpinned reference is refused.
+
+**There is deliberately no `app` label, and no `prefix` or `contract-path` label.** `app` cannot be
+one: a document may be read by several images — one prefix, one rendered file, eight binaries, each
+`Describe` covering only the keys it consumes — so the value is multi-valued, and a multi-valued
+label needs a separator the character class does not admit. That is not a reason to pick a fourth
+separator; it is the platform saying the fact belongs in an annotation.
+
+`prefix` and `contract-path` are the more tempting omission, because both values are right there on
+the contract. They are facts about *an image*, and the image already publishes them in its config
+blob. A copy here would be a second spelling of a fact that already has one — which is exactly the
+drift `verify_labels` exists to catch, except that here nothing could catch it, because the object
+is rendered by a chart this crate never sees. A consumer that wants either reads it off the image.
+
+### Two objects, not stamped identically
+
+The **document object** — the `ConfigMap`, or the `Secret` behind a secrets directory — gets the
+label and all three annotations. The **workload pod template** (`spec.template.metadata`) gets the
+label and `images` only: `document-key` and `format` describe a document, and a pod is not one. It
+carries the stamp at all so that an admission webhook seeing only the pod — which is what an
+admission webhook usually sees, since that is the object being admitted — can find the image list
+without walking `ownerReferences` back to a workload and forward to a `ConfigMap`.
+
+`Contract::kube_metadata` produces the block for either target and `Metadata::to_yaml` indents it
+for pasting, on the same reasoning as `to_dockerfile_labels`: a chart writes its `metadata` in a
+templating language this crate has no part in, so hand-writing is unavoidable, and the honest
+answer is to make it a copy-paste and then make the result checkable. That check is
+`Contract::verify_kube_metadata`, which ignores the `app.kubernetes.io/*` and `helm.sh/*` keys
+around it and refuses a `dev.terrace.config/*` key that does not belong on the object it is looking
+at — a document key on a pod template, or a misspelling nothing would otherwise read.
+
+```bash
+cargo run --example config-schema -- --format kube \
+  --image "ghcr.io/you/portfolio@sha256:48e2…" --document-key config.toml
+```
+
+Paste the result under the object's `metadata:`, or take `--format kube-labels` for the same stamp
+as `NAME=value` lines when the next step is `kubectl label` rather than a template.
+
+### The pairing check
+
+The one function something in the cluster actually calls. It takes both halves and asserts they
+describe one configuration surface:
+
+```rust
+use terrace_config::schema::kube::Pairing;
+
+Pairing::new(&contract)
+    .image(&image_labels, "ghcr.io/you/portfolio@sha256:48e2…")
+    .object(&object_labels, &object_annotations)
+    .check()?;
+```
+
+Five questions, each of which makes the next worth asking: the object's `contract-version` is this
+contract's; the image's own three labels agree with the contract — that is `verify_labels`, reused
+rather than reimplemented; the object and the image agree with *each other*, which is the only
+question whose answer does not depend on having fetched the right contract; the running image is a
+**member** of the object's image list; and the document says which entry of `data` it is and how to
+parse it.
+
+Membership rather than equality is the union case, and it is why the annotation is a list at all. A
+container is correct if it is *one of* the readers; requiring it to be the only one would refuse
+every deployment where several binaries share a rendered document. A reference carrying a tag
+*beside* its digest pairs with the same digest written bare, because the digest is what resolves.
+Every failure names both sides and what to do about it.
+
+A policy selects the objects that participate with a plain label selector, which is the whole
+reason the label surface is one always-legal value:
+
+```yaml
+match:
+  any:
+    - resources:
+        kinds: [ConfigMap]
+        selector:
+          matchExpressions:
+            - key: dev.terrace.config/contract-version
+              operator: Exists
+```
+
 ## Secrets and `Debug`
 
 Two public types hold secret material: `provider::FileValue` and `Sources`, whose fingerprint is

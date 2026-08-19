@@ -293,7 +293,7 @@ it.
 This is the *protocol*. "Does this image declare a config contract, and what should it hash to" is
 answerable for any image in any registry without knowing anything about the project. It is also
 what makes the scheme language-agnostic: a Go service that emits the same envelope and sets the
-same four labels participates fully, and `terrace-config` is simply what makes it free for a Rust
+same three labels participates fully, and `terrace-config` is simply what makes it free for a Rust
 service.
 
 ### 3.2 A file in the image — the literal ask, and the offline copy
@@ -309,7 +309,7 @@ buys:
   mirror, a tarball on disk.
 - It is the fallback path when a registry does not implement the referrers API.
 - It is what a future initContainer or admission webhook reads to do the same validation
-  *in-cluster* rather than in CI (§7).
+  *in-cluster* rather than in CI (§3.5).
 
 It does **not** require the binary to grow a `--dump-schema` flag, which matters: the image is
 `FROM scratch` with no shell, and the `schema` feature is deliberately kept out of the production
@@ -389,6 +389,63 @@ The `oras attach` and `cosign sign` steps run after the push, keyed on the diges
 `docker/build-push-action` returns. The document is attached **verbatim** — the bytes that were
 hashed into the label, with nothing added afterwards. See §2.1 for why there is no digest field to
 add.
+
+### 3.5 Kubernetes object metadata — the cluster-side half
+
+Everything above lands on the *image*. That is enough for a CI job, which can resolve a digest and
+ask a registry; it is not enough for anything inside the cluster. A Kyverno policy, a validating
+admission webhook or an initContainer inspecting a live `ConfigMap` sees Kubernetes objects, and a
+rendered `ConfigMap` that says nothing about which contract it was built against is one that cannot
+be told apart from a mismatched one.
+
+So the chart stamps what it renders. The constraint that shapes the whole stamp is that Kubernetes
+is not Docker: a label value must be 63 characters or fewer and must match
+`(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`, which `PORTFOLIO_` fails on its trailing underscore,
+`/config/contract.json` fails on its slashes, and the media type fails twice. Annotation values are
+unconstrained. The split is therefore forced rather than chosen:
+
+> **Labels are what you select on. Annotations are what you read.**
+
+One label, which is the entire selectable surface:
+
+```yaml
+labels:
+  dev.terrace.config/contract-version: "1"
+```
+
+and three annotations:
+
+| Annotation | Carries | Why not a label |
+|---|---|---|
+| `dev.terrace.config/images` | every image that reads this document, digest-pinned, comma-separated | multi-valued, and every plausible separator is illegal in a label value |
+| `dev.terrace.config/document-key` | which key of `data` the document is | a `ConfigMap` may hold several files, and `.` is legal in a key but not at the ends of a label value |
+| `dev.terrace.config/format` | which parser reads it — `toml` today | modelled with a fallback variant, so a YAML document does not break validators that only know TOML |
+
+Digest-pinning the image list is a hard requirement, for the reason in §3.3: a tag can be moved, so
+a pairing keyed on one proves nothing about the image that is actually running.
+
+**There is deliberately no `app` label, and no `prefix` or `contract-path` label.** The first cannot
+be one: a document may be read by several images (§4.3), and a multi-valued label needs a separator
+that the character class does not admit. The other two are facts about *an image*, and the image
+already carries them — a copy on a Kubernetes object would be a second spelling of a fact that has
+one, rendered by a chart the crate never sees, with nothing able to catch it drifting.
+
+Two objects are stamped, and not identically. The document object — the `ConfigMap`, or the
+`Secret` behind a secrets directory — gets the label and all three annotations. The workload's pod
+template gets the label and `images` only, because `document-key` and `format` describe a document
+and a pod is not one. A pod is stamped at all so that an admission webhook holding only the pod,
+which is the object being admitted, can find the image list without walking `ownerReferences`.
+
+The pairing check then takes both halves — the contract, the image's own three labels, the running
+image's pinned reference, and the object's labels and annotations — and asserts they describe one
+configuration surface: the object's version matches the contract's, the image's labels match the
+contract's, the object and the image agree with *each other*, the running image is a **member** of
+the object's reader list, and the document says which entry it is and how to parse it. Membership
+rather than equality is what makes the union case (§4.3) deployable.
+
+`terrace-config` names the protocol and verifies both halves. It renders no manifests: the chart is
+what knows which object is which and which images read what, and it already has a templating
+language for that.
 
 ---
 
@@ -662,7 +719,7 @@ failed CI job is a better diagnostic than anything a schema validator can produc
 | 2 | helm-charts | `config-contract.yaml` for portfolio, `just contracts`, `just check-config`, gates 1–3, a `config` CI job | the loop closes end to end on the simplest chart |
 | 3 | helm-charts | tankovault: many documents, many images, the union | it scales past one binary |
 | 4 | both | `--check-config`, gate 4 in e2e; `check-contract-coverage` | fidelity, and no silent opt-out |
-| 5 | optional | cluster-side enforcement (§7) | the same artifacts, a second consumer |
+| 5 | optional | cluster-side enforcement (§3.5) | the same artifacts, a second consumer |
 
 Phase 2 is the one that must be got right; 3 is the one that will find the design errors. Phase 1
 is deliberately a single-image chart so that the first end-to-end run has one moving part.
@@ -675,13 +732,9 @@ key in `_helpers.tpl`, nothing downstream is worth building.
 
 ## 7. Extension points designed for, not built
 
-- **Cluster-side admission.** The rendered ConfigMap carries
-  `dev.terrace.config/contract-version`; a Kyverno policy fetches the same referrer for the running
-  pod's image digest and refuses a mismatched pair. Same artifacts, no new generation — this is why
-  the in-image copy (§3.2) is worth its 30 KB.
 - **Non-TOML documents.** `source.format` is already a field. A YAML or JSON document normalises to
   the same tree, and every gate above is unchanged.
-- **Non-Rust services.** The contract is defined by its media type and its four labels, not by
+- **Non-Rust services.** The contract is defined by its media type and its three labels, not by
   `terrace-config`. Any language that emits the envelope participates.
 - **Third-party images.** A `documents[].contract: { file: contracts/paperless.hand.json }` points
   at a hand-written contract for an upstream image, and every gate runs identically. The

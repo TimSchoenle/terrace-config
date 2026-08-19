@@ -92,6 +92,11 @@ fn schema_seeds() {
     replay_target("schema", oracle::schema::check);
 }
 
+#[test]
+fn kube_seeds() {
+    replay_target("kube", oracle::kube::check);
+}
+
 /// A deterministic input generator, standing in for a mutation engine.
 ///
 /// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
@@ -365,5 +370,91 @@ mod generated {
     #[test]
     fn schema_sweep() {
         sweep_with(0x5EED_0004, oracle::schema::check, generate_schema);
+    }
+
+    /// Prefixes and app names chosen to sit on the Kubernetes label rules rather than on the
+    /// loader's: a trailing underscore, a leading dot, a slash, a `+`, one past 63 characters,
+    /// and the empty prefix the contract builder refuses outright.
+    const STAMP_NAMES: &[&str] = &[
+        "PORTFOLIO_",
+        "TEST_",
+        "",
+        "a",
+        ".leading",
+        "trailing.",
+        "has/slash",
+        "has+plus",
+        "has space",
+        "UPPER_CASE_",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "ünïcode",
+    ];
+
+    /// Document keys chosen to sit on the `ConfigMap` rule: the two that name a directory, a
+    /// path separator, and characters the class refuses.
+    const DOCUMENT_KEYS: &[&str] = &[
+        "config.toml",
+        ".",
+        "..",
+        "",
+        "sub/config.toml",
+        "config toml",
+        "config:toml",
+        "-leading",
+        "00-base.yaml",
+    ];
+
+    /// Formats, including the empty one and two nothing emits.
+    const FORMATS: &[&str] = &["toml", "yaml", "json", "", "TOML", "hcl", "a,b"];
+
+    /// References chosen to sit on the pinning rule: an unpinned tag, a short digest, an
+    /// upper-case one, a registry port, a tag beside a digest, and the separator itself.
+    const REFERENCES: &[&str] = &[
+        "ghcr.io/you/portfolio@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "ghcr.io/you/sidecar@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "ghcr.io/you/portfolio:v2.5.0@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "registry.local:5000/you/portfolio@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "ghcr.io/you/portfolio",
+        "ghcr.io/you/portfolio:latest",
+        "ghcr.io/you/portfolio@sha256:short",
+        "ghcr.io/you/portfolio@SHA256:0000000000000000000000000000000000000000000000000000000000000000",
+        "ghcr.io/you/portfolio@sha256:0000000000000000000000000000000000000000000000000000000000000000,x",
+        "@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "",
+    ];
+
+    /// Build one kube-oracle input.
+    fn generate_kube(rng: &mut Rng) -> String {
+        let mut lines = vec![format!("p:{}", rng.pick(STAMP_NAMES))];
+        if rng.next().is_multiple_of(3) {
+            lines.push(format!("a:{}", rng.pick(STAMP_NAMES)));
+        }
+        if rng.next().is_multiple_of(4) {
+            lines.push("w:".to_owned());
+        }
+        if rng.next().is_multiple_of(2) {
+            lines.push(format!("d:{}", rng.pick(DOCUMENT_KEYS)));
+        }
+        if rng.next().is_multiple_of(2) {
+            lines.push(format!("f:{}", rng.pick(FORMATS)));
+        }
+
+        let keys = 1 + rng.next() % 3;
+        for index in 0..keys {
+            lines.push(format!("k:{}/leaf{index}=docs", rng.pick(SEGMENTS)));
+        }
+        let images = rng.next() % 4;
+        for _ in 0..images {
+            lines.push(format!("i:{}", rng.pick(REFERENCES)));
+        }
+        lines.join(
+            "
+",
+        )
+    }
+
+    #[test]
+    fn kube_sweep() {
+        sweep_with(0x5EED_0006, oracle::kube::check, generate_kube);
     }
 }

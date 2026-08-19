@@ -85,6 +85,12 @@
 
 mod contract;
 mod json_schema;
+// A module of its own rather than another flat re-export, and the only one in here that is.
+// Every name in it would need a `Kube` prefix to sit beside `Contract` and `Schema` without
+// colliding — `KubeMetadata`, `KubeTarget`, `KubeFormat` — and `kube::Metadata` says the same
+// thing without the stutter. Nothing from it is re-exported below: a caller reaching for this is
+// reaching for the Kubernetes half deliberately, and the qualification is what says so.
+pub mod kube;
 mod markdown;
 mod rust_type;
 mod toml_example;

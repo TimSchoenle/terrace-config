@@ -1,0 +1,5 @@
+k:database/url=The connection string.
+k:auth/jwt_secret=Signing key.
+d:config.toml
+f:toml
+i:ghcr.io/you/portfolio@sha256:0000000000000000000000000000000000000000000000000000000000000000

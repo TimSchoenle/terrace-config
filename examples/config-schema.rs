@@ -12,6 +12,8 @@
 //! cargo run --example config-schema -- --format contract          > contract.json
 //! cargo run --example config-schema -- --format labels            > contract.labels
 //! cargo run --example config-schema -- --format dockerfile        # paste into the Dockerfile
+//! cargo run --example config-schema -- --format kube --image "ghcr.io/you/portfolio@sha256:48e2…" //!                                       --document-key config.toml   # paste into the chart
+//! cargo run --example config-schema -- --format kube-labels --target workload //!                                       --image "ghcr.io/you/portfolio@sha256:48e2…"
 //! cargo run --example config-schema -- --format contract --revision "$(git rev-parse HEAD)" \
 //!                                       --created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 //! cargo run --example config-schema -- --format markdown --only csp > docs/csp.md
@@ -31,6 +33,13 @@
 //! [`External`](terrace_config::schema::External) for the half no derive can see — the variables
 //! this image reads that are nobody's configuration key.
 //!
+//! `kube` and `kube-labels` are the third consumer, and the only one that is neither a
+//! documentation job nor a container build: a *chart*, stamping the objects it renders so that
+//! something inside the cluster can pair a mounted document with the image about to read it. They
+//! need what no derive and no build can know — which images read the document, digest-pinned —
+//! so `--image` is required and a tag is refused. See
+//! [`schema::kube`](terrace_config::schema::kube).
+//!
 //! It reads nothing from the environment, so it produces the same answer on a developer's
 //! machine and on a runner where none of the variables it describes exist.
 //!
@@ -47,6 +56,7 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
+use terrace_config::schema::kube::{self, Target};
 use terrace_config::schema::{
     App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, Schema,
 };
@@ -232,7 +242,44 @@ fn render(options: &Options) -> Result<String, terrace_config::Error> {
             .to_dockerfile_labels(DEFAULT_PATH)
             .trim_end()
             .to_owned()),
+        // The chart-side outputs. Unlike every rendering above them, these carry a fact this
+        // generator cannot derive from the type: which images read the document. It is passed in,
+        // and `kube_metadata` refuses it if it is not pinned to a digest.
+        Format::Kube => Ok(stamp(schema, options)?
+            .to_yaml(options.indent)
+            .trim_end()
+            .to_owned()),
+        Format::KubeLabels => {
+            let metadata = stamp(schema, options)?;
+            Ok(metadata
+                .labels()
+                .iter()
+                .chain(metadata.annotations())
+                .map(|(name, value)| format!("{name}={value}"))
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                ))
+        }
     }
+}
+
+/// The metadata a chart stamps onto one rendered object.
+///
+/// The labels and the annotations are emitted together, in one call, because they are one stamp:
+/// an object carrying the label and none of the annotations participates in the protocol and
+/// tells a validator nothing, which is worse than not participating at all.
+fn stamp(schema: Schema, options: &Options) -> Result<kube::Metadata, terrace_config::Error> {
+    let target = match options.target {
+        Stamp::Document => Target::document(
+            options.document_key.as_deref().unwrap_or("config.toml"),
+            kube::Format::from_annotation(options.document_format.as_deref().unwrap_or("toml")),
+        ),
+        Stamp::Workload => Target::Workload,
+    };
+    let images: Vec<&str> = options.images.iter().map(String::as_str).collect();
+    contract(schema, options)?.kube_metadata(&target, &images)
 }
 
 /// The whole contract this image publishes: every configuration key, and everything else it reads.
@@ -305,6 +352,34 @@ struct Options {
     revision: Option<String>,
     /// When this build happened, RFC 3339, for `--format contract`.
     created: Option<String>,
+    /// Which object the Kubernetes stamp is for.
+    target: Stamp,
+    /// Every image that reads the document, digest-pinned, in declaration order.
+    images: Vec<String>,
+    /// Which key inside `data` the document is. [`None`] is the default, `config.toml`.
+    ///
+    /// An [`Option`] rather than a defaulted `String` so that passing the default *explicitly*
+    /// is still passing it: `--target workload --document-key config.toml` has to be refused
+    /// like any other document flag on a pod template, and comparing against the default value
+    /// would let exactly that one spelling through.
+    document_key: Option<String>,
+    /// Which parser reads the document. [`None`] is the default, `toml`.
+    document_format: Option<String>,
+    /// How far the YAML block is indented, for pasting under a chart's `metadata:`.
+    indent: usize,
+}
+
+/// Which object `--format kube` describes.
+///
+/// Separate from [`Format`] because it is orthogonal to it: both renderings answer for either
+/// object, and the two questions being one flag would make `--format kube-workload-labels` a
+/// spelling somebody eventually reaches for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stamp {
+    /// The `ConfigMap` or `Secret` holding the document.
+    Document,
+    /// The workload's pod template.
+    Workload,
 }
 
 /// Which rendering to emit.
@@ -324,6 +399,16 @@ enum Format {
     Labels,
     /// The same labels as the `LABEL` instruction to paste into a Dockerfile.
     Dockerfile,
+    /// The Kubernetes labels and annotations a chart stamps onto the object it renders, as the
+    /// YAML block to paste under `metadata:`.
+    ///
+    /// The other side of the protocol from `labels`: those go on the image, where nothing inside
+    /// a cluster can see them without asking a registry. These go on the `ConfigMap` and the pod
+    /// template, which is what an admission policy is already holding.
+    Kube,
+    /// The same stamp as `NAME=value` lines, labels first, for a script reaching for
+    /// `kubectl label` and `kubectl annotate` rather than for a template.
+    KubeLabels,
 }
 
 impl Format {
@@ -332,7 +417,15 @@ impl Format {
     /// A contract that quietly omitted the keys `--only` cut would be a contract asserting the
     /// image does not read them, which is the one claim in the document that must never be wrong.
     fn whole_image(self) -> bool {
-        matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
+        matches!(
+            self,
+            Self::Contract | Self::Labels | Self::Dockerfile | Self::Kube | Self::KubeLabels
+        )
+    }
+
+    /// Whether this rendering stamps a Kubernetes object, and so needs an image list.
+    fn stamps_an_object(self) -> bool {
+        matches!(self, Self::Kube | Self::KubeLabels)
     }
 }
 
@@ -344,6 +437,16 @@ impl Options {
             only: String::new(),
             revision: None,
             created: None,
+            target: Stamp::Document,
+            images: Vec::new(),
+            // A document object is the common case and `config.toml` is what this crate's file
+            // layers read, so the two defaults together make `--format kube --image …` a
+            // complete command. The image list has no default and cannot: nothing here knows it.
+            document_key: None,
+            document_format: None,
+            // Two, because a chart's `metadata:` children sit at two and pasting is the whole
+            // point of the rendering.
+            indent: 2,
         };
         let mut args = std::env::args().skip(1);
         while let Some(flag) = args.next() {
@@ -357,9 +460,47 @@ impl Options {
                         Some("contract") => Format::Contract,
                         Some("labels") => Format::Labels,
                         Some("dockerfile") => Format::Dockerfile,
+                        Some("kube") => Format::Kube,
+                        Some("kube-labels") => Format::KubeLabels,
                         Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
                         None => return Err(format!("--format takes a value; {USAGE}")),
                     };
+                }
+                // Repeatable, and order-preserving: the annotation lists the readers in
+                // declaration order, so two runs of the same command produce the same bytes.
+                "--image" => {
+                    options.images.push(
+                        args.next()
+                            .ok_or_else(|| format!("--image takes a reference; {USAGE}"))?,
+                    );
+                }
+                "--target" => {
+                    options.target = match args.next().as_deref() {
+                        Some("document") => Stamp::Document,
+                        Some("workload") => Stamp::Workload,
+                        Some(other) => return Err(format!("unknown target `{other}`; {USAGE}")),
+                        None => return Err(format!("--target takes a value; {USAGE}")),
+                    };
+                }
+                "--document-key" => {
+                    options.document_key = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--document-key takes a key; {USAGE}"))?,
+                    );
+                }
+                "--document-format" => {
+                    options.document_format = Some(
+                        args.next()
+                            .ok_or_else(|| format!("--document-format takes a format; {USAGE}"))?,
+                    );
+                }
+                "--indent" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| format!("--indent takes a column count; {USAGE}"))?;
+                    options.indent = value
+                        .parse()
+                        .map_err(|_| format!("--indent takes a number, not `{value}`; {USAGE}"))?;
                 }
                 "--only" => {
                     options.only = args
@@ -382,10 +523,21 @@ impl Options {
             }
         }
 
-        // Refused rather than silently ignored. A contract is a claim about what a whole image
-        // reads, so one built from a slice would assert that the keys `--only` cut do not exist —
-        // and a validator believing that rejects a chart which is setting them correctly.
-        if options.format.whole_image() && !options.only.is_empty() {
+        options.refuse_impossible_combinations()?;
+        Ok(options)
+    }
+
+    /// Refuse the flag combinations that cannot produce what was asked for.
+    ///
+    /// Every one of these is refused rather than silently ignored, and it is the same choice each
+    /// time: each combination produces a *plausible* artefact — a contract, or a stamp — that
+    /// asserts something untrue about an image, and a plausible wrong answer is the one somebody
+    /// builds a gate on.
+    fn refuse_impossible_combinations(&self) -> Result<(), String> {
+        // A contract is a claim about what a whole image reads, so one built from a slice would
+        // assert that the keys `--only` cut do not exist — and a validator believing that rejects
+        // a chart which is setting them correctly.
+        if self.format.whole_image() && !self.only.is_empty() {
             return Err(format!(
                 "--only slices a configuration, and this format describes a whole image; a \
                  contract built from a slice would claim the image does not read the keys it \
@@ -393,10 +545,44 @@ impl Options {
             ));
         }
 
-        Ok(options)
+        // Nothing in this generator knows which images read a document — the contract
+        // deliberately carries no digest — so a stamp built without `--image` would be an object
+        // claiming to participate in the protocol with an empty reader list, which every
+        // membership test fails. An empty annotation is not a smaller claim than a wrong one; it
+        // is a stamp nothing can ever check.
+        if self.format.stamps_an_object() && self.images.is_empty() {
+            return Err(format!(
+                "this format stamps an object with the images that read its document, and none \
+                 were given. Pass --image once per reader, digest-pinned. {USAGE}"
+            ));
+        }
+
+        // A pod template carries no document key and no format, so passing either for a workload
+        // asks for a stamp that would drop half of what was asked for. Dropping it quietly is how
+        // somebody comes to believe a pod says which file it reads.
+        if self.format.stamps_an_object() && self.target == Stamp::Workload {
+            for (flag, given) in [
+                ("--document-key", self.document_key.is_some()),
+                ("--document-format", self.document_format.is_some()),
+            ] {
+                if given {
+                    return Err(format!(
+                        "{flag} describes a document, and --target workload stamps a pod \
+                         template, which is not one. Stamp the document object with --target \
+                         document, or drop {flag}. {USAGE}"
+                    ));
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
-const USAGE: &str = "usage: config-schema \
-                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
-                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";
+const USAGE: &str = concat!(
+    "usage: config-schema ",
+    "[--format json|markdown|toml|json-schema|contract|labels|dockerfile|kube|kube-labels] ",
+    "[--only <key-prefix>] [--revision <commit>] [--created <rfc3339>] ",
+    "[--target document|workload] [--image <ref>]... ",
+    "[--document-key <key>] [--document-format <fmt>] [--indent <columns>]"
+);

@@ -109,6 +109,11 @@ beside it.
 document a container build embeds in its image and attaches to its digest, so that a deployment
 pipeline holding nothing but that digest can check the configuration it is about to mount.
 
+Publishing it has two halves, because a CI job and a cluster see different things. The image
+carries the labels that make the contract discoverable from its config blob; [`schema::kube`]
+carries what a chart stamps onto the objects it renders, so that a policy holding a live
+`ConfigMap` and a running pod — and no registry — can still tell whether the two belong together.
+
 ```no_run
 use serde::{Deserialize, Serialize};
 use terrace_config::{Terrace, schema::App, schema::Describe};
