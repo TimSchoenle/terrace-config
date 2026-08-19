@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/TimSchoenle/terrace-config/compare/v0.8.0...v0.9.0) (2026-08-19)
+
+
+### Features
+
+* **schema:** finish the second layer, and the third markdown rendering ([#46](https://github.com/TimSchoenle/terrace-config/issues/46)) ([3cf04fa](https://github.com/TimSchoenle/terrace-config/commit/3cf04fa3a5ed6fc5c9b7621470f151440228278a))
+
 ## [0.8.0](https://github.com/TimSchoenle/terrace-config/compare/v0.7.0...v0.8.0) (2026-08-19)
 
 
