@@ -46,6 +46,12 @@ loader = ["dep:figment", "dep:serde"]
 # needs `DeserializeOwned` as a bound, and a service that loads configuration at boot has no
 # reason to compile `serde_derive` on this crate's account.
 schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros"]
+# `schema-cli` is the generator every consumer of `schema` was writing by hand: the `--format`
+# vocabulary, the argument parsing, the dispatch across the six renderings, and the two readers
+# that check a built image against what was generated. It costs no dependency `schema` did not
+# already pull — it is a feature so that a service which links `schema` to render a table at
+# runtime does not also compile an argument parser it will never call.
+schema-cli = ["schema"]
 # `testing` is an add-on to `loader` in the same way `schema` is, and for the same reason: every
 # affordance it has is one of the loader's layers — a secrets directory, TOML fragments, `_FILE`
 # indirection — and every name it writes is derived from the loader's own `Dialect`. It belongs in
@@ -77,7 +83,7 @@ reload = [
     "dep:tokio-util",
     "dep:tracing",
 ]
-full = ["loader", "reload", "schema", "explain"]
+full = ["loader", "reload", "schema", "schema-cli", "explain"]
 
 [dependencies]
 thiserror = "2"
@@ -140,7 +146,7 @@ private_intra_doc_links = "warn"
 # than by a README that says what it used to look like.
 [[example]]
 name = "config-schema"
-required-features = ["schema"]
+required-features = ["schema-cli"]
 
 [package.metadata.docs.rs]
 all-features = true

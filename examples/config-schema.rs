@@ -47,9 +47,8 @@ use std::process::ExitCode;
 
 use serde::{Deserialize, Serialize};
 use terrace_config::Terrace;
-use terrace_config::schema::{
-    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, JsonSchema, Schema,
-};
+use terrace_config::schema::cli::Cli;
+use terrace_config::schema::{App, ContractBuilder, Describe, External, ExternalVar, JsonSchema};
 
 /// The root. Everything under it lives somewhere else.
 #[derive(Deserialize, Serialize, Describe)]
@@ -166,237 +165,83 @@ mod github {
     }
 }
 
+/// Everything below is what a service actually writes. The rest of the program — the `--format`
+/// vocabulary, the argument parsing, the dispatch, the printing and the exit code — is
+/// [`Cli`](terrace_config::schema::cli::Cli), because it was the same program in every repository
+/// that had one.
 fn main() -> ExitCode {
-    let options = match Options::from_args() {
-        Ok(options) => options,
-        Err(message) => {
-            eprintln!("{message}");
+    // Built whole and sliced by `--only` inside `Cli::render`, rather than described from a
+    // subsystem's own type: the whole schema is the only place the real key paths exist, and a
+    // page documenting `cloudflare.*` when the file says `csp.cloudflare.*` is worse than no page.
+    //
+    // The defaults come from a value built here, not from the environment: a documentation job
+    // runs where none of these variables are set, and that is the point.
+    let schema = Terrace::new("PORTFOLIO_")
+        .reserve("PORTFOLIO_PROFILE")
+        .schema::<Config>()
+        .with_defaults_from(&Config::default());
+
+    let schema = match schema {
+        Ok(schema) => schema,
+        Err(error) => {
+            eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     };
 
-    match render(&options) {
-        Ok(rendered) => {
-            println!("{rendered}");
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::FAILURE
-        }
-    }
+    Cli::new(
+        // Spelled as the image tag spells it. `CARGO_PKG_VERSION` alone yields `2.5.0` where the
+        // images are tagged `v2.5.0`, and the field exists to be compared against a tag. A build
+        // passing `--version "$TAG"` overrides it.
+        App::new("portfolio")
+            .version(concat!("v", env!("CARGO_PKG_VERSION")))
+            .source("https://github.com/TimSchoenle/terrace-config"),
+    )
+    .json_schema(
+        JsonSchema::new()
+            .title("portfolio configuration")
+            .id("https://github.com/TimSchoenle/terrace-config/config.schema.json"),
+    )
+    .contract_with(&external)
+    .main(schema)
 }
 
-fn render(options: &Options) -> Result<String, terrace_config::Error> {
-    // Built whole and then sliced, rather than described from the subsystem's own type: the whole
-    // schema is the only place the real key paths exist, and a page documenting `cloudflare.*`
-    // when the file says `csp.cloudflare.*` is worse than no page.
-    //
-    // The defaults come from a value the caller builds, not from the environment: a documentation
-    // job runs where none of these variables are set, and that is the point.
-    let schema = Terrace::new("PORTFOLIO_")
-        .reserve("PORTFOLIO_PROFILE")
-        .schema::<Config>()
-        .with_defaults_from(&Config::default())?
-        .subset(&options.only);
-
-    match options.format {
-        Format::Json => schema.to_json(),
-        // A subsystem page gets the key table alone. The loader variables belong once, on the
-        // page that documents the whole configuration, rather than repeated above every slice —
-        // and `to_json` still carries them whichever page this is.
-        Format::Markdown if !options.only.is_empty() => {
-            Ok(schema.to_markdown_keys(Column::DEFAULT))
-        }
-        Format::Markdown => Ok(schema.to_markdown()),
-        // A slice of the configuration is a slice of the file too, so nothing here needs the
-        // `--only` special case the Markdown arm does: `subset` has already cut the keys, and
-        // both renderings are built from whatever keys are left.
-        Format::Toml => Ok(schema.to_toml_example()),
-        Format::JsonSchema => schema.to_json_schema_with(
-            &JsonSchema::new()
-                .title("portfolio configuration")
-                .id("https://github.com/TimSchoenle/terrace-config/config.schema.json"),
-        ),
-        // Whole-image outputs, so a slice of the configuration is not a thing either can be —
-        // `Options::from_args` refuses the combination rather than publishing a contract that
-        // silently omits the keys `--only` cut.
-        Format::Contract => contract(schema, options)?.to_json(),
-        Format::Labels => Ok(contract(schema, options)?
-            .labels(DEFAULT_PATH)
-            .into_iter()
-            .map(|(name, value)| format!("{name}={value}"))
-            .collect::<Vec<_>>()
-            .join("\n")),
-        Format::Dockerfile => Ok(contract(schema, options)?
-            .to_dockerfile_labels(DEFAULT_PATH)
-            .trim_end()
-            .to_owned()),
-    }
-}
-
-/// The whole contract this image publishes: every configuration key, and everything else it reads.
+/// The half of the contract no derive can reach, and the half a chart most needs.
 ///
-/// The `external` half is the part a derive cannot reach and the part a chart most needs. These
-/// three belong to the Dioxus toolchain, which reads them from the environment before any of this
-/// crate's layers exist — so they are not configuration keys, they are still set by the chart, and
-/// a validator told only about the `PORTFOLIO_` namespace would have to either flag them or ignore
-/// every variable outside it. Declared here, they are checked like any key: a chart passing
-/// `PORT: "http"` fails the same gate a chart passing `PORTFOLIO_GITHUB__TTL_SECS: "soon"` fails.
-fn contract(schema: Schema, options: &Options) -> Result<Contract, terrace_config::Error> {
-    // Spelled as the image tag spells it. `CARGO_PKG_VERSION` alone yields `2.5.0` where the
-    // images are tagged `v2.5.0`, and the field exists to be compared against a tag.
-    let mut app = App::new("portfolio")
-        .version(concat!("v", env!("CARGO_PKG_VERSION")))
-        .source("https://github.com/TimSchoenle/Portfolio");
-
-    // The two fields that legitimately differ between builds of one source tree, and the reason
-    // they are flags rather than something read here: this generator reads nothing from its
-    // environment, so that a documentation job and a container build produce the same bytes.
-    // Passing them makes that difference explicit and keeps `--format contract` reproducible when
-    // they are omitted.
-    if let Some(revision) = &options.revision {
-        app = app.revision(revision);
-    }
-    if let Some(created) = &options.created {
-        app = app.created(created);
-    }
-
-    schema
-        .into_contract(app)
-        .external(
-            External::new()
-                .var(
-                    ExternalVar::new("PORT")
-                        .owner("dioxus")
-                        .ty("u16")
-                        .default("8080")
-                        .docs("Bind port. Read by the Dioxus toolchain, not by this loader."),
-                )
-                .var(
-                    ExternalVar::new("IP")
-                        .owner("dioxus")
-                        .ty("IpAddr")
-                        .default("0.0.0.0")
-                        .docs("Bind address. Read by the Dioxus toolchain, not by this loader."),
-                )
-                .var(
-                    ExternalVar::new("RUST_LOG")
-                        .owner("tracing")
-                        .ty("String")
-                        .default("info")
-                        .docs("Verbosity, as `tracing` directives — `info`, `web=debug,info`."),
-                )
-                // What `Unknown::Reject` costs, and it is not zero even for a `scratch` image
-                // running one static binary: a pod carries names no image asked for. These have
-                // no owner here, which is the one case `ignore` is for.
-                .ignore("KUBERNETES_*")
-                .ignore("HOSTNAME"),
-        )
-        .build()
+/// These three belong to the Dioxus toolchain, which reads them from the environment before any of
+/// this crate's layers exist — so they are not configuration keys, they are still set by the
+/// chart, and a validator told only about the `PORTFOLIO_` namespace would have to either flag
+/// them or ignore every variable outside it. Declared here, they are checked like any key: a chart
+/// passing `PORT: "http"` fails the same gate a chart passing `PORTFOLIO_GITHUB__TTL_SECS: "soon"`
+/// fails.
+fn external(builder: ContractBuilder) -> ContractBuilder {
+    builder.external(
+        External::new()
+            .var(
+                ExternalVar::new("PORT")
+                    .owner("dioxus")
+                    .ty("u16")
+                    .default("8080")
+                    .docs("Bind port. Read by the Dioxus toolchain, not by this loader."),
+            )
+            .var(
+                ExternalVar::new("IP")
+                    .owner("dioxus")
+                    .ty("IpAddr")
+                    .default("0.0.0.0")
+                    .docs("Bind address. Read by the Dioxus toolchain, not by this loader."),
+            )
+            .var(
+                ExternalVar::new("RUST_LOG")
+                    .owner("tracing")
+                    .ty("String")
+                    .default("info")
+                    .docs("Verbosity, as `tracing` directives — `info`, `web=debug,info`."),
+            )
+            // What `Unknown::Reject` costs, and it is not zero even for a `scratch` image running
+            // one static binary: a pod carries names no image asked for. These have no owner here,
+            // which is the one case `ignore` is for.
+            .ignore("KUBERNETES_*")
+            .ignore("HOSTNAME"),
+    )
 }
-
-/// What to emit, and how much of it.
-struct Options {
-    format: Format,
-    /// The subtree to keep. Empty means the whole configuration.
-    only: String,
-    /// The commit this build is of, for `--format contract`.
-    revision: Option<String>,
-    /// When this build happened, RFC 3339, for `--format contract`.
-    created: Option<String>,
-}
-
-/// Which rendering to emit.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Format {
-    /// The versioned schema, for a pipeline that renders its own tables.
-    Json,
-    /// GitHub-flavoured tables, for a pipeline whose next step is `>> README.md`.
-    Markdown,
-    /// The commented file an operator copies to `config.toml`.
-    Toml,
-    /// A JSON Schema, for an editor to validate that file against.
-    JsonSchema,
-    /// The document a build embeds in its image and attaches to its digest.
-    Contract,
-    /// The image labels that make that document discoverable, one `NAME=value` per line.
-    Labels,
-    /// The same labels as the `LABEL` instruction to paste into a Dockerfile.
-    Dockerfile,
-}
-
-impl Format {
-    /// Whether this rendering describes a whole image rather than a slice of a configuration.
-    ///
-    /// A contract that quietly omitted the keys `--only` cut would be a contract asserting the
-    /// image does not read them, which is the one claim in the document that must never be wrong.
-    fn whole_image(self) -> bool {
-        matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
-    }
-}
-
-impl Options {
-    /// JSON and everything, unless asked otherwise: those are the outputs that lose nothing.
-    fn from_args() -> Result<Self, String> {
-        let mut options = Self {
-            format: Format::Json,
-            only: String::new(),
-            revision: None,
-            created: None,
-        };
-        let mut args = std::env::args().skip(1);
-        while let Some(flag) = args.next() {
-            match flag.as_str() {
-                "--format" => {
-                    options.format = match args.next().as_deref() {
-                        Some("json") => Format::Json,
-                        Some("markdown" | "md") => Format::Markdown,
-                        Some("toml") => Format::Toml,
-                        Some("json-schema" | "jsonschema") => Format::JsonSchema,
-                        Some("contract") => Format::Contract,
-                        Some("labels") => Format::Labels,
-                        Some("dockerfile") => Format::Dockerfile,
-                        Some(other) => return Err(format!("unknown format `{other}`; {USAGE}")),
-                        None => return Err(format!("--format takes a value; {USAGE}")),
-                    };
-                }
-                "--only" => {
-                    options.only = args
-                        .next()
-                        .ok_or_else(|| format!("--only takes a key prefix; {USAGE}"))?;
-                }
-                "--revision" => {
-                    options.revision = Some(
-                        args.next()
-                            .ok_or_else(|| format!("--revision takes a commit; {USAGE}"))?,
-                    );
-                }
-                "--created" => {
-                    options.created = Some(
-                        args.next()
-                            .ok_or_else(|| format!("--created takes a timestamp; {USAGE}"))?,
-                    );
-                }
-                other => return Err(format!("unknown argument `{other}`; {USAGE}")),
-            }
-        }
-
-        // Refused rather than silently ignored. A contract is a claim about what a whole image
-        // reads, so one built from a slice would assert that the keys `--only` cut do not exist —
-        // and a validator believing that rejects a chart which is setting them correctly.
-        if options.format.whole_image() && !options.only.is_empty() {
-            return Err(format!(
-                "--only slices a configuration, and this format describes a whole image; a \
-                 contract built from a slice would claim the image does not read the keys it \
-                 cut. {USAGE}"
-            ));
-        }
-
-        Ok(options)
-    }
-}
-
-const USAGE: &str = "usage: config-schema \
-                     [--format json|markdown|toml|json-schema|contract|labels|dockerfile] \
-                     [--only <key-prefix>] [--revision <commit>] [--created <rfc3339>]";
