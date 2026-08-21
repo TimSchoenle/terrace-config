@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.1](https://github.com/TimSchoenle/terrace-config/compare/v0.9.0...v0.9.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **schema:** print exactly one trailing newline from Cli::main ([#48](https://github.com/TimSchoenle/terrace-config/issues/48)) ([1a87714](https://github.com/TimSchoenle/terrace-config/commit/1a8771465096da1688ea2f93c59afa70e765c8b6))
+
+
+### Miscellaneous
+
+* **deps:** update taiki-e/install-action action to v2.86.2 ([#50](https://github.com/TimSchoenle/terrace-config/issues/50)) ([4128975](https://github.com/TimSchoenle/terrace-config/commit/41289758bde574b71d16c4d104c26c0fcd93e049))
+* **deps:** update taiki-e/install-action action to v2.86.3 ([#53](https://github.com/TimSchoenle/terrace-config/issues/53)) ([0e7f918](https://github.com/TimSchoenle/terrace-config/commit/0e7f9189a0b32992ef7791f9283bf9d1a77f00aa))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-auto-approve-renovate.yaml to vworkflows-maintenance-auto-approve-renovate-v1.4.21 ([#51](https://github.com/TimSchoenle/terrace-config/issues/51)) ([4c89386](https://github.com/TimSchoenle/terrace-config/commit/4c89386ffa9f71dbe925ed055545cebed0db8fb9))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-timed-auto-pr-approve.yaml to vworkflows-maintenance-timed-auto-pr-approve-v1.2.32 ([#52](https://github.com/TimSchoenle/terrace-config/issues/52)) ([8d0868a](https://github.com/TimSchoenle/terrace-config/commit/8d0868a91afa479286842f137f2013f87f9885ed))
+
 ## [0.9.0](https://github.com/TimSchoenle/terrace-config/compare/v0.8.0...v0.9.0) (2026-08-19)
 
 
