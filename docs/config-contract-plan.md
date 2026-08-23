@@ -1,8 +1,8 @@
 # The config contract: image-embedded configuration schemas, validated by the charts
 
-A design for shipping each service's configuration surface *with its image*, so that
-[helm-charts](https://github.com/TimSchoenle/helm-charts) can prove — before anything reaches a
-cluster — that the `config.toml` it renders is one the pinned image will actually accept.
+A design for shipping each service's configuration surface *with its image*.
+[helm-charts](https://github.com/TimSchoenle/helm-charts) can then prove — before anything reaches
+a cluster — that the `config.toml` it renders is one the pinned image will actually accept.
 
 Three repositories are involved:
 
