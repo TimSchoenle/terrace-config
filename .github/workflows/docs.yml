@@ -72,7 +72,8 @@ jobs:
         id: config
         run: |
           set -euo pipefail
-          echo "json=$(bash .github/scripts/readme-variables.sh)" >> "$GITHUB_OUTPUT"
+          json="$(bash .github/scripts/readme-variables.sh)"
+          echo "json=${json}" >> "$GITHUB_OUTPUT"
 
       # `branch` is the default branch rather than the action's `github.ref_name` default, which
       # on a pull_request event is `<number>/merge`. Left alone, the badge URL rendered here and
@@ -131,7 +132,8 @@ jobs:
         id: config
         run: |
           set -euo pipefail
-          echo "json=$(bash .github/scripts/readme-variables.sh)" >> "$GITHUB_OUTPUT"
+          json="$(bash .github/scripts/readme-variables.sh)"
+          echo "json=${json}" >> "$GITHUB_OUTPUT"
 
       - name: Collect the README payload
         id: variables
