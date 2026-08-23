@@ -253,8 +253,8 @@ variable on a container, first match winning:
 6. some `external.ignore` pattern — skip it.
 7. otherwise — `external.unknown`.
 
-That list is repeated verbatim in `External`'s own documentation, and the two must be edited
-together: two normative statements that disagree is the same defect as none, and harder to notice.
+That list is duplicated in `External`'s own rustdoc, and the two must be edited together: two
+normative statements that disagree is the same defect as none, and harder to notice.
 
 The alias spellings in steps 2 and 3 matter more than they look. A key with `#[serde(alias = "…")]`
 answers to every one of them — measured, in the environment layer and in the secrets directory

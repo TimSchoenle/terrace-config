@@ -144,6 +144,10 @@ jobs:
       - run: cargo doc --no-default-features --features explain --no-deps
       - run: cargo doc --no-default-features --features testing --no-deps
       - run: cargo doc --no-default-features --features reload --no-deps
+      # The only step that runs the doctests at all: `test` delegates to `cargo nextest`, which
+      # does not run them by design. It is also the job that sets `RUSTDOCFLAGS`, so a doctest
+      # carrying a rustdoc warning fails here.
+      - run: cargo test --doc --all-features
 
   # `fuzz/` is a workspace of its own on a nightly toolchain, so none of the jobs above touch it.
   #
@@ -182,6 +186,14 @@ jobs:
       - name: Lint the oracles
         working-directory: fuzz
         run: cargo clippy --all-targets
+      # The `doc` job above cannot reach here: `fuzz/` is a workspace of its own. Without this
+      # step its `[lints.rustdoc]` table is declared and enforced by nothing, and a broken
+      # intra-doc link renders as literal text nobody sees.
+      - name: Document the oracles
+        working-directory: fuzz
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --lib --no-deps
       - name: Short campaign
         run: |
           host="$(rustc -vV | sed -n 's/^host: //p')"

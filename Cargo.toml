@@ -122,6 +122,9 @@ workspace = true
 unsafe_code = "forbid"
 unreachable_pub = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
+# Covers the crate root, every module, every exported item, and every public struct field. That
+# makes `rustdoc::missing_crate_level_docs` redundant, so it is absent below.
+missing_docs = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -132,8 +135,17 @@ module_name_repetitions = "allow"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 multiple_crate_versions = "allow"
+# Both are already in `pedantic`. Named again so the next reader knows they are deliberate
+# rather than swept in with the group, and so dropping `pedantic` would not drop them.
 missing_errors_doc = "warn"
 missing_panics_doc = "warn"
+# An identifier written outside backticks renders as prose and stops being searchable.
+doc_markdown = "warn"
+# The missing blank line after the summary, which turns the whole comment into the index entry.
+too_long_first_doc_paragraph = "warn"
+doc_link_with_quotes = "warn"
+doc_broken_link = "warn"
+doc_include_without_cfg = "warn"
 must_use_candidate = "allow"
 
 [workspace.lints.rustdoc]
@@ -141,13 +153,10 @@ must_use_candidate = "allow"
 # rendered page, and this crate's doc comments are the artefact being reused.
 broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
+unescaped_backticks = "warn"
 
 # The shape a documentation job takes, kept compiling by `cargo clippy --all-targets` rather
 # than by a README that says what it used to look like.
 [[example]]
 name = "config-schema"
 required-features = ["schema-cli"]
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]

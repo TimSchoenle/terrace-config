@@ -153,10 +153,11 @@ impl Dialect {
         )
     }
 
-    /// The environment spelling of a bare key name, without treating `.` as nesting.
+    /// Returns the environment spelling of a bare key name, without treating `.` as nesting.
     ///
-    /// Used to test a secrets-directory file name against the reserved set: the file is named
-    /// `profile`, and what must be checked is whether `MYAPP_PROFILE` is reserved.
+    /// A file named `profile` is spelled `MYAPP_PROFILE`.
+    // One caller, the reserved check in `provider::secrets_dir`, which holds a file name rather
+    // than a key path and so must not have `.` read as the nesting separator.
     pub(crate) fn env_spelling_of_name(&self, name: &str) -> String {
         format!("{}{}", self.prefix, name.to_ascii_uppercase())
     }

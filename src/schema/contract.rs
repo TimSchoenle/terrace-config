@@ -296,10 +296,6 @@ impl App {
 /// the failure [`Self::ignore`]'s single wildcard form exists to prevent, reached through
 /// evaluation order instead of through pattern syntax.
 ///
-/// This list is repeated verbatim in the crate's README, which is what a pipeline implementer
-/// reads. **Edit both or neither.** Two normative statements that disagree is the same defect as
-/// no normative statement, and worse for being harder to notice.
-///
 /// For each environment variable set on a container:
 ///
 /// 1. it is one of `schema.loader[].env` — a variable the loader reads to decide what the layers
@@ -433,6 +429,9 @@ impl App {
 /// name is not merely a validation nuisance — `PORTFOLIO_PORT` is a spelling of the key `port`,
 /// so a service link would *supply* that key, from the environment layer, outranking the mounted
 /// file. That is a live misconfiguration this document cannot fix and can only refuse to hide.
+// Not rustdoc: the ordered list above is duplicated in `docs/CONTRACT.md`, which is what a
+// pipeline implementer reads. Edit both or neither. Two normative statements that disagree is
+// the same defect as no normative statement, and worse for being harder to notice.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct External {

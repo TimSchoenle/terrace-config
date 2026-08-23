@@ -23,8 +23,8 @@
 //! only reads a config file at boot has no reason to link tokio and notify. The single line
 //! joining them is `impl Source for Sources`, which exists only when both are on.
 //!
-//! This module's documentation is itself feature-gated, so the sections below describe only
-//! what you actually compiled.
+//! Each section below renders only under the feature it documents, so this page describes what
+//! you compiled.
 
 // The rest of the crate documentation links to items that exist only under one feature or the
 // other, and `broken_intra_doc_links` is denied. Written as gated `doc` attributes rather than
@@ -218,7 +218,6 @@ to the values already running, leaves the running service exactly as it is. See 
 [`reload`] module for the failure posture in full.
 "
 )]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg(feature = "loader")]
 mod dialect;

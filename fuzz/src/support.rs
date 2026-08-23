@@ -28,15 +28,31 @@ pub const MAX_CONTENT_LEN: usize = 4096;
 #[derive(Debug)]
 pub enum Directive<'a> {
     /// `f:<name>=<content>` — a file in the directory under test.
-    File { name: &'a str, content: String },
+    File {
+        /// Verbatim from the input, and not yet through [`is_safe_name`].
+        name: &'a str,
+        /// Unescaped, so one input line can describe a file body holding newlines.
+        content: String,
+    },
     /// `e:<SUFFIX>=<value>` — the environment variable `TEST_<SUFFIX>`.
-    Env { suffix: &'a str, value: &'a str },
+    Env {
+        /// Appended to [`PREFIX`] verbatim, dialect separator and all.
+        suffix: &'a str,
+        /// The value the variable is set to, verbatim: a variable holds one line, so there is
+        /// nothing to unescape.
+        value: &'a str,
+    },
     /// `p:<SUFFIX>=<content>` — a `TEST_<SUFFIX>_FILE` indirection, pointing at a file this
     /// target creates and names.
     ///
     /// The path is **never** taken from the input. An indirection variable holds a path, and a
     /// fuzzer-chosen one would have the target reading arbitrary files on the host machine.
-    Indirect { suffix: &'a str, content: String },
+    Indirect {
+        /// The key half, between [`PREFIX`] and the `_FILE` suffix.
+        suffix: &'a str,
+        /// What lands in the file the variable points at, unescaped as for [`Self::File`].
+        content: String,
+    },
 }
 
 /// Parse the line grammar, skipping anything that does not fit it.
