@@ -3,9 +3,10 @@ name: docs
 # `README.md` is generated from `.github/templates/README.md.hbs`. This workflow is what makes
 # that claim true in both directions.
 #
-# On a pull request it renders the template and commits the result to the branch, so the two
-# numbers the README quotes — the tag its install snippet pins and the MSRV its badge shows —
-# are never edited by hand. The case that matters is the release-please pull request: that
+# On a pull request it renders the template and commits the result to the branch, so nothing the
+# README quotes about itself is edited by hand: the tag its install snippets pin, the MSRV its
+# badge shows, the licence its last section names, and the table of everything under `docs/`.
+# The case that matters is the release-please pull request: that
 # commit is the one which changes `version` in `Cargo.toml`, so it is also the one where the
 # README would otherwise start advertising the previous tag. Rendering here means the released
 # README already points at the tag the merge is about to create.
@@ -65,11 +66,24 @@ jobs:
           ref: ${{ github.head_ref }}
           persist-credentials: false
 
-      - name: Collect README variables
+      # Invoked through `bash` rather than executed: the repository is authored on Windows, where
+      # git does not record the executable bit.
+      - name: Generate the configuration payload
+        id: config
+        run: |
+          set -euo pipefail
+          echo "json=$(bash .github/scripts/readme-variables.sh)" >> "$GITHUB_OUTPUT"
+
+      # `branch` is the default branch rather than the action's `github.ref_name` default, which
+      # on a pull_request event is `<number>/merge`. Left alone, the badge URL rendered here and
+      # the one rendered by `check` on `main` differ, and the gate fails on every merge for a
+      # reason absent from the diff.
+      - name: Collect the README payload
         id: variables
-        # Invoked through `bash` rather than executed: the repository is authored on Windows,
-        # where git does not record the executable bit.
-        run: echo "json=$(bash .github/scripts/readme-variables.sh)" >> "$GITHUB_OUTPUT"
+        uses: TimSchoenle/actions/actions/common/readme-variables@b5b5c9e047f00ffa00b7772536c8bdb4f158f706 # tag=actions-common-readme-variables-v1.1.0
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          extra: ${{ steps.config.outputs.json }}
 
       - name: Render and commit the README
         id: readme
@@ -77,7 +91,7 @@ jobs:
         with:
           template: .github/templates/README.md.hbs
           output: README.md
-          variables: ${{ steps.variables.outputs.json }}
+          variables: ${{ steps.variables.outputs.variables }}
           token: ${{ steps.generate_token.outputs.token }}
           commit_message: "docs: render README from template"
 
@@ -113,9 +127,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Collect README variables
+      - name: Generate the configuration payload
+        id: config
+        run: |
+          set -euo pipefail
+          echo "json=$(bash .github/scripts/readme-variables.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Collect the README payload
         id: variables
-        run: echo "json=$(bash .github/scripts/readme-variables.sh)" >> "$GITHUB_OUTPUT"
+        uses: TimSchoenle/actions/actions/common/readme-variables@b5b5c9e047f00ffa00b7772536c8bdb4f158f706 # tag=actions-common-readme-variables-v1.1.0
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          extra: ${{ steps.config.outputs.json }}
 
       # Writes nothing; fails with the first differing line when README.md is stale.
       - name: Verify README.md is current
@@ -123,5 +146,5 @@ jobs:
         with:
           template: .github/templates/README.md.hbs
           output: README.md
-          variables: ${{ steps.variables.outputs.json }}
+          variables: ${{ steps.variables.outputs.variables }}
           check: true

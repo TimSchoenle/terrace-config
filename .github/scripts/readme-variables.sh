@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 #
-# Emits the variable payload for `.github/templates/README.md.hbs` as strict JSON on stdout.
+# Emits this repository's half of the README render payload as strict JSON on stdout.
+#
+# It is the `extra` input of the `readme-variables` action in docs.yml, deep-merged over what that
+# action derives. The keys below are top-level and so collide with nothing it emits, which sits
+# under `repo`, `release`, `toolchain` and `docs`.
 #
 # `Cargo.toml` is the single source of truth for both numbers the README quotes: the tag its
-# install snippet pins, and the MSRV its badge advertises. Deriving them here rather than
-# hand-editing the README is what lets the release pull request — the commit that bumps
-# `version` — carry the matching documentation with it.
+# install snippet pins, and the MSRV its badge advertises. The action reads both from the same
+# manifest, as `release.tag` and `toolchain.msrv`, and the template reads them from there — so
+# this script currently duplicates two facts rather than adding any. It stays because it is the
+# hook a real generator plugs into, and because deleting it would take the `extra` wiring with it.
 #
 # Run it yourself to see what CI will render with:
 #

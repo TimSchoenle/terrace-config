@@ -1,39 +1,51 @@
 <!--
-Generated from .github/templates/README.md.hbs — edit that file, not this one. CI renders it on
-every pull request and commits the result back to the branch; a push to main whose README.md
-does not match its template fails the `readme` check in .github/workflows/docs.yml.
+Generated from .github/templates/README.md.hbs — edit that file, not this one.
 
-Variables come from .github/scripts/readme-variables.sh, which reads Cargo.toml:
+CI renders it on every pull request and commits the result back to the branch. A push to `main`
+whose README.md does not match its template fails the `readme` job in
+.github/workflows/docs.yml, which is a required check.
 
-    version  the [package] version, e.g. 0.1.0
-    tag      the same with a leading v, e.g. v0.1.0
-    msrv     the rust-version, e.g. 1.94
+The payload is collected by TimSchoenle/actions/actions/common/readme-variables, which reads
+Cargo.toml and walks docs/, merged over the output of one command:
 
-That is what keeps the install snippet and the MSRV badge correct across a release: the release
-pull request is the commit that changes those numbers, so it arrives with the rendered README
-already updated.
+    bash .github/scripts/readme-variables.sh
+
+Every number this page quotes about itself — the tag its install snippets pin, the MSRV its badge
+shows, the licence its last section names — comes from that payload, so the release pull request
+is the commit that corrects them.
+
+Nothing in this comment may contain a mustache that is not a real reference.
 -->
+
 # terrace-config
 
-[![CI](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml/badge.svg)](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/github/v/tag/TimSchoenle/terrace-config?label=version&sort=semver&color=blue)](https://github.com/TimSchoenle/terrace-config/tags)
-[![MSRV](https://img.shields.io/badge/MSRV-1.94-blue)](Cargo.toml)
-[![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+Layered figment configuration that survives mounted-secret rotation.
 
-Layered [figment](https://docs.rs/figment) configuration for services that read their secrets
-from files — Kubernetes `Secret` volumes, Docker `_FILE` indirection — plus a supervisor that
-rebuilds the service when those files change.
+[![Release](https://img.shields.io/github/v/release/TimSchoenle/terrace-config?sort=semver)](https://github.com/TimSchoenle/terrace-config/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/TimSchoenle/terrace-config/ci.yml?branch=main&label=ci)](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml)
+[![Licence](https://img.shields.io/github/license/TimSchoenle/terrace-config)](LICENSE)
+[![MSRV](https://img.shields.io/badge/MSRV-1.94-blue)](Cargo.toml)
+
+## What this is
+
+Five layers resolve one configuration: your struct's `serde` defaults, a TOML file or directory,
+prefixed environment variables, a directory of key-named files, and `_FILE` indirection. Every
+name in all five is derived from one prefix.
+
+The last two exist because a Kubernetes `Secret` arrives as a directory of files rather than as
+environment variables. The kubelet replaces that directory in place when the secret is rotated,
+and environment variables are fixed for the life of a process, so the `reload` feature rebuilds
+whatever the configuration built when those files change.
+
+The crate is a git dependency rather than a crates.io release. `publish = false` in the manifest
+stops an accidental publish while leaving the name reserved, so a consumer pins a tag.
+
+## Quick start
 
 ```toml
 [dependencies]
 terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.9.0" }
 ```
-
-Pin by tag, not branch. `Cargo.lock` records the resolved revision either way, but a branch
-dependency lets `cargo update` move silently across arbitrary commits, whereas a tag makes every
-bump a deliberate manifest edit that shows up in review.
-
-## Quick start
 
 Every environment name derives from a single prefix.
 
@@ -61,7 +73,65 @@ let config: Config = Terrace::new("MYAPP_").load()?;
 `Terrace::new("MYAPP_")` reads `MYAPP_CONFIG`, `MYAPP_SECRETS_DIR`, `MYAPP_*` and
 `MYAPP_<KEY>_FILE`.
 
-## The layers
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Compatibility](#compatibility)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Licence](#licence)
+
+## Features
+
+- **A secrets directory that survives a projected volume.** The provider follows the `..data`
+  symlink, skips the dot-prefixed entries, and calls `fs::metadata` rather than
+  `DirEntry::metadata()`, which does not follow symlinks and so reports every real key as "not a
+  file".
+- A key supplied by two of the last three layers fails the load. `ShadowPolicy::LastWins` resolves
+  by precedence instead, for a codebase migrating onto this one.
+- Change detection compares the merged figment value rather than the typed config, so a `..data`
+  swap that moved no key rebuilds nothing, and a config holding a `secrecy::SecretString` needs no
+  `PartialEq`.
+- `Terrace::explain` reports which layer supplied each key and what that key shadowed, while
+  holding no configuration value itself.
+- The `Describe` derive turns the config types into a reference table, a `config.example.toml`, a
+  JSON Schema, and a contract document an image carries so a Helm chart can be checked against it.
+- `testing::Harness` writes both halves of every layer into a temporary directory and puts the
+  environment back afterwards.
+- Five fuzz oracles cover the loader, each panicking when the loader breaks a rule. CI replays
+  every committed seed and corpus entry on a plain `cargo test`, then runs a libFuzzer campaign.
+
+## Installation
+
+```toml
+[dependencies]
+terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.9.0" }
+```
+
+Pin by tag, not branch. `Cargo.lock` records the resolved revision either way, but a branch
+dependency lets `cargo update` move silently across arbitrary commits, whereas a tag makes every
+bump a deliberate manifest edit that shows up in review.
+
+`loader` is the only feature on by default. Take the rest by name:
+
+```toml
+terrace-config = { git = "…", tag = "v0.9.0", features = ["reload", "explain"] }
+```
+
+A service that reads a config file at boot and never reloads turns the default off, and links
+neither tokio nor notify:
+
+```toml
+terrace-config = { git = "…", tag = "v0.9.0", default-features = false, features = ["loader"] }
+```
+
+## Usage
+
+### The layers
 
 Lowest precedence first:
 
@@ -77,17 +147,15 @@ All five spell the same field the same way: `__` separates nesting levels and ca
 `database.url` is `MYAPP_DATABASE__URL` as a variable and `database__url` as a file name.
 
 If `$MYAPP_CONFIG` names a **directory**, every `*.toml` directly inside it is merged in sorted
-order — so a mounted `ConfigMap` containing `10-base.toml` and `20-overrides.toml` merges the way
+order, so a mounted `ConfigMap` containing `10-base.toml` and `20-overrides.toml` merges the way
 an operator reading the mount would predict. A missing config file is not an error; running with
 no file at all is the normal development case.
-
-## Examples
 
 ### Reading a Kubernetes `Secret` volume
 
 Given a `Secret` mounted at `/run/secrets`:
 
-```
+```text
 /run/secrets/
 ├── ..2026_08_02_10_00_00/
 │   └── database__url          # postgres://real/app
@@ -101,8 +169,8 @@ against a real projected volume rather than only against a directory of plain fi
 
 ### Reserving keys the program reads itself
 
-A key your program reads straight from the environment cannot be supplied by a file — the layers
-do not exist yet at that point. Declaring it makes the attempt an error instead of a silent
+A key your program reads straight from the environment cannot be supplied by a file, because the
+layers do not exist yet at that point. Declaring it makes the attempt an error instead of a silent
 no-op:
 
 ```rust
@@ -138,8 +206,8 @@ let layers = Terrace::new("MYAPP_").shadow_policy(ShadowPolicy::LastWins);
 ```
 
 `ShadowPolicy::Reject` (the default) refuses to boot. `ShadowPolicy::LastWins` resolves by
-precedence — environment, then secrets directory, then `_FILE` — which is what
-`figment_file_provider_adapter` does, and is there so the crate is adoptable mid-migration.
+precedence, which is what `figment_file_provider_adapter` does, and is there so the crate is
+adoptable mid-migration. That precedence is environment, then secrets directory, then `_FILE`.
 
 The reason `Reject` is the default: a stale `MYAPP_DATABASE__PASSWORD` shadowing a mounted secret
 that has since been rotated leaves the service working on the old credential, and the discrepancy
@@ -154,1128 +222,56 @@ let profile: String = figment.extract_inner("profile")?;
 
 `figment` is re-exported, so you can name its types without adding it to your own manifest.
 
-## Reloading
+## Configuration
 
-A `Secret` or `ConfigMap` mounted as a volume is updated in place by the kubelet: a new
-timestamped directory is written and `..data` is renamed over the old one. That is the only way a
-long-lived process learns a credential was rotated, since environment variables are fixed for the
-life of a process.
+Everything past the loader sits behind a feature, because the parts differ in dependency weight
+and in audience.
 
-`reload::run` takes the closure that builds your whole runtime and re-runs it whenever the
-watched directories change and then go quiet:
-
-```rust,ignore
-use std::sync::Arc;
-use terrace_config::Terrace;
-use tokio_util::sync::CancellationToken;
-
-fn layers() -> Terrace {
-    Terrace::new("MYAPP_")
-}
-
-#[tokio::main]
-async fn main() -> Result<(), ServiceError> {
-    let boot = layers().load_watched::<Config>()?;
-    let shutdown = CancellationToken::new();
-
-    terrace_config::reload::run(
-        (boot.value, boot.sources),
-        &shutdown,
-        // Called once per debounced change.
-        || {
-            layers()
-                .load_watched::<Config>()
-                .map(|loaded| (loaded.value, loaded.sources))
-                .map_err(ServiceError::from)
-        },
-        // Called once per generation, with a token cancelled when this one must stop.
-        |config: Arc<Config>, token: CancellationToken| serve(config, token),
-    )
-    .await
-}
-```
-
-Your error type needs `From<reload::WatchError>` and `Display`; nothing else:
-
-```rust,ignore
-#[derive(Debug, thiserror::Error)]
-enum ServiceError {
-    #[error("{0}")]
-    Watch(#[from] terrace_config::reload::WatchError),
-    #[error("configuration: {0}")]
-    Config(String),
-}
-```
-
-Behaviour worth knowing:
-
-- **`build` must return once it has stopped.** The replacement is not built until the old future
-  completes, so the previous listener has released its address before the new one binds it.
-- **Everything `build` constructs is rebuilt** — pool, state, router, listener, background tasks.
-  Process-global installations made before `run` (a `tracing` subscriber, a metrics recorder) are
-  not, and changing the configuration that drives those still needs a restart.
-- **A failed or no-op reload changes nothing.** If the new configuration cannot be loaded, or
-  resolves to the same values already running, the running service is left exactly as it is and
-  the reason is logged.
-- **Changes are debounced** for 500 ms by default, since one logical volume update fires several
-  filesystem events. Use `reload::run_with` and `reload::Debounce` to choose another window.
-
-Change detection compares the merged figment value, not your config struct — a struct holding a
-`secrecy::SecretString` cannot implement `PartialEq` at all.
-
-## Testing your configuration
-
-Every service that loads configuration this way ends up writing the same fixture: a temporary
-directory, a secrets file in it, an environment variable pointing at the directory, and a way to
-put all of it back afterwards. The `testing` feature is that fixture, written once.
-
-```toml
-[dev-dependencies]
-terrace-config = { git = "…", tag = "v0.9.0", features = ["testing"] }
-```
-
-```rust,ignore
-use terrace_config::{Terrace, testing::Harness};
-
-fn harness() -> Harness {
-    Harness::over(Terrace::new("MYAPP_").reserve("MYAPP_PROFILE"))
-}
-
-#[test]
-fn the_mounted_secret_outranks_the_config_map() {
-    harness().run(|jail| {
-        jail.config("[database]\nurl = \"postgres://placeholder/app\"\n")?;
-        jail.secret("database__url", "postgres://real/app\n")?;
-
-        let config: Config = jail.load()?;
-        assert_eq!(config.database.url.expose_secret(), "postgres://real/app");
-        Ok(())
-    });
-}
-```
-
-Inside `run`: the temporary directory is the working directory and is deleted when the test
-returns, the environment starts empty and is restored afterwards, and jails are serialised
-process-wide because the environment is a global.
-
-The closure returns **this crate's own `Error`**. That is the point of the type rather than a
-detail. The obvious way to write this fixture is around `figment::Jail`, whose closure returns a
-`figment::Error` — a type large enough that clippy's `result_large_err` fires on every test file
-that uses it, and which has no `From<std::io::Error>`, so arranging a symlink means converting an
-error by hand. Here `?` works on the arrangement and on the load being tested alike.
-
-### What it arranges
-
-Each method sets *both* halves of a layer — the file, and the variable that makes the loader read
-it:
-
-| Method | The layer it arranges |
-|--------|-----------------------|
-| `jail.config(toml)` | TOML at `$MYAPP_CONFIG`, as a single file |
-| `jail.fragment(name, toml)` | TOML at `$MYAPP_CONFIG`, as a directory of fragments merged in name order |
-| `jail.env_key("auth.jwt_secret", v)` | `MYAPP_AUTH__JWT_SECRET` |
-| `jail.secret("auth__jwt_secret", v)` | a key-named file in `$MYAPP_SECRETS_DIR` |
-| `jail.indirection("auth.jwt_secret", v)` | `MYAPP_AUTH__JWT_SECRET_FILE`, pointing at a file it writes |
-
-Every name is derived from the loader the harness was built over, never restated. A test that
-spells `MYAPP_AUTH__JWT_SECRET_FILE` out by hand keeps passing after `Terrace::file_suffix`
-renames the mechanism — while testing a variable the loader no longer reads.
-
-Below that sit `jail.env`, `jail.write`, `jail.create_dir` and `jail.path` for anything the named
-methods do not cover, and `jail.terrace()` for a loader with one knob changed:
-
-```rust,ignore
-let config: Config = jail.terrace().shadow_policy(ShadowPolicy::LastWins).load()?;
-```
-
-### Mounted volumes
-
-A `Volume` builds the shapes Kubernetes actually produces, which is what the three layouts are
-for:
-
-```rust,ignore
-jail.secrets_volume()
-    .file("auth__jwt_secret", "from-the-volume")
-    .stray_dir("nested")
-    .projected()          // `..data` and a generation directory beside the real keys
-    .create()?;
-```
-
-- `.plain()` — ordinary files in an ordinary directory. The default.
-- `.projected()` — the *names* a projected volume has, with the keys as regular files. Portable,
-  and what pins the skipping rules.
-- `.symlinked()` — the mount as the kubelet writes it: the keys are symlinks to `..data/<key>`,
-  and `..data` is a symlink to the generation directory. Unix only, so a test using it carries
-  `#[cfg(unix)]`.
-
-The last two are not stylistic variants. `.projected()` stayed green while every service in a
-cluster booted on compiled defaults, because `DirEntry::metadata()` does not follow symlinks and
-reported every real key as "not a file". Only `.symlinked()` reproduces that.
-
-`jail.config_volume()` is the same builder wired to `$MYAPP_CONFIG`, and `jail.volume(dir)` is
-one wired to nothing — a decoy, for asserting that a *renamed* variable is the only one being
-read.
-
-### Reloading
-
-With `reload` on as well, `Rebuilds` records what the supervisor handed the build closure:
-
-```rust,ignore
-harness().run(|jail| {
-    jail.secret("database__url", "postgres://one/app")?;
-    let boot = jail.load_watched::<Config>()?;
-    let loader = jail.terrace();
-    let files = jail.sandbox();          // a handle a spawned task can hold
-    let rebuilds: Rebuilds = Rebuilds::new();
-
-    jail.block_on(async {
-        let shutdown = CancellationToken::new();
-        let driver = rebuilds.clone();
-        let stop = shutdown.clone();
-
-        tokio::spawn(async move {
-            driver.wait_for(1).await;
-            files.write("secrets/database__url", "postgres://two/app").expect("rotate");
-            driver.wait_for(2).await;
-            stop.cancel();
-        });
-
-        terrace_config::reload::run(
-            (boot.value, boot.sources),
-            &shutdown,
-            || loader.load_watched().map(|l| (l.value, l.sources)).map_err(ServiceError::from),
-            rebuilds.serving(|c: &Config| c.database.url.expose_secret().to_owned()),
-        )
-        .await
-        .expect("the supervisor returns when shutdown is cancelled");
-    });
-
-    assert_eq!(rebuilds.seen(), ["postgres://one/app", "postgres://two/app"]);
-    Ok(())
-});
-```
-
-`rebuilds.stays_at(2, window)` is the other assertion, and the one most supervisor tests are
-really making: a reload that fails to load, or that resolves to the values already running, must
-leave the running service alone. `ServiceError` is the error type `reload::run` asks a service
-for, and `rebuilds.serving(…)` is a build closure that records and then serves until it is
-cancelled — returning early instead looks right and ends the supervisor, so the test would pass
-its first assertion and never see a reload.
-
-## Feature flags
-
-| Feature | Contents | Dependencies |
-|---------|----------|--------------|
+| Feature | Contents | Cost |
+|---------|----------|------|
 | `loader` (default) | `Terrace`, the three providers, `Loaded`/`Sources` | `figment` |
 | `reload` | `reload::run`, the rebuild supervisor | `tokio`, `notify`, `tracing` |
-| `schema` | `schema::Schema`, the configuration dump | `serde_json`, `syn` |
-| `explain` | `Terrace::explain`, which layer supplied each key | none |
-| `testing` | `testing::Harness`, the sandbox above | `figment/test` |
-| `full` | the four runtime sets | all of it |
-
-`loader` and `reload` are independent. `reload` does not depend on `loader`: it works for anyone with a
-`Fn(Arc<C>, CancellationToken) -> Future` and a way to detect change, and requiring figment would
-narrow that for no benefit. Symmetrically, a service that only reads a config file at boot has no
-reason to link tokio and notify:
-
-```toml
-terrace-config = { git = "…", tag = "v0.9.0", default-features = false, features = ["loader"] }
-```
-
-The single line joining those two is `impl reload::Source for Sources`, compiled only when both
-features are on. `schema`, `explain` and `testing` are the exceptions to the independence: each
-is an add-on to `loader`, because every spelling it reports is derived from the loader's dialect.
-`explain` is the one feature here that costs no dependency at all — it is a flag because what it
-carries is a second walk of every layer and the strings that render it, dead weight in an image
-that will never print a report.
-
-`testing` is deliberately outside `full`: it belongs in `[dev-dependencies]`, and a service
-asking for everything this crate does at runtime should not link a test harness. `explain` is
-inside it, because printing where a value came from is something a service does at runtime, in
-the log it was already writing at boot.
-
-## Debugging where a value came from
-
-`load` returns a `T` and throws the provenance away, which is fine right up until a value arrives
-from the layer nobody expected. The `explain` feature keeps it.
-
-```toml
-terrace-config = { git = "…", tag = "v0.9.0", features = ["explain"] }
-```
-
-```rust
-use terrace_config::Terrace;
-
-let terrace = Terrace::new("MYAPP_");
-
-// At boot, and again from inside a reload — it re-reads at the moment it is called.
-println!("{}", terrace.explain()?);
-```
-
-```text
-terrace-config: prefix `MYAPP_`, 4 keys, 1 supplied by more than one layer
-layers, lowest precedence first:
-  TOML          MYAPP_CONFIG=/etc/myapp/conf.d
-                  /etc/myapp/conf.d/10-base.toml (2 keys)
-                  /etc/myapp/conf.d/20-tuning.toml (1 key)
-  environment   MYAPP_* (1 key)
-  secrets dir   MYAPP_SECRETS_DIR=/run/secrets (1 key)
-  indirection   MYAPP_*_FILE (none)
-keys:
-  auth.jwt_secret  <- secrets file /run/secrets/auth__jwt_secret
-  database.url     <- environment MYAPP_DATABASE__URL
-                      shadowing TOML /etc/myapp/conf.d/10-base.toml
-  server.port      <- TOML /etc/myapp/conf.d/20-tuning.toml
-  server.workers   <- TOML /etc/myapp/conf.d/10-base.toml
-```
-
-That is "why is my mounted secret not being picked up" answered without a debugger: the mount is
-listed, and so is the stale variable sitting on top of it. `ShadowPolicy::Reject` refuses that
-particular pair at load time, but it deliberately says nothing about the TOML layer — a
-checked-in `config.toml` overridden by an environment variable is an ordinary, intended override,
-ordinary until it is the one you did not know about.
-
-Three properties are worth knowing before you wire it into a boot log:
-
-- **It holds no configuration value.** Not redacted on the way out — never recorded. There is no
-  field to leak, so `Display`, `Debug` and anything built from the accessors are safe by
-  construction. The one thing this costs is that an unparseable TOML fragment is reported as
-  `not valid TOML` with no reason attached: a parse error quotes the line it failed on, and that
-  line can be the credential. `load` fails with figment's own message, which is where the detail
-  belongs.
-- **It does not fail for the reason you are running it.** `explain` assembles under
-  `ShadowPolicy::LastWins` whatever policy you set, so a configuration `load` *refuses* can still
-  be explained, and the doubly-supplied key is reported as one key with two sources.
-- **It reports what the environment did**, not what the type can carry — keys nothing supplied
-  are absent. `schema` below answers the other half, and answers it without reading anything.
-
-For a machine rather than a log, walk it instead of printing it:
-
-```rust
-use terrace_config::Terrace;
-
-let explanation = Terrace::new("MYAPP_").explain()?;
-for origin in explanation.contested() {
-    eprintln!("{} comes from {}", origin.key(), origin.effective());
-    for overridden in origin.shadowed() {
-        eprintln!("  overriding {overridden}");
-    }
-}
-```
-
-With the `testing` feature it is on the jail too, which is what lets a test assert the layer and
-not only the value — a `jail.secret(…)` that a leftover `jail.env_key(…)` is shadowing loads
-perfectly well and is testing nothing:
-
-```rust,ignore
-harness().run(|jail| {
-    jail.secret_key("auth.jwt_secret", "mounted")?;
-
-    let origin = jail.explain()?.origin("auth.jwt_secret").expect("reported");
-    assert!(matches!(origin.effective(), Layer::SecretsFile(_)));
-    Ok(())
-});
-```
-
-## Generating the configuration reference
-
-The loader never learns the shape of a config — it hands the merged figment to `serde` and takes
-back a `T`. The `schema` feature inverts that, so the reference table every service needs is
-generated from the type instead of maintained beside it.
-
-```toml
-terrace-config = { git = "…", tag = "v0.9.0", features = ["schema"] }
-```
-
-Add one derive to the structs you already have. Everything else is read from the `#[serde(...)]`
-attributes that are there anyway, so nothing is annotated twice:
-
-```rust
-use serde::{Deserialize, Serialize};
-use terrace_config::schema::Describe;
-
-#[derive(Deserialize, Serialize, Default, Describe)]
-struct Github {
-    /// User whose repositories `update-repos` lists.
-    #[serde(alias = "user")]
-    username: String,
-    /// Bearer token lifting the GitHub API rate limit.
-    #[config(secret)]
-    token: Option<String>,
-    /// Revalidation interval in seconds.
-    #[config(note = "permanent")]
-    #[serde(default)]
-    ttl_secs: u64,
-}
-```
-
-| Attribute | Effect |
-|-----------|--------|
-| `#[config(nested)]` | Recurse into the field's type instead of treating it as a leaf |
-| `#[config(secret)]` | Render the default as `<redacted>`, and mark the key |
-| `#[config(values)]` | Report the field type's variants as the values the key accepts |
-| `#[config(note = "…")]` | Annotate the observed default with prose |
-| `#[config(skip)]` | Omit the key without affecting deserialisation |
-
-Three things are why this is a derive rather than runtime reflection. The key path, the
-environment spelling and whether a value is required are all recoverable at runtime; the sentence
-saying what a key is *for*, the type it takes, and the variants an enum-valued key accepts are
-gone before any runtime sees the type.
-
-That last one is what `Describe` on an **enum** is for. A struct of named fields *has*
-configuration keys; an enum of unit variants *is* the set of values one key accepts, so the derive
-reports those spellings instead — `#[serde(rename_all)]` applied, because a table printing `Info`
-where the file must say `info` documents a value nobody can set:
-
-```rust
-#[derive(Deserialize, Serialize, Default, Describe)]
-#[serde(rename_all = "lowercase")]
-enum LogLevel { Trace, Debug, #[default] Info, Warn }
-
-#[derive(Deserialize, Serialize, Default, Describe)]
-struct Observability {
-    /// How much the service says.
-    #[config(values)]
-    #[serde(default)]
-    log_level: LogLevel,
-}
-```
-
-### Two outputs
-
-```rust
-let schema = Terrace::new("PORTFOLIO_")
-    .reserve("PORTFOLIO_PROFILE")
-    .schema::<Config>()
-    .with_defaults_from(&Config::default())?;
-
-std::fs::write("docs/config.json", schema.to_json()?)?;   // the contract
-std::fs::write("docs/config.md", schema.to_markdown())?;  // ready to paste
-```
-
-`to_json` is the machine-readable contract: a versioned document carrying every field of every
-key, including the ones the Markdown renderer leaves out to stay readable. Point a documentation
-pipeline at it and render whatever that pipeline wants.
-
-`to_markdown` is for when the next step is `>> README.md`. It emits GitHub-flavoured tables —
-one for the variables the loader itself reads, one for the keys:
-
-| TOML | Type | Environment | Default | Flags | Purpose |
-|---|---|---|---|---|---|
-| `github.username` | `String` | `PORTFOLIO_GITHUB__USERNAME` | — | required | User whose repositories `update-repos` lists. |
-| `github.token` | `String` | `PORTFOLIO_GITHUB__TOKEN` | unset | secret | Bearer token lifting the GitHub API rate limit. |
-| `github.ttl_secs` | `u64` | `PORTFOLIO_GITHUB__TTL_SECS` | `0` (permanent) | — | Revalidation interval in seconds. |
-| `log_level` | `LogLevel`: `trace` \| `debug` \| `info` \| `warn` | `PORTFOLIO_LOG_LEVEL` | `info` | — | How much the service says. |
-
-The `Type` column is in the default set because without it a required key shows an em dash for its
-default and the reader has no way to tell whether to supply a string, a number or a list. Neither
-file spelling is, because both are mechanical: `Column::EnvFile` is the `Environment` cell plus the
-dialect's documented suffix (`_FILE`), and `Column::SecretsFile` is the `TOML` cell with the
-separator substituted. One sentence of prose covers both, where two columns push the table past
-the width of a page.
-
-The `Purpose` column carries the **summary** of the `///` comment — its first paragraph, on
-rustdoc's own convention — rather than the whole of it. Write each field's documentation for
-whoever reads the type; the paragraphs below the summary stay in `to_json`'s `docs` field, out of
-the table, and no extra annotation is needed to keep the two in step.
-
-`to_markdown_with` takes a `&[Column]` when those are not the columns you want — either file
-spelling, or `Column::Aliases`, which is out of the default set because it is empty for almost
-every key. A `#[serde(alias = "user")]` on `github.username` reports `github.user` as a full key
-path, so its environment and file spellings derive exactly as the canonical one's do.
-
-The two tables are also reachable separately, for a page that does not want them welded together:
-
-```rust
-let loader = schema.to_markdown_loader();                  // the variables, once
-let keys = schema.subset("csp").to_markdown_keys(Column::DEFAULT);  // one subsystem, no preamble
-```
-
-A README with one key table per subsystem wants the loader variables above the first of them, not
-repeated over every table. `to_markdown_loader` renders an empty string rather than a bare header
-when a schema has no loader variables; `to_markdown_keys` always renders its header, because an
-empty configuration section is a real shape and the header is what says it was generated rather
-than forgotten.
-
-Every rendering ends with a newline, so a template pipeline that appends another section needs no
-separator of its own.
-
-### A whole crate, a whole workspace, or one subsystem
-
-`#[config(nested)]` is a trait bound, so it follows the *type*, not the file. A configuration
-split across modules — or across workspace members, each deriving `Describe` beside the code that
-consumes it — is walked in full by describing the root type, with nothing registered anywhere
-central and no build script scanning sources. The generator lives in the binary crate that owns
-the root; the members only derive.
-
-For the other direction, `Schema::subset` slices one subsystem out for a page of its own, keeping
-the real key paths:
-
-```rust
-let csp = Terrace::new("PORTFOLIO_").schema::<Config>().subset("csp");
-```
-
-`Terrace::schema_at::<Csp>("csp")` does the same from the subsystem's own type, which matters
-because `schema::<Csp>()` alone would produce `cloudflare.turnstile` — a path that appears in no
-configuration file anywhere.
-
-Some workspaces have no single root at all — one binary reads `assets`, `csp` and `isr`, another
-reads `github`, and keeping the two apart is the point of the split. `Schema::merge` unions the
-schemas of the roots those binaries actually load, so one document covers the workspace without an
-aggregate struct that exists only for the generator and can drift from every root it stands in for:
-
-```rust
-let terrace = Terrace::new("PORTFOLIO_").reserve("PORTFOLIO_PROFILE");
-let everything = terrace
-    .schema::<server::Config>()
-    .with_defaults_from(&server::Config::default())?
-    .merge(
-        terrace
-            .schema::<updater::Config>()
-            .with_defaults_from(&updater::Config::default())?,
-    );
-```
-
-Keys keep declaration order within each half, and a key both roots describe identically — the
-shared key two binaries genuinely both read — is kept once. Anything else is refused: two different
-descriptions of one path, two different dialects, or two different schema versions all panic, on
-the same reasoning as the duplicate-path check inside `describe`. A table that quietly picks one of
-two descriptions is worse than one that refuses to be generated.
-
-### Wiring it into your own crate
-
-Nothing here reads the environment, so a documentation job produces the same answer on a runner
-where none of the variables it describes are set. `examples/config-schema.rs` in this repository
-is the whole pattern; what follows is that pattern as it looks in *your* project.
-
-**1. Take the feature.** The derive is used on your config structs, so it is a normal dependency,
-not a dev-dependency. `schema-cli` adds the generator program on top of `schema`, and costs no
-dependency `schema` did not already pull:
-
-```toml
-[dependencies]
-terrace-config = { git = "…", tag = "v0.9.0", features = ["schema-cli"] }
-
-# The generator, so `cargo clippy --all-targets` keeps it compiling.
-[[example]]
-name = "config-schema"
-```
-
-**2. Add the generator**, `examples/config-schema.rs`, next to the root config type. Everything in
-it is your service's own — the root type and the prefix, the app identity, the JSON Schema's
-`title` and `$id`, and the external surface no derive can see. The `--format` vocabulary, the
-argument parsing, the dispatch across the six renderings, the printing and the exit code are
-`schema::cli::Cli`:
-
-```rust
-use std::process::ExitCode;
-use myservice::Config;              // the root; nested types need only `Describe`
-use terrace_config::Terrace;
-use terrace_config::schema::cli::Cli;
-use terrace_config::schema::{App, Docs, JsonSchema, TomlExample};
-
-fn main() -> ExitCode {
-    let schema = Terrace::new("MYSERVICE_")
-        .reserve("MYSERVICE_PROFILE")
-        .schema::<Config>()
-        .with_defaults_from(&Config::default())
-        .expect("the default config serialises");
-
-    Cli::new(
-        // `v2.5.0`, not `2.5.0`: the field exists to be compared against an image tag.
-        App::new("myservice")
-            .version(concat!("v", env!("CARGO_PKG_VERSION")))
-            .source("https://github.com/you/myservice"),
-    )
-    .json_schema(
-        JsonSchema::new()
-            .title("myservice configuration")
-            .id("https://github.com/you/myservice/config.schema.json"),
-    )
-    // Optional. The default suits a file kept beside a README; `Docs::Full` suits one that is the
-    // only documentation an operator gets.
-    .toml_example(TomlExample::new().docs(Docs::Full))
-    .main(schema)
-}
-```
-
-`Cli::main` is the convenient layer and also the one that decides for you: it reads
-`std::env::args`, prints to stdout and returns an `ExitCode`. A service that already parses
-arguments with `clap` builds a `Request` itself and calls `Cli::render`, which decides none of
-that; a service that wants only the `--format` spellings takes `Format` and nothing else.
-
-Drop to `Request` when the generator has a flag of its own — a `--scope` picking which of two
-schemas to describe, a `--service` picking which binary's — because `Request::parse` refuses an
-argument it does not know, and it is right to. Build one instead:
-
-```rust
-let request = Request::new(Format::Contract)
-    .with_version(tag)
-    .with_revision(sha)
-    .with_created(timestamp);
-
-let rendered = cli.render(&request, schema_for(scope)?)?;
-```
-
-`Config::default()` is what supplies the values in the `Default` column, so `Config` needs
-`Serialize` as well as `Deserialize`. Pass whatever represents "nothing was supplied" — if your
-`Default` and your `#[serde(default = "…")]` functions disagree, pass what serde would produce.
-
-**A field holding a secret needs one more attribute.** `secrecy::SecretString` refuses to
-implement `Serialize` on purpose, so a config that holds one cannot derive `Serialize` either —
-which is the crate's own audience, since a config holding secrets is the reason to reach for
-`terrace-config` over bare figment. The compiler says so in terms of `SerializableSecret` and
-`SerializeStruct::serialize_field`, and mentions nothing about schemas:
-
-```rust
-#[derive(Deserialize, Serialize, Default, Describe)]
-struct Github {
-    /// Bearer token lifting the GitHub API rate limit.
-    #[config(secret)]
-    #[serde(skip_serializing)]
-    token: Option<SecretString>,
-}
-```
-
-`skip_serializing` costs nothing here: a secret has no default worth printing, and
-`#[config(secret)]` renders `<redacted>` in place of one anyway. The key keeps its row, its
-spellings and its `secret` flag; only the observed value is left out, which is where it belongs.
-
-When the type is not yours to annotate, `Schema::with_defaults_from_value` takes an already-built
-`figment::value::Value` and asks for no `Serialize` bound on the root at all.
-
-**3. Generate**, from the crate that owns the root type:
-
-```bash
-cargo run --example config-schema -- --format markdown        > docs/config.md
-cargo run --example config-schema -- --format markdown-loader >> docs/config.md
-cargo run --example config-schema -- --format json            > docs/config.json
-cargo run --example config-schema -- --format toml            > config.example.toml
-cargo run --example config-schema -- --format json-schema     > config.schema.json
-```
-
-Three markdown renderings, because a page wants different combinations of two tables: `markdown` is
-both, `markdown-loader` is the handful of variables that *select* the layers — `<PREFIX>CONFIG`,
-`<PREFIX>SECRETS_DIR`, anything reserved — and `markdown-keys` is the configuration keys alone.
-`--only` slices the two that carry keys and is refused for `markdown-loader`, which has none.
-
-In a workspace, `-p` picks the member: `cargo run -p myservice --example config-schema`. One
-generator per *dialect*: two binaries reading one prefix are one document, joined with
-`Schema::merge`, while two binaries with two prefixes are two schemas and merging them is refused.
-
-**4. Fail the build when the checked-in copy goes stale:**
-
-```yaml
-- run: cargo run --example config-schema -- --format markdown > docs/config.md
-- name: Configuration reference is current
-  run: git diff --exit-code -- docs/config.md
-```
-
-That is the whole point of generating it: the table cannot drift from the code, because a pull
-request that changes a key without regenerating fails.
-
-### Keeping it out of the production build
-
-`serde_json` is linked and the derive costs compile time, which for a service that ships in a
-container may be worth avoiding. Put the whole thing behind a feature of your own — but gate three
-things, not one: the derive, the `#[config(...)]` helper attributes (or the build fails with
-`cannot find attribute config` the moment the derive is not applied), and `derive(Serialize)`,
-which the loader never needs and `with_defaults_from` does:
-
-```toml
-[features]
-config-schema = ["terrace-config/schema-cli"]
-
-[dependencies]
-terrace-config = { git = "…", tag = "v0.9.0" }   # no `schema` here
-
-[[example]]
-name = "config-schema"
-required-features = ["config-schema"]
-```
-
-```rust
-#[derive(Deserialize, Default)]
-#[cfg_attr(
-    feature = "config-schema",
-    derive(serde::Serialize, terrace_config::schema::Describe)
-)]
-struct Github {
-    /// Bearer token lifting the GitHub API rate limit.
-    #[cfg_attr(feature = "config-schema", config(secret))]
-    #[serde(skip_serializing)]
-    token: Option<SecretString>,
-}
-```
-
-Both derives go in one `cfg_attr`, because both exist for the same job: `Describe` reports the
-keys and `Serialize` is what `with_defaults_from` reads the `Default` column out of. A config
-struct that is only ever deserialised has no other reason to carry `Serialize`, so leaving it
-ungated links serde's serialiser into the production build for nothing.
-
-`#[serde(skip_serializing)]` stays ungated: it is inert without a `Serialize` impl, and a
-`cfg_attr` around it would gate the one attribute that has to agree with the field's type either
-way.
-
-Then `cargo run --features config-schema --example config-schema`. The `cfg_attr` on every
-`#[config(...)]` is the price; a struct with no `#[config(...)]` attributes needs only the two
-derives gated.
-
-### What the columns mean
-
-The `Default` column carries the observed value with its `#[config(note = "…")]` prose in
-parentheses — `` `0` (permanent) `` — because the two answer different questions: `0` is what an
-operator compares against what they set, and "permanent" is why they would leave it alone. The
-JSON keeps them as separate `default` and `note` fields, and `Column::DefaultValue` plus
-`Column::Note` splits them into two Markdown columns.
-
-A default that is a secret renders `<redacted>` regardless of what the value is, and a *required*
-key reports no default at all — whatever `Default` put in the field is an artefact of building
-the value, and printing it would tell an operator they can leave the key out.
-
-## Publishing the contract with the image
-
-The four renderings above describe a configuration to somebody who has the source. A Helm chart's
-CI job does not: it holds an image digest and a `config.toml` it rendered itself, and no way to
-know whether the two agree. So a chart renders `isr.ttl_secs`, the service renames the key, `serde`
-ignores what it does not recognise, and the pod starts healthy on a compiled default.
-
-`Contract` is the document that closes that. One file, attached to one image digest, carrying both
-machine-readable halves:
-
-```rust
-use terrace_config::Terrace;
-use terrace_config::schema::{App, External, ExternalVar};
-
-let contract = Terrace::new("PORTFOLIO_")
-    .reserve("PORTFOLIO_PROFILE")
-    .schema::<Config>()
-    .with_defaults_from(&Config::default())?
-    .into_contract(App::new("portfolio").version("v2.5.0"))
-    .external(
-        External::new()
-            .var(
-                ExternalVar::new("PORT")
-                    .owner("dioxus")
-                    .ty("u16")
-                    .default("8080")
-                    .docs("Bind port. Read by the Dioxus toolchain, not by this loader."),
-            )
-            .var(ExternalVar::new("RUST_LOG").owner("tracing").ty("String"))
-            .ignore("KUBERNETES_*")
-            .ignore("HOSTNAME"),
-    )
-    .build()?;
-
-std::fs::write("contract.json", contract.to_json()?)?;
-```
-
-```json
-{
-  "terrace_contract": 1,
-  "app": { "name": "portfolio", "version": "v2.5.0" },
-  "schema": { "schema_version": 1, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
-  "json_schema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
-  "external": { "env": [ … ], "ignore": ["KUBERNETES_*", "HOSTNAME"], "unknown": "reject" }
-}
-```
-
-Every field is `snake_case`, the envelope's own included. One document in two conventions —
-`text_constraint` on a key and `textConstraint` on the variable beside it — is a field name a
-consumer gets right from memory under one convention and guesses at under two.
-
-Both halves, because neither is enough on its own. `json_schema` is the only one a stock JSON
-Schema validator can act on, and it carries no environment spellings at all — so it cannot tell a
-chart that the `PORTFOLIO_ISR__CACHE_DIR` it sets is no longer read, or that the file it mounts as
-`github__token` is now named something else. `schema` carries every spelling and can be handed to
-no validator. Published as two artefacts they would be two hashes and two chances to be half-stale.
-
-The JSON Schema half defaults to draft-07 — the dialect Helm validates `values.schema.json`
-against — and to `additionalProperties: false`, because an unknown key is the defect the document
-exists to catch and an open schema catches none of them.
-
-**It carries no `required` list**, and that default differs from `Schema::to_json_schema`'s for a
-reason about meaning rather than strictness. JSON Schema's `required` says *this document must
-carry the property*; `Key::required` says *some layer must supply the key*, and the loader takes the
-environment or a mounted file just as readily. So a chart supplying a required **secret** from a
-mount — the only way to supply a secret — renders a document a `required` list refuses and a
-deployment that starts. A consumer checks `required` per key across every layer it can see instead,
-which is where the evidence is, and can then say "no layer supplies this" rather than "add it to the
-file". `ContractBuilder::require_present(true)` turns it back on; the standalone
-`to_json_schema`, whose reader is an editor validating a hand-written file, is unchanged.
-
-**The schema you pass is a claim about what *this image's binary* loads.** A workspace with several
-aggregates has a generator that naturally reaches for the union of them, and a contract built from
-that union asserts the runtime image reads a build-time credential no deployment supplies. Nothing
-can check this: both schemas are well-formed and only you know which binary is in the image. Use
-`Schema::merge` when several binaries really are.
-
-### Every key says what its value must be — in both spaces
-
-A configuration value exists in two forms and a validator meets both. In a TOML file
-`ttl_secs = 0` is an integer; in the environment `PORTFOLIO_ISR__TTL_SECS=0` is the two characters
-`"0"`, and `"0"` fails `{"type": "integer"}` under every conforming JSON Schema validator. So each
-key carries two constraints, flat, beside the spellings:
-
-```json
-{ "path": "isr.ttl_secs", "env": "PORTFOLIO_ISR__TTL_SECS", "ty": "u64",
-  "constraint":      { "type": "integer", "minimum": 0 },
-  "text_constraint": { "type": "string", "pattern": "^\\s*\\+?[0-9]+\\s*$" },
-  "text_form":       "integer" }
-```
-
-`constraint` describes the parsed value; `text_constraint` describes the characters an environment
-variable holds before anything parses them. They are complementary, not alternatives — a consumer
-checking a variable applies the second to the raw text and the first to whatever the parse
-produced.
-
-`json_schema` carries `constraint` again, nested, at the key's position in the document. The flat
-copies are for the consumer that has a variable name and a string rather than a document. Without
-them every consumer in every language reimplements a vocabulary of Rust type names by reading the
-service's source — with `PathBuf` as the trap, since it is a string and nothing in the name says
-so.
-
-The text patterns were **measured against the loader**, not derived from TOML's grammar, because
-figment's `Env` provider is what decides them and its parse is neither TOML's nor `str::parse`'s.
-For a `u64` it takes `0`, `42`, `007`, `+5` and `7` with surrounding whitespace, and refuses
-`1_000`, `0x1F`, `0b1` and `1e3`; for a `bool` it takes `true` and `false` and nothing else — not
-`TRUE`, not `1`, not `yes`. The emitted pattern is a superset of what was measured, because a
-pattern that rejects text the loader accepts stops a deployment that was correct.
-
-**That provider also trims**, which is where the two spaces part company for a choice. `constraint`
-for one is a bare `enum` — a TOML document must spell a variant exactly, and `level = "info "` in a
-file really is refused. `text_constraint` is the same set with surrounding whitespace permitted,
-because `PORTFOLIO_LOG_LEVEL="info "` loads. Trailing whitespace in a chart value is the ordinary
-YAML footgun — a block scalar, a value interpolated from a file — so a copy of the bare enum would
-refuse deployments that work. Booleans are the same shape for the same measured reason.
-
-**`text_form` is what says how to read the text**, and it is always present: `text`, `integer`,
-`boolean`, `choice`, `structured` or `unknown`. A consumer reads it to choose the parse for the
-range step rather than inferring one from which keywords `text_constraint` happens to carry — an
-inference that was right while there were two shapes and wrong the moment there were three.
-
-It also gives `text_constraint: null` one meaning instead of two. `text` says any text is fine and
-there is nothing to parse; `unknown` says nothing could be determined, which is a gap rather than
-an answer. Those used to be indistinguishable, and a list-typed key is what made the difference
-cost a deployment: a `structured` key — a `Vec<T>`, a map — needs a TOML literal, so
-`PORTFOLIO_GITHUB__REPOS=a,b` is refused by the loader and used to pass every gate. Those now carry
-a pattern requiring the bracket form.
-
-A key's `env` can also be `null`, and `unreachable` says why — the two reasons differ in whether
-the environment can reach the key at all. `unnameable` means no variable names it: a
-`rename_all = "camelCase"` path never comes back through the case fold, and neither does one
-carrying the nesting separator, so the document is the only layer left. `indirection` is the case
-`build` refuses, and it is in the enum because a schema rendered for documentation still reports
-it. A consumer meeting a bare `null` and treating it as "skip this key" is right for the first and
-wrong for the second, which is why the reason is published rather than inferred.
-
-`constraint: null` still means no check is possible: a domain newtype, or a type this crate does
-not recognise. Inventing one would reject values the image accepts, which is the one thing a schema
-here must never do.
-
-`ExternalVar::constraint` sets both by hand for a type the crate cannot interpret — a duration, a
-connection string — and the derive leaves whatever it finds alone.
-
-**The file layers are a blunter question.** A key-named file in the secrets directory and a `_FILE`
-target both deliver their contents as strings with no parse, and `Figment::extract` does not coerce
-a string into a number or a boolean. A key whose **`constraint` is not a string type** therefore
-**cannot be supplied by either, whatever the file contains** — not "must match a pattern", cannot
-be supplied at all.
-
-Keyed on `constraint`, not on `text_form`: that field answers what parse the *environment* layer
-needs, and the two differ for every type whose `Deserialize` parses a string. An `IpAddr` key is
-`text_form: unknown` — no pattern here describes an address — and it is a string in the document
-and mounts from a secrets file perfectly well.
-
-They also *read* differently, which is a third rule and not the table above. Trailing `\r` and
-`\n` are stripped and no other whitespace is — every editor and every YAML block scalar adds a
-line ending nobody meant as part of the value, whereas a trailing space can be a real character of
-a real password. So `"x\n"` supplies a `char` key and `"x "` does not:
-
-| layer | read |
-|---|---|
-| environment | trim all surrounding whitespace, then the form's read |
-| secrets file, `_FILE` target | strip trailing line terminators, and nothing else |
-| the document | nothing; it is already a parsed value |
-
-Which is enough for a consumer holding a rendered `Secret` to check its **values** as well as its
-file names: strip the trailing line terminators and apply `constraint`. Not `text_constraint` —
-that is the one that looks right because it takes a string, and it is exactly wrong here, because
-it permits the surrounding whitespace an environment spelling may carry and a file keeps. That is deliberate: those layers exist to carry secrets, and a
-secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file has made a
-mistake no file contents can fix, and a validator can say so from `constraint` alone.
-
-### The half no derive can see
-
-A service reads variables that are not its configuration. `PORT`, `IP` and `RUST_LOG` belong to the
-Dioxus toolchain, which reads them before any of these layers exist; a base image contributes
-`PATH` and `SSL_CERT_FILE`. None carry the loader's prefix, so no `Describe` implementation can
-report them — and a validator that flagged everything it could not account for would flag all of
-them.
-
-`External` is where those go, and it is deliberately a *positive* declaration rather than a
-suppression list:
-
-| | What it says | What a validator does with it |
-|---|---|---|
-| `External::var` | this image reads it, and here is its type | checks it exactly like a configuration key |
-| `External::ignore` | nobody here owns it | skips it |
-| `External::unknown` | what to do with everything else | `Reject` by default |
-
-The difference matters. A declared `PORT` with `ty("u16")` means a chart passing `PORT: "http"`
-fails the same gate that a chart passing `PORTFOLIO_ISR__TTL_SECS: "soon"` fails. An ignored `PORT`
-is a variable the chart may misspell freely. Reach for `ignore` only where there is genuinely no
-owner — an operator's `TZ`, the platform's `KUBERNETES_*` — and note that only a trailing `*` is a
-wildcard, because every consumer of this document implements the matching itself and a pattern
-language is a place for two implementations to disagree about what is exempt from a check.
-
-`build` refuses eight things outright, all of them ways a contract could quietly stop being one:
-
-- an external variable **carrying the loader's prefix** — everything in that namespace is a
-  configuration key, and declaring one external would leave it governed and exempt at once;
-- an ignore pattern **reaching into that namespace**, which is the same exemption through the other
-  door and worse, because a pattern exempts everything it happens to cover rather than one named
-  variable. That includes a pattern which does not carry the prefix but subsumes it: `ignore("PORT*")`
-  against `PORTFOLIO_` reads as a pattern about the external `PORT` and disables the whole gate,
-  one character from a spelling that is entirely correct. An *exact* `ignore("PORT")` is fine — it
-  matches that name and nothing else, and no key is spelled that;
-- an external variable **colliding with a spelling the loader reads**, which is the first case
-  reached through a `reserve`d name;
-- an ignore pattern **covering a spelling the loader reads**, which is the second case reached the
-  same way. The prefix is not the whole namespace: a key's environment spelling is derived from the
-  prefix, but `config_var`, `secrets_dir_var` and `reserve` all take arbitrary names, so
-  `ignore("CREDENTIALS_*")` against `secrets_dir_var("CREDENTIALS_DIR")` would exempt the variable
-  that decides where every credential is read from;
-- an external variable **declared twice**, on `Schema::merge`'s reasoning: refusing to build beats
-  picking one of two descriptions;
-- a **secret carrying a default**, in either order the two were declared in, and anywhere in the
-  document. Nothing here produces that pair, but this is the point the document crosses into a
-  public registry, and "no code path produces it" is a weaker guarantee than "the type will not
-  carry it";
-- an **empty prefix**, which would make step 4 of the list below fire for every variable on the
-  container — every name begins with the empty string — so steps 5 and 6 would never be reached
-  and a declared external surface would never be read. The deeper reason is that a prefixless
-  loader cannot tell its own namespace from the machine's, and that distinction is what every gate
-  rests on;
-- a key whose environment spelling is **another key's `_FILE` variable**. With `token` and
-  `token_file` both present, setting `<PREFIX>TOKEN_FILE` fills `token` from the file it names
-  *and* fills `token_file` with the path — one variable, two keys — and a validator classifying
-  that variable stops at the first. Publishing a contract that cannot describe an effect is worse
-  than publishing none, because every gate downstream would pass. The application renames the
-  field.
-
-### How a validator reads it
-
-Normative, and an ordered list because it has to be — two consumers running these in a different
-order disagree about whether a deployment is valid, which is the failure the single wildcard form
-exists to prevent, reached through evaluation order instead of pattern syntax. For each environment
-variable on a container, first match winning:
-
-1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
-2. some `schema.keys[].env` **or one of that key's `env_aliases`** — that key, from the
-   environment layer. Check it in two steps; see below.
-3. some `schema.keys[].env_file` **or one of its `env_file_aliases`** — that key, by
-   indirection. The value is a path, so neither constraint applies; what applies is that the path
-   is mounted.
-4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
-   image reads. Neither `external.env` nor `external.ignore` can reach this step, because `build`
-   refuses both when they carry the prefix.
-5. some `external.env[].name` — check it the same two ways, against that entry's
-   `text_constraint` and `constraint`.
-6. some `external.ignore` pattern — skip it.
-7. otherwise — `external.unknown`.
-
-That list is repeated verbatim in `External`'s own documentation, and the two must be edited
-together: two normative statements that disagree is the same defect as none, and harder to notice.
-
-The alias spellings in steps 2 and 3 matter more than they look. A key with `#[serde(alias = "…")]`
-answers to every one of them — measured, in the environment layer and in the secrets directory
-alike — so a chart still using a name kept alive by an alias is a *correct* deployment. Publishing
-only the canonical spelling would send it to step 4 and reject it, turning the shim that makes a
-rename safe into the thing that fails the gate. `env_aliases`, `env_file_aliases` and
-`secrets_file_aliases` are those spellings, derived by the same rules as the canonical three
-because a derivation left to prose is one each consumer gets differently wrong.
-
-**Steps 2 and 5 are two checks, and both are needed.** A variable holds text and a configuration
-holds a value:
-
-1. **Form.** The text must satisfy `text_constraint`, when there is one. `"http"` is not an
-   integer in any spelling, and this is the check that says so.
-2. **Range.** *Read* the text according to `text_form`, then check the result against
-   `constraint`. This is where `minimum`, `maximum`, `minLength` and a document-space `enum` live,
-   and it is the only step that can reach them: a pattern matches characters, so `99999` is a
-   well-formed integer and only a bound catches it not fitting a `u16`.
-
-| `text_form` | read |
-|---|---|
-| `integer` | trim, drop a leading `+`, parse as an integer |
-| `boolean` | trim, compare to `true` |
-| `choice` | trim |
-| `structured` | trim, parse as a TOML literal |
-| `text`, `unknown` | trim |
-
-**Every read begins by trimming**, because the environment layer trimmed before it parsed anything
-— measured, and it holds for a plain `String` and a `char` as much as for an integer. A read that
-skipped it would refuse `" x "` for a `char` key against a `minLength` of 1, on a value that loads.
-
-`text_form` is what says which read, never the shape of `constraint`. `text` and `unknown` still
-reach `constraint`, because their read is a trim rather than nothing — which is how a `char` key's
-`minLength`/`maxLength` is checked, and where a future pattern for a `Uuid` or an address would
-apply.
-
-Skipping the second leaves every bound in the document decorative: a deployment that passes every
-gate and fails at boot. Applying `constraint` to the raw text instead rejects `"0"` for an integer
-key — a correct deployment refused.
-
-**A 64-bit range is not checkable from this document at all.** `u64::MAX` is not representable as
-an IEEE double, so no `maximum` is published rather than one that is a different number than the
-type accepts. A `u64` key given `18446744073709551616` satisfies everything here and still fails to
-load; loading the configuration with the real binary is what closes that, and no arrangement of
-these fields would.
-
-### What the contract deliberately cannot say
-
-Step 4 also catches what a *cluster* injects into the prefix. Kubernetes service links inject
-`<SERVICE_NAME>_SERVICE_HOST`, `<SERVICE_NAME>_PORT` and five more per Service in the namespace,
-and the service name is the release name — which an image cannot know. A release called
-`portfolio` produces `PORTFOLIO_SERVICE_HOST` and `PORTFOLIO_PORT` against a `PORTFOLIO_` prefix; a
-release called `staging-portfolio` produces names outside it entirely. No declaration written at
-build time is right for both, which is why there is no API for it.
-
-**Set `enableServiceLinks: false` on the pod.** It is the deployment's business, and the deployment
-does know the release name. It is also not merely a validation nuisance: `PORTFOLIO_PORT` is a
-spelling of the key `port`, so with service links on, a Service named after the release *supplies*
-that key from the environment layer, outranking the mounted file. That is a live misconfiguration
-this document cannot fix and will not hide.
-
-`Unknown::Reject` is the default and it is not free for the same reason. A pod carries `HOSTNAME`
-from the runtime and `KUBERNETES_SERVICE_HOST` and its relatives from the API server, even on a
-`scratch` image running one static binary. Those are what `ignore` is for; reaching for
-`Unknown::Warn` instead gives up the whole gate to tolerate six names.
-
-### Getting it onto the image
-
-`Contract::to_json` is byte-stable: the same source tree produces the same bytes, so the document
-can be hashed, and the hash is what ties three copies of it together.
-
-```dockerfile
-# Generate it in a builder stage, on the toolchain that is already there.
-FROM builder AS contract-builder
-RUN cargo run --features config-schema --example config-schema -- --format contract > /out/contract.json
-
-FROM scratch AS runtime
-# Embed it, so the image is self-describing with no registry at all.
-COPY --from=contract-builder /out/contract.json /config/contract.json
-
-# Discovery, from the config blob alone. `--format dockerfile` emits exactly this region,
-# markers included — paste it, never retype it.
-# terrace-config:labels:begin
-LABEL dev.terrace.config.contract.version="1" \
-      dev.terrace.config.contract.path="/config/contract.json" \
-      dev.terrace.config.prefix="PORTFOLIO_"
-# terrace-config:labels:end
-```
-
-The markers are what a drift check cuts on. Cutting by line count instead — `grep -A2
-'^LABEL dev\\.terrace'` and its relatives — reads correctly right up until a fourth label is
-added, and then compares two of three lines and passes.
-
-**All three labels are constants for a service**, which is what lets them be a plain `LABEL` block:
-no build argument to interpolate, and no host-side run of the generator to feed `--label`. That
-last one is the trap in a multi-stage build — the document is produced *inside* a builder stage,
-where the `docker build` command line cannot reach it, so feeding `--label` means running the
-generator twice.
-
-There is deliberately no label carrying the document's hash. It would buy a cross-check — that the
-embedded file and the attached artifact are the same document, catching a pipeline that attached a
-stale one — but that is a failure of the *build*, and the build is the one place holding both
-copies locally and able to compare them for nothing. Every consumer downstream reads the registry
-artifact, whose bytes the registry content-addresses. Publishing the assertion would make all of
-them carry a field none of them need, and it was the only label that had to be dynamic.
-
-A `LABEL` key cannot be interpolated from anything, so hand-writing the block is unavoidable —
-which makes checking it the thing that matters. Check the **image**, not the Dockerfile:
-
-```bash
-crane config "$image" | jq -c '.config.Labels' > labels.json
-# then, in a test or a small binary:
-#   let labels = schema::cli::verify::labels_from_json(&read_to_string("labels.json")?)?;
-#   contract.verify_labels(DEFAULT_PATH, &labels)?
-```
-
-`Contract::verify_labels` takes what `docker inspect` or `crane config` reports and names every
-label that is missing or wrong, ignoring the `org.opencontainers.image.*` and base-image labels
-around it. `verify::labels_from_json` is the reader in front of it, and it refuses the two inputs
-that otherwise look like success: a `null`, which is what reading the wrong JSON path yields, and
-anything that is not an object at all. Checking the built image rather than the source catches what a diff cannot: a build
-argument that failed to interpolate, a label a base image overrode, a `LABEL` line deleted on the
-branch that was not the one reviewed. Run it after the build and before the push, where a failure
-costs a retry instead of a release.
-
-Then, after the push, attach it to the digest:
-
-```bash
-oras attach --artifact-type application/vnd.terrace.config-schema.v1+json \
-  "ghcr.io/you/portfolio@${DIGEST}" contract.json:application/json
-```
-
-That copy is the one a pipeline fetches — attached to the digest the chart pins rather than to a
-tag that can move, two small HTTP requests rather than a layer pull, and signable. `ARTIFACT_TYPE`
-is a constant here so the producer and the consumer cannot spell it differently.
-
-Nothing inside the document names the image, and that is deliberate. The tie is the attachment: ask
-a digest for its referrers of this artifact type and whatever comes back is that digest's contract,
-by construction, and the registry content-addresses those bytes. A field claiming a digest could
-only be written after the push, changing bytes that were already committed.
-
-What a consumer does check is that the image and the document belong together — the image's
-`dev.terrace.config.prefix` against the document's own dialect. That is `Contract::verify_labels`
-run from the far side, and a mismatch is a build to refuse rather than a copy to prefer.
-
-### Keeping the checked-in copy honest
-
-The same `git diff --exit-code` gate the reference table gets, for the same reason and with more at
-stake — a chart is about to be validated against this:
-
-```yaml
-- run: cargo run --features config-schema --example config-schema -- --format contract > docs/config.contract.json
-- run: git diff --exit-code -- docs/config.contract.json
-```
-
-A renamed key then shows up in the diff of the pull request that renamed it, which is the cheapest
-possible warning that a chart is about to break.
-
-Both gates and the image check together are one action, if you use GitHub Actions:
-
-```yaml
-- name: Config contract
-  uses: TimSchoenle/actions/actions/rust/config-contract@<sha> # tag=actions-rust-config-contract-v1.0.0
-  with:
-    features: config-schema
-    image: myservice:test    # omit to run only the two checks that need no image
-```
-
-It renders the contract, its labels and its `LABEL` block from one run of one generator over one
-source tree — so the three cannot disagree with each other — then diffs the Dockerfile marked
-region, diffs the committed document, and checks the built image labels, reporting every fault
-rather than the first. Each check is skipped by emptying its input.
-
-## Secrets and `Debug`
-
-Two public types hold secret material: `provider::FileValue` and `Sources`, whose fingerprint is
-every configuration value merged together. Neither derives `Debug` — both print `<redacted>` in
-place of the value, so logging one is never a way to leak a credential. No error in this crate
-prints a value either.
-
-## Compared with
-
-| Crate | What it gives you | What it lacks |
-|-------|-------------------|---------------|
-| [`figment`](https://crates.io/crates/figment) | the layering engine this builds on | no secrets-directory provider, no reload |
-| [`figment_file_provider_adapter`](https://github.com/nitnelave/figment_file_provider_adapter) | the `_FILE` suffix half | no secrets directory; resolves a doubly-supplied key by precedence; last released October 2023 |
-| [`confique`](https://github.com/LukasKalbertodt/confique) | a well-maintained figment alternative | no reload |
-| [`settings_loader`](https://github.com/dmrolfs/settings-loader-rs) | almost this precedence order, and `.with_secrets(path)` | hot reload is a listed future enhancement, not a feature |
-| [`hot_reload`](https://github.com/junkurihara/rust-hot-reloader) | the closest single match | requires `V: Eq + PartialEq`, which a config holding a `SecretString` cannot satisfy; its file reloader watches files non-recursively, which misses a volume remount |
+| `schema` | `schema::Schema` and the `Describe` derive | `serde_json`, the macro crate |
+| `schema-cli` | `schema::cli`, the `--format` generator program | nothing `schema` did not already pull |
+| `explain` | `Terrace::explain`, which layer supplied each key | nothing |
+| `testing` | `testing::Harness`, the jail | `figment/test` |
+| `full` | every runtime set above | all of it |
+
+`loader` and `reload` are independent, and `reload` must not be made to depend on `loader`. It is
+useful to anyone with a `Fn(Arc<C>, CancellationToken) -> Future` and a way to detect change, and
+requiring figment would narrow that audience for no benefit. The single line joining the two is
+`impl reload::Source for Sources`, compiled only when both features are on.
+
+`schema`, `schema-cli`, `explain` and `testing` are add-ons to `loader`, because every spelling
+each of them reports is derived from the loader's dialect. `explain` is the one feature that costs
+no dependency at all; it is a feature anyway, because what it carries is a second walk of every
+layer and the strings that render it, dead weight in an image that will never print a report.
+
+`testing` is deliberately outside `full`. It belongs in `[dev-dependencies]`, and a service asking
+for everything this crate does at runtime should not link a test harness.
+
+## Compatibility
+
+| | Supported |
+| --- | --- |
+| Rust | 1.94, checked by the `msrv` job (edition 2024) |
+| Platforms | Linux and Windows, both in the test matrix |
+| `Volume::symlinked` | Unix only; a test using it carries `#[cfg(unix)]` |
+
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Compared with other crates](docs/ALTERNATIVES.md) | The five crates nearest to this one, and what each of them lacks. |
+| [Publishing the contract with the image](docs/CONTRACT.md) | A contract is one document, attached to an image digest, saying what configuration the image takes. |
+| [Debugging where a value came from](docs/EXPLAIN.md) | The explain feature reports which layer supplied each key, while holding no configuration value. |
+| [Reloading](docs/RELOAD.md) | The reload feature rebuilds a running service when the files its configuration came from change. |
+| [Generating the configuration reference](docs/SCHEMA.md) | The schema feature derives a reference table, an example file and a JSON Schema from the types. |
+| [Testing your configuration](docs/TESTING.md) | The testing feature is a jail that arranges both halves of a layer and restores the environment. |
+| [The config contract: image-embedded configuration schemas, validated by the charts](docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. |
+
+Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
+to run a campaign.
 
 ## Contributing
 
@@ -1283,7 +279,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 decides both the changelog section and the version bump release-please proposes. `feat` and a
 breaking change move the minor while the crate is pre-1.0; `fix` moves the patch.
 
-`README.md` is generated. Edit `.github/templates/README.md.hbs` instead — CI renders it on every
+`README.md` is generated. Edit `.github/templates/README.md.hbs` instead. CI renders it on every
 pull request and commits the result back to the branch, and a push to `main` whose `README.md`
 does not match its template fails.
 
@@ -1293,11 +289,22 @@ all of them run locally:
 ```bash
 cargo fmt --all --check
 cargo clippy --all-features --all-targets
-cargo test --all-features
+cargo test --workspace --all-features
 cargo deny check
 cd fuzz && cargo test          # replays every committed seed and corpus entry
 ```
 
+## Security
+
+Two public types hold secret material: `provider::FileValue` and `Sources`, whose fingerprint is
+every configuration value merged together. Neither derives `Debug`. Both print `<redacted>` in
+place of the value, and no error in this crate prints a value either, so a log line is not a way
+to leak a credential. `Terrace::explain` records no value at all, so there is nothing in it to
+redact.
+
+[SECURITY.md](SECURITY.md) has the reporting instructions. Do not open a public issue for a
+vulnerability.
+
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT. [LICENSE](LICENSE) has the terms.
