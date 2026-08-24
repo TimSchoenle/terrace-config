@@ -51,14 +51,18 @@ impl Dialect {
         }
     }
 
-    /// Replace the nesting separator. Defaults to `__`.
+    /// Replace the nesting separator.
+    ///
+    /// Defaults to `__`.
     #[must_use]
     pub fn nesting_separator(mut self, separator: impl Into<String>) -> Self {
         self.separator = separator.into();
         self
     }
 
-    /// Replace the file-indirection suffix. Defaults to `_FILE`.
+    /// Replace the file-indirection suffix.
+    ///
+    /// Defaults to `_FILE`.
     #[must_use]
     pub fn file_suffix(mut self, suffix: impl Into<String>) -> Self {
         self.file_suffix = suffix.into();
@@ -153,7 +157,7 @@ impl Dialect {
         )
     }
 
-    /// Returns the environment spelling of a bare key name, without treating `.` as nesting.
+    /// The environment spelling of a bare key name, without treating `.` as nesting.
     ///
     /// A file named `profile` is spelled `MYAPP_PROFILE`.
     // One caller, the reserved check in `provider::secrets_dir`, which holds a file name rather

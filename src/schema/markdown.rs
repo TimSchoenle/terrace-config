@@ -21,7 +21,7 @@ impl Schema {
     ///
     /// A [`Column::Docs`] cell carries the *summary* of the `///` comment — its first paragraph,
     /// as rustdoc means the word — rather than the whole of it. [`Key::docs`] keeps the whole
-    /// text for [`Self::to_json`], so nothing is lost; a table cell is simply not where the four
+    /// text for [`Self::to_json`], so nothing is lost; a table cell is not where the four
     /// paragraphs below the summary belong.
     ///
     /// Ends with a newline, so appending another section needs no separator of its own.

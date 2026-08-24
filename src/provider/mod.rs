@@ -61,7 +61,9 @@ impl FileValue {
 }
 
 impl std::fmt::Debug for FileValue {
-    /// The path, never the value. See the type's own documentation.
+    /// The path, never the value.
+    ///
+    /// See the type's own documentation.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FileValue")
             .field("path", &self.path)

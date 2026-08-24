@@ -108,22 +108,28 @@ impl JsonSchema {
         Self::default()
     }
 
-    /// The dialect to declare. Defaults to [`DRAFT_2020_12`]; [`DRAFT_07`] is the other one that
-    /// is known to be true of this output.
+    /// The dialect to declare.
+    ///
+    /// Defaults to [`DRAFT_2020_12`]; [`DRAFT_07`] is the other one that is known to be true of
+    /// this output.
     #[must_use]
     pub fn meta_schema(mut self, uri: impl Into<String>) -> Self {
         self.meta_schema = uri.into();
         self
     }
 
-    /// The document's `$id`. Omitted by default.
+    /// The document's `$id`.
+    ///
+    /// Omitted by default.
     #[must_use]
     pub fn id(mut self, id: impl Into<String>) -> Self {
         self.id = Some(id.into());
         self
     }
 
-    /// The document's `title`. Omitted by default.
+    /// The document's `title`.
+    ///
+    /// Omitted by default.
     #[must_use]
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
@@ -140,14 +146,18 @@ impl JsonSchema {
         self
     }
 
-    /// How much of each key's `///` comment becomes its `description`. Defaults to [`Docs::Full`].
+    /// How much of each key's `///` comment becomes its `description`.
+    ///
+    /// Defaults to [`Docs::Full`].
     #[must_use]
     pub fn docs(mut self, docs: Docs) -> Self {
         self.docs = docs;
         self
     }
 
-    /// Whether each key carries its default as a `default` annotation. Defaults to `true`.
+    /// Whether each key carries its default as a `default` annotation.
+    ///
+    /// Defaults to `true`.
     ///
     /// An annotation, not a behaviour: no validator supplies it, and neither does Helm. It is
     /// there for the editor that offers it as the completion. A [`secret`](Key::secret) key never
@@ -159,7 +169,9 @@ impl JsonSchema {
         self
     }
 
-    /// Whether a key the configuration does not have is an error. Defaults to `true`.
+    /// Whether a key the configuration does not have is an error.
+    ///
+    /// Defaults to `true`.
     ///
     /// On, because the loader's own posture is that a key nobody reads is a mistake rather than a
     /// courtesy — `ShadowPolicy` exists to make one loud — and a misspelled key in a config file
@@ -174,8 +186,9 @@ impl JsonSchema {
         self
     }
 
-    /// Whether a key that must be supplied must be supplied *by this document*. Defaults to
-    /// `true`.
+    /// Whether a key that must be supplied must be supplied *by this document*.
+    ///
+    /// Defaults to `true`.
     ///
     /// The two meanings of "required" are not the same and this is where they part. A JSON Schema
     /// `required` says **this document must carry the property**. [`Key::required`] says **some

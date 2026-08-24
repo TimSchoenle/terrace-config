@@ -211,7 +211,7 @@ where
 /// loop rather than the call that installed it.
 struct Watch {
     /// `None` when there is nothing to watch — no secrets directory, no indirection target —
-    /// in which case [`Self::changed`] never resolves and the service simply runs.
+    /// in which case [`Self::changed`] never resolves and the service runs.
     signals: Option<mpsc::Receiver<()>>,
     /// Kept alive for its `Drop`; never read.
     _debouncer: Option<Debouncer<notify::RecommendedWatcher, RecommendedCache>>,

@@ -144,7 +144,9 @@ impl<'a> Cli<'a> {
         self
     }
 
-    /// Which columns `--format markdown` emits. [`Column::DEFAULT`] unless set.
+    /// Which columns `--format markdown` emits.
+    ///
+    /// [`Column::DEFAULT`] unless set.
     #[must_use]
     pub fn columns(mut self, columns: &'a [Column]) -> Self {
         self.columns = columns;

@@ -205,9 +205,10 @@ impl<T: Send + 'static> Rebuilds<T> {
 }
 
 impl<T> Clone for Rebuilds<T> {
-    /// Shares the record rather than copying it, so the copy in the build closure and the copy
-    /// in the task driving the test are one record. Derived, it would demand `T: Clone` for a
-    /// clone that never touches a `T`.
+    /// Shares the record rather than copying it, so the copy in the build closure and the copy in
+    /// the task driving the test are one record.
+    ///
+    /// Derived, it would demand `T: Clone` for a clone that never touches a `T`.
     fn clone(&self) -> Self {
         Self {
             seen: Arc::clone(&self.seen),

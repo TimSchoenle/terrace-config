@@ -113,8 +113,10 @@ impl FromStr for Format {
     type Err = UnknownFormat;
 
     /// Accepts the canonical spelling of each format and the two abbreviations that get typed
-    /// anyway — `md` and `jsonschema`. Nothing else, because a format nobody meant is better
-    /// refused than guessed: the output is redirected into a committed file.
+    /// anyway — `md` and `jsonschema`.
+    ///
+    /// Nothing else, because a format nobody meant is better refused than guessed: the output is
+    /// redirected into a committed file.
     fn from_str(spelling: &str) -> Result<Self, Self::Err> {
         match spelling {
             "json" => Ok(Self::Json),

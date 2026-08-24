@@ -60,7 +60,9 @@ impl Sources {
 }
 
 impl std::fmt::Debug for Sources {
-    /// The watch paths, never the fingerprint. See the type's own documentation.
+    /// The watch paths, never the fingerprint.
+    ///
+    /// See the type's own documentation.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Sources")
             .field("watch", &self.watch)

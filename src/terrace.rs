@@ -78,36 +78,45 @@ impl Terrace {
         }
     }
 
-    /// Override the variable naming the TOML layer. Defaults to `<PREFIX>CONFIG`.
+    /// Override the variable naming the TOML layer.
+    ///
+    /// Defaults to `<PREFIX>CONFIG`.
     #[must_use]
     pub fn config_var(mut self, name: impl Into<String>) -> Self {
         self.config_var = Some(name.into());
         self
     }
 
-    /// Override the variable naming the secrets directory. Defaults to `<PREFIX>SECRETS_DIR`.
+    /// Override the variable naming the secrets directory.
+    ///
+    /// Defaults to `<PREFIX>SECRETS_DIR`.
     #[must_use]
     pub fn secrets_dir_var(mut self, name: impl Into<String>) -> Self {
         self.secrets_dir_var = Some(name.into());
         self
     }
 
-    /// Where the TOML layer looks when the configuration variable is unset. Defaults to
-    /// `config.toml`, relative to the working directory.
+    /// Where the TOML layer looks when the configuration variable is unset.
+    ///
+    /// Defaults to `config.toml`, relative to the working directory.
     #[must_use]
     pub fn default_config_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.default_config_path = path.into();
         self
     }
 
-    /// Override the indirection suffix. Defaults to `_FILE`.
+    /// Override the indirection suffix.
+    ///
+    /// Defaults to `_FILE`.
     #[must_use]
     pub fn file_suffix(mut self, suffix: impl Into<String>) -> Self {
         self.file_suffix = suffix.into();
         self
     }
 
-    /// Override the nesting separator. Defaults to `__`.
+    /// Override the nesting separator.
+    ///
+    /// Defaults to `__`.
     #[must_use]
     pub fn nesting_separator(mut self, separator: impl Into<String>) -> Self {
         self.separator = separator.into();
@@ -126,8 +135,9 @@ impl Terrace {
         self
     }
 
-    /// What to do when one key is supplied by two mechanisms. Defaults to
-    /// [`ShadowPolicy::Reject`].
+    /// What to do when one key is supplied by two mechanisms.
+    ///
+    /// Defaults to [`ShadowPolicy::Reject`].
     #[must_use]
     pub fn shadow_policy(mut self, policy: ShadowPolicy) -> Self {
         self.shadow_policy = policy;

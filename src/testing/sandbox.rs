@@ -34,8 +34,10 @@ impl Sandbox {
         Self { root }
     }
 
-    /// The sandbox directory itself. It is also the process's working directory for the
-    /// duration of the test, so a loader left on its default `config.toml` reads from here.
+    /// The sandbox directory itself.
+    ///
+    /// It is also the process's working directory for the duration of the test, so a loader left on
+    /// its default `config.toml` reads from here.
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root

@@ -12,8 +12,10 @@ use crate::error::Error;
 /// dot-prefixed entry is not a key.
 const DEFAULT_GENERATION: &str = "..2026_08_02_10_00_00";
 
-/// What a projected volume holds in `..data` when `..data` is not a symlink. Deliberately not
-/// valid as anything: if it ever reaches the configuration, the test reading it fails.
+/// What a projected volume holds in `..data` when `..data` is not a symlink.
+///
+/// Deliberately not valid as anything: if it ever reaches the configuration, the test reading it
+/// fails.
 const DECOY: &str = "not a key";
 
 /// How the entries of a volume are laid out on disk.
@@ -141,7 +143,9 @@ impl<'jail, 'figment> Volume<'jail, 'figment> {
         self
     }
 
-    /// Rename the generation directory of a projected layout. Defaults to a fixed timestamp.
+    /// Rename the generation directory of a projected layout.
+    ///
+    /// Defaults to a fixed timestamp.
     ///
     /// Worth setting when a test builds two generations and swaps `..data` between them, which is
     /// what a rotated `Secret` looks like on disk.
@@ -151,8 +155,9 @@ impl<'jail, 'figment> Volume<'jail, 'figment> {
         self
     }
 
-    /// Lay the entries out as ordinary files in an ordinary directory. The default; see
-    /// [`Layout::Plain`].
+    /// Lay the entries out as ordinary files in an ordinary directory.
+    ///
+    /// The default; see [`Layout::Plain`].
     #[must_use]
     pub fn plain(self) -> Self {
         self.layout(Layout::Plain)

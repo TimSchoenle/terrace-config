@@ -9,7 +9,9 @@ use std::path::Path;
 
 use figment::value::Value;
 
-/// The prefix every target's dialect uses. Supplied by the target rather than by the input.
+/// The prefix every target's dialect uses.
+///
+/// Supplied by the target rather than by the input.
 pub const PREFIX: &str = "TEST_";
 
 /// The most directives one iteration will act on.
@@ -38,8 +40,7 @@ pub enum Directive<'a> {
     Env {
         /// Appended to [`PREFIX`] verbatim, dialect separator and all.
         suffix: &'a str,
-        /// The value the variable is set to, verbatim: a variable holds one line, so there is
-        /// nothing to unescape.
+        /// Verbatim: a variable holds one line, so there is nothing to unescape.
         value: &'a str,
     },
     /// `p:<SUFFIX>=<content>` — a `TEST_<SUFFIX>_FILE` indirection, pointing at a file this
@@ -156,8 +157,8 @@ pub fn is_safe_env(suffix: &str, value: &str) -> bool {
 
 /// Write `content` to `dir/name`, returning whether it landed.
 ///
-/// A refusal by [`is_safe_name`] or by the platform is not a finding: the target simply does not
-/// assert anything about a file it never created.
+/// A refusal by [`is_safe_name`] or by the platform is not a finding: the target does not assert
+/// anything about a file it never created.
 pub fn write_file(dir: &Path, name: &str, content: &str) -> bool {
     if !is_safe_name(name) || content.len() > MAX_CONTENT_LEN {
         return false;
