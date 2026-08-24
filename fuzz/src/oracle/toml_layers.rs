@@ -30,9 +30,10 @@ use terrace_config::testing::Harness;
 
 use crate::support::{Directive, PREFIX, contains_key, directives, lookup, write_file};
 
-/// Planted every iteration under names the expansion must refuse. `..data` is what a projected
-/// `ConfigMap` volume puts beside the real fragments; `notes.md` is the README an operator drops
-/// into the same directory.
+/// Planted every iteration under names the expansion must refuse.
+///
+/// `..data` is what a projected `ConfigMap` volume puts beside the real fragments; `notes.md` is
+/// the README an operator drops into the same directory.
 const SKIPPED: &[&str] = &["..data", "notes.md", ".hidden.toml"];
 
 /// Valid TOML, so a leak shows up as a key rather than as a parse error.
@@ -41,7 +42,9 @@ const SKIPPED_BODY: &str = "[sentinel]\nleaked = true\n";
 /// The key [`SKIPPED_BODY`] would produce if any skip stopped working.
 const SENTINEL_KEY: &str = "sentinel";
 
-/// Planted to pin merge order. Sorted by name, `zz-last.toml` is the later of the two.
+/// Planted to pin merge order.
+///
+/// Sorted by name, `zz-last.toml` is the later of the two.
 const ORDER_FIRST: &str = "00-first.toml";
 const ORDER_LAST: &str = "zz-last.toml";
 const ORDER_KEY: &str = "order.winner";
@@ -55,7 +58,9 @@ fn harness() -> Harness {
     Harness::over(layers())
 }
 
-/// Run the oracle. Panics when the loader breaks one of the rules above.
+/// Run the oracle.
+///
+/// Panics when the loader breaks one of the rules above.
 ///
 /// # Panics
 /// That is the contract: a panic is the finding.

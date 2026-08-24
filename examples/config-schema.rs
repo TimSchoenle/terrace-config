@@ -144,14 +144,19 @@ mod github {
         pub(crate) repos: Option<Vec<String>>,
         /// Bearer token lifting the GitHub API rate limit.
         ///
-        /// A real secret type, not a `String`, because that is what a service holding one uses —
-        /// and `SecretString` deliberately does not implement `Serialize`, which would otherwise
-        /// stop the whole struct from deriving it and `with_defaults_from` from taking a
-        /// `Config`. `skip_serializing` is the answer and costs nothing: a secret has no default
-        /// worth printing, and `#[config(secret)]` renders `<redacted>` in place of one anyway.
-        ///
-        /// This field is here in the shape a consumer will have it so that
-        /// `cargo clippy --all-targets` fails if that ever stops being true.
+        /// Supply it as a mounted file — `PORTFOLIO_GITHUB__TOKEN_FILE`, or `github__token` in
+        /// the secrets directory — so the value never reaches the process environment.
+        // Not rustdoc: every `///` in this example is rendered into the generated table and the
+        // example TOML file, for an operator who is not reading this source. Why the two
+        // attributes below are here is for whoever changes this line.
+        //
+        // `SecretString` rather than `String` because that is what a service holding a credential
+        // uses, and it deliberately does not implement `Serialize` — which would otherwise stop
+        // the whole struct deriving it and `with_defaults_from` from taking a `Config`.
+        // `skip_serializing` costs nothing here: a secret has no default worth printing, and
+        // `#[config(secret)]` renders `<redacted>` in place of one anyway. The field is kept in
+        // the shape a consumer will have it so that `cargo clippy --all-targets` fails if that
+        // stops being true.
         #[config(secret)]
         #[serde(skip_serializing)]
         #[expect(

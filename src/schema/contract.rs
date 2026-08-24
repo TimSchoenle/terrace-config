@@ -296,10 +296,6 @@ impl App {
 /// the failure [`Self::ignore`]'s single wildcard form exists to prevent, reached through
 /// evaluation order instead of through pattern syntax.
 ///
-/// This list is repeated verbatim in the crate's README, which is what a pipeline implementer
-/// reads. **Edit both or neither.** Two normative statements that disagree is the same defect as
-/// no normative statement, and worse for being harder to notice.
-///
 /// For each environment variable set on a container:
 ///
 /// 1. it is one of `schema.loader[].env` — a variable the loader reads to decide what the layers
@@ -352,12 +348,8 @@ impl App {
 /// A read that skipped it would refuse `" x "` for a `char` key against a `minLength` of 1, on a
 /// value that loads.
 ///
-/// `text_form` is what says which read, rather than the shape of the constraint object. Two
-/// spellings of that mistake have already been made here: inferring "a pattern means integer",
-/// which was right for two forms and wrong once there were three; and "when `constraint` is a
-/// string type the text *is* the value, so skip the read", which was right while `char` was the
-/// only such form and wrong the moment [`TextForm::Choice`] gained a trim. The table is the rule;
-/// the shape of `constraint` is not.
+/// `text_form` is what says which read, rather than the shape of the constraint object. The table
+/// is the rule; the shape of `constraint` is not.
 ///
 /// [`Text`](TextForm::Text) and [`Unknown`](TextForm::Unknown) still reach `constraint` — their
 /// read is a trim rather than nothing — which is how a `char` key's `minLength`/`maxLength` is
@@ -433,6 +425,15 @@ impl App {
 /// name is not merely a validation nuisance — `PORTFOLIO_PORT` is a spelling of the key `port`,
 /// so a service link would *supply* that key, from the environment layer, outranking the mounted
 /// file. That is a live misconfiguration this document cannot fix and can only refuse to hide.
+// Not rustdoc: the ordered list above is duplicated in `docs/CONTRACT.md`, which is what a
+// pipeline implementer reads. Edit both or neither. Two normative statements that disagree is
+// the same defect as no normative statement, and worse for being harder to notice.
+//
+// Also not rustdoc: two spellings of the read rule have already been made here, and whoever
+// edits it next is the reader who needs them. Inferring "a pattern means integer" was right for
+// two forms and wrong once there were three. Inferring "when `constraint` is a string type the
+// text is the value, so skip the read" was right while `char` was the only such form and wrong
+// the moment `TextForm::Choice` gained a trim. Both times the fix was to read `text_form`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct External {
@@ -483,7 +484,9 @@ impl External {
     }
 
     /// What a validator should do with a variable matching neither [`Self::env`] nor
-    /// [`Self::ignore`]. Defaults to [`Unknown::Reject`].
+    /// [`Self::ignore`].
+    ///
+    /// Defaults to [`Unknown::Reject`].
     #[must_use]
     pub fn unknown(mut self, unknown: Unknown) -> Self {
         self.unknown = unknown;
@@ -713,7 +716,9 @@ pub enum Unknown {
     Reject,
 }
 
-/// Assembles a [`Contract`]. Built by [`Schema::into_contract`].
+/// Assembles a [`Contract`].
+///
+/// Built by [`Schema::into_contract`].
 ///
 /// The schema is moved in rather than borrowed: a generator builds one, converts it and is done,
 /// so making the common path copy every key to satisfy an API shape nobody needs would be a cost
@@ -728,14 +733,18 @@ pub struct ContractBuilder {
 }
 
 impl ContractBuilder {
-    /// The surface outside the loader's namespace. Empty by default.
+    /// The surface outside the loader's namespace.
+    ///
+    /// Empty by default.
     #[must_use]
     pub fn external(mut self, external: External) -> Self {
         self.external = external;
         self
     }
 
-    /// Whether a key the schema does not describe is an error. Defaults to `true`.
+    /// Whether a key the schema does not describe is an error.
+    ///
+    /// Defaults to `true`.
     ///
     /// Off for a service whose rendered document legitimately carries keys this contract does not
     /// describe. Prefer declaring those keys to relaxing the check: an unknown key is the defect
@@ -746,14 +755,18 @@ impl ContractBuilder {
         self
     }
 
-    /// The JSON Schema half's `title`. Defaults to the app's name.
+    /// The JSON Schema half's `title`.
+    ///
+    /// Defaults to the app's name.
     #[must_use]
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.json_schema = self.json_schema.title(title);
         self
     }
 
-    /// Whether the JSON Schema half marks a required key `required`. Defaults to `false`.
+    /// Whether the JSON Schema half marks a required key `required`.
+    ///
+    /// Defaults to `false`.
     ///
     /// Off, and this is the one default that differs from
     /// [`Schema::to_json_schema`](Schema::to_json_schema)'s for a reason about *meaning* rather
@@ -835,7 +848,9 @@ impl ContractBuilder {
 }
 
 impl Schema {
-    /// This schema as the contract an image publishes. See [`Contract`].
+    /// This schema as the contract an image publishes.
+    ///
+    /// See [`Contract`].
     ///
     /// **The schema passed here is a claim about what *this image's binary* loads.** Pass what
     /// that binary loads — not the union across a workspace, which is what a generator producing

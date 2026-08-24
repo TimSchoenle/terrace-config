@@ -7,8 +7,8 @@
 //!
 //! So the property is not "the schema is internally consistent" — it is end-to-end. For every
 //! key, take the spelling the schema printed, *set it that way*, run the real
-//! [`Terrace`](terrace_config::Terrace) over the result, and require the value to arrive at the
-//! path the schema promised. Three mechanisms, three passes, each in its own jail:
+//! [`Terrace`] over the result, and require the value to arrive at the path the schema
+//! promised. Three mechanisms, three passes, each in its own jail:
 //!
 //! | Advertised as | Set by | Must arrive at |
 //! |---|---|---|

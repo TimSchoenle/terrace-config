@@ -99,28 +99,36 @@ impl TomlExample {
         Self::default()
     }
 
-    /// Whether to emit the preamble. Defaults to `true`.
+    /// Whether to emit the preamble.
+    ///
+    /// Defaults to `true`.
     #[must_use]
     pub fn header(mut self, header: bool) -> Self {
         self.header = header;
         self
     }
 
-    /// How much of each key's `///` comment to carry. Defaults to [`Docs::Summary`].
+    /// How much of each key's `///` comment to carry.
+    ///
+    /// Defaults to [`Docs::Summary`].
     #[must_use]
     pub fn docs(mut self, docs: Docs) -> Self {
         self.docs = docs;
         self
     }
 
-    /// Whether to name the environment and file spellings above each key. Defaults to `true`.
+    /// Whether to name the environment and file spellings above each key.
+    ///
+    /// Defaults to `true`.
     #[must_use]
     pub fn spellings(mut self, spellings: bool) -> Self {
         self.spellings = spellings;
         self
     }
 
-    /// What a [`secret`](Key::secret) key is written as. Defaults to `<secret>`.
+    /// What a [`secret`](Key::secret) key is written as.
+    ///
+    /// Defaults to `<secret>`.
     ///
     /// Written as a TOML string whatever it says, because a secret is an opaque byte string
     /// everywhere else in this crate and a placeholder that changed its type would not be one.
@@ -130,7 +138,9 @@ impl TomlExample {
         self
     }
 
-    /// What a key with no default is written as. Defaults to `<value>`.
+    /// What a key with no default is written as.
+    ///
+    /// Defaults to `<value>`.
     ///
     /// Every key with nothing to show, not only a required one: an optional key with no default
     /// has no value either, and is written with the placeholder above a line saying so.

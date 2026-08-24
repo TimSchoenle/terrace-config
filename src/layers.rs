@@ -82,13 +82,17 @@ impl FileLayers {
         self.secrets.as_ref()
     }
 
-    /// The `<PREFIX><KEY><SUFFIX>` indirection layer. As [`Self::secrets`].
+    /// The `<PREFIX><KEY><SUFFIX>` indirection layer.
+    ///
+    /// As [`Self::secrets`].
     #[cfg(feature = "explain")]
     pub(crate) fn indirections(&self) -> Option<&FileSuffixEnv> {
         self.files.as_ref()
     }
 
-    /// Whether any file-backed value was found. Callers skip the provider entirely when not.
+    /// Whether any file-backed value was found.
+    ///
+    /// Callers skip the provider entirely when not.
     pub(crate) fn is_empty(&self) -> bool {
         self.secrets.as_ref().is_none_or(SecretsDir::is_empty)
             && self.files.as_ref().is_none_or(FileSuffixEnv::is_empty)

@@ -48,11 +48,13 @@ use crate::support::{
 };
 
 /// Read straight from the environment by a hypothetical consumer, so no file may supply it.
+///
 /// `TEST_CONFIG` and `TEST_SECRETS_DIR` are reserved by the builder without being named.
 const RESERVED: &str = "TEST_PROFILE";
 
-/// Reserved in full, as this module must reason about them. `TEST_SECRETS_DIR` is also this
-/// module's own control variable.
+/// Reserved in full, as this module must reason about them.
+///
+/// `TEST_SECRETS_DIR` is also this module's own control variable.
 const ALL_RESERVED: &[&str] = &[RESERVED, "TEST_CONFIG", "TEST_SECRETS_DIR"];
 
 /// Whether an environment name is one of [`ALL_RESERVED`], **ignoring case**.
@@ -71,8 +73,10 @@ fn is_reserved(name: &str) -> bool {
         .any(|reserved| reserved.eq_ignore_ascii_case(name))
 }
 
-/// Planted every iteration. Dot-prefixed, so the loader must skip it — and must skip it *before*
-/// noticing that the name also contains a `.`, which on its own is a hard error.
+/// Planted every iteration.
+///
+/// Dot-prefixed, so the loader must skip it — and must skip it *before* noticing that the name also
+/// contains a `.`, which on its own is a hard error.
 const SENTINEL: &str = ".sentinel_hidden";
 
 /// Planted contents, and the thing actually asserted about.
@@ -88,9 +92,11 @@ fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve(RESERVED)
 }
 
-/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the
-/// loader under test. `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid
-/// unsafe code, so a jail is not a convenience here — it is the only way in.
+/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the loader
+/// under test.
+///
+/// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
+/// not a convenience here — it is the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }

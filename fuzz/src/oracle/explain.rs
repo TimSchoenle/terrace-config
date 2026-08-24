@@ -9,9 +9,10 @@
 //! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic — over arbitrary file names,
 //!    arbitrary TOML, and arbitrary variable spellings.
 //! 2. **Redaction.** A sentinel value is planted in all four layers every iteration and must
-//!    appear in neither the [`Display`] nor the [`Debug`] rendering. The claim is about the
-//!    *value*: a fuzzer-chosen file name or variable name legitimately appears in the report, so
-//!    the assertion is suspended for the iteration when one of those carries the sentinel too.
+//!    appear in neither the [`Display`](std::fmt::Display) nor the [`Debug`](std::fmt::Debug)
+//!    rendering. The claim is about the *value*: a fuzzer-chosen file name or variable name
+//!    legitimately appears in the report, so the assertion is suspended for the iteration when
+//!    one of those carries the sentinel too.
 //! 3. **Nothing is invented.** Every layer the report names must exist: a file it points at is on
 //!    disk, a variable it names is set. A report that sends an operator to a path nobody wrote is
 //!    the failure mode that makes a diagnostic worse than silence.
@@ -61,9 +62,11 @@ fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve(RESERVED)
 }
 
-/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the
-/// loader under test. `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid
-/// unsafe code, so a jail is not a convenience here — it is the only way in.
+/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the loader
+/// under test.
+///
+/// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
+/// not a convenience here — it is the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }
@@ -118,7 +121,9 @@ fn check_origins(explanation: &Explanation) {
     }
 }
 
-/// Run the oracle. Panics when the report breaks one of the rules above.
+/// Run the oracle.
+///
+/// Panics when the report breaks one of the rules above.
 ///
 /// # Panics
 /// That is the contract: a panic is the finding.

@@ -21,9 +21,11 @@ const CONFIG_DIR: &str = "conf.d";
 /// The file [`Jail::config`] writes.
 const CONFIG_FILE: &str = "config.toml";
 
-/// Where [`Jail::indirection`] writes the files its variables point at. Beside the secrets
-/// directory rather than inside it: a `_FILE` variable names a path anywhere on the filesystem,
-/// and one that happened to sit in the secrets directory would be supplying its key twice.
+/// Where [`Jail::indirection`] writes the files its variables point at.
+///
+/// Beside the secrets directory rather than inside it: a `_FILE` variable names a path anywhere on
+/// the filesystem, and one that happened to sit in the secrets directory would be supplying its key
+/// twice.
 const INDIRECTION_DIR: &str = "indirect";
 
 /// The environment and filesystem one test runs in.
@@ -386,9 +388,11 @@ impl<'figment> Jail<'figment> {
 }
 
 impl std::fmt::Debug for Jail<'_> {
-    /// The sandbox and the loader. `figment::Jail` is not [`Debug`], and the environment it
-    /// holds is the whole process's — printing that from a test harness is how a secret from
-    /// some other variable ends up in a CI log.
+    /// The sandbox and the loader.
+    ///
+    /// `figment::Jail` is not [`Debug`], and the environment it holds is the whole process's —
+    /// printing that from a test harness is how a secret from some other variable ends up in a CI
+    /// log.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Jail")
             .field("sandbox", &self.sandbox)

@@ -1,17 +1,14 @@
 //! The `Describe` derive — the compile-time half of `terrace-config`'s schema export.
 //!
 //! This crate exists only because a proc-macro crate cannot export anything else. Everything it
-//! generates names types in [`terrace_config::schema`], and it is depended on with `=` so the
-//! two halves can never disagree about the shape of a [`Leaf`]. Depend on `terrace-config` with
-//! the `schema` feature; never on this crate directly.
+//! generates names types in `terrace_config::schema`, and it is depended on with `=` so the two
+//! halves can never disagree about the shape of a `Leaf`. Depend on `terrace-config` with the
+//! `schema` feature; never on this crate directly.
 //!
 //! The one thing only a macro can do is read the `///` comments. Every other column of a
 //! configuration table — the key path, the environment spelling, whether a value is required —
 //! is recoverable at runtime; the sentence explaining what the key is *for* exists nowhere but
 //! the source, and vanishes before any runtime sees the type.
-//!
-//! [`terrace_config::schema`]: https://docs.rs/terrace-config
-//! [`Leaf`]: https://docs.rs/terrace-config
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -500,8 +497,10 @@ impl RenameRule {
 
     /// Variant names are `PascalCase` by convention, so the same rule means something different
     /// here than it does for a field — `snake_case` has to *insert* the underscores that
-    /// [`Self::apply`] merely keeps. Reimplemented rather than approximated, because a value the
-    /// table spells differently from the one serde accepts is a value nobody can set.
+    /// [`Self::apply`] merely keeps.
+    ///
+    /// Reimplemented rather than approximated, because a value the table spells differently from
+    /// the one serde accepts is a value nobody can set.
     fn apply_to_variant(self, variant: &str) -> String {
         match self {
             Self::None | Self::Pascal => variant.to_owned(),

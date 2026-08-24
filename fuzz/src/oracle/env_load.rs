@@ -67,23 +67,28 @@ struct Limits {
     burst: u16,
 }
 
-/// A minimally bootable environment, applied before the fuzzer's pairs so it can override any of
-/// it. Without this most inputs fail on the first missing required field before reaching the
-/// value parsing this oracle is about.
+/// A minimally bootable environment, applied before the fuzzer's pairs so they can override it.
+///
+/// Without this most inputs fail on the first missing required field before reaching the value
+/// parsing this oracle is about.
 const BASE_ENV: &[(&str, &str)] = &[("TEST_DATABASE__URL", "postgres://u:p@localhost/db")];
 
 fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve("TEST_PROFILE")
 }
 
-/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the
-/// loader under test. `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid
-/// unsafe code, so a jail is not a convenience here — it is the only way in.
+/// The sandbox each iteration runs in: an empty environment, restored afterwards, around the loader
+/// under test.
+///
+/// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
+/// not a convenience here — it is the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }
 
-/// Run the oracle. Panics when the loader breaks one of the rules above.
+/// Run the oracle.
+///
+/// Panics when the loader breaks one of the rules above.
 ///
 /// # Panics
 /// That is the contract: a panic is the finding.

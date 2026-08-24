@@ -144,7 +144,9 @@ impl Request {
         self
     }
 
-    /// Keep only the keys under this prefix. Empty for the whole configuration.
+    /// Keep only the keys under this prefix.
+    ///
+    /// Empty for the whole configuration.
     #[must_use]
     pub fn with_only(mut self, only: impl Into<String>) -> Self {
         self.only = only.into();
