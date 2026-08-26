@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.1](https://github.com/TimSchoenle/terrace-config/compare/v0.9.0...v0.9.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **schema:** print exactly one trailing newline from Cli::main ([#48](https://github.com/TimSchoenle/terrace-config/issues/48)) ([1a87714](https://github.com/TimSchoenle/terrace-config/commit/1a8771465096da1688ea2f93c59afa70e765c8b6))
+
+
+### Miscellaneous
+
+* **deps:** update taiki-e/install-action action to v2.86.2 ([#50](https://github.com/TimSchoenle/terrace-config/issues/50)) ([4128975](https://github.com/TimSchoenle/terrace-config/commit/41289758bde574b71d16c4d104c26c0fcd93e049))
+* **deps:** update taiki-e/install-action action to v2.86.3 ([#53](https://github.com/TimSchoenle/terrace-config/issues/53)) ([0e7f918](https://github.com/TimSchoenle/terrace-config/commit/0e7f9189a0b32992ef7791f9283bf9d1a77f00aa))
+* **deps:** update taiki-e/install-action action to v2.86.4 ([#54](https://github.com/TimSchoenle/terrace-config/issues/54)) ([9733a80](https://github.com/TimSchoenle/terrace-config/commit/9733a801e78480a52b57c5f41439967f9eaf226a))
+* **deps:** update taiki-e/install-action action to v2.86.5 ([#57](https://github.com/TimSchoenle/terrace-config/issues/57)) ([64be52d](https://github.com/TimSchoenle/terrace-config/commit/64be52dcc551695200300793dd394537fda10c0a))
+* **deps:** update taiki-e/install-action action to v2.86.6 ([#59](https://github.com/TimSchoenle/terrace-config/issues/59)) ([0bef463](https://github.com/TimSchoenle/terrace-config/commit/0bef4635dd9d3908bb08ecc40d9af858879395e4))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-auto-approve-renovate.yaml to vworkflows-maintenance-auto-approve-renovate-v1.4.21 ([#51](https://github.com/TimSchoenle/terrace-config/issues/51)) ([4c89386](https://github.com/TimSchoenle/terrace-config/commit/4c89386ffa9f71dbe925ed055545cebed0db8fb9))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-timed-auto-pr-approve.yaml to vworkflows-maintenance-timed-auto-pr-approve-v1.2.32 ([#52](https://github.com/TimSchoenle/terrace-config/issues/52)) ([8d0868a](https://github.com/TimSchoenle/terrace-config/commit/8d0868a91afa479286842f137f2013f87f9885ed))
+* **deps:** update timschoenle/actions/actions/common/commit-changes to vactions-common-commit-changes-v1.3.3 ([#58](https://github.com/TimSchoenle/terrace-config/issues/58)) ([8dc824f](https://github.com/TimSchoenle/terrace-config/commit/8dc824f1e5943b19d3a9c7e576ab183dad96ecfd))
+
 ## [0.9.0](https://github.com/TimSchoenle/terrace-config/compare/v0.8.0...v0.9.0) (2026-08-19)
 
 
