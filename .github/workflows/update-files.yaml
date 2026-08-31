@@ -56,7 +56,7 @@ jobs:
 
       - name: Commit and push if changed
         id: auto-commit
-        uses: TimSchoenle/actions/actions/common/commit-changes@57e5492e68be560bddac3c6fc9ba0a944cfee961 # tag=actions-common-commit-changes-v1.3.3
+        uses: TimSchoenle/actions/actions/common/commit-changes@e16a1e466faf8ec751b26289c1898143a253269f # tag=actions-common-commit-changes-v1.4.0
         with:
           commit_message: 'build: update lockfiles'
           file_pattern: 'Cargo.lock fuzz/Cargo.lock'
