@@ -7,8 +7,8 @@
 //!
 //! The property under test is the one a consumer relies on and cannot verify: **a spelling this
 //! crate publishes is one the loader answers to, and a spelling it withholds is one the loader
-//! does not** — except for the single case where withholding is not the same as unreachable, which
-//! is why that case is refused rather than published.
+//! does not**. The one shape where two keys want the same spelling is refused rather than
+//! published, because which of them loses is a property of the type rather than of the loader.
 
 #![cfg(all(feature = "schema", feature = "testing"))]
 
@@ -111,11 +111,11 @@ fn a_name_that_is_another_keys_indirection_is_reported_as_reachable_elsewhere() 
 }
 
 #[test]
-fn one_variable_supplying_two_keys_is_refused_rather_than_published() {
-    // Measured: `PROBE_TOKEN_FILE=<a path>` fills `token` from that file *and* fills `token_file`
-    // with the path. A validator classifying that variable stops at `token`'s `env_file` and never
-    // learns of the second effect, so every gate passes on a chart that is supplying a key it did
-    // not mean to.
+fn a_spelling_claimed_by_anothers_indirection_is_refused_rather_than_published() {
+    // Measured: `PROBE_TOKEN_FILE=<a path>` fills `token` from that file and leaves `token_file`
+    // at its default. That variable is `token`'s mechanism, and the environment layer withholds
+    // the loader's own mechanism from the deserialiser — which is precisely what leaves
+    // `token_file` with no variable of its own rather than sharing one.
     let mut both = (String::new(), false);
     Harness::over(Terrace::new("PROBE_")).run(|jail| {
         let held = jail.write("held", "s3cret")?;
@@ -125,9 +125,10 @@ fn one_variable_supplying_two_keys_is_refused_rather_than_published() {
         Ok(())
     });
     assert_eq!(both.0, "s3cret", "the indirection filled the claimant");
-    assert!(both.1, "and the same variable filled the other key");
+    assert!(!both.1, "and reached no other key");
 
-    // So the contract refuses to be built rather than describing one of the two effects.
+    // So the contract refuses to be built rather than publishing, for a key the environment
+    // cannot name, the spelling that belongs to another key's mechanism.
     let error = Terrace::new("PROBE_")
         .schema::<Indirection>()
         .with_defaults_from(&Indirection::default())
@@ -233,10 +234,10 @@ struct AliasedIndirection {
 
 #[test]
 fn an_indirection_collision_through_an_alias_is_refused_too() {
-    // Identical in effect to the canonical case, down to the values — one variable, two keys — and
-    // it built, because the check read canonical spellings only. `Indirection` is reported on any
-    // spelling that collides, even beside one that works, because the hazard does not go away when
-    // another spelling does.
+    // Identical in effect to the canonical case, down to the values, and it built, because the
+    // check read canonical spellings only. `Indirection` is reported on any spelling that
+    // collides, even beside one that works, because the hazard does not go away when another
+    // spelling does.
     let schema = Terrace::new("PROBE_").schema::<AliasedIndirection>();
     let aliased = key_of(&schema, "path");
 
@@ -252,7 +253,7 @@ fn an_indirection_collision_through_an_alias_is_refused_too() {
         Ok(())
     });
     assert_eq!(both.0, "s3cret");
-    assert!(both.1, "the same variable filled the aliased key");
+    assert!(!both.1, "and reached no other key, aliased or not");
 
     let error = Terrace::new("PROBE_")
         .schema::<AliasedIndirection>()
