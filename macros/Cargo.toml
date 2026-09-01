@@ -3,7 +3,7 @@ name = "terrace-config-macros"
 # Version-locked to `terrace-config`, which depends on this with `=`. The derive expands to
 # struct literals of types in `terrace_config::schema`, so the two are one artefact split in
 # half only because a proc-macro crate cannot export anything else.
-version = "0.9.1"
+version = "0.9.2"
 edition = "2024"
 authors = ["Tim Schönle"]
 license = "MIT"
