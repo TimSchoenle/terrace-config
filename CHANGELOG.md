@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.2](https://github.com/TimSchoenle/terrace-config/compare/v0.9.1...v0.9.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **loader:** withhold the loader's own variables from the environment layer ([#69](https://github.com/TimSchoenle/terrace-config/issues/69)) ([850cb66](https://github.com/TimSchoenle/terrace-config/commit/850cb661543235113d95334b8c395d0ebb5e1430))
+
+
+### Miscellaneous
+
+* **deps:** update taiki-e/install-action action to v2.86.7 ([#60](https://github.com/TimSchoenle/terrace-config/issues/60)) ([d492ed1](https://github.com/TimSchoenle/terrace-config/commit/d492ed1f01aec03de5ae539d12dea38bb40abca8))
+* **deps:** update taiki-e/install-action action to v2.86.8 ([#62](https://github.com/TimSchoenle/terrace-config/issues/62)) ([3611190](https://github.com/TimSchoenle/terrace-config/commit/36111905991e2c80e5fb2abf298b7dc434801dbc))
+* **deps:** update taiki-e/install-action action to v2.87.0 ([#67](https://github.com/TimSchoenle/terrace-config/issues/67)) ([2c707f7](https://github.com/TimSchoenle/terrace-config/commit/2c707f7d41ecfaa207bc629d38f50a1d00d69a6a))
+* **deps:** update taiki-e/install-action action to v2.87.1 ([#70](https://github.com/TimSchoenle/terrace-config/issues/70)) ([78f25ec](https://github.com/TimSchoenle/terrace-config/commit/78f25ec1e96eac2fed089dd49e3f12ae23246a4f))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-timed-auto-pr-approve.yaml to vworkflows-maintenance-timed-auto-pr-approve-v1.2.33 ([#64](https://github.com/TimSchoenle/terrace-config/issues/64)) ([492f411](https://github.com/TimSchoenle/terrace-config/commit/492f4117fbca843915b6ec5e6b5b08cbcb56288d))
+* **deps:** update timschoenle/actions/actions/common/commit-changes to vactions-common-commit-changes-v1.4.0 ([#68](https://github.com/TimSchoenle/terrace-config/issues/68)) ([c7451b4](https://github.com/TimSchoenle/terrace-config/commit/c7451b40ad0e200e5d5cb715c6d43878f697eafb))
+* **deps:** update timschoenle/actions/actions/common/readme-variables to vactions-common-readme-variables-v1.1.1 ([#65](https://github.com/TimSchoenle/terrace-config/issues/65)) ([57a97c1](https://github.com/TimSchoenle/terrace-config/commit/57a97c15cc247ec0bbb1715f60fa15bc25b254c5))
+* **deps:** update timschoenle/actions/actions/common/render-template to vactions-common-render-template-v1.1.2 ([#66](https://github.com/TimSchoenle/terrace-config/issues/66)) ([87a6c7f](https://github.com/TimSchoenle/terrace-config/commit/87a6c7f484f8d23510eb6dc96f74d7a95c265937))
+* **deps:** update timschoenle/actions/actions/common/render-template-and-commit to vactions-common-render-template-and-commit-v1.1.4 ([#63](https://github.com/TimSchoenle/terrace-config/issues/63)) ([3abfe95](https://github.com/TimSchoenle/terrace-config/commit/3abfe950fe97d02206138977406d3db4cc74365e))
+
 ## [0.9.1](https://github.com/TimSchoenle/terrace-config/compare/v0.9.0...v0.9.1) (2026-08-26)
 
 
