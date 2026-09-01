@@ -146,6 +146,12 @@ Lowest precedence first:
 All five spell the same field the same way: `__` separates nesting levels and case is folded, so
 `database.url` is `MYAPP_DATABASE__URL` as a variable and `database__url` as a file name.
 
+Layer 3 carries only the variables that are *values*. `$MYAPP_CONFIG`, `$MYAPP_SECRETS_DIR`,
+anything [reserved](#reserving-keys-the-program-reads-itself) and every `MYAPP_<KEY>_FILE` are this
+loader's own mechanism rather than configuration, and none of them is offered to your type — so a
+root deriving `#[serde(deny_unknown_fields)]` loads rather than failing on a field it never
+declared.
+
 If `$MYAPP_CONFIG` names a **directory**, every `*.toml` directly inside it is merged in sorted
 order, so a mounted `ConfigMap` containing `10-base.toml` and `20-overrides.toml` merges the way
 an operator reading the mount would predict. A missing config file is not an error; running with

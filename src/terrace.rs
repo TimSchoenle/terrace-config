@@ -324,7 +324,12 @@ impl Terrace {
     /// Split out because a reload has to re-run exactly this assembly, and needs the layers to
     /// know which paths to watch.
     fn assemble(&self) -> Result<(Figment, TomlLayers, FileLayers), Error> {
-        let Layers { toml, files, .. } = self.collect_layers(self.shadow_policy)?;
+        let Layers {
+            dialect,
+            toml,
+            files,
+            ..
+        } = self.collect_layers(self.shadow_policy)?;
 
         let mut figment = Figment::new();
         // File by file rather than through `TomlLayers`'s own `Provider` impl, so figment
@@ -332,7 +337,7 @@ impl Terrace {
         for file in toml.files() {
             figment = figment.merge(Toml::file(file));
         }
-        figment = figment.merge(Env::prefixed(&self.prefix).split(&self.separator));
+        figment = figment.merge(self.environment(dialect));
 
         // Merged on top of the environment layer: the file layers are the more deliberate way
         // to supply a value, and `FileLayers::collect` has already refused any key that two
@@ -342,6 +347,39 @@ impl Terrace {
         }
 
         Ok((figment, toml, files))
+    }
+
+    /// The environment layer: the prefixed variables that are values, and no others.
+    ///
+    /// `Env::prefixed` yields every variable under the prefix, which is one set too many. Two
+    /// kinds of name in it are this loader's own mechanism rather than configuration: anything
+    /// [`reserved`](Self::reserve) — the configuration and secrets-directory variables among
+    /// them, reserved automatically — and every `<PREFIX><KEY>_FILE`, whose value
+    /// [`FileLayers`] has already read and merged as the key it names. Left in, they arrive at
+    /// the deserialiser as fields called `config`, `secrets_dir`, `profile` and `<key>_file`.
+    ///
+    /// A permissive root type ignores an unknown field, which is why leaving them in cost
+    /// nothing for as long as it did. A root deriving `#[serde(deny_unknown_fields)]` — the
+    /// reasonable choice when a typo in a mounted `ConfigMap` should stop the boot rather than
+    /// be dropped — refuses each one instead. Setting `<PREFIX>CONFIG` to point at that very
+    /// `ConfigMap` was then a boot failure naming a field the type never declared and no
+    /// operator can remove.
+    ///
+    /// The dialect already answers both questions: this is what [`FileLayers`] asks it to refuse
+    /// a reserved key supplied by a file, asked here of the environment instead. It is also what
+    /// [`Unreachable::Indirection`](crate::schema::Unreachable) already told a consumer — that a
+    /// key whose spelling is another key's indirection cannot be reached from the environment.
+    /// Until now the loader disagreed with the schema describing it.
+    fn environment(&self, dialect: Dialect) -> Env {
+        let prefix = self.prefix.clone();
+        Env::prefixed(&self.prefix)
+            // `filter` sees the key with the prefix already stripped, and the dialect answers
+            // about full spellings, so the prefix goes back on before either question is asked.
+            .filter(move |key| {
+                let name = format!("{prefix}{key}");
+                !dialect.is_reserved(&name) && dialect.indirection_target(&name).is_none()
+            })
+            .split(&self.separator)
     }
 
     /// Read what this loader's environment points at, without merging any of it.

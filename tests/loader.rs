@@ -289,6 +289,84 @@ fn the_config_and_secrets_variables_are_reserved_automatically() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The loader's own variables are mechanism, not configuration
+// ---------------------------------------------------------------------------------------------
+
+/// A root that refuses unknown fields, which is what a service declares when a typo in its
+/// `ConfigMap` should stop the boot rather than be dropped on the floor.
+///
+/// Every assertion in this section is invisible without it. A permissive root ignores an unknown
+/// key, so the environment layer carrying `config`, `secrets_dir`, `profile` and
+/// `strict.value_file` reads as working right up until someone adds `deny_unknown_fields` — and
+/// then every one of this loader's own variables is a boot failure naming a field the type was
+/// never going to have.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct Strict {
+    strict: StrictSection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct StrictSection {
+    value: String,
+}
+
+/// `$TEST_CONFIG` says where the TOML layer is. It is not a key in it.
+#[test]
+fn the_config_variable_is_not_offered_to_the_deserialiser() {
+    harness().run(|jail| {
+        jail.config(
+            b"[strict]
+value = \"from the file\"
+",
+        )?;
+
+        let config: Strict = jail.load()?;
+        assert_eq!(config.strict.value, "from the file");
+        Ok(())
+    });
+}
+
+/// `$TEST_SECRETS_DIR` says where the mounted `Secret` is. It is not a key in it.
+#[test]
+fn the_secrets_directory_variable_is_not_offered_to_the_deserialiser() {
+    harness().run(|jail| {
+        jail.secret_key("strict.value", "from a mounted file")?;
+
+        let config: Strict = jail.load()?;
+        assert_eq!(config.strict.value, "from a mounted file");
+        Ok(())
+    });
+}
+
+/// A reserved variable is read before the layers exist and belongs to no layer, so it must not
+/// arrive at the deserialiser either — the same reason a file may not supply one.
+#[test]
+fn a_reserved_variable_is_not_offered_to_the_deserialiser() {
+    harness().run(|jail| {
+        jail.env("TEST_PROFILE", "production");
+
+        let config: Strict = jail.load()?;
+        assert_eq!(config.strict.value, String::new());
+        Ok(())
+    });
+}
+
+/// `TEST_STRICT__VALUE_FILE` names the file that supplies `strict.value`. `strict.value_file` is
+/// what figment makes of it, and is a field no type has.
+#[test]
+fn an_indirection_variable_is_not_offered_to_the_deserialiser() {
+    harness().run(|jail| {
+        jail.indirection("strict.value", "from the named file")?;
+
+        let config: Strict = jail.load()?;
+        assert_eq!(config.strict.value, "from the named file");
+        Ok(())
+    });
+}
+
+// ---------------------------------------------------------------------------------------------
 // The TOML layer
 // ---------------------------------------------------------------------------------------------
 

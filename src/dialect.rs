@@ -210,9 +210,9 @@ impl Dialect {
             if self.is_reserved(name) {
                 continue;
             }
-            // `auth.jwt_secret_file` is what figment makes of the indirection variable — an
-            // unknown key it ignores. It must not be mistaken for `auth.jwt_secret`, which is
-            // what the indirection actually supplies.
+            // `auth.jwt_secret_file` is what the indirection variable would spell as a key, and
+            // the environment layer withholds it for that reason. It must not be mistaken here
+            // for `auth.jwt_secret`, which is what the indirection actually supplies.
             if self.indirection_target(name).is_some() {
                 continue;
             }
