@@ -1501,9 +1501,16 @@ fn the_nested_element_is_the_flat_one_with_the_documents_own_strictness() {
     // certainly-true half — leaves the element open, and `JsonSchema::closed` is what decides it
     // for a rendering.
     for at in [&nested["items"], &nested["items"]["properties"]["target"]] {
-        assert_eq!(at["additionalProperties"], json!(false), "{at}");
+        assert_eq!(
+            at["additionalProperties"],
+            json!(false),
+            "missing closed-schema additionalProperties=false"
+        );
     }
     for at in [&flat["items"], &flat["items"]["properties"]["target"]] {
-        assert!(at.get("additionalProperties").is_none(), "{at}");
+        assert!(
+            at.get("additionalProperties").is_none(),
+            "flat constraint unexpectedly sets additionalProperties"
+        );
     }
 }
