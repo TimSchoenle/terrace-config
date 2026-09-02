@@ -44,7 +44,7 @@ stops an accidental publish while leaving the name reserved, so a consumer pins 
 
 ```toml
 [dependencies]
-terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.9.2" }
+terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.10.0" }
 ```
 
 Every environment name derives from a single prefix.
@@ -109,7 +109,7 @@ let config: Config = Terrace::new("MYAPP_").load()?;
 
 ```toml
 [dependencies]
-terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.9.2" }
+terrace-config = { git = "https://github.com/TimSchoenle/terrace-config", tag = "v0.10.0" }
 ```
 
 Pin by tag, not branch. `Cargo.lock` records the resolved revision either way, but a branch
@@ -119,14 +119,14 @@ bump a deliberate manifest edit that shows up in review.
 `loader` is the only feature on by default. Take the rest by name:
 
 ```toml
-terrace-config = { git = "…", tag = "v0.9.2", features = ["reload", "explain"] }
+terrace-config = { git = "…", tag = "v0.10.0", features = ["reload", "explain"] }
 ```
 
 A service that reads a config file at boot and never reloads turns the default off, and links
 neither tokio nor notify:
 
 ```toml
-terrace-config = { git = "…", tag = "v0.9.2", default-features = false, features = ["loader"] }
+terrace-config = { git = "…", tag = "v0.10.0", default-features = false, features = ["loader"] }
 ```
 
 ## Usage
