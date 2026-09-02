@@ -42,7 +42,7 @@ std::fs::write("contract.json", contract.to_json()?)?;
 {
   "terrace_contract": 1,
   "app": { "name": "portfolio", "version": "v2.5.0" },
-  "schema": { "schema_version": 1, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
+  "schema": { "schema_version": 2, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
   "json_schema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
   "external": { "env": [ … ], "ignore": ["KUBERNETES_*", "HOSTNAME"], "unknown": "reject" }
 }
@@ -140,6 +140,39 @@ wrong for the second, which is why the reason is published rather than inferred.
 `constraint: null` still means no check is possible: a domain newtype, or a type this crate does
 not recognise. Inventing one would reject values the image accepts, which is the one thing a schema
 here must never do.
+
+**`constraint` can nest, as of `schema_version: 2`.** A container-typed key whose element type
+describes itself carries the element's shape under `items` for a sequence and
+`additionalProperties` for a map, composed as deeply as the containers are stacked:
+
+```json
+"paths": {
+  "type": "object",
+  "additionalProperties": {
+    "type": "array", "uniqueItems": true,
+    "items": { "type": "string", "enum": ["GET", "POST"] }
+  }
+}
+```
+
+It is still one key, with one environment spelling and one row in `keys` — the element's fields
+are not keys and never appear in that list, because an array index is not a key segment and no
+variable names one. A consumer walking `keys` therefore sees exactly what it saw at
+`schema_version: 1`.
+
+**What a consumer has to do about it depends on how it reads `constraint`.** One that hands the
+object to a JSON Schema validator needs no change and gets stricter for free. One that walks the
+keywords itself — an allowlist of `type`, `enum`, `minimum` and the rest is the usual shape — has
+to widen that list to `items`, `additionalProperties`, `properties`, `required`, `uniqueItems`,
+`minItems`, `maxItems` and `description`, and to recurse rather than assume the values are scalars.
+`schema_version` is the field to gate that on: refuse a version you were not written against, widen,
+then accept it. Nothing was removed and nothing changed meaning, so a consumer that ignores what it
+does not recognise needs no change at all.
+
+The element schema is deliberately **open** — no `additionalProperties: false` — because `serde`
+accepts a field nobody declared unless the struct says otherwise, and no derive can see
+`#[serde(deny_unknown_fields)]`. The `json_schema` half closes it, because that is a rendering with
+`JsonSchema::closed` to answer the question. The two are the same fields either way.
 
 `ExternalVar::constraint` sets both by hand for a type the crate cannot interpret — a duration, a
 connection string — and the derive leaves whatever it finds alone.

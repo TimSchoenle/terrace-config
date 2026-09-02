@@ -102,9 +102,10 @@ pub use markdown::Column;
 pub use terrace_config_macros::Describe;
 pub use toml_example::TomlExample;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value as Json};
 
 use crate::dialect::Dialect;
 use crate::error::Error;
@@ -118,10 +119,32 @@ use crate::error::Error;
 /// Adding [`Key::ty`], [`Key::values`] and [`Key::aliases`] therefore did not bump it. Splitting
 /// [`Key::default`] from [`Key::note`] would have, since `default` used to hold prose — but no
 /// document with the old meaning was ever published, so a bump would announce a migration nobody
-/// can have performed. This is version 1, and version 1 is the shape described here.
-pub const SCHEMA_VERSION: u32 = 1;
+/// can have performed.
+///
+/// # What changed in version 2
+///
+/// [`Key::constraint`] on a container-typed key can now carry the shape of one *element*, under
+/// `items` for a sequence and `additionalProperties` for a map, nested as deeply as the
+/// containers are stacked. A key that used to read `{"type": "array"}` reads
+/// `{"type": "array", "items": {"type": "object", "properties": {…}}}` when its element type opts
+/// in with [`#[config(element)]`](macro@Describe).
+///
+/// **A version-1 consumer is not broken by it, and that is the rule the bump exists to let it
+/// check.** Every keyword involved is standard JSON Schema and additive: a validator that already
+/// applies `constraint` as a schema gets stricter without being told, and one that reads only
+/// `type` sees exactly what it saw before. The version moved because a consumer with an *allowlist
+/// of keywords* — which is the shape a hand-rolled validator takes — has to widen it before those
+/// keywords appear, and would otherwise discover the nesting at deployment time. Gate on this,
+/// then widen.
+///
+/// Nothing was removed and nothing changed meaning, so a version-1 reader that ignores what it
+/// does not recognise needs no change at all. [`Key::text_form`] and [`Key::text_constraint`] are
+/// untouched: an element lives in document space, and an environment variable still carries the
+/// whole container as one TOML literal.
+pub const SCHEMA_VERSION: u32 = 2;
 
-/// How deep [`Sink::nested`] will recurse before it decides the type is cyclic.
+/// How deep [`Sink::nested`] and [`Sink::repeated`] will recurse before deciding the type is
+/// cyclic.
 ///
 /// A configuration struct that contains itself has no finite key set, so there is no correct
 /// output — only a stack overflow, or this.
@@ -189,15 +212,107 @@ pub struct Sink {
     keys: Vec<Key>,
     /// The paths already seen, so a collision is caught rather than duplicated into the output.
     seen: BTreeSet<String>,
+    /// The element schema of each key that reported one, by that key's index in [`Self::keys`].
+    ///
+    /// Held beside the keys rather than among them, because an element has no path: an array
+    /// index is not a key segment and no environment variable names one. It is composed into
+    /// [`Key::constraint`] by [`Self::into_keys`], beside the constraint the key's own type
+    /// justifies — one place decides what a key accepts, which is what stops the two from
+    /// disagreeing.
+    elements: BTreeMap<usize, Map<String, Json>>,
+    /// How many levels are open above this sink: its own [`Self::prefix`], plus the element scope
+    /// of every sink it descends from.
+    ///
+    /// `prefix.len()` was the whole answer while [`Self::nested`] was the only way down.
+    /// [`Self::repeated`] starts a *fresh* sink for the element type, whose prefix begins empty —
+    /// so a type whose elements contain itself would reset the count every turn and recurse until
+    /// the stack ran out, which is the failure [`MAX_DEPTH`] exists to turn into a message.
+    depth: usize,
+}
+
+/// What one element of a container-typed key holds.
+///
+/// [`Key::ty`] says `Vec<RouteConfig>`, and everything about that spelling except the last word is
+/// readable: it is an array, of something. The something is a name, and this crate has no type
+/// graph to look a name up in — so the type that *does* know reports it here, and
+/// [`Sink::repeated`] attaches it to the key.
+///
+/// Two shapes, matching the two things a `#[derive(Describe)]` produces: a struct of named fields
+/// *has* keys, and an enum of unit variants *is* a set of values.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub enum Element<'a> {
+    /// The element is a type with keys of its own — anything implementing [`Describe`].
+    ///
+    /// Pass its `describe`: `Element::Fields(<RouteConfig as Describe>::describe)`. It is run
+    /// into a sink of its own, and what comes back becomes one nested object schema rather than
+    /// entries in the key list. `#[config(nested)]` inside the element works unchanged, so a
+    /// `RouteTarget` under a `RouteConfig` under a `Vec` comes out three levels deep.
+    Fields(fn(&mut Sink)),
+    /// The element is a fixed set of values — anything implementing [`Values`].
+    ///
+    /// Pass its variants: `Element::Choice(<Severity as Values>::VARIANTS)`. The same schema
+    /// `#[config(values)]` produces for a key, one level down.
+    ///
+    /// **It says what the derive says, which is `serde`'s default wire form.** A type whose
+    /// `Deserialize` is not the derived one — `#[serde(try_from = "String")]` over a
+    /// case-insensitive `FromStr` is the case that turns up — accepts spellings that are not in
+    /// this list, and a schema listing only the variants would reject a file the loader takes.
+    /// That is the one thing this crate will not publish, so annotate such a type nowhere and
+    /// leave the element undescribed.
+    Choice(&'a [&'a str]),
+}
+
+impl Element<'_> {
+    /// This element as a JSON Schema object, ready to be grafted into the key's constraint.
+    ///
+    /// `depth` is the parent sink's, so a cycle through an element is counted the same as a cycle
+    /// through a field.
+    fn schema(self, depth: usize) -> Map<String, Json> {
+        match self {
+            Self::Choice(variants) => json_schema::choice(variants),
+            Self::Fields(describe) => {
+                let mut sink = Sink::at_depth(depth);
+                describe(&mut sink);
+                json_schema::element_object(&sink.into_keys())
+            }
+        }
+    }
 }
 
 impl Sink {
     fn new() -> Self {
+        Self::at_depth(0)
+    }
+
+    /// A sink for a type nested `depth` levels below the root.
+    fn at_depth(depth: usize) -> Self {
         Self {
             prefix: Vec::new(),
             keys: Vec::new(),
             seen: BTreeSet::new(),
+            elements: BTreeMap::new(),
+            depth,
         }
+    }
+
+    /// The keys collected here, with everything a *type* can say about them filled in.
+    ///
+    /// The half of [`Schema::describe_at`]'s work that needs no [`Dialect`]: the two constraints
+    /// and the text form, with any element schema composed into the first. An element type's keys
+    /// get this half and no more, because the other half derives environment spellings and an
+    /// element has none to derive — which is the whole reason it is a nested schema and not a row
+    /// in the key list.
+    fn into_keys(mut self) -> Vec<Key> {
+        for (index, key) in self.keys.iter_mut().enumerate() {
+            key.constraint =
+                json_schema::constraint(key.ty.as_deref(), &key.values, self.elements.get(&index))
+                    .map(Json::Object);
+            let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
+            key.text_form = form;
+            key.text_constraint = text.map(Json::Object);
+        }
+        self.keys
     }
 
     /// Record one key at the current prefix.
@@ -262,14 +377,83 @@ impl Sink {
     /// of keys to report.
     pub fn nested(&mut self, segment: &str, describe: impl FnOnce(&mut Self)) {
         assert!(
-            self.prefix.len() < MAX_DEPTH,
+            self.depth < MAX_DEPTH,
             "`{}` nests more than {MAX_DEPTH} levels deep. A configuration type that contains \
              itself has no finite set of keys.",
             self.prefix.join(".")
         );
         self.prefix.push(segment.to_owned());
+        self.depth += 1;
         describe(self);
+        self.depth -= 1;
         self.prefix.pop();
+    }
+
+    /// Record one key whose value is a container, and say what one element of it holds.
+    ///
+    /// [`Self::leaf`] with the one thing a type spelling cannot supply. `Vec<RouteConfig>` is
+    /// already read as an array; this is what fills in the element, and the result is a nested
+    /// schema on [`Key::constraint`] — `items` for a sequence, `additionalProperties` for a map,
+    /// composed through both when they are stacked, so `HashMap<String, HashSet<Method>>` reaches
+    /// the enum.
+    ///
+    /// **It adds one key and no more.** An element has no path: an array index is not a key
+    /// segment, and `PREFIX_ROUTES__0__NAME` names nothing the loader would read. So the element's
+    /// own fields never become entries in the schema's key list, and a consumer walking that list
+    /// sees exactly what it saw before — one key, `routes`, whose constraint now says more.
+    ///
+    /// The element schema is dropped, and the key described exactly as [`Self::leaf`] would
+    /// describe it, when [`Leaf::ty`] is not a container this crate reads. A schema saying `routes`
+    /// is an object because its element is a struct would be worse than saying nothing.
+    ///
+    /// ```
+    /// # use terrace_config::Terrace;
+    /// use terrace_config::schema::{Describe, Element, Leaf, Sink};
+    ///
+    /// struct Route;
+    /// impl Describe for Route {
+    ///     fn describe(sink: &mut Sink) {
+    ///         sink.leaf(Leaf { name: "name", docs: "What the route is called.", ty: Some("String"),
+    ///             values: None, aliases: &[], note: None, required: true, secret: false });
+    ///     }
+    /// }
+    ///
+    /// struct Config;
+    /// impl Describe for Config {
+    ///     fn describe(sink: &mut Sink) {
+    ///         sink.repeated(
+    ///             Leaf { name: "routes", docs: "", ty: Some("Vec<Route>"), values: None,
+    ///                 aliases: &[], note: None, required: false, secret: false },
+    ///             Element::Fields(<Route as Describe>::describe),
+    ///         );
+    ///     }
+    /// }
+    ///
+    /// let schema = Terrace::new("MYSERVICE_").schema::<Config>();
+    ///
+    /// // One key, not two: `routes.name` is not a key anybody can set.
+    /// assert_eq!(schema.keys.len(), 1);
+    /// let constraint = schema.keys[0].constraint.as_ref().expect("an array of described routes");
+    /// assert_eq!(constraint["items"]["properties"]["name"]["type"], "string");
+    /// ```
+    ///
+    /// # Panics
+    /// As [`Self::leaf`] for a repeated key path, and as [`Self::nested`] for a type that contains
+    /// itself — an element type holding a container of itself is cyclic in exactly the same way a
+    /// field of itself is.
+    pub fn repeated(&mut self, leaf: Leaf<'_>, element: Element<'_>) {
+        self.leaf(leaf);
+        // `leaf` pushes exactly one key, and panics rather than pushing none, so the element
+        // belongs to the key that is now last.
+        let index = self.keys.len() - 1;
+
+        assert!(
+            self.depth < MAX_DEPTH,
+            "`{}` nests more than {MAX_DEPTH} levels deep. A configuration type whose elements \
+             contain itself has no finite shape to describe.",
+            self.keys[index].path
+        );
+        self.elements.insert(index, element.schema(self.depth + 1));
     }
 }
 
@@ -333,6 +517,19 @@ pub struct Key {
     /// it they reimplement something worse — a vocabulary of Rust type names, in whatever language
     /// they are written in, with `PathBuf` as the trap: it is a string and nothing in the name
     /// says so.
+    ///
+    /// **It nests, for a container-typed key whose element describes itself.** [`Sink::repeated`]
+    /// is how an element gets in here, under `items` for a sequence and `additionalProperties` for
+    /// a map, composed as deeply as the containers are stacked. The key is still one key with one
+    /// spelling — an element has no path, so nothing about this appears in [`Schema::keys`] — and
+    /// a consumer that walks the keywords rather than handing them to a validator has to recurse.
+    /// [`SCHEMA_VERSION`] is what that consumer gates on.
+    ///
+    /// The element is left **open**: no `additionalProperties: false`. `serde` accepts a field
+    /// nobody declared unless the struct says otherwise, and no derive can see
+    /// `#[serde(deny_unknown_fields)]` — so closing it here would reject a file the loader takes.
+    /// Whether an undeclared key is an error is [`JsonSchema::closed`]'s question, and
+    /// [`Schema::to_json_schema`] answers it for what it renders.
     ///
     /// [`None`] means unconstrained, and says exactly as much as [`Self::ty`] does about a domain
     /// newtype: the key exists and nothing here can check its value.
@@ -688,15 +885,15 @@ impl Schema {
             .filter(|segment| !segment.is_empty())
             .map(ToOwned::to_owned)
             .collect();
+        // A root is levels already open, and they count towards the cycle bound like any other.
+        sink.depth = sink.prefix.len();
         T::describe(&mut sink);
 
-        let mut keys = sink.keys;
+        // The constraints and the text form come back filled in: they are what a type says, and
+        // need no dialect. Everything below is what a *dialect* says, which is the half an element
+        // type never gets.
+        let mut keys = sink.into_keys();
         for key in &mut keys {
-            key.constraint = json_schema::constraint(key.ty.as_deref(), &key.values)
-                .map(serde_json::Value::Object);
-            let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
-            key.text_form = form;
-            key.text_constraint = text.map(serde_json::Value::Object);
             let (env, canonical_reason) = env_spelling(dialect, &key.path);
             key.env = env;
             key.env_file = key

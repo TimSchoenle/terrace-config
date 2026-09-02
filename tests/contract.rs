@@ -1347,3 +1347,163 @@ fn the_known_spellings_still_round_trip() {
         assert_eq!(serde_json::to_string(&policy).expect("renders"), json);
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The element shape of a container-typed key, which is the half a chart used to transcribe
+// ---------------------------------------------------------------------------------------------
+
+/// One element of `routes`, with a nested table and a choice inside it — the shape a chart's
+/// `values.schema.json` had to carry by hand while the contract said only `{"type": "array"}`.
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Route {
+    /// Name shown in the log line.
+    name: String,
+    /// Lowest severity this route accepts.
+    #[config(values)]
+    #[serde(default)]
+    min_severity: Severity,
+    /// Where the route delivers.
+    #[config(nested)]
+    target: Target,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Target {
+    /// Channel the card is posted to.
+    #[serde(default)]
+    id: u16,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum Severity {
+    #[default]
+    Info,
+    Critical,
+}
+
+/// Deliberately not `Describe`: the keys under it are operator-chosen names. A producer that has
+/// said so must keep publishing exactly what it published before.
+#[derive(Deserialize, Serialize, Default)]
+struct Bucket {
+    region: String,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Routed {
+    /// Routes declared in the file.
+    #[config(element)]
+    #[serde(default)]
+    routes: Vec<Route>,
+    /// Buckets, by the route name an operator chose.
+    #[serde(default)]
+    entries: BTreeMap<String, Bucket>,
+}
+
+fn routed() -> Contract {
+    terrace()
+        .schema::<Routed>()
+        .with_defaults_from(&Routed::default())
+        .expect("the default config serialises")
+        .into_contract(App::new("router").version("v1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+/// The document a deployment pipeline acts on now carries the element, so the pipeline stops
+/// carrying a copy of the struct that goes stale the moment the image moves.
+#[test]
+fn a_container_typed_key_publishes_its_element_shape() {
+    let contract = routed();
+    let routes = key_of(&contract, "routes")
+        .constraint
+        .clone()
+        .expect("an array of described routes");
+
+    assert_eq!(routes["type"], json!("array"));
+    assert_eq!(
+        routes["items"]["properties"]["name"]["type"],
+        json!("string")
+    );
+    assert_eq!(
+        routes["items"]["properties"]["min_severity"]["enum"],
+        json!(["info", "critical"])
+    );
+    assert_eq!(
+        routes["items"]["properties"]["target"]["properties"]["id"]["maximum"],
+        json!(65_535)
+    );
+}
+
+/// The element is a nested schema on one key, never keys of its own. A consumer walking the key
+/// list — which is how every environment-variable gate is written — sees exactly what it saw.
+#[test]
+fn an_element_contributes_no_keys_to_the_contract() {
+    let paths: Vec<String> = routed()
+        .schema
+        .keys
+        .iter()
+        .map(|key| key.path.clone())
+        .collect();
+
+    assert_eq!(paths, ["routes", "entries"]);
+}
+
+/// Opt-in. A container whose element type is deliberately a leaf publishes the bytes it always
+/// did, so re-vendoring a contract from a producer that did nothing changes nothing.
+#[test]
+fn a_container_whose_element_says_nothing_is_unchanged() {
+    assert_eq!(
+        key_of(&routed(), "entries").constraint,
+        Some(json!({ "type": "object" }))
+    );
+}
+
+/// The element lives in document space. An environment variable still carries the whole container
+/// as one TOML literal, and `text_form` is what tells a consumer to read it that way.
+#[test]
+fn an_element_shape_does_not_reach_the_text_constraint() {
+    let contract = routed();
+    let routes = key_of(&contract, "routes");
+
+    assert_eq!(routes.text_form, TextForm::Structured);
+    assert_eq!(
+        routes.text_constraint,
+        key_of(&contract, "entries").text_constraint
+    );
+}
+
+/// Two renderings of one fact, and the element is the case where they could most easily part:
+/// the flat field is left open and the rendered document closes what it renders.
+#[test]
+fn the_nested_element_is_the_flat_one_with_the_documents_own_strictness() {
+    let contract = routed();
+    let nested = &contract.json_schema["properties"]["routes"];
+    let flat = key_of(&contract, "routes")
+        .constraint
+        .clone()
+        .expect("carried");
+
+    assert_eq!(nested["type"], flat["type"]);
+    for field in ["name", "min_severity"] {
+        assert_eq!(
+            nested["items"]["properties"][field], flat["items"]["properties"][field],
+            "{field}"
+        );
+    }
+    assert_eq!(
+        nested["items"]["properties"]["target"]["properties"],
+        flat["items"]["properties"]["target"]["properties"]
+    );
+
+    // The one deliberate difference, at every level of the element. `serde` accepts a field
+    // nobody declared unless the struct says otherwise, so the flat constraint — the
+    // certainly-true half — leaves the element open, and `JsonSchema::closed` is what decides it
+    // for a rendering.
+    for at in [&nested["items"], &nested["items"]["properties"]["target"]] {
+        assert_eq!(at["additionalProperties"], json!(false), "{at}");
+    }
+    for at in [&flat["items"], &flat["items"]["properties"]["target"]] {
+        assert!(at.get("additionalProperties").is_none(), "{at}");
+    }
+}

@@ -13,6 +13,18 @@
 //! "any value": a key whose type is a domain newtype validates as it did before, rather than
 //! being rejected on a guess about what the newtype wraps.
 //!
+//! # The one thing a token cannot say
+//!
+//! `Vec<RouteConfig>` is an array — that much is in the spelling — and what one element of it
+//! looks like is not, because `RouteConfig` is a name and this module has no type graph to look it
+//! up in. Teaching it more names would not help: the next configuration has a different struct.
+//!
+//! So the element is supplied from outside, by the type that *does* know: [`interpret_with`] takes
+//! the schema a `#[config(element)]` field reported and puts it where the walk stops. Everything
+//! about the containers around it still comes from the spelling, which is why a map of sets of an
+//! opted-in enum needs no special case — the walk was already reading both containers correctly
+//! and only the bottom was blank.
+//!
 //! [`Key::ty`]: super::Key::ty
 
 use serde_json::{Map, Value as Json, json};
@@ -25,6 +37,62 @@ use super::TextForm;
 /// written in, and `items`, `uniqueItems` and `additionalProperties` all carry a nested schema,
 /// so a shape enum would end up re-deriving JSON Schema one variant at a time.
 pub(super) fn interpret(ty: &str) -> Option<Map<String, Json>> {
+    walk(ty, None)
+}
+
+/// The same keywords, with `element` standing in at the position the walk cannot name itself.
+///
+/// [`walk`] already reads a container correctly — `HashMap<String, HashSet<Method>>` is an object
+/// of arrays of *something* — and the only thing missing is the something. It recurses down
+/// exactly one path (a sequence's item, a map's value), so there is exactly one such position per
+/// type, and `element` goes in it however deep the containers are stacked.
+///
+/// [`None`] when `ty` is not a container, which is a guard rather than a formality. A key typed as
+/// a bare domain struct has no element position, and grafting the schema at the key itself would
+/// say the key *is* one element — an object where the file holds an array. A hand-written
+/// [`Describe`](super::Describe) reporting whatever type text it likes is what this protects
+/// against; the derive rejects the same shape at compile time, with a message that can name the
+/// field.
+pub(super) fn interpret_with(ty: &str, element: &Map<String, Json>) -> Option<Map<String, Json>> {
+    if !is_container(ty) {
+        return None;
+    }
+    walk(ty, Some(element))
+}
+
+/// Whether `ty` names something with an element position — a sequence, a set or a map.
+///
+/// The wrappers `serde` sees through are transparent here for the reason they are transparent in
+/// [`walk`]: `Option<Vec<T>>` is supplied as an array, and the `Option` is a fact about whether
+/// the key has to be there at all rather than about what it holds.
+fn is_container(ty: &str) -> bool {
+    let ty = strip_reference(ty.trim());
+    if ty.starts_with('[') && ty.ends_with(']') {
+        return true;
+    }
+
+    let (head, args) = split_generic(ty);
+    let Some(name) = head.rsplit("::").next() else {
+        return false;
+    };
+    match (name, args.as_slice()) {
+        ("Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock", [inner]) => {
+            is_container(inner)
+        }
+        ("Cow", [_lifetime, inner]) => is_container(inner),
+        ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [_]) | ("HashMap" | "BTreeMap", [_, _]) => {
+            true
+        }
+        _ => false,
+    }
+}
+
+/// One spelling, read: the containers it is made of, and what it bottoms out in.
+///
+/// `element` is what the bottom is when the spelling itself cannot say — [`None`] for an ordinary
+/// read, and the caller's element schema when a key reported one. It is carried down through every
+/// container and every transparent wrapper, so it lands wherever the recursion stops.
+fn walk(ty: &str, element: Option<&Map<String, Json>>) -> Option<Map<String, Json>> {
     let ty = strip_reference(ty.trim());
 
     // `[T; N]` and `[T]`, which have no head to look up.
@@ -33,7 +101,7 @@ pub(super) fn interpret(ty: &str) -> Option<Map<String, Json>> {
             Some((item, len)) => (item, len.trim().parse::<u64>().ok()),
             None => (inner, None),
         };
-        let mut schema = sequence(item, false);
+        let mut schema = sequence(item, false, element);
         if let Some(len) = len {
             // A fixed-length array is the one sequence whose length is part of its type, and
             // `serde` refuses a file supplying any other number of elements.
@@ -49,9 +117,9 @@ pub(super) fn interpret(ty: &str) -> Option<Map<String, Json>> {
         // Wrappers `serde` sees straight through. `Option` is stripped by the derive already;
         // it is here because a hand-written `Describe` reports whatever text it likes.
         ("Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock", [inner]) => {
-            return interpret(inner);
+            return walk(inner, element);
         }
-        ("Cow", [_lifetime, inner]) => return interpret(inner),
+        ("Cow", [_lifetime, inner]) => return walk(inner, element),
 
         ("bool", []) => json_map(&json!({ "type": "boolean" })),
         ("f32" | "f64", []) => json_map(&json!({ "type": "number" })),
@@ -69,21 +137,27 @@ pub(super) fn interpret(ty: &str) -> Option<Map<String, Json>> {
             [],
         ) => json_map(&json!({ "type": "string" })),
 
-        ("Vec" | "VecDeque", [item]) => sequence(item, false),
-        ("HashSet" | "BTreeSet", [item]) => sequence(item, true),
+        ("Vec" | "VecDeque", [item]) => sequence(item, false, element),
+        ("HashSet" | "BTreeSet", [item]) => sequence(item, true, element),
 
         // The key type is ignored on purpose: a TOML table's keys are strings whatever the map
-        // is keyed by, so it constrains nothing that could be written in the file.
+        // is keyed by, so it constrains nothing that could be written in the file. Which is also
+        // why `element` goes to the value and never to the key.
         ("HashMap" | "BTreeMap", [_key, value]) => {
             let mut schema = json_map(&json!({ "type": "object" }));
-            if let Some(value) = interpret(value) {
+            if let Some(value) = walk(value, element) {
                 schema.insert("additionalProperties".to_owned(), Json::Object(value));
             }
             schema
         }
 
-        (name, []) => integer(name)?,
-        _ => return None,
+        // The bottom of the walk. A spelling with no certain meaning is where a reported element
+        // schema belongs — and where, without one, this module says nothing rather than guessing.
+        (name, []) => match integer(name) {
+            Some(schema) => schema,
+            None => return element.cloned(),
+        },
+        _ => return element.cloned(),
     };
     Some(schema)
 }
@@ -295,10 +369,11 @@ fn integer_text(name: &str) -> Option<Map<String, Json>> {
     })))
 }
 
-/// An array of `item`, with the element schema when `item` is a spelling this understands.
-fn sequence(item: &str, unique: bool) -> Map<String, Json> {
+/// An array of `item`, with the element schema when `item` is a spelling this understands — or
+/// when the key reported one, which is what `element` carries.
+fn sequence(item: &str, unique: bool, element: Option<&Map<String, Json>>) -> Map<String, Json> {
     let mut schema = json_map(&json!({ "type": "array" }));
-    if let Some(item) = interpret(item) {
+    if let Some(item) = walk(item, element) {
         schema.insert("items".to_owned(), Json::Object(item));
     }
     if unique {
@@ -366,9 +441,18 @@ fn json_map(value: &Json) -> Map<String, Json> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Map, Value as Json, json};
 
-    use super::interpret;
+    use super::{interpret, interpret_with};
+
+    /// The kind of schema a `#[config(element)]` field reports: something this module could never
+    /// have produced from the token text.
+    fn element() -> Map<String, Json> {
+        match json!({ "type": "object", "properties": { "id": { "type": "string" } } }) {
+            Json::Object(map) => map,
+            _ => unreachable!("the literal is an object"),
+        }
+    }
 
     #[test]
     fn an_unrecognised_spelling_constrains_nothing() {
@@ -425,6 +509,58 @@ mod tests {
         let schema = interpret("[u8; 4]").expect("the array is understood");
         assert_eq!(schema["minItems"], json!(4));
         assert_eq!(schema["maxItems"], json!(4));
+    }
+
+    #[test]
+    fn a_reported_element_fills_the_position_a_token_cannot_name() {
+        let schema = interpret_with("Vec<RouteConfig>", &element()).expect("a sequence");
+        assert_eq!(schema["type"], json!("array"));
+        assert_eq!(schema["items"], Json::Object(element()));
+    }
+
+    /// Both containers were already read correctly; only the bottom was blank, so nothing about
+    /// this case is special beyond how deep the recursion goes.
+    #[test]
+    fn a_map_of_sets_reaches_the_element_through_both() {
+        let schema =
+            interpret_with("HashMap<String, HashSet<Method>>", &element()).expect("a map of sets");
+        assert_eq!(schema["type"], json!("object"));
+        let set = &schema["additionalProperties"];
+        assert_eq!(set["type"], json!("array"));
+        assert_eq!(set["uniqueItems"], json!(true));
+        assert_eq!(set["items"], Json::Object(element()));
+    }
+
+    /// The `Option` is a fact about whether the key has to be there, not about what it holds.
+    #[test]
+    fn a_wrapped_container_is_still_a_container() {
+        assert_eq!(
+            interpret_with("Option<Vec<Entry>>", &element()),
+            interpret_with("Vec<Entry>", &element())
+        );
+        assert_eq!(
+            interpret_with("[Entry; 2]", &element()).expect("a fixed array")["items"],
+            Json::Object(element())
+        );
+    }
+
+    /// A key that is not a container has no element position, and putting the schema at the key
+    /// itself would claim the key *is* one element.
+    #[test]
+    fn a_type_that_is_not_a_container_refuses_an_element() {
+        assert_eq!(interpret_with("RouteConfig", &element()), None);
+        assert_eq!(interpret_with("String", &element()), None);
+    }
+
+    /// A container whose element the spelling already names keeps that reading. Nothing in the
+    /// crate produces this pairing — `Vec<String>` cannot report a describing element — but the
+    /// walk must not let a reported schema overwrite a certainty.
+    #[test]
+    fn a_named_element_is_not_replaced_by_a_reported_one() {
+        assert_eq!(
+            interpret_with("Vec<String>", &element()),
+            interpret("Vec<String>")
+        );
     }
 
     #[test]

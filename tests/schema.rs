@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use terrace_config::Terrace;
 use terrace_config::schema::{
-    Column, DRAFT_07, DRAFT_2020_12, Describe, JsonSchema, Key, Leaf, SCHEMA_VERSION, Schema, Sink,
-    TomlExample,
+    Column, DRAFT_07, DRAFT_2020_12, Describe, Element, JsonSchema, Key, Leaf, SCHEMA_VERSION,
+    Schema, Sink, TomlExample,
 };
 
 #[derive(Deserialize, Serialize, Describe)]
@@ -1832,4 +1832,286 @@ fn the_dialect_is_a_choice() {
         latest,
         "only the dialect differs"
     );
+}
+
+// ---- what one element of a container-typed key holds ----
+
+/// A route: a struct with keys of its own, one of them nested and one of them a choice. Every
+/// shape the element walk has to carry, in the smallest type that carries them.
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Route {
+    /// Name shown in the log line.
+    name: String,
+    /// Where the route delivers.
+    #[config(nested)]
+    target: Target,
+    /// Lowest severity this route accepts.
+    #[config(values)]
+    #[serde(default)]
+    min_severity: Severity,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Target {
+    /// Channel the card is posted to.
+    #[serde(default)]
+    id: u16,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum Severity {
+    #[default]
+    Info,
+    Critical,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe, PartialEq, Eq, Hash)]
+#[serde(rename_all = "UPPERCASE")]
+enum Method {
+    #[default]
+    Get,
+    Post,
+}
+
+/// Deliberately not `Describe`: the keys under it are operator-chosen names, and the producer
+/// that owns this shape has said so. The feature must not force it to opt in.
+#[derive(Deserialize, Serialize, Default)]
+struct Opaque {
+    region: String,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Containers {
+    /// Routes declared in the file.
+    #[config(element)]
+    #[serde(default)]
+    routes: Vec<Route>,
+    /// Peers, by name.
+    #[config(element)]
+    #[serde(default)]
+    peers: std::collections::BTreeMap<String, Target>,
+    /// Methods each path forwards.
+    #[config(element_values)]
+    #[serde(default)]
+    paths: std::collections::HashMap<String, std::collections::HashSet<Method>>,
+    /// Buckets, by the route name an operator chose.
+    #[serde(default)]
+    entries: std::collections::HashMap<String, Opaque>,
+}
+
+/// The described schema of the fixture above.
+fn containers() -> Schema {
+    Terrace::new("T_")
+        .schema::<Containers>()
+        .with_defaults_from(&Containers::default())
+        .expect("the default config serialises")
+}
+
+/// The one thing this must not do. An array index is not a key segment and no environment
+/// variable names one, so an element's fields are a nested schema and never a row of their own.
+#[test]
+fn an_element_adds_no_keys() {
+    let schema = containers();
+    let paths: Vec<&str> = schema.keys.iter().map(|key| key.path.as_str()).collect();
+
+    assert_eq!(paths, ["routes", "peers", "paths", "entries"]);
+}
+
+/// The whole point: `Vec<Route>` published `{"type": "array"}` and nothing about the element, and
+/// a chart had to hand-transcribe the struct to say more.
+#[test]
+fn a_sequence_of_a_describing_struct_carries_its_element_shape() {
+    let schema = containers();
+    let routes = schema.keys[0]
+        .constraint
+        .as_ref()
+        .expect("an array of described routes");
+
+    assert_eq!(routes["type"], json!("array"));
+    let item = &routes["items"];
+    assert_eq!(item["type"], json!("object"));
+    assert_eq!(item["properties"]["name"]["type"], json!("string"));
+    assert_eq!(
+        item["properties"]["name"]["description"],
+        json!("Name shown in the log line.")
+    );
+    // `#[config(nested)]` inside the element is a level of the element, not a key path.
+    assert_eq!(
+        item["properties"]["target"]["properties"]["id"]["maximum"],
+        json!(65_535)
+    );
+    // `#[config(values)]` inside the element is the same choice it would be at the top level.
+    assert_eq!(
+        item["properties"]["min_severity"]["enum"],
+        json!(["info", "critical"])
+    );
+    // A field of an element that nothing defaults is required *of the element*: no environment
+    // variable and no mounted file reaches inside an array element, so the document is the only
+    // layer that could supply it.
+    assert_eq!(item["required"], json!(["name"]));
+}
+
+/// A map is an object over its value type, and a described value type fills the same position
+/// `additionalProperties` already held for a value type the tokens could name.
+#[test]
+fn a_map_of_a_describing_struct_carries_its_element_under_additional_properties() {
+    let schema = containers();
+    let peers = schema.keys[1]
+        .constraint
+        .as_ref()
+        .expect("an object of described targets");
+
+    assert_eq!(peers["type"], json!("object"));
+    assert_eq!(
+        peers["additionalProperties"]["properties"]["id"]["type"],
+        json!("integer")
+    );
+}
+
+/// The composition case, and the one that shows this is not only about structs: both containers
+/// were already read correctly and only the innermost element was blank.
+#[test]
+fn a_map_of_sets_reaches_the_element_enum_through_both() {
+    let schema = containers();
+    let paths = schema.keys[2]
+        .constraint
+        .as_ref()
+        .expect("an object of sets of methods");
+
+    assert_eq!(paths["type"], json!("object"));
+    let set = &paths["additionalProperties"];
+    assert_eq!(set["type"], json!("array"));
+    assert_eq!(set["uniqueItems"], json!(true));
+    assert_eq!(
+        set["items"],
+        json!({ "type": "string", "enum": ["GET", "POST"] })
+    );
+}
+
+/// Opt-in, and nothing changes for a container that did not. A producer whose element type is
+/// deliberately a leaf keeps the bytes it published before this existed.
+#[test]
+fn a_container_whose_element_describes_nothing_emits_what_it_always_did() {
+    let schema = containers();
+    let entries = schema.keys[3]
+        .constraint
+        .as_ref()
+        .expect("an object of something");
+
+    assert_eq!(*entries, json!({ "type": "object" }));
+}
+
+/// Document space only. The environment layer still carries the whole container as one TOML
+/// literal, and an element schema says nothing about the characters of one.
+#[test]
+fn an_element_schema_leaves_the_text_constraint_alone() {
+    let schema = containers();
+    let described = &schema.keys[0];
+    let undescribed = &schema.keys[3];
+
+    assert_eq!(described.text_form, undescribed.text_form);
+    assert_eq!(described.text_constraint, undescribed.text_constraint);
+}
+
+/// The rendering an editor and a Helm chart read carries the same shape, nested at the key's
+/// position — and closes the element's objects for the reason it closes the document's own.
+#[test]
+fn the_json_schema_renders_the_element_shape() {
+    let rendered = containers()
+        .to_json_schema()
+        .expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+
+    let item = &document["properties"]["routes"]["items"];
+    assert_eq!(item["properties"]["name"]["type"], json!("string"));
+    assert_eq!(item["additionalProperties"], json!(false));
+    assert_eq!(
+        item["properties"]["target"]["additionalProperties"],
+        json!(false)
+    );
+    // A map's `additionalProperties` is a schema and must be recursed into, never overwritten
+    // with `false` — that would turn "every value looks like this" into "there are no values".
+    assert_eq!(
+        document["properties"]["peers"]["additionalProperties"]["properties"]["id"]["type"],
+        json!("integer")
+    );
+    assert_eq!(
+        document["properties"]["peers"]["additionalProperties"]["additionalProperties"],
+        json!(false)
+    );
+}
+
+/// Whether an undeclared key is an error is the rendering's question, so an open document leaves
+/// the element open too. `Key::constraint` is open either way: it is the certainly-true half, and
+/// `serde` accepts a field nobody declared unless the struct says otherwise.
+#[test]
+fn an_open_document_leaves_the_element_open() {
+    let rendered = containers()
+        .to_json_schema_with(&JsonSchema::new().closed(false))
+        .expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+
+    let item = &document["properties"]["routes"]["items"];
+    assert_eq!(item["properties"]["name"]["type"], json!("string"));
+    assert!(item.get("additionalProperties").is_none(), "{item}");
+}
+
+/// A hand-written `Describe` reports whatever type text it likes, so the composition has to
+/// refuse a type with no element position rather than claim the key *is* one element.
+#[test]
+fn a_reported_element_on_a_key_that_is_not_a_container_is_dropped() {
+    struct Mistaken;
+
+    impl Describe for Mistaken {
+        fn describe(sink: &mut Sink) {
+            sink.repeated(
+                Leaf {
+                    name: "route",
+                    docs: "",
+                    ty: Some("RouteConfig"),
+                    values: None,
+                    aliases: &[],
+                    note: None,
+                    required: false,
+                    secret: false,
+                },
+                Element::Fields(<Route as Describe>::describe),
+            );
+        }
+    }
+
+    let schema = Schema::describe::<Mistaken>(&Terrace::new("T_").dialect());
+    assert_eq!(schema.keys.len(), 1);
+    assert!(schema.keys[0].constraint.is_none(), "{:?}", schema.keys[0]);
+}
+
+/// An element type whose elements contain itself is cyclic exactly as a field of itself is, and
+/// has no finite shape to describe — only a stack overflow, or this.
+#[test]
+#[should_panic(expected = "nests more than 32 levels deep")]
+fn an_element_that_contains_itself_is_refused_rather_than_overflowing_the_stack() {
+    struct Cyclic;
+
+    impl Describe for Cyclic {
+        fn describe(sink: &mut Sink) {
+            sink.repeated(
+                Leaf {
+                    name: "children",
+                    docs: "",
+                    ty: Some("Vec<Cyclic>"),
+                    values: None,
+                    aliases: &[],
+                    note: None,
+                    required: false,
+                    secret: false,
+                },
+                Element::Fields(Self::describe),
+            );
+        }
+    }
+
+    let _ = Schema::describe::<Cyclic>(&Terrace::new("T_").dialect());
 }

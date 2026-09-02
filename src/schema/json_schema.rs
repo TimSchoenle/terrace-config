@@ -19,6 +19,10 @@
 //!
 //! - `type` comes from [`super::rust_type`], which produces nothing at all for a spelling it does
 //!   not recognise. A key whose type is a domain newtype is left unconstrained.
+//! - The shape of one *element* of a container-typed key is carried only where the element type
+//!   opted in with [`Sink::repeated`](super::Sink::repeated). `Vec<RouteConfig>` renders as a bare
+//!   array until `RouteConfig` describes itself — the alternative is a schema derived from a
+//!   guess about a name, which would reject the file it guessed wrong about.
 //! - A [`reserved`](super::Key::reserved) key is left out entirely. The loader reads it from the
 //!   environment and a file may not supply it, so a schema listing it would complete a key that
 //!   does nothing — and with [`JsonSchema::closed`] on, a file that sets one is flagged, which is
@@ -336,7 +340,15 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
         schema.insert("description".to_owned(), json!(description));
     }
 
-    if let Some(constraint) = constraint(key.ty.as_deref(), &key.values) {
+    // Read off the key rather than re-derived from [`Key::ty`]. `Schema::describe_at` already
+    // composed the type's own constraint with whatever element schema the key reported, and
+    // deriving the answer a second time from a smaller input is how the flat field and the nested
+    // rendering start disagreeing about what one key accepts.
+    if let Some(Json::Object(constraint)) = &key.constraint {
+        let mut constraint = constraint.clone();
+        if options.closed {
+            close(&mut constraint);
+        }
         schema.extend(constraint);
     }
 
@@ -371,20 +383,105 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
 /// vocabulary of Rust type names, with `PathBuf` as the trap: it is a string and nothing in the
 /// name says so.
 ///
+/// `element` is the shape of one element of a container-typed key, from
+/// [`Sink::repeated`](super::Sink::repeated). It fills the position the type spelling leaves blank
+/// and nothing else: the containers around it are still read from the tokens, so a key whose
+/// element is described gains `items` or `additionalProperties` and keeps every keyword it had.
+/// A key whose [`Key::ty`] is not a container this crate reads keeps today's answer, because
+/// [`rust_type::interpret_with`] refuses rather than guessing where the element would go.
+///
 /// [`None`] means unconstrained: a type [`rust_type::interpret`] does not recognise, and no fixed
 /// set of values. A domain newtype lands here, and a validator can say nothing about it beyond
 /// that the key exists.
-pub(super) fn constraint(ty: Option<&str>, values: &[String]) -> Option<Map<String, Json>> {
-    if values.is_empty() {
-        return ty.and_then(rust_type::interpret);
+pub(super) fn constraint(
+    ty: Option<&str>,
+    values: &[String],
+    element: Option<&Map<String, Json>>,
+) -> Option<Map<String, Json>> {
+    if !values.is_empty() {
+        // A fixed set of values is stronger than any type could be, and stronger than anything an
+        // element could say — a key that *is* a choice holds one variant, not a container of them.
+        // The derive refuses the pair; a hand-written `Describe` that reports both gets this.
+        return Some(choice(values));
     }
 
-    // A fixed set of values is stronger than any type could be, and it is always a set of strings:
-    // `Values::VARIANTS` holds the spellings `serde` accepts for unit variants.
+    let ty = ty?;
+    element
+        .and_then(|element| rust_type::interpret_with(ty, element))
+        .or_else(|| rust_type::interpret(ty))
+}
+
+/// A fixed set of spellings, as the value in a *document* must be written.
+///
+/// Always a set of strings: [`Values::VARIANTS`](super::Values::VARIANTS) holds the spellings
+/// `serde` accepts for unit variants. A bare `enum`, with no whitespace tolerated — the document
+/// layer trims nothing, so `level = "info "` really is refused. [`rust_type::one_of`] is the same
+/// set for the layer that does trim.
+pub(super) fn choice(values: &[impl AsRef<str>]) -> Map<String, Json> {
+    let spellings: Vec<&str> = values.iter().map(AsRef::as_ref).collect();
     let mut schema = Map::new();
     schema.insert("type".to_owned(), json!("string"));
-    schema.insert("enum".to_owned(), json!(values));
-    Some(schema)
+    schema.insert("enum".to_owned(), json!(spellings));
+    schema
+}
+
+/// One element of a container-typed key, as a JSON Schema object.
+///
+/// The rendering [`object`] gives a level of the document, over the keys an element type's own
+/// `describe` reported. `#[config(nested)]` inside the element needs no special case: those keys
+/// arrive as dotted paths and [`Node`] puts them back into nested `properties`, exactly as it does
+/// for the document itself.
+///
+/// Fixed rather than driven by [`JsonSchema`], because what it produces ends up in
+/// [`Key::constraint`] — one value, read by every consumer of the document, that no rendering
+/// option reaches. The four choices, and why each is the one that survives that:
+///
+/// - **Descriptions are kept.** An element's fields are not keys, so their `///` comments have
+///   nowhere else in the document to live. Dropping them here would lose them altogether, which is
+///   what the hand-transcribed element schemas this replaces had to do.
+/// - **`required` is kept and means what it says.** The two readings of "required" that
+///   [`JsonSchema::require_present`] separates coincide inside an element: no environment variable
+///   and no mounted file can reach a field of an array element, so the document really is the only
+///   layer that could supply it.
+/// - **It is left open.** `serde` accepts a field nobody declared unless the struct says
+///   otherwise, and no derive can see `#[serde(deny_unknown_fields)]` from here. Closing it is a
+///   *rendering* decision, and [`close`] applies it where a rendering asks for one.
+/// - **No `default`.** An element has no observed value to take one from: `with_defaults_from`
+///   sees the container, not the elements a deployment happens to put in it.
+///
+/// [`Key::constraint`]: super::Key::constraint
+pub(super) fn element_object(keys: &[Key]) -> Map<String, Json> {
+    object(&Node::of(keys), &JsonSchema::new().closed(false))
+}
+
+/// Close every object inside a rendered constraint, the way [`object`] closes the document's own.
+///
+/// Only where a schema declares `properties` and says nothing yet about the rest: a map's
+/// `additionalProperties` is a *schema* and must be recursed into rather than overwritten with
+/// `false`, which would turn "every value looks like this" into "there are no values".
+///
+/// It exists because [`element_object`] leaves its output open. Whether an undeclared key is an
+/// error is the question [`JsonSchema::closed`] answers, and a document that flagged one at the
+/// top level while passing one inside an array element would be answering it twice.
+fn close(schema: &mut Map<String, Json>) {
+    if let Some(Json::Object(items)) = schema.get_mut("items") {
+        close(items);
+    }
+    if let Some(values) = schema.get_mut("additionalProperties") {
+        if let Json::Object(values) = values {
+            close(values);
+        }
+        return;
+    }
+    let Some(Json::Object(properties)) = schema.get_mut("properties") else {
+        return;
+    };
+    for property in properties.values_mut() {
+        if let Json::Object(property) = property {
+            close(property);
+        }
+    }
+    schema.insert("additionalProperties".to_owned(), json!(false));
 }
 
 /// What the *unparsed text* supplying this key must be, as JSON Schema keywords.

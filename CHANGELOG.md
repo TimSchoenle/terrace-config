@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **schema:** element schemas for container-typed keys. `#[config(element)]` and
+  `#[config(element_values)]` report what one element of a `Vec`, `VecDeque`, `HashSet`,
+  `BTreeSet`, `HashMap`, `BTreeMap` or array holds, and `Key::constraint` carries it nested —
+  `items` for a sequence, `additionalProperties` for a map, composed through both when they are
+  stacked, so `HashMap<String, HashSet<Method>>` reaches the enum. `Schema::to_json_schema`
+  renders the same shape at the key's position. `Sink::repeated` is the hand-written equivalent.
+
+### What a consumer needs to know
+
+* `SCHEMA_VERSION` is now **2**. Nothing was removed and nothing changed meaning, so a version-1
+  consumer that ignores what it does not recognise needs no change, and one that hands
+  `constraint` to a JSON Schema validator gets stricter for free. The bump is for the consumer
+  that walks the keywords itself: widen the allowlist to `items`, `additionalProperties`,
+  `properties`, `required`, `uniqueItems`, `minItems`, `maxItems` and `description`, and recurse
+  rather than assume scalars. `CONTRACT_VERSION` is unchanged — the envelope did not move.
+* **No new keys.** An element has no path, so `Schema::keys` gains nothing and every
+  environment-variable gate reads exactly what it read before.
+* **Opt-in.** A container whose element type does not describe itself emits the bytes it always
+  did, and `text_form` and `text_constraint` are untouched for every key: a container is still
+  supplied through the environment as one TOML literal.
+
 ## [0.9.2](https://github.com/TimSchoenle/terrace-config/compare/v0.9.1...v0.9.2) (2026-09-01)
 
 
