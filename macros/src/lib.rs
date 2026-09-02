@@ -48,12 +48,45 @@ use syn::{
 /// | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key in the output |
 /// | `#[config(note = "…")]` | Annotate the observed default with prose |
 /// | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+/// | `#[config(element)]` | Report the shape of one element of a container-typed key |
+/// | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
 /// | `#[config(skip)]` | Omit the key from the schema without affecting deserialisation |
 /// | `#[config(crate = "…")]` | Name the `terrace_config` crate, if it was renamed |
 ///
 /// `nested` is opt-in because no macro can tell a `PathBuf` from a nested config struct by
 /// looking at the type: both are one identifier and a module path. Guessing would mean either
 /// bare identifiers silently becoming leaves, or a bound on types that cannot satisfy it.
+///
+/// # Container-typed keys
+///
+/// `routes: Vec<RouteConfig>` is one key — an array index is not a key segment, and no
+/// environment variable names one — but it is a key whose *element* has a shape, and the type
+/// token `Vec<RouteConfig>` carries only half of it. `element` supplies the other half:
+///
+/// ```ignore
+/// /// Routes declared in the file.
+/// #[config(element)]
+/// #[serde(default)]
+/// routes: Vec<RouteConfig>,
+///
+/// /// Methods each path forwards.
+/// #[config(element_values)]
+/// #[serde(default)]
+/// paths: HashMap<String, HashSet<Method>>,
+/// ```
+///
+/// The element type is read off the container: through `Option`, `Box`, `Arc`, `Rc` and `Cow`,
+/// into the item of a `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `[T]` or `[T; N]` and into the
+/// *value* of a `HashMap` or `BTreeMap`, however deep they are stacked — `HashMap<String,
+/// HashSet<Method>>` reaches `Method`. A field whose type is not one of those is an error rather
+/// than a guess, and a type alias for a container is one of them: a derive has only tokens, so
+/// `type Routes = Vec<RouteConfig>` is a bare identifier here and has to be spelled out.
+///
+/// `element` requires the element type to derive `Describe`; `element_values` requires it to
+/// derive `Describe` as an enum, which is what produces `Values`. Neither combines with `nested`
+/// or `values`, which describe the field's own type rather than its elements. The key itself is
+/// reported exactly as it is without them — the schema gains a nested `items` or
+/// `additionalProperties`, and not one extra key.
 // `serde` is declared as a helper attribute as well as `config`. It is read, never consumed, and
 // serde's own derives declare it too — which is allowed, and is what lets a struct carry
 // `#[serde(rename_all = "…")]` under `Describe` alone. Without this, deriving `Describe` on a
@@ -254,8 +287,8 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
     };
     let aliases = &opts.aliases;
 
-    Ok(quote! {
-        sink.leaf(#krate::schema::Leaf {
+    let leaf = quote! {
+        #krate::schema::Leaf {
             name: #name,
             docs: #docs,
             ty: ::core::option::Option::Some(#ty_text),
@@ -264,8 +297,106 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
             note: #note,
             required: #required,
             secret: #secret,
-        });
-    })
+        }
+    };
+
+    // A container-typed key is still one key. What changes is that the element the type token
+    // cannot name is reported alongside it, and lands nested inside the key's constraint.
+    let Some(element) = opts.element else {
+        return Ok(quote! { sink.leaf(#leaf); });
+    };
+    let item = element_type(bare).ok_or_else(|| not_a_container(field, element))?;
+    let reported = match element {
+        ElementKind::Fields => {
+            quote! { #krate::schema::Element::Fields(<#item as #krate::schema::Describe>::describe) }
+        }
+        ElementKind::Choice => {
+            quote! { #krate::schema::Element::Choice(<#item as #krate::schema::Values>::VARIANTS) }
+        }
+    };
+    Ok(quote! { sink.repeated(#leaf, #reported); })
+}
+
+/// The error for `#[config(element)]` on a field this derive cannot find a container in.
+///
+/// Named rather than guessed at, because the guess would be silent and wrong: a schema saying
+/// `routes` is an object because its element is a struct describes a file nobody can write. The
+/// alias case is called out because it is the one that looks like a bug in the derive — the type
+/// *is* a container, and a derive cannot see through a name to know it.
+fn not_a_container(field: &Field, element: ElementKind) -> syn::Error {
+    let attribute = element.attribute();
+    syn::Error::new_spanned(
+        field,
+        format!(
+            "`#[config({attribute})]` says what one element of a container holds, and this \
+             field's type is not a container this derive can read. Those are `Vec`, `VecDeque`, \
+             `HashSet`, `BTreeSet`, `HashMap`, `BTreeMap`, `[T]` and `[T; N]`, through any \
+             number of `Option`, `Box`, `Arc`, `Rc`, `Cow` and the other transparent wrappers. \
+             A type alias for one of them is a bare identifier here, because a derive has only \
+             tokens: spell the container out, or implement `Describe` by hand and call \
+             `Sink::repeated`."
+        ),
+    )
+}
+
+/// The type one element of a container-typed field holds.
+///
+/// The walk `rust_type` performs over the type *token text* at runtime, performed here over the
+/// tokens themselves: past the wrappers serde sees through, then into a sequence's item or a map's
+/// value, until something that is not a container is reached. `HashMap<String,
+/// HashSet<AllowedMethod>>` therefore yields `AllowedMethod` — which is exactly the position the
+/// emitted constraint leaves open, because the two walks stop in the same place by construction.
+///
+/// [`None`] when there is no container to descend into. That is the answer for a type alias as
+/// well, and [`not_a_container`] is where the difference is explained.
+fn element_type(ty: &Type) -> Option<&Type> {
+    let item = container_item(ty)?;
+    // A container of containers has its element at the bottom, not one step down: the constraint
+    // reads every level from the tokens and only the bottom is blank.
+    Some(element_type(item).unwrap_or(item))
+}
+
+/// The item type of a sequence, or the value type of a map — one level, or [`None`].
+///
+/// A map's *key* type is skipped on purpose, for the reason the runtime walk skips it: a TOML
+/// table's keys are strings whatever the map is keyed by, so nothing in the file is constrained
+/// by it.
+fn container_item(ty: &Type) -> Option<&Type> {
+    match ty {
+        Type::Reference(reference) => container_item(&reference.elem),
+        Type::Paren(paren) => container_item(&paren.elem),
+        // What a macro-expanded type arrives wrapped in, and invisible in the source.
+        Type::Group(group) => container_item(&group.elem),
+        Type::Slice(slice) => Some(&slice.elem),
+        Type::Array(array) => Some(&array.elem),
+        Type::Path(path) if path.qself.is_none() => {
+            let segment = path.path.segments.last()?;
+            let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+                return None;
+            };
+            // Lifetimes and const arguments are dropped, so `Cow<'a, T>` has one type argument
+            // here and reads like every other single-argument wrapper.
+            let args: Vec<&Type> = arguments
+                .args
+                .iter()
+                .filter_map(|arg| match arg {
+                    GenericArgument::Type(ty) => Some(ty),
+                    _ => None,
+                })
+                .collect();
+            match (segment.ident.to_string().as_str(), args.as_slice()) {
+                (
+                    "Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock"
+                    | "Cow",
+                    [inner],
+                ) => container_item(inner),
+                ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [item]) => Some(item),
+                ("HashMap" | "BTreeMap", [_key, value]) => Some(value),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Options read from the container's own attributes.
@@ -359,8 +490,34 @@ struct FieldOpts {
     note: Option<String>,
     /// `#[config(values)]` — the field's type is an enum whose variants are the accepted values.
     values: bool,
+    /// `#[config(element)]` or `#[config(element_values)]` — the field is a container, and this
+    /// is what one element of it holds.
+    element: Option<ElementKind>,
     /// Every `#[serde(alias = "…")]`, which are extra spellings the key also answers to.
     aliases: Vec<String>,
+}
+
+/// Which of the two things an element can be.
+///
+/// The same split as `nested` and `values` one level down, and it exists for the same reason those
+/// are two attributes: a struct of named fields *has* keys, an enum of unit variants *is* a set of
+/// values, and a derive looking at `Vec<Thing>` cannot tell which `Thing` is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ElementKind {
+    /// The element derives `Describe`: it has keys of its own.
+    Fields,
+    /// The element derives `Values`: it is a fixed set of spellings.
+    Choice,
+}
+
+impl ElementKind {
+    /// The attribute that asks for this, for an error message that can quote it back.
+    fn attribute(self) -> &'static str {
+        match self {
+            Self::Fields => "element",
+            Self::Choice => "element_values",
+        }
+    }
 }
 
 impl FieldOpts {
@@ -407,6 +564,12 @@ impl FieldOpts {
                 Meta::Path(path) if path.is_ident("secret") => opts.secret = true,
                 Meta::Path(path) if path.is_ident("skip") => opts.skip = true,
                 Meta::Path(path) if path.is_ident("values") => opts.values = true,
+                Meta::Path(path) if path.is_ident("element") => {
+                    opts.set_element(ElementKind::Fields, field)?;
+                }
+                Meta::Path(path) if path.is_ident("element_values") => {
+                    opts.set_element(ElementKind::Choice, field)?;
+                }
                 Meta::NameValue(nv) if nv.path.is_ident("note") => {
                     opts.note = Some(string_value(&nv.value)?);
                 }
@@ -426,7 +589,8 @@ impl FieldOpts {
                     return Err(syn::Error::new_spanned(
                         other,
                         "unknown `#[config(...)]` option. The field options are `nested`, \
-                         `secret`, `skip`, `values`, and `note = \"…\"`.",
+                         `secret`, `skip`, `values`, `element`, `element_values`, and \
+                         `note = \"…\"`.",
                     ));
                 }
             }
@@ -441,7 +605,35 @@ impl FieldOpts {
             ));
         }
 
+        if opts.element.is_some() && (opts.nested || opts.values) {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[config(nested)]` and `#[config(values)]` describe the field's own type, and \
+                 `#[config(element)]` describes what a container of that type holds — so a field \
+                 carrying both says its value is two different things. A container's keys are its \
+                 elements' keys and belong in the element schema; drop `nested` or `values`.",
+            ));
+        }
+
         Ok(opts)
+    }
+
+    /// Record what shape one element of this field's container has.
+    ///
+    /// Repeating the same attribute is harmless; asking for both is not. An element is a type with
+    /// keys of its own or an enum of unit variants, never both, and a field claiming both leaves
+    /// the derive to pick — which is the silent wrong answer this crate refuses everywhere else.
+    fn set_element(&mut self, kind: ElementKind, field: &Field) -> syn::Result<()> {
+        if self.element.is_some_and(|held| held != kind) {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[config(element)]` and `#[config(element_values)]` describe the same element \
+                 two ways. It is either a type with keys of its own, which `element` reports, or \
+                 an enum of unit variants, which `element_values` reports.",
+            ));
+        }
+        self.element = Some(kind);
+        Ok(())
     }
 
     /// The key segment this field contributes, which must be the one serde will look for.
@@ -1145,5 +1337,128 @@ mod tests {
     #[test]
     fn values_is_listed_among_the_field_options_in_the_error() {
         assert!(rejected("struct S { #[config(sercet)] a: u8 }").contains("`values`"));
+    }
+
+    // ---- what one element of a container-typed key holds ----
+
+    #[test]
+    fn a_container_reports_its_element_through_describe() {
+        let body = generated("struct S { #[config(element)] a: Vec<Route> }");
+        assert!(body.contains("sink . repeated"), "{body}");
+        assert!(
+            body.contains(
+                "Element :: Fields (< Route as :: terrace_config :: schema :: Describe >"
+            ),
+            "{body}"
+        );
+        // Still one key: `repeated` is `leaf` with the element attached, not a second entry.
+        assert!(body.contains(r#"name : "a""#), "{body}");
+        assert_eq!(body.matches("sink .").count(), 1, "{body}");
+    }
+
+    #[test]
+    fn a_container_of_a_choice_reports_its_variants() {
+        let body = generated("struct S { #[config(element_values)] a: BTreeSet<Method> }");
+        assert!(
+            body.contains("Element :: Choice (< Method as :: terrace_config :: schema :: Values >"),
+            "{body}"
+        );
+    }
+
+    /// The element is at the bottom of the containers, not one step in: every level above it is
+    /// read from the tokens, and only the bottom is blank.
+    #[test]
+    fn the_element_is_found_through_stacked_containers() {
+        for declared in [
+            "Vec<Route>",
+            "Option<Vec<Route>>",
+            "HashMap<String, Route>",
+            "HashMap<String, HashSet<Route>>",
+            "Arc<BTreeMap<u8, Box<Vec<Route>>>>",
+            "[Route; 4]",
+            "std::collections::BTreeMap<String, Route>",
+            "Cow<'a, Vec<Route>>",
+        ] {
+            let body = generated(&format!("struct S {{ #[config(element)] a: {declared} }}"));
+            assert!(body.contains("< Route as"), "{declared}: {body}");
+        }
+    }
+
+    /// A map's *key* type is skipped for the reason the runtime walk skips it: a TOML table's keys
+    /// are strings whatever the map is keyed by.
+    #[test]
+    fn a_maps_key_type_is_never_the_element() {
+        let body = generated("struct S { #[config(element)] a: BTreeMap<RouteName, Route> }");
+        assert!(body.contains("< Route as"), "{body}");
+        assert!(!body.contains("RouteName as"), "{body}");
+    }
+
+    /// Guessing would be silent and wrong — a schema saying `routes` is an object because its
+    /// element is a struct describes a file nobody can write.
+    #[test]
+    fn an_element_on_something_that_is_not_a_container_is_rejected() {
+        let error = rejected("struct S { #[config(element)] a: Route }");
+        assert!(error.contains("`#[config(element)]`"), "{error}");
+        assert!(error.contains("not a container"), "{error}");
+        assert!(error.contains("`Sink::repeated`"), "{error}");
+    }
+
+    /// The trap this error exists for: the type *is* a container, and a derive cannot see through
+    /// a name to know it.
+    #[test]
+    fn a_type_alias_for_a_container_is_rejected_with_the_reason() {
+        let error = rejected("struct S { #[config(element_values)] a: Methods }");
+        assert!(error.contains("`#[config(element_values)]`"), "{error}");
+        assert!(error.contains("type alias"), "{error}");
+    }
+
+    #[test]
+    fn an_element_cannot_be_two_shapes_at_once() {
+        for order in [
+            "struct S { #[config(element, element_values)] a: Vec<T> }",
+            "struct S { #[config(element_values)] #[config(element)] a: Vec<T> }",
+        ] {
+            let error = rejected(order);
+            assert!(
+                error.contains("describe the same element"),
+                "{order}: {error}"
+            );
+        }
+    }
+
+    /// Repeating one attribute says nothing new, which is not the same as saying two things.
+    #[test]
+    fn repeating_the_same_element_attribute_is_harmless() {
+        let body = generated("struct S { #[config(element)] #[config(element)] a: Vec<Route> }");
+        assert!(body.contains("< Route as"), "{body}");
+    }
+
+    #[test]
+    fn an_element_does_not_combine_with_the_attributes_that_describe_the_field_itself() {
+        for combination in ["nested, element", "values, element_values"] {
+            let error = rejected(&format!(
+                "struct S {{ #[config({combination})] a: Vec<T> }}"
+            ));
+            assert!(
+                error.contains("describes what a container of that type holds"),
+                "{combination}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_element_options_are_listed_among_the_field_options_in_the_error() {
+        let error = rejected("struct S { #[config(sercet)] a: u8 }");
+        assert!(error.contains("`element`"), "{error}");
+        assert!(error.contains("`element_values`"), "{error}");
+    }
+
+    /// A container with no element attribute is the case that has to keep generating exactly what
+    /// it generated before.
+    #[test]
+    fn a_container_that_says_nothing_is_still_a_plain_leaf() {
+        let body = generated("struct S { a: Vec<Route> }");
+        assert!(body.contains("sink . leaf"), "{body}");
+        assert!(!body.contains("repeated"), "{body}");
     }
 }

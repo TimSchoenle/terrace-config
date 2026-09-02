@@ -39,6 +39,8 @@ struct Github {
 | `#[config(nested)]` | Recurse into the field's type instead of treating it as a leaf |
 | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key |
 | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+| `#[config(element)]` | Report the shape of one element of a container-typed key |
+| `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
 | `#[config(note = "…")]` | Annotate the observed default with prose |
 | `#[config(skip)]` | Omit the key without affecting deserialisation |
 
@@ -65,6 +67,69 @@ struct Observability {
     log_level: LogLevel,
 }
 ```
+
+## A key that holds many of something
+
+`routes: Vec<RouteConfig>` is **one** key. An array index is not a key segment and no environment
+variable names one, so `routes` is a single row with a single environment spelling — and the file
+it validates still has to say what one route looks like.
+
+The type token carries half of that. `Vec<RouteConfig>` is an array, which the JSON Schema
+rendering already emitted; `RouteConfig` is a name, and this crate has no type graph to look a name
+up in. `#[config(element)]` supplies the other half from the type that does know:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Config {
+    /// Routes declared in the file.
+    #[config(element)]
+    #[serde(default)]
+    routes: Vec<RouteConfig>,
+
+    /// Methods each path forwards.
+    #[config(element_values)]
+    #[serde(default)]
+    paths: HashMap<String, HashSet<Method>>,
+}
+```
+
+`element` is for an element that derives `Describe` — a struct with keys of its own, nested
+`#[config(nested)]` tables and all. `element_values` is for one that derives `Describe` as an
+**enum**, which is the same distinction `nested` and `values` draw one level up.
+
+What comes out is a nested schema on the key, not new keys:
+
+```json
+"routes": { "type": "array", "items": { "type": "object", "properties": { … } } },
+"paths":  { "type": "object",
+            "additionalProperties": { "type": "array", "uniqueItems": true,
+                                      "items": { "type": "string", "enum": ["GET", "POST"] } } }
+```
+
+The containers are still read from the tokens, so they stack: the `paths` example reaches `Method`
+through a map *and* a set without either being a special case. The element type is found through
+`Option`, `Box`, `Arc`, `Rc` and `Cow`, into the item of a `Vec`, `VecDeque`, `HashSet`,
+`BTreeSet`, `[T]` or `[T; N]`, and into the *value* of a `HashMap` or `BTreeMap` — a map's key type
+is skipped, because a TOML table's keys are strings whatever the map is keyed by.
+
+Three things worth knowing before reaching for it:
+
+- **It is opt-in, and a container that does not take it up is unchanged.** A field whose element is
+  deliberately a leaf — a map keyed by operator-chosen names, whose values are not a documented
+  shape — keeps publishing exactly the bytes it published before.
+- **The element type has to be spelled out.** A derive has only tokens, so
+  `type Routes = Vec<RouteConfig>` is a bare identifier here and is rejected with an error saying
+  so rather than guessed at. Spell the container out, or implement `Describe` by hand and call
+  `Sink::repeated`.
+- **`element_values` reports what the derive reports, which is serde's default wire form.** A type
+  whose `Deserialize` is something else — `#[serde(try_from = "String")]` over a case-insensitive
+  `FromStr` is the one that turns up — accepts spellings that are not in the variant list, and a
+  schema listing only the variants would reject a file the loader takes. Leave such an element
+  undescribed; that is the one thing this crate will not publish.
+
+The environment layer is untouched by any of this. A container is still supplied as one TOML
+literal, so `text_form` stays `structured` and `text_constraint` stays the bracket pattern — the
+element lives in document space only.
 
 ## Two outputs
 
