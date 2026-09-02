@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/TimSchoenle/terrace-config/compare/v0.9.2...v0.10.0) (2026-09-02)
+
+
+### Features
+
+* add deep type contract support ([#73](https://github.com/TimSchoenle/terrace-config/issues/73)) ([f3d7f52](https://github.com/TimSchoenle/terrace-config/commit/f3d7f52abfbfb6e8c118bded3076ebe0142af81d))
+
+
+### Miscellaneous
+
+* **deps:** update timschoenle/actions/actions/common/render-template-and-commit to vactions-common-render-template-and-commit-v1.1.5 ([#71](https://github.com/TimSchoenle/terrace-config/issues/71)) ([6407d57](https://github.com/TimSchoenle/terrace-config/commit/6407d578c75eedd1ce89e1dfdc44014eb77e26c8))
+
 ## [0.9.2](https://github.com/TimSchoenle/terrace-config/compare/v0.9.1...v0.9.2) (2026-09-01)
 
 
