@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.1](https://github.com/TimSchoenle/terrace-config/compare/v0.10.0...v0.10.1) (2026-09-05)
+
+
+### Miscellaneous
+
+* **deps:** update all non-major action updates ([84c632b](https://github.com/TimSchoenle/terrace-config/commit/84c632b8bd3b0ff836fa6d44f66a28da1221b491))
+* **deps:** update all non-major action updates ([#76](https://github.com/TimSchoenle/terrace-config/issues/76)) ([84c632b](https://github.com/TimSchoenle/terrace-config/commit/84c632b8bd3b0ff836fa6d44f66a28da1221b491))
+* **deps:** update taiki-e/install-action action to v2.87.2 ([#74](https://github.com/TimSchoenle/terrace-config/issues/74)) ([9096c80](https://github.com/TimSchoenle/terrace-config/commit/9096c800ef3a09a322b819b5e30eff8caa235e54))
+* **deps:** update taiki-e/install-action action to v2.87.3 ([#77](https://github.com/TimSchoenle/terrace-config/issues/77)) ([343303a](https://github.com/TimSchoenle/terrace-config/commit/343303ade6dafdd59dfbd253b947d93c2dcc56b4))
+* **deps:** update taiki-e/install-action action to v2.87.4 ([#78](https://github.com/TimSchoenle/terrace-config/issues/78)) ([4956b85](https://github.com/TimSchoenle/terrace-config/commit/4956b851caa751587dd20ee459a64ef48f6b4081))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-auto-approve-renovate.yaml to vworkflows-maintenance-auto-approve-renovate-v1.4.22 ([#79](https://github.com/TimSchoenle/terrace-config/issues/79)) ([5876f1a](https://github.com/TimSchoenle/terrace-config/commit/5876f1a3f572e8a39e85b2d681458dfd4fd6df16))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-timed-auto-pr-approve.yaml to vworkflows-maintenance-timed-auto-pr-approve-v1.2.34 ([#80](https://github.com/TimSchoenle/terrace-config/issues/80)) ([38a3cbb](https://github.com/TimSchoenle/terrace-config/commit/38a3cbbbe678b26c2614d82f540c2acba3a31546))
+* **deps:** update timschoenle/actions/actions/common/commit-changes to vactions-common-commit-changes-v1.4.1 ([#81](https://github.com/TimSchoenle/terrace-config/issues/81)) ([2d970df](https://github.com/TimSchoenle/terrace-config/commit/2d970df0a29c8d64666030bfddaaa7c14bb82a61))
+* **deps:** update timschoenle/actions/actions/common/readme-variables to vactions-common-readme-variables-v1.1.2 ([#82](https://github.com/TimSchoenle/terrace-config/issues/82)) ([f2343c9](https://github.com/TimSchoenle/terrace-config/commit/f2343c914566d6669093d68257d4ecc5aced0f9e))
+* **deps:** update timschoenle/actions/actions/common/render-template to vactions-common-render-template-v1.1.3 ([#83](https://github.com/TimSchoenle/terrace-config/issues/83)) ([10a340b](https://github.com/TimSchoenle/terrace-config/commit/10a340b4f9be2e7ae5bb0b4d3f12083c3244782d))
+
 ## [0.10.0](https://github.com/TimSchoenle/terrace-config/compare/v0.9.2...v0.10.0) (2026-09-02)
 
 
