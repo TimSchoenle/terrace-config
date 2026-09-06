@@ -51,10 +51,12 @@ use syn::{
 /// | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key in the output |
 /// | `#[config(note = "…")]` | Annotate the observed default with prose |
 /// | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+/// | `#[config(values_from = "…")]` | Report another type's variants as the values the key accepts |
 /// | `#[config(values("…", "…"))]` | Report a literal list as the values the key accepts |
 /// | `#[config(range(…))]` | Bound the number the key accepts: `min`, `max`, `exclusive_min`, `exclusive_max` |
 /// | `#[config(element)]` | Report the shape of one element of a container-typed key |
 /// | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
+/// | `#[config(element_values_from = "…")]` | Another type's variants, one level down |
 /// | `#[config(element_values("…", "…"))]` | The same literal list, one level down |
 /// | `#[config(skip)]` | Omit the key from the schema without affecting deserialisation |
 /// | `#[config(crate = "…")]` | Name the `terrace_config` crate, if it was renamed |
@@ -85,27 +87,63 @@ use syn::{
 ///
 /// # Values a trait cannot reach
 ///
-/// `#[config(values)]` reads the field type's `Values` implementation, and the orphan rule puts a
-/// foreign enum out of reach: an application cannot write `impl Values for tracing::Level`, and
-/// this crate will not depend on `tracing` to write it here. A literal list bypasses the trait:
+/// `#[config(values)]` reads the field type's own `Values` implementation, and the orphan rule
+/// puts a foreign enum out of reach: an application can implement neither `Values` nor `Describe`
+/// for `other::Compression`, and this crate will not depend on `other` to do it here. Two
+/// attributes reach past the trait, and they are not equals.
+///
+/// **`values_from` names a type that does implement it.** A `#[serde(remote = "…")]` mirror is the
+/// case it exists for: serde matches the mirror's variants exactly, `Describe` on the mirror
+/// reports those same variants under the same `rename_all`, and the two cannot drift because they
+/// are one declaration. Nothing is spelled twice, and the compiler still checks it:
 ///
 /// ```ignore
-/// /// How much the service says.
-/// #[config(values("trace", "debug", "info", "warn", "error"))]
-/// #[serde(default)]
-/// log_level: tracing::Level,
+/// #[derive(Deserialize, Describe)]
+/// #[serde(remote = "other::Compression", rename_all = "lowercase")]
+/// enum CompressionDef { Gzip, Zstd, None }
 ///
-/// /// Levels each module is pinned to.
-/// #[config(element_values("trace", "debug", "info", "warn", "error"))]
-/// #[serde(default)]
-/// module_levels: HashMap<String, tracing::Level>,
+/// /// How payloads are compressed.
+/// #[serde(with = "CompressionDef", default)]
+/// #[config(values_from = "CompressionDef")]
+/// compression: other::Compression,
 /// ```
 ///
-/// **The list is an assertion this crate cannot check**, the same standing as
+/// **`values("…", "…")` lists the spellings**, for a type no mirror can be written for — serde's
+/// `remote` needs a shape it can mirror, and a newtype over a private enum has none:
+///
+/// ```ignore
+/// /// How payloads are compressed.
+/// #[serde(deserialize_with = "compression", default)]
+/// #[config(values("gzip", "zstd", "none"))]
+/// compression: other::Compression,
+/// ```
+///
+/// Both have element forms — `element_values_from = "…"` and `element_values("…", "…")` — for a
+/// container of one. All four satisfy the diagnostic above, and bare `#[config(values)]` is
+/// unchanged.
+///
+/// **A list is an assertion this crate cannot check**, the same standing as
 /// `#[config(note = "…")]`: nothing here reads the type's `Deserialize`, so a list that disagrees
-/// with it publishes a schema rejecting a file the loader takes. It is the author's to keep true,
-/// and it satisfies the diagnostic above. Bare `#[config(values)]` is unchanged and still means
-/// "use the `Values` implementation". An empty list and a repeated spelling are rejected.
+/// with it publishes a schema rejecting a file the loader takes. Prefer `values_from` wherever a
+/// mirror can be written — variants read off a type cannot drift from it. An empty list and a
+/// repeated spelling are rejected.
+///
+/// # The accepted set is the deserialiser's answer, not the type's
+///
+/// Two shapes are refused outright, because in both the derived variants provably are not the wire
+/// form: an enum carrying `#[serde(try_from = "…")]` or `#[serde(from = "…")]` cannot derive
+/// `Values` at all, and a field carrying `#[serde(with = "…")]` or
+/// `#[serde(deserialize_with = "…")]` cannot take a bare `values` or `element_values`. Both read
+/// something else and convert, and what the conversion accepts is a path this derive cannot
+/// follow.
+///
+/// `tracing::Level` is the worked example of why, and the one to *not* copy. It has no
+/// `Deserialize` of its own, so a field holding one goes through its `FromStr` — which matches
+/// case-insensitively **and** accepts `"1"` through `"5"`. A field annotated
+/// `values("trace", "debug", "info", "warn", "error")` therefore publishes a schema refusing
+/// `INFO` and `3`, both of which load, which is the one thing this crate will not do. Read the
+/// accepted set off the conversion rather than off the variant names; where it is not a fixed set
+/// of spellings at all, `#[config(skip)]` the key or implement `Describe` by hand.
 ///
 /// # Container-typed keys
 ///
@@ -274,6 +312,23 @@ fn expand_enum(
     container: &Container,
     data: &syn::DataEnum,
 ) -> syn::Result<TokenStream2> {
+    // Before the variants are read, because with a conversion in the way they are not what a
+    // configuration file may hold and there is nothing to report.
+    if let Some(attribute) = &container.foreign_deserialize {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            format!(
+                "`Describe` on an enum reports its variants as the values a key accepts, and \
+                 `#[serde({attribute} = \"…\")]` says those variants are not what `Deserialize` \
+                 matches — it reads something else and converts. A case-insensitive `FromStr` is \
+                 the conversion that turns up, and it accepts spellings no variant is named \
+                 after, so publishing the variant list would be a schema rejecting a file the \
+                 loader takes. Describe such a type from the field that holds it, with \
+                 `#[config(values(\"…\", \"…\"))]` naming what the conversion really accepts."
+            ),
+        ));
+    }
+
     let mut variants = Vec::new();
     for variant in &data.variants {
         if !matches!(variant.fields, Fields::Unit) {
@@ -489,8 +544,9 @@ fn describes_something(field: &Field, ty: &Type) -> syn::Result<()> {
              number, or something with no publishable shape. A key documented as \"anything\" is \
              the gap this schema exists to close, so an attribute is required rather than \
              assumed: `#[config(values)]` if the type implements `Values`; \
-             `#[config(values(\"…\", \"…\"))]` if it cannot — a foreign enum, which the orphan \
-             rule puts out of reach — which asserts the accepted spellings the way \
+             `#[config(values_from = \"…\")]` if another type does, a `#[serde(remote)]` mirror \
+             of a foreign enum being the case that turns up; `#[config(values(\"…\", \"…\"))]` \
+             if none can, which asserts the accepted spellings the way \
              `#[config(note = \"…\")]` asserts prose; `#[config(nested)]` if it implements \
              `Describe` and its keys belong under this one; `#[config(element)]` or \
              `#[config(element_values)]` if the field is a container and it is the *element* \
@@ -757,6 +813,14 @@ struct Container {
     /// The container's `#[serde(deny_unknown_fields)]` — whether a key it did not declare is an
     /// error rather than something `serde` quietly ignores.
     deny_unknown_fields: bool,
+    /// The container's `#[serde(try_from = "…")]` or `#[serde(from = "…")]`, named so an error can
+    /// quote back the one that was written.
+    ///
+    /// Both mean the derived `Deserialize` reads a *different* type and converts, so nothing this
+    /// derive can see about the container describes what a file may hold. `remote` is deliberately
+    /// not one of them: a remote mirror's variants are matched exactly, which is what makes it the
+    /// answer rather than the problem.
+    foreign_deserialize: Option<String>,
 }
 
 impl Container {
@@ -766,6 +830,7 @@ impl Container {
             rename_all: RenameRule::None,
             field_default: false,
             deny_unknown_fields: false,
+            foreign_deserialize: None,
         };
 
         for meta in attr_metas(&input.attrs, "serde")? {
@@ -776,6 +841,9 @@ impl Container {
                 }
                 Meta::NameValue(nv) if nv.path.is_ident("default") => {
                     container.field_default = true;
+                }
+                Meta::NameValue(nv) if nv.path.is_ident("try_from") || nv.path.is_ident("from") => {
+                    container.foreign_deserialize = Some(path_ident(&nv.path));
                 }
                 Meta::NameValue(nv) if nv.path.is_ident("rename_all") => {
                     container.rename_all = RenameRule::parse(&string_value(&nv.value)?, &nv.value)?;
@@ -852,6 +920,16 @@ struct FieldOpts {
     element: Option<ElementKind>,
     /// Every `#[serde(alias = "…")]`, which are extra spellings the key also answers to.
     aliases: Vec<String>,
+    /// `#[serde(with = "…")]` or `#[serde(deserialize_with = "…")]`, whichever was written.
+    ///
+    /// Serde's two *field* attributes that replace this field's `Deserialize`, so the variants a
+    /// type derives are no longer the spellings a file may hold. `try_from` and `from` do the same
+    /// thing one level up — they are container attributes, and [`expand_enum`] refuses there.
+    ///
+    /// Only the name is kept. What these name is a path, and a derive cannot follow one: that a
+    /// custom parse exists is the whole of what is knowable here, and it is enough to know the
+    /// derived list is not it.
+    custom_deserialize: Option<String>,
 }
 
 /// Which of the two things an element can be.
@@ -875,6 +953,17 @@ impl ElementKind {
             Self::Choice(_) => "element_values",
         }
     }
+
+    /// Where a choice's spellings come from, for an error that can name both of two answers.
+    ///
+    /// [`ValueList::Trait`] for [`Self::Fields`], which has no spellings of its own — the two are
+    /// only ever compared after [`Self::attribute`] has already told them apart.
+    fn value_list(&self) -> &ValueList {
+        match self {
+            Self::Fields => &ValueList::Trait,
+            Self::Choice(source) => source,
+        }
+    }
 }
 
 /// Where the fixed set of spellings a key accepts comes from.
@@ -883,10 +972,21 @@ impl ElementKind {
 /// they cannot drift from it. [`Self::Literal`] exists because a trait cannot always be reached —
 /// `impl Values for tracing::Level` is an orphan-rule error in every crate that would want to
 /// write it, and this crate will not take a dependency on `tracing` to write it here.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 enum ValueList {
     /// The type's own `Values` implementation.
     Trait,
+    /// Another type's, named because the field's own has none.
+    ///
+    /// A `#[serde(remote = "…")]` mirror is what this exists for: serde matches the mirror's
+    /// variants exactly, `Describe` on it reports those same variants under the same
+    /// `rename_all`, and the two cannot drift because they are one declaration. Still checked by
+    /// the compiler — the named type has to implement `Values` — which is what separates it from
+    /// a list.
+    ///
+    /// Boxed because a `syn::Type` is an order of magnitude larger than either other variant, and
+    /// one of these is built per annotated field.
+    From(Box<Type>),
     /// Spellings the author listed, for a type no `Values` implementation can reach.
     ///
     /// Unverifiable by construction — nothing here reads the type's `Deserialize` — which is the
@@ -899,10 +999,37 @@ impl ValueList {
     fn tokens(&self, target: &Type, krate: &Path) -> TokenStream2 {
         match self {
             Self::Trait => quote! { <#target as #krate::schema::Values>::VARIANTS },
+            Self::From(named) => quote! { <#named as #krate::schema::Values>::VARIANTS },
             Self::Literal(values) => quote! { &[#(#values),*] },
         }
     }
+
+    /// The attribute suffix that asks for this, for an error that can quote back what to write
+    /// instead of what was written.
+    fn spelling(&self) -> &'static str {
+        match self {
+            Self::Trait => "",
+            Self::From(_) => "_from",
+            Self::Literal(_) => "(…)",
+        }
+    }
 }
+
+/// Compared by the *text* of the named type, because `syn`'s `PartialEq` lives behind the
+/// `extra-traits` feature and this crate compiles `syn` without it — the comparison exists only to
+/// tell one repeated attribute from two contradicting ones.
+impl PartialEq for ValueList {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Trait, Self::Trait) => true,
+            (Self::From(ours), Self::From(theirs)) => type_text(ours) == type_text(theirs),
+            (Self::Literal(ours), Self::Literal(theirs)) => ours == theirs,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ValueList {}
 
 /// A `#[config(range(...))]` bound, in the form it was written.
 ///
@@ -1139,6 +1266,11 @@ impl FieldOpts {
                 Meta::NameValue(nv) if nv.path.is_ident("rename") => {
                     opts.rename = Some(string_value(&nv.value)?);
                 }
+                Meta::NameValue(nv)
+                    if nv.path.is_ident("with") || nv.path.is_ident("deserialize_with") =>
+                {
+                    opts.custom_deserialize = Some(path_ident(&nv.path));
+                }
                 Meta::List(list) if list.path.is_ident("rename") => {
                     for inner in nested_metas(list)? {
                         if let Meta::NameValue(nv) = &inner
@@ -1169,6 +1301,14 @@ impl FieldOpts {
                 Meta::NameValue(nv) if nv.path.is_ident("note") => {
                     opts.note = Some(string_value(&nv.value)?);
                 }
+                Meta::NameValue(nv) if nv.path.is_ident("values_from") => {
+                    let named = named_type(&nv.value, "values_from")?;
+                    opts.set_values(ValueList::From(Box::new(named)), field)?;
+                }
+                Meta::NameValue(nv) if nv.path.is_ident("element_values_from") => {
+                    let named = named_type(&nv.value, "element_values_from")?;
+                    opts.set_element(ElementKind::Choice(ValueList::From(Box::new(named))), field)?;
+                }
                 Meta::List(list) if list.path.is_ident("range") => {
                     opts.range.get_or_insert_default().extend(list)?;
                 }
@@ -1198,8 +1338,9 @@ impl FieldOpts {
                     return Err(syn::Error::new_spanned(
                         other,
                         "unknown `#[config(...)]` option. The field options are `nested`, \
-                         `secret`, `skip`, `values`, `values(…)`, `element`, `element_values`, \
-                         `element_values(…)`, `note = \"…\"`, and `range(…)`.",
+                         `secret`, `skip`, `values`, `values(…)`, `values_from = \"…\"`, \
+                         `element`, `element_values`, `element_values(…)`, \
+                         `element_values_from = \"…\"`, `note = \"…\"`, and `range(…)`.",
                     ));
                 }
             }
@@ -1266,6 +1407,33 @@ impl FieldOpts {
             ));
         }
 
+        // The trap `docs/SCHEMA.md` has described in prose since the feature shipped, checked:
+        // a derived variant list is `serde`'s derived wire form, and each of these four says the
+        // wire form is something else. A named type and a literal list are both the author saying
+        // what the conversion accepts, so neither is refused.
+        if let Some(written) = &self.custom_deserialize {
+            let derived = match (&self.values, &self.element) {
+                (Some(ValueList::Trait), _) => Some("values"),
+                (_, Some(ElementKind::Choice(ValueList::Trait))) => Some("element_values"),
+                _ => None,
+            };
+            if let Some(asked) = derived {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    format!(
+                        "`#[config({asked})]` reports the variants `Describe` derives, which are \
+                         `serde`'s derived wire form — and `#[serde({written} = \"…\")]` on this \
+                         field says the wire form is something else. A case-insensitive `FromStr` \
+                         is the conversion that turns up, and it accepts spellings no variant is \
+                         named after, so the derived list would reject a file the loader takes. \
+                         Name the type that does describe the accepted set with \
+                         `#[config({asked}_from = \"…\")]`, list the spellings with \
+                         `#[config({asked}(\"…\", \"…\"))]`, or `#[config(skip)]` the key."
+                    ),
+                ));
+            }
+        }
+
         if self.element.is_some() && (self.nested || self.values.is_some()) {
             return Err(syn::Error::new_spanned(
                 field,
@@ -1294,9 +1462,14 @@ impl FieldOpts {
             )),
             Some(held) if *held != kind => Err(syn::Error::new_spanned(
                 field,
-                "`#[config(element_values)]` names the spellings one element accepts twice, and \
-                 the two answers differ. Bare, it reports the element type's own `Values` \
-                 implementation; with a list, it reports the list.",
+                format!(
+                    "`element_values{}` and `element_values{}` name the spellings one element \
+                     accepts two different ways, and an element accepts one set. Bare, it is the \
+                     element type's own `Values` implementation; `_from` is another type's; a \
+                     list is the list.",
+                    held.value_list().spelling(),
+                    kind.value_list().spelling()
+                ),
             )),
             _ => {
                 self.element = Some(kind);
@@ -1311,12 +1484,18 @@ impl FieldOpts {
     /// `values` reports the field type's own `Values` implementation and a list reports the list,
     /// and a field asking for both leaves the derive to pick.
     fn set_values(&mut self, source: ValueList, field: &Field) -> syn::Result<()> {
-        if self.values.as_ref().is_some_and(|held| *held != source) {
+        if let Some(held) = &self.values
+            && *held != source
+        {
             return Err(syn::Error::new_spanned(
                 field,
-                "`#[config(values)]` names the values this key accepts twice, and the two \
-                 answers differ. Bare, it reports the field type's own `Values` implementation; \
-                 with a list, it reports the list.",
+                format!(
+                    "`values{}` and `values{}` name the values this key accepts two different \
+                     ways, and a key accepts one set. Bare, it is the field type's own `Values` \
+                     implementation; `_from` is another type's; a list is the list.",
+                    held.spelling(),
+                    source.spelling()
+                ),
             ));
         }
         self.values = Some(source);
@@ -1466,6 +1645,34 @@ fn nested_metas(list: &syn::MetaList) -> syn::Result<Vec<Meta>> {
         .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?
         .into_iter()
         .collect())
+}
+
+/// The type behind `values_from = "LevelDef"`.
+///
+/// A string rather than a bare path, for the reason `crate = "…"` is one: this attribute
+/// vocabulary spells a path as a string everywhere, and serde's own `with` and `default` do the
+/// same. The span stays on the literal, so an error points at the attribute rather than at the
+/// field.
+fn named_type(expr: &Expr, attribute: &str) -> syn::Result<Type> {
+    let path = string_value(expr)?;
+    syn::parse_str(&path).map_err(|_| {
+        syn::Error::new_spanned(
+            expr,
+            format!(
+                "`#[config({attribute} = \"…\")]` names the type whose `Values` implementation \
+                 says what this key accepts, as in `{attribute} = \"LevelDef\"`. \
+                 `{path}` is not a type."
+            ),
+        )
+    })
+}
+
+/// An attribute's own name, for an error that quotes back the spelling that was written rather
+/// than a canonical one the source does not use.
+fn path_ident(path: &Path) -> String {
+    path.segments
+        .last()
+        .map_or_else(String::new, |segment| segment.ident.to_string())
 }
 
 /// The string behind `key = "value"`.
@@ -2270,6 +2477,7 @@ mod tests {
         );
         for attribute in [
             "`#[config(values)]`",
+            r#"`#[config(values_from = "…")]`"#,
             r#"`#[config(values("…", "…"))]`"#,
             "`#[config(nested)]`",
             "`#[config(element)]`",
@@ -2336,6 +2544,7 @@ mod tests {
         for attribute in [
             "values",
             r#"values("a", "b")"#,
+            r#"values_from = "LevelDef""#,
             "nested",
             "skip",
             "range(min = 0.0, max = 1.0)",
@@ -2344,7 +2553,12 @@ mod tests {
             let parsed: DeriveInput = syn::parse_str(&input).expect("test input is valid Rust");
             assert!(expand(&parsed).is_ok(), "{attribute}");
         }
-        for attribute in ["element", "element_values", r#"element_values("a", "b")"#] {
+        for attribute in [
+            "element",
+            "element_values",
+            r#"element_values("a", "b")"#,
+            r#"element_values_from = "LevelDef""#,
+        ] {
             let input = format!("struct S {{ #[config({attribute})] a: Vec<Level> }}");
             let parsed: DeriveInput = syn::parse_str(&input).expect("test input is valid Rust");
             assert!(expand(&parsed).is_ok(), "{attribute}");
@@ -2467,18 +2681,28 @@ mod tests {
     /// everywhere else.
     #[test]
     fn two_different_value_sources_are_rejected() {
-        let error = rejected(r#"struct S { #[config(values, values("a"))] x: Level }"#);
-        assert!(
-            error.contains("names the values this key accepts twice"),
-            "{error}"
-        );
+        for written in [
+            r#"values, values("a")"#,
+            r#"values, values_from = "Other""#,
+            r#"values_from = "One", values_from = "Two""#,
+        ] {
+            let error = rejected(&format!("struct S {{ #[config({written})] x: Level }}"));
+            assert!(
+                error.contains("name the values this key accepts two different ways"),
+                "{written}: {error}"
+            );
+        }
 
-        let error =
-            rejected(r#"struct S { #[config(element_values, element_values("a"))] x: Vec<L> }"#);
-        assert!(
-            error.contains("names the spellings one element accepts twice"),
-            "{error}"
-        );
+        for written in [
+            r#"element_values, element_values("a")"#,
+            r#"element_values, element_values_from = "Other""#,
+        ] {
+            let error = rejected(&format!("struct S {{ #[config({written})] x: Vec<L> }}"));
+            assert!(
+                error.contains("name the spellings one element accepts two different ways"),
+                "{written}: {error}"
+            );
+        }
     }
 
     /// Repeating one attribute says nothing new, which is not the same as saying two things.
@@ -2495,6 +2719,139 @@ mod tests {
     fn a_literal_value_list_still_collides_with_a_range() {
         let error = rejected(r#"struct S { #[config(values("a"), range(min = 0))] x: Level }"#);
         assert!(error.contains("fixed set of spellings"), "{error}");
+    }
+
+    // ---- a set of values another type already has ----
+
+    /// The automated half of the same problem: a `#[serde(remote = "…")]` mirror is a local enum
+    /// whose variants serde matches exactly, so pointing at it costs no string literal and cannot
+    /// drift from what serde accepts.
+    #[test]
+    fn values_from_reports_another_types_values_implementation() {
+        let body =
+            generated(r#"struct S { #[config(values_from = "LevelDef")] a: tracing::Level }"#);
+        assert!(
+            body.contains("< LevelDef as :: terrace_config :: schema :: Values > :: VARIANTS"),
+            "{body}"
+        );
+        // Nothing is asked of the field's own type, which is the point.
+        assert!(
+            !body.contains("< tracing :: Level as :: terrace_config :: schema :: Values >"),
+            "{body}"
+        );
+        // And the type column still says what the field is written as.
+        assert!(body.contains(r#"Some ("tracing::Level")"#), "{body}");
+    }
+
+    #[test]
+    fn element_values_from_does_the_same_one_level_down() {
+        let body = generated(
+            r#"struct S {
+                #[config(element_values_from = "LevelDef")]
+                a: HashMap<String, tracing::Level>
+            }"#,
+        );
+        assert!(body.contains("sink . repeated"), "{body}");
+        assert!(
+            body.contains(
+                "Element :: Choice (< LevelDef as :: terrace_config :: schema :: Values >"
+            ),
+            "{body}"
+        );
+    }
+
+    /// A path, spelled as a string the way `crate = "…"` and serde's own `with` are.
+    #[test]
+    fn values_from_takes_a_type_path() {
+        let body = generated(r#"struct S { #[config(values_from = "a::b::LevelDef")] x: L }"#);
+        assert!(body.contains("< a :: b :: LevelDef as"), "{body}");
+
+        let error = rejected(r#"struct S { #[config(values_from = "not a type")] x: L }"#);
+        assert!(error.contains("is not a type"), "{error}");
+        assert!(error.contains(r#"`values_from = "LevelDef"`"#), "{error}");
+    }
+
+    // ---- a wire form serde does not derive ----
+
+    /// The trap `docs/SCHEMA.md` described in prose since the feature shipped. A derived variant
+    /// list is serde's *derived* wire form, and each of these says the wire form is something
+    /// else.
+    #[test]
+    fn a_derived_value_list_is_refused_under_a_custom_deserialiser() {
+        for written in ["with", "deserialize_with"] {
+            let error = rejected(&format!(
+                r#"struct S {{ #[serde({written} = "m")] #[config(values)] a: Level }}"#
+            ));
+            assert!(error.contains("`#[config(values)]`"), "{written}: {error}");
+            assert!(
+                error.contains(&format!(r#"`#[serde({written} = "…")]`"#)),
+                "{written}: {error}"
+            );
+            assert!(
+                error.contains(r#"`#[config(values_from = "…")]`"#),
+                "{written}: {error}"
+            );
+            assert!(error.contains("`#[config(skip)]`"), "{written}: {error}");
+
+            let error = rejected(&format!(
+                r#"struct S {{ #[serde({written} = "m")] #[config(element_values)] a: Vec<L> }}"#
+            ));
+            assert!(
+                error.contains(r#"`#[config(element_values_from = "…")]`"#),
+                "{written}: {error}"
+            );
+        }
+    }
+
+    /// Both of the other two are the author saying what the conversion accepts, so neither is the
+    /// derive guessing and neither is refused.
+    #[test]
+    fn a_named_or_listed_set_survives_a_custom_deserialiser() {
+        for attribute in [r#"values_from = "LevelDef""#, r#"values("trace", "info")"#] {
+            let body = generated(&format!(
+                r#"struct S {{ #[serde(with = "m")] #[config({attribute})] a: Level }}"#
+            ));
+            assert!(body.contains("sink . leaf"), "{attribute}: {body}");
+        }
+    }
+
+    /// The container half of the same trap, and the one the documented example turns on:
+    /// `#[serde(try_from = "String")]` over a case-insensitive `FromStr` accepts spellings no
+    /// variant is named after.
+    #[test]
+    fn an_enum_whose_deserialize_is_a_conversion_cannot_report_its_variants() {
+        for written in ["try_from", "from"] {
+            let error = rejected(&format!(
+                r#"#[serde({written} = "String")] enum Level {{ Trace, Info }}"#
+            ));
+            assert!(
+                error.contains("reports its variants as the values a key accepts"),
+                "{written}: {error}"
+            );
+            assert!(
+                error.contains(&format!(r#"`#[serde({written} = "…")]`"#)),
+                "{written}: {error}"
+            );
+            assert!(
+                error.contains("naming what the conversion really accepts"),
+                "{written}: {error}"
+            );
+        }
+    }
+
+    /// `remote` is the exception, and the reason `values_from` exists: serde matches a mirror's
+    /// variants exactly, so they are precisely what a file may hold.
+    #[test]
+    fn a_remote_mirror_enum_still_reports_its_variants() {
+        let body = generated(
+            r#"#[serde(remote = "other::Compression", rename_all = "lowercase")]
+               enum CompressionDef { Gzip, Zstd }"#,
+        );
+        assert!(
+            body.contains("schema :: Values for CompressionDef"),
+            "{body}"
+        );
+        assert!(body.contains(r#"& ["gzip" , "zstd"]"#), "{body}");
     }
 
     /// A container with no element attribute is the case that has to keep generating exactly what

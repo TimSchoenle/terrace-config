@@ -39,10 +39,12 @@ struct Github {
 | `#[config(nested)]` | Recurse into the field's type instead of treating it as a leaf |
 | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key |
 | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+| `#[config(values_from = "…")]` | Report another type's variants as the values the key accepts |
 | `#[config(values("…", "…"))]` | Report a literal list as the values the key accepts |
 | `#[config(range(…))]` | Bound the number the key accepts: `min`, `max`, `exclusive_min`, `exclusive_max` |
 | `#[config(element)]` | Report the shape of one element of a container-typed key |
 | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
+| `#[config(element_values_from = "…")]` | Another type's variants, one level down |
 | `#[config(element_values("…", "…"))]` | The same literal list, one level down |
 | `#[config(note = "…")]` | Annotate the observed default with prose |
 | `#[config(skip)]` | Omit the key without affecting deserialisation |
@@ -105,7 +107,8 @@ Six attributes resolve it, and the error names the field, its type and all of th
 | Attribute | When it is the answer |
 |-----------|-----------------------|
 | `#[config(values)]` | The type implements `Values` — it derives `Describe` as an enum |
-| `#[config(values("…", "…"))]` | It cannot, and the list says what it accepts |
+| `#[config(values_from = "…")]` | It does not, and another type does |
+| `#[config(values("…", "…"))]` | Neither does, and the list says what it accepts |
 | `#[config(nested)]` | The type implements `Describe`, and its keys belong under this one |
 | `#[config(element)]` / `#[config(element_values)]` | The field is a container, and the *element* is one of those |
 | `#[config(range(…))]` | It is a number in an interval, and the interval is the whole of what a schema can say |
@@ -123,42 +126,85 @@ Two things worth knowing:
 
 ## Values a trait cannot reach
 
-`#[config(values)]` reads the field type's `Values` implementation, and the orphan rule puts a
-foreign enum out of reach: an application cannot write `impl Values for tracing::Level`, and this
-crate will not depend on `tracing` to write it here. A literal list bypasses the trait:
+`#[config(values)]` reads the field type's own `Values` implementation, and the orphan rule puts a
+foreign enum out of reach: an application can implement neither `Values` nor `Describe` for
+`other::Compression`, and this crate will not depend on `other` to do it here. Two attributes reach
+past the trait, and they are not equals.
+
+**`values_from` names a type that does implement it.** A `#[serde(remote = "…")]` mirror is the
+case it exists for: serde matches the mirror's variants exactly, `Describe` on the mirror reports
+those same variants under the same `rename_all`, and the two cannot drift because they are one
+declaration. Nothing is spelled twice, and the compiler still checks it:
 
 ```rust
-#[derive(Deserialize, Serialize, Default, Describe)]
-struct Observability {
-    /// How much the service says.
-    #[config(values("trace", "debug", "info", "warn", "error"))]
-    #[serde(default)]
-    log_level: tracing::Level,
+#[derive(Deserialize, Describe)]
+#[serde(remote = "other::Compression", rename_all = "lowercase")]
+enum CompressionDef { Gzip, Zstd, None }
 
-    /// Levels each module is pinned to.
-    #[config(element_values("trace", "debug", "info", "warn", "error"))]
-    #[serde(default)]
-    module_levels: HashMap<String, tracing::Level>,
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Wire {
+    /// How payloads are compressed.
+    #[serde(with = "CompressionDef", default)]
+    #[config(values_from = "CompressionDef")]
+    compression: other::Compression,
 }
 ```
 
-What comes out is what the derived form produces — a bare `enum` in `constraint`, the trimming
-`pattern` in `text_constraint`, and the same `` `trace` \| `debug` `` cell in the table — so no
-rendering and no consumer can tell the two apart.
+**`values("…", "…")` lists the spellings**, for a type no mirror can be written for — serde's
+`remote` needs a shape it can mirror, and a newtype over a private enum has none:
 
-Three things worth knowing before reaching for it:
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Wire {
+    /// How payloads are compressed.
+    #[serde(deserialize_with = "compression", default)]
+    #[config(values("gzip", "zstd", "none"))]
+    compression: other::Compression,
+}
+```
 
-- **The list is an assertion this crate cannot check.** Nothing in a derive reads a foreign type's
+Both have element forms — `element_values_from = "…"` and `element_values("…", "…")` — for a
+container of one. What comes out is what the derived form produces: a bare `enum` in `constraint`,
+the trimming `pattern` in `text_constraint`, and the same `` `gzip` \| `zstd` `` cell in the table,
+so no rendering and no consumer can tell the routes apart.
+
+Three things worth knowing before reaching for a list:
+
+- **It is an assertion this crate cannot check.** Nothing in a derive reads a foreign type's
   `Deserialize`, so a list that disagrees with it publishes a schema rejecting a file the loader
   takes. It is the author's to keep true, which is the standing `#[config(note = "…")]` already
-  has, and the standing this page already places on the author for `element_values` over a custom
-  `Deserialize`. Prefer the trait wherever the trait can be written: variants read off the type
-  cannot drift from it.
-- **It satisfies the diagnostic above**, which is the other half of why it exists. Before it, a
-  foreign enum had no honest annotation at all and two downstream repositories kept
-  `tracing::Level` undescribed.
+  has. Prefer `values_from` wherever a mirror can be written: variants read off a type cannot drift
+  from it.
+- **All four satisfy the diagnostic above**, which is the other half of why they exist. Before
+  them, a foreign enum had no honest annotation at all.
 - **Bare `#[config(values)]` is unchanged.** It still means "use the `Values` implementation", and
   an empty list or a repeated spelling is rejected rather than published.
+
+## The accepted set is the deserialiser's answer, not the type's
+
+Two shapes are refused outright, because in both the derived variants provably are not the wire
+form:
+
+- an **enum** carrying `#[serde(try_from = "…")]` or `#[serde(from = "…")]` cannot derive `Values`
+  at all — its `Deserialize` reads a different type and converts;
+- a **field** carrying `#[serde(with = "…")]` or `#[serde(deserialize_with = "…")]` cannot take a
+  bare `values` or `element_values` — the same, one level down.
+
+`#[serde(remote = "…")]` is deliberately not on that list: a mirror's variants are matched exactly,
+which is what makes it the answer rather than the problem.
+
+`tracing::Level` is the worked example of why, and the one to **not** copy. It has no `Deserialize`
+of its own, so a field holding one goes through its
+[`FromStr`](https://docs.rs/tracing-core/0.1.36/src/tracing_core/metadata.rs.html#561) — which
+matches case-insensitively **and** accepts `"1"` through `"5"`. A field annotated
+`values("trace", "debug", "info", "warn", "error")` therefore publishes a schema refusing `INFO`
+and `3`, both of which load. It is also a newtype over a private enum, so serde's `remote` cannot
+mirror it and `values_from` has nothing to point at.
+
+Read the accepted set off the conversion rather than off the variant names. Where it is not a fixed
+set of spellings at all — as here — `#[config(skip)]` the key, implement `Describe` by hand to
+publish the constraint that is true, or hold a local enum in the config struct and convert after
+loading, which is the one route where every layer agrees by construction.
 
 ## A key that holds many of something
 

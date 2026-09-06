@@ -2395,12 +2395,27 @@ fn neither_attribute_changes_the_shape_of_the_document() {
 
 // ---- values a trait cannot reach ----
 
-/// Stands in for `tracing::Level`: an enum from a crate that neither implements
-/// `terrace_config::schema::Values` nor can be made to, because the orphan rule sits between the
-/// application and both halves of the impl.
+/// Stands in for an enum owned by another crate: nothing here can implement
+/// `terrace_config::schema::Values` for it, because the orphan rule sits between an application
+/// and both halves of that impl.
+///
+/// Its own `Deserialize` is the derived one, which is what makes a list of its variant spellings
+/// true — the property `#[config(values(…))]` asserts and this crate cannot check. A type whose
+/// `Deserialize` converts from something else is the case that must *not* be described this way;
+/// `tracing::Level` is the one that turns up, and `docs/SCHEMA.md` works it through.
 #[derive(Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 enum Foreign {
+    Trace,
+    #[default]
+    Info,
+}
+
+/// What `#[serde(remote = "…")]` produces, without a foreign crate to be remote to: a local enum
+/// whose variants are matched exactly, deriving `Values` for `values_from` to point at.
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum ForeignDef {
     Trace,
     #[default]
     Info,
@@ -2431,6 +2446,62 @@ fn a_literal_value_list_describes_a_type_no_impl_can_reach() {
 
     // And the type column still says what the field is written as, not what the list says.
     assert_eq!(key(&schema, "log_level").ty.as_deref(), Some("Foreign"));
+}
+
+/// The route to prefer: the spellings are read off a type rather than retyped, so they cannot
+/// drift from what serde matches — and every rendering is identical to the list's.
+#[test]
+fn values_from_reports_another_types_variants() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Observability {
+        /// How much the service says.
+        #[config(values_from = "ForeignDef")]
+        #[serde(default)]
+        log_level: Foreign,
+    }
+
+    let schema = Terrace::new("T_").schema::<Observability>();
+    assert_eq!(key(&schema, "log_level").values, ["trace", "info"]);
+    assert_eq!(key(&schema, "log_level").ty.as_deref(), Some("Foreign"));
+
+    // Byte for byte what the literal list produces, which is what makes the two interchangeable
+    // for every consumer.
+    let listed = {
+        #[derive(Deserialize, Serialize, Default, Describe)]
+        struct Listed {
+            /// How much the service says.
+            #[config(values("trace", "info"))]
+            #[serde(default)]
+            log_level: Foreign,
+        }
+        Terrace::new("T_").schema::<Listed>()
+    };
+    assert_eq!(
+        schema.to_json_schema().expect("serialises"),
+        listed.to_json_schema().expect("serialises")
+    );
+}
+
+/// One level down, and through the container the tokens already read.
+#[test]
+fn element_values_from_reports_another_types_variants() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Observability {
+        /// Levels each module is pinned to.
+        #[config(element_values_from = "ForeignDef")]
+        #[serde(default)]
+        module_levels: std::collections::BTreeMap<String, Foreign>,
+    }
+
+    let schema = Terrace::new("T_").schema::<Observability>();
+    let rendered = schema.to_json_schema().expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+
+    assert_eq!(
+        document["properties"]["module_levels"]["additionalProperties"]["enum"],
+        json!(["trace", "info"])
+    );
 }
 
 /// One level down, which is the position a container of a foreign enum leaves blank.

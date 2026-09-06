@@ -167,9 +167,12 @@ pub trait Describe {
 /// `#[serde(rename_all)]` and all, because a table that printed `Info` where the file must say
 /// `info` documents a value nobody can set.
 ///
-/// A trait, so a foreign enum is out of reach — the orphan rule sits between an application and
-/// `impl Values for tracing::Level`. `#[config(values("…", "…"))]` is what such a field has
-/// instead: the spellings, asserted by the author and reported here unchanged.
+/// A trait, so a foreign enum is out of reach: the orphan rule sits between an application and
+/// `impl Values for other::Compression`. Two field attributes reach past it —
+/// `#[config(values_from = "…")]` names a local type that *does* implement this, a
+/// `#[serde(remote = "…")]` mirror being the case that turns up, and `#[config(values("…",
+/// "…"))]` lists the spellings outright when no mirror can be written. Both report through this
+/// same field, so no rendering can tell the three routes apart.
 pub trait Values {
     /// Every value the type accepts, in declaration order.
     const VARIANTS: &'static [&'static str];
