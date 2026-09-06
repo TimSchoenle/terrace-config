@@ -1073,14 +1073,19 @@ struct Shapes {
     labels: std::collections::BTreeMap<String, String>,
     /// Something this crate cannot interpret.
     #[serde(default)]
-    endpoint: Newtype,
+    endpoint: Newtype<String>,
 }
 
-// No `Describe`: it is a leaf, and the derive reports the token `Newtype` as its type without
-// needing the type to describe anything. That is the point of the fixture — a spelling the crate
-// cannot interpret.
+// No `Describe`: it is a leaf, and the derive reports the token `Newtype<String>` as its type
+// without needing the type to describe anything. That is the point of the fixture — a spelling
+// the crate cannot interpret.
+//
+// Generic rather than bare, because the derive now refuses a bare name it can read nothing from
+// and offers `#[config(skip)]` for one that has nothing to publish. Neither is what is under test
+// here: this is the runtime interpreter's own answer to a spelling it does not know, which it has
+// to keep giving for every shape the derive does not judge.
 #[derive(Deserialize, Serialize, Default)]
-struct Newtype(String);
+struct Newtype<T>(T);
 
 fn shapes() -> Contract {
     Terrace::new("SHAPES_")
@@ -1384,9 +1389,13 @@ enum Severity {
 
 /// Deliberately not `Describe`: the keys under it are operator-chosen names. A producer that has
 /// said so must keep publishing exactly what it published before.
+///
+/// Generic for the reason [`Newtype`] is: a bare name the derive can read nothing from is now a
+/// compile error, and what is under test is the runtime interpreter's answer for an element it
+/// cannot name.
 #[derive(Deserialize, Serialize, Default)]
-struct Bucket {
-    region: String,
+struct Bucket<T> {
+    region: T,
 }
 
 #[derive(Deserialize, Serialize, Default, Describe)]
@@ -1397,7 +1406,7 @@ struct Routed {
     routes: Vec<Route>,
     /// Buckets, by the route name an operator chose.
     #[serde(default)]
-    entries: BTreeMap<String, Bucket>,
+    entries: BTreeMap<String, Bucket<String>>,
 }
 
 fn routed() -> Contract {
