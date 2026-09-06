@@ -40,7 +40,7 @@
 //! # impl Describe for Config {
 //! #     fn describe(sink: &mut Sink) {
 //! #         sink.leaf(Leaf { name: "dist_dir", docs: "", ty: Some("String"), values: None,
-//! #             aliases: &[], note: None, required: false, secret: false });
+//! #             bounds: None, aliases: &[], note: None, required: false, secret: false });
 //! #     }
 //! # }
 //! let contract = Terrace::new("PORTFOLIO_")
@@ -824,12 +824,13 @@ impl ContractBuilder {
         let mut external = external;
         for var in &mut external.env {
             if var.constraint.is_none() {
-                // No element schema: an external variable is described by a type token and
-                // nothing else, so there is no `Describe` implementation to report one. A
-                // container-typed one that needs an element shape states it outright, through
-                // `ExternalVar::constraint`.
+                // No element schema and no bounds: an external variable is described by a type
+                // token and nothing else, so there is no `Describe` implementation to report
+                // either. A variable that needs an element shape or an interval states it
+                // outright, through `ExternalVar::constraint`.
                 var.constraint =
-                    json_schema::constraint(var.ty.as_deref(), &var.values, None).map(Json::Object);
+                    json_schema::constraint(var.ty.as_deref(), &var.values, None, None)
+                        .map(Json::Object);
             }
             let (form, text) = json_schema::text_constraint(var.ty.as_deref(), &var.values);
             if var.text_constraint.is_none() {

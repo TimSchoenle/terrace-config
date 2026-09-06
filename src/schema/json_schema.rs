@@ -19,6 +19,12 @@
 //!
 //! - `type` comes from [`super::rust_type`], which produces nothing at all for a spelling it does
 //!   not recognise. A key whose type is a domain newtype is left unconstrained.
+//! - The numeric bounds a key was annotated with narrow what the type justified and never widen
+//!   it. A `max` above the type's own maximum is dropped rather than published, because `maximum`
+//!   is one keyword and the looser number would have replaced the exact one.
+//! - `additionalProperties: false` inside an element schema is there because the element type
+//!   carries `#[serde(deny_unknown_fields)]`, and nowhere else. A struct that said nothing accepts
+//!   a field nobody declared, so a schema refusing one would refuse a file that loads.
 //! - The shape of one *element* of a container-typed key is carried only where the element type
 //!   opted in with [`Sink::repeated`](super::Sink::repeated). `Vec<RouteConfig>` renders as a bare
 //!   array until `RouteConfig` describes itself — the alternative is a schema derived from a
@@ -31,10 +37,12 @@
 //!   only the canonical spelling would underline `user = "…"` in a file that loads, which is the
 //!   rejection this whole section is about.
 
+use std::collections::BTreeSet;
+
 use serde_json::{Map, Value as Json, json};
 
 use super::tree::{self, Node};
-use super::{Docs, Error, Key, Schema, TextForm, rust_type};
+use super::{Bounds, Docs, Error, Key, Schema, TextForm, rust_type};
 
 /// The meta-schema URI for JSON Schema 2020-12 — what a current editor implements.
 pub const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -57,7 +65,7 @@ pub const DRAFT_07: &str = "http://json-schema.org/draft-07/schema#";
 /// # impl Describe for Config {
 /// #     fn describe(sink: &mut Sink) {
 /// #         sink.leaf(Leaf { name: "replicas", docs: "", ty: Some("u32"), values: None,
-/// #             aliases: &[], note: None, required: false, secret: false });
+/// #             bounds: None, aliases: &[], note: None, required: false, secret: false });
 /// #     }
 /// # }
 /// // A Helm chart's `values.schema.json`: draft-07, named, and open to the keys Helm itself adds.
@@ -249,7 +257,10 @@ impl Schema {
 /// second place for the two to disagree about what was rendered.
 pub(super) fn document(schema: &Schema, options: &JsonSchema) -> Map<String, Json> {
     let reachable = schema.keys.iter().filter(|key| !key.reserved);
-    let mut document = object(&Node::of(reachable), options);
+    // No closed levels: this is the document, where whether an undeclared key is an error is
+    // [`JsonSchema::closed`]'s question. See [`element_object`] for the case where a type is the
+    // only thing that can answer it.
+    let mut document = object(&Node::of(reachable), "", options, &BTreeSet::new());
 
     document.insert("$schema".to_owned(), json!(options.meta_schema));
     if let Some(id) = &options.id {
@@ -263,7 +274,15 @@ pub(super) fn document(schema: &Schema, options: &JsonSchema) -> Map<String, Jso
 }
 
 /// One level of the configuration as a JSON Schema object.
-fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
+///
+/// `path` is where this level sits, dotted, empty at the root — the spelling `closed` holds. Both
+/// are carried down rather than derived from [`Node`], which knows only its own segment.
+fn object(
+    node: &Node<'_>,
+    path: &str,
+    options: &JsonSchema,
+    closed: &BTreeSet<String>,
+) -> Map<String, Json> {
     let mut properties = Map::new();
     let mut required = Vec::new();
     // A required key with aliases is not one property that must be present but a *choice* of
@@ -306,9 +325,14 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
     // same name in one parent — resolves to the table. That is the half a reader can act on, and
     // it is what the TOML rendering comments the key out in favour of.
     for child in &node.children {
+        let child_path = if path.is_empty() {
+            child.segment.to_owned()
+        } else {
+            format!("{path}.{}", child.segment)
+        };
         properties.insert(
             child.segment.to_owned(),
-            Json::Object(object(child, options)),
+            Json::Object(object(child, &child_path, options, closed)),
         );
         // A table is required because something inside it is, so it follows the same switch: with
         // `require_present` off there is nothing inside making it mandatory *here*.
@@ -326,7 +350,10 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
     if !either.is_empty() {
         schema.insert("allOf".to_owned(), Json::Array(either));
     }
-    if options.closed {
+    // The rendering's answer, or the type's own. They never contradict: `closed` is populated only
+    // for an element schema, whose result lands in [`Key::constraint`] where no rendering option
+    // reaches it, and a level named there refuses undeclared keys in the deserialiser too.
+    if options.closed || closed.contains(path) {
         schema.insert("additionalProperties".to_owned(), json!(false));
     }
     schema
@@ -390,13 +417,18 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
 /// A key whose [`Key::ty`] is not a container this crate reads keeps today's answer, because
 /// [`rust_type::interpret_with`] refuses rather than guessing where the element would go.
 ///
-/// [`None`] means unconstrained: a type [`rust_type::interpret`] does not recognise, and no fixed
-/// set of values. A domain newtype lands here, and a validator can say nothing about it beyond
-/// that the key exists.
+/// `bounds` is the interval a `#[config(range(...))]` field asked for, and lands at the same
+/// position for the same reason — the field's own type for a scalar, the element for a container
+/// of numbers. It narrows what the spelling justified and never widens it; see [`Bounds`].
+///
+/// [`None`] means unconstrained: a type [`rust_type::interpret`] does not recognise, no fixed set
+/// of values and no bounds. A domain newtype lands here, and a validator can say nothing about it
+/// beyond that the key exists.
 pub(super) fn constraint(
     ty: Option<&str>,
     values: &[String],
     element: Option<&Map<String, Json>>,
+    bounds: Option<Bounds>,
 ) -> Option<Map<String, Json>> {
     if !values.is_empty() {
         // A fixed set of values is stronger than any type could be, and stronger than anything an
@@ -405,10 +437,12 @@ pub(super) fn constraint(
         return Some(choice(values));
     }
 
-    let ty = ty?;
+    // A key with no type at all recognises nothing, which is where an annotated bound stands on
+    // its own rather than being dropped for want of something to hang it on.
+    let ty = ty.unwrap_or_default();
     element
-        .and_then(|element| rust_type::interpret_with(ty, element))
-        .or_else(|| rust_type::interpret(ty))
+        .and_then(|element| rust_type::interpret_with(ty, element, bounds))
+        .or_else(|| rust_type::interpret(ty, bounds))
 }
 
 /// A fixed set of spellings, as the value in a *document* must be written.
@@ -443,15 +477,23 @@ pub(super) fn choice(values: &[impl AsRef<str>]) -> Map<String, Json> {
 ///   [`JsonSchema::require_present`] separates coincide inside an element: no environment variable
 ///   and no mounted file can reach a field of an array element, so the document really is the only
 ///   layer that could supply it.
-/// - **It is left open.** `serde` accepts a field nobody declared unless the struct says
-///   otherwise, and no derive can see `#[serde(deny_unknown_fields)]` from here. Closing it is a
-///   *rendering* decision, and [`close`] applies it where a rendering asks for one.
+/// - **It is open unless the type closed it.** `serde` accepts a field nobody declared unless the
+///   struct says otherwise, so the default is open — but a struct that *did* say otherwise reports
+///   it, through [`Sink::deny_unknown_fields`](super::Sink::deny_unknown_fields), and `closed`
+///   holds the levels that did. Without that, a closed struct and an open map are the same
+///   `properties` object and a misspelt field passes every validator. Whether an undeclared key is
+///   an error *elsewhere* is still a rendering decision, and [`close`] applies that one.
 /// - **No `default`.** An element has no observed value to take one from: `with_defaults_from`
 ///   sees the container, not the elements a deployment happens to put in it.
 ///
 /// [`Key::constraint`]: super::Key::constraint
-pub(super) fn element_object(keys: &[Key]) -> Map<String, Json> {
-    object(&Node::of(keys), &JsonSchema::new().closed(false))
+pub(super) fn element_object(keys: &[Key], closed: &BTreeSet<String>) -> Map<String, Json> {
+    object(
+        &Node::of(keys),
+        "",
+        &JsonSchema::new().closed(false),
+        closed,
+    )
 }
 
 /// Close every object inside a rendered constraint, the way [`object`] closes the document's own.
@@ -460,17 +502,20 @@ pub(super) fn element_object(keys: &[Key]) -> Map<String, Json> {
 /// `additionalProperties` is a *schema* and must be recursed into rather than overwritten with
 /// `false`, which would turn "every value looks like this" into "there are no values".
 ///
-/// It exists because [`element_object`] leaves its output open. Whether an undeclared key is an
-/// error is the question [`JsonSchema::closed`] answers, and a document that flagged one at the
-/// top level while passing one inside an array element would be answering it twice.
+/// It exists because [`element_object`] leaves its output open wherever the type did not close it.
+/// Whether an undeclared key is an error *there* is the question [`JsonSchema::closed`] answers,
+/// and a document that flagged one at the top level while passing one inside an array element
+/// would be answering it twice.
+///
+/// A level the type already closed is walked into rather than stopped at: its `additionalProperties`
+/// is the `false` a `#[serde(deny_unknown_fields)]` struct reported, and the levels *below* it
+/// still have this rendering's question to answer.
 fn close(schema: &mut Map<String, Json>) {
     if let Some(Json::Object(items)) = schema.get_mut("items") {
         close(items);
     }
-    if let Some(values) = schema.get_mut("additionalProperties") {
-        if let Json::Object(values) = values {
-            close(values);
-        }
+    if let Some(Json::Object(values)) = schema.get_mut("additionalProperties") {
+        close(values);
         return;
     }
     let Some(Json::Object(properties)) = schema.get_mut("properties") else {

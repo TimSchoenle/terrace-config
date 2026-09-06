@@ -169,10 +169,29 @@ to widen that list to `items`, `additionalProperties`, `properties`, `required`,
 then accept it. Nothing was removed and nothing changed meaning, so a consumer that ignores what it
 does not recognise needs no change at all.
 
-The element schema is deliberately **open** — no `additionalProperties: false` — because `serde`
-accepts a field nobody declared unless the struct says otherwise, and no derive can see
-`#[serde(deny_unknown_fields)]`. The `json_schema` half closes it, because that is a rendering with
-`JsonSchema::closed` to answer the question. The two are the same fields either way.
+The element schema is **open unless the element type closed it**. `serde` accepts a field nobody
+declared unless the struct says otherwise, so open is the default — but a struct carrying
+`#[serde(deny_unknown_fields)]` says otherwise, and the derive reads that attribute and emits
+`additionalProperties: false` beside the element's `properties` and `required`. Without it a closed
+struct and an open map are the same object and a misspelt field passes every validator.
+
+It closes one level: a struct inside a closed one that did not say so stays open, and so does the
+map around a closed element, whose keys an operator chooses. Whether an undeclared key is an error
+*elsewhere* in the rendered document is still `JsonSchema::closed`'s question, and the `json_schema`
+half answers that one. The two never contradict — a level named here refuses undeclared keys in the
+deserialiser too.
+
+**Numeric bounds arrive the same way.** A key annotated `#[config(range(min = 0.0, max = 1.0))]`
+carries `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum` in `constraint`, at the
+position the type's own reading stops — the key itself for a scalar, and under `items` or
+`additionalProperties` for a container of numbers. A bound is never allowed to widen one the type
+already justified, so nothing here accepts a value that did not validate before.
+
+**Neither is a change to the shape of this document**, which is why `schema_version` has not moved.
+`constraint` already carried `minimum` and `additionalProperties`; it carries them in more places
+now. A consumer handing the object to a JSON Schema validator needs no change and gets stricter for
+free, and one walking the keywords itself already had to accept those two from
+`schema_version: 2`'s keyword list.
 
 `ExternalVar::constraint` sets both by hand for a type the crate cannot interpret — a duration, a
 connection string — and the derive leaves whatever it finds alone.

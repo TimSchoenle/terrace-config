@@ -17,7 +17,7 @@ use serde_json::json;
 use terrace_config::Terrace;
 use terrace_config::schema::{
     Column, DRAFT_07, DRAFT_2020_12, Describe, Element, JsonSchema, Key, Leaf, SCHEMA_VERSION,
-    Schema, Sink, TomlExample,
+    Schema, Sink, TextForm, TomlExample,
 };
 
 #[derive(Deserialize, Serialize, Describe)]
@@ -729,6 +729,7 @@ fn nesting_to_the_limit_is_allowed() {
                         docs: "",
                         ty: None,
                         values: None,
+                        bounds: None,
                         aliases: &[],
                         note: None,
                         required: true,
@@ -1562,6 +1563,7 @@ fn a_key_that_cannot_be_bare_is_quoted() {
                 docs: "",
                 ty: Some("String"),
                 values: None,
+                bounds: None,
                 aliases: &[],
                 note: None,
                 required: true,
@@ -1740,6 +1742,7 @@ fn an_unknown_type_constrains_nothing() {
                 docs: "",
                 ty: Some("crate::db::Pool"),
                 values: None,
+                bounds: None,
                 aliases: &[],
                 note: None,
                 required: false,
@@ -2073,6 +2076,7 @@ fn a_reported_element_on_a_key_that_is_not_a_container_is_dropped() {
                     docs: "",
                     ty: Some("RouteConfig"),
                     values: None,
+                    bounds: None,
                     aliases: &[],
                     note: None,
                     required: false,
@@ -2103,6 +2107,7 @@ fn an_element_that_contains_itself_is_refused_rather_than_overflowing_the_stack(
                     docs: "",
                     ty: Some("Vec<Cyclic>"),
                     values: None,
+                    bounds: None,
                     aliases: &[],
                     note: None,
                     required: false,
@@ -2114,4 +2119,271 @@ fn an_element_that_contains_itself_is_refused_rather_than_overflowing_the_stack(
     }
 
     let _ = Schema::describe::<Cyclic>(&Terrace::new("T_").dialect());
+}
+
+// ---- what a type cannot say about a number, and what a struct can say about itself ----
+
+/// A domain newtype: not a spelling `rust_type` recognises, so the annotated interval is the whole
+/// of what a schema can say about it. The case `range` exists for, in the smallest type that is
+/// one.
+#[derive(Deserialize, Serialize, Default)]
+struct Fraction(f32);
+
+/// A struct that refuses a key it did not declare, holding one that does not. Both halves matter:
+/// the schema has to close the first without closing the second, or it is publishing a rule the
+/// deserialiser does not have.
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(deny_unknown_fields)]
+struct Sealed {
+    /// Where the peer is reached.
+    upstream: String,
+    /// How the peer is addressed.
+    #[config(nested)]
+    target: Target,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Bounded {
+    /// Share of requests that are traced.
+    #[config(range(min = 0.0, max = 1.0))]
+    #[serde(default)]
+    sample_rate: f32,
+    /// Workers, which must leave one core for the reactor.
+    #[config(range(min = 1, max = 63))]
+    #[serde(default)]
+    workers: u16,
+    /// Retries, annotated looser than the type already is.
+    #[config(range(max = 100_000))]
+    #[serde(default)]
+    retries: u16,
+    /// A share of a whole, in a type that says none of that.
+    #[config(range(min = 0.0, exclusive_max = 1.0))]
+    #[serde(default)]
+    ratio: Fraction,
+    /// Backoff multipliers, none of which may shrink the wait.
+    #[config(range(exclusive_min = 1.0))]
+    #[serde(default)]
+    backoff: Vec<f64>,
+    /// Weights per bucket, each one a fraction.
+    #[config(range(min = 0.0, max = 1.0))]
+    #[serde(default)]
+    weights: std::collections::BTreeMap<String, Vec<f32>>,
+    /// Peers, by the name an operator chose.
+    #[config(element)]
+    #[serde(default)]
+    peers: std::collections::BTreeMap<String, Sealed>,
+}
+
+/// The described schema of the fixture above.
+fn bounded() -> Schema {
+    Terrace::new("T_").schema::<Bounded>()
+}
+
+/// The constraint of one key, which is where everything below lands.
+fn constraint(schema: &Schema, path: &str) -> serde_json::Value {
+    key(schema, path)
+        .constraint
+        .clone()
+        .unwrap_or_else(|| panic!("`{path}` is unconstrained"))
+}
+
+/// The whole point of the attribute: `f32` publishes `{"type": "number"}` and every consumer that
+/// knew the value was a fraction wrote the two keywords itself.
+#[test]
+fn a_bound_says_the_thing_the_type_cannot() {
+    let rate = constraint(&bounded(), "sample_rate");
+
+    assert_eq!(rate["type"], json!("number"));
+    assert_eq!(rate["minimum"], json!(0.0));
+    assert_eq!(rate["maximum"], json!(1.0));
+}
+
+/// A bound narrows what the spelling justified. `u16` was already `0..=65535`, and the annotation
+/// says which of those the service will take.
+#[test]
+fn a_bound_narrows_what_the_type_already_justified() {
+    let workers = constraint(&bounded(), "workers");
+
+    assert_eq!(workers["type"], json!("integer"));
+    assert_eq!(workers["minimum"], json!(1));
+    assert_eq!(workers["maximum"], json!(63));
+}
+
+/// The rule the whole module is written around, one attribute further out: `maximum` is one
+/// keyword, so a looser annotation would *replace* the exact bound rather than sit beside it, and
+/// the schema would then accept a file the loader refuses.
+#[test]
+fn a_bound_that_would_widen_the_type_is_dropped() {
+    let retries = constraint(&bounded(), "retries");
+
+    assert_eq!(retries["maximum"], json!(65_535));
+    assert_eq!(retries["minimum"], json!(0));
+}
+
+/// An integer literal stays an integer on the way out. `minimum: 1.0` is a different number to a
+/// consumer that walks the keywords itself, and nothing about the annotation asked for a float.
+#[test]
+fn an_integer_bound_is_published_as_an_integer() {
+    let workers = constraint(&bounded(), "workers");
+
+    assert_eq!(
+        serde_json::to_string(&workers["minimum"]).expect("a number serialises"),
+        "1"
+    );
+    assert_eq!(
+        serde_json::to_string(&workers["maximum"]).expect("a number serialises"),
+        "63"
+    );
+    // And the other way for a float, so the pair is the whole claim: a fraction keeps its point.
+    let rate = constraint(&bounded(), "sample_rate");
+    assert_eq!(
+        serde_json::to_string(&rate["maximum"]).expect("a number serialises"),
+        "1.0"
+    );
+}
+
+/// The exclusive keywords, and the case where the bounds are all there is: a domain newtype has no
+/// `type` this crate can publish, and keywords that apply to numbers and nothing else are exactly
+/// what is known about it.
+#[test]
+fn an_exclusive_bound_on_an_unrecognised_type_stands_alone() {
+    let ratio = constraint(&bounded(), "ratio");
+
+    assert_eq!(ratio["minimum"], json!(0.0));
+    assert_eq!(ratio["exclusiveMaximum"], json!(1.0));
+    assert!(ratio.get("type").is_none(), "{ratio}");
+    assert!(ratio.get("maximum").is_none(), "{ratio}");
+}
+
+/// The position an element fills, reached by the same walk: there is nothing a `minimum` could say
+/// about a `Vec`, so it says it about what the vector holds.
+#[test]
+fn a_bound_on_a_container_lands_on_the_element() {
+    let backoff = constraint(&bounded(), "backoff");
+
+    assert_eq!(backoff["type"], json!("array"));
+    assert_eq!(backoff["items"]["type"], json!("number"));
+    assert_eq!(backoff["items"]["exclusiveMinimum"], json!(1.0));
+    assert!(backoff.get("exclusiveMinimum").is_none(), "{backoff}");
+}
+
+/// However deep the containers are stacked, for the reason a map of sets reaches a described
+/// element through both: the walk was already reading every level and only the bottom was blank.
+#[test]
+fn a_bound_reaches_the_element_through_stacked_containers() {
+    let weights = constraint(&bounded(), "weights");
+    let bucket = &weights["additionalProperties"];
+
+    assert_eq!(weights["type"], json!("object"));
+    assert_eq!(bucket["type"], json!("array"));
+    assert_eq!(bucket["items"]["minimum"], json!(0.0));
+    assert_eq!(bucket["items"]["maximum"], json!(1.0));
+}
+
+/// A bound applies to the parsed value; the text of an environment variable is a separate
+/// question, and a pattern cannot express a numeric range. Nothing about `text_constraint` moves.
+#[test]
+fn a_bound_leaves_the_text_constraint_alone() {
+    let schema = bounded();
+    let workers = key(&schema, "workers");
+
+    assert_eq!(workers.text_form, TextForm::Integer);
+    let text = workers
+        .text_constraint
+        .as_ref()
+        .expect("an integer's text is described");
+    assert_eq!(text["type"], json!("string"));
+    assert!(text.get("minimum").is_none(), "{text}");
+}
+
+/// The second gap: a described struct and an open map were the same `properties` object, so a
+/// misspelt field passed every validator. `deny_unknown_fields` is what tells them apart, and the
+/// map around the struct stays open because an operator chooses the names in it.
+#[test]
+fn a_closed_element_says_so_inside_an_open_map() {
+    let peers = constraint(&bounded(), "peers");
+    let peer = &peers["additionalProperties"];
+
+    // The map is open: its keys are operator-chosen, and `additionalProperties` is the element
+    // schema rather than a `false`.
+    assert_eq!(peers["type"], json!("object"));
+    assert!(peer.is_object(), "{peers}");
+
+    assert_eq!(peer["properties"]["upstream"]["type"], json!("string"));
+    assert_eq!(peer["required"], json!(["upstream"]));
+    assert_eq!(peer["additionalProperties"], json!(false));
+}
+
+/// One struct saying it is closed does not close the ones inside it. `Target` accepts a field
+/// nobody declared, and a schema claiming otherwise would reject a file that loads.
+#[test]
+fn an_open_struct_inside_a_closed_one_stays_open() {
+    let peers = constraint(&bounded(), "peers");
+    let target = &peers["additionalProperties"]["properties"]["target"];
+
+    assert_eq!(target["properties"]["id"]["type"], json!("integer"));
+    assert!(target.get("additionalProperties").is_none(), "{target}");
+}
+
+/// Nothing is claimed for a struct that did not say so. `serde` accepts an undeclared field by
+/// default, and this is the assertion that keeps the feature from becoming a default.
+#[test]
+fn a_struct_that_said_nothing_is_still_open() {
+    let routes = containers().keys[0]
+        .constraint
+        .clone()
+        .expect("`routes` carries its element");
+
+    assert_eq!(
+        routes["items"]["properties"]["name"]["type"],
+        json!("string")
+    );
+    assert!(
+        routes["items"].get("additionalProperties").is_none(),
+        "{routes}"
+    );
+}
+
+/// The rendering's question and the type's are different questions, and a document that answered
+/// only the first would leave a level open that the deserialiser closes. With the document open,
+/// the type's answer is the one that survives.
+#[test]
+fn an_open_document_still_reports_a_closed_element() {
+    let rendered = bounded()
+        .to_json_schema_with(&JsonSchema::new().closed(false))
+        .expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+
+    let peer = &document["properties"]["peers"]["additionalProperties"];
+    assert_eq!(peer["additionalProperties"], json!(false));
+    assert!(
+        document.get("additionalProperties").is_none(),
+        "the document itself was asked to stay open"
+    );
+}
+
+/// A level the type closed must not stop the rendering from closing the levels below it, which is
+/// the one way the two answers could have collided.
+#[test]
+fn a_closed_document_still_closes_what_is_inside_a_closed_element() {
+    let rendered = bounded().to_json_schema().expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+
+    let peer = &document["properties"]["peers"]["additionalProperties"];
+    assert_eq!(peer["additionalProperties"], json!(false));
+    assert_eq!(
+        peer["properties"]["target"]["additionalProperties"],
+        json!(false)
+    );
+}
+
+/// Both attributes are additive, so the version gating a consumer's reading of this document has
+/// no reason to move: nothing was added to the document's *shape*. `constraint` already carried
+/// `minimum` and `additionalProperties`, and it carries them in more places now.
+#[test]
+fn neither_attribute_changes_the_shape_of_the_document() {
+    assert_eq!(bounded().schema_version, SCHEMA_VERSION);
+    assert_eq!(SCHEMA_VERSION, 2);
 }

@@ -15,8 +15,8 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, ExprLit, Field, Fields, GenericArgument, Lit, Meta, Path,
-    PathArguments, Token, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Expr, ExprLit, ExprUnary, Field, Fields, GenericArgument, Lit,
+    Meta, MetaList, Path, PathArguments, Token, Type, UnOp, parse_macro_input,
 };
 
 /// Describe a configuration type: its keys, their documentation, and what each one accepts.
@@ -40,6 +40,9 @@ use syn::{
 /// rules differ and both are implemented), `alias`, `skip`, `skip_deserializing`, `default`, and
 /// `flatten`. Annotating a field twice is how the documentation drifts from the loader.
 ///
+/// `#[serde(deny_unknown_fields)]` on the container is read for the same reason and reported the
+/// same way — see [Closed structs](#closed-structs).
+///
 /// # `#[config(...)]`
 ///
 /// | Attribute | Effect |
@@ -48,6 +51,7 @@ use syn::{
 /// | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key in the output |
 /// | `#[config(note = "…")]` | Annotate the observed default with prose |
 /// | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+/// | `#[config(range(…))]` | Bound the number the key accepts: `min`, `max`, `exclusive_min`, `exclusive_max` |
 /// | `#[config(element)]` | Report the shape of one element of a container-typed key |
 /// | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
 /// | `#[config(skip)]` | Omit the key from the schema without affecting deserialisation |
@@ -87,6 +91,65 @@ use syn::{
 /// or `values`, which describe the field's own type rather than its elements. The key itself is
 /// reported exactly as it is without them — the schema gains a nested `items` or
 /// `additionalProperties`, and not one extra key.
+///
+/// # Numeric bounds
+///
+/// `sample_rate: f32` publishes `{"type": "number"}` and nothing more. That the value is a
+/// *fraction* is not in the type — every consumer that knows it has been writing `minimum: 0` and
+/// `maximum: 1` itself. `range` says it once, where the field is:
+///
+/// ```ignore
+/// /// Share of requests that are traced.
+/// #[config(range(min = 0.0, max = 1.0))]
+/// #[serde(default)]
+/// sample_rate: f32,
+///
+/// /// Worker count, which must leave one core for the reactor.
+/// #[config(range(min = 1, max = 63))]
+/// #[serde(default)]
+/// workers: u16,
+///
+/// /// Retry backoff multipliers, none of which may be a shrink.
+/// #[config(range(exclusive_min = 1.0))]
+/// #[serde(default)]
+/// backoff: Vec<f64>,
+/// ```
+///
+/// It takes `min`, `max`, `exclusive_min` and `exclusive_max` — at least one, and at most one per
+/// end — and emits `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum`. An integer
+/// literal stays an integer in the output and a float stays a float, so a bound is never rounded
+/// on its way into the schema.
+///
+/// **The bound lands where the type's own reading stops**, which for a container is the element:
+/// `Vec<f64>` bounds the numbers in the vector, because a `minimum` on the vector itself would
+/// mean nothing. That is the position `element` fills for a container of structs, reached by the
+/// same walk — through any depth of `Option`, `Vec`, `HashMap` and the rest — which is why the two
+/// do not combine.
+///
+/// **A bound is never allowed to widen one the type already justifies.** `max = 100_000` on a
+/// `u16` is dropped rather than published, because `maximum` is one keyword and replacing the
+/// exact `65535` with it would produce a schema accepting a file that cannot load.
+///
+/// # Closed structs
+///
+/// A struct reported through `element` publishes its `properties` and its `required`, which leaves
+/// a consumer unable to tell it from an open map: a misspelt field passes validation. A container
+/// whose element type carries `#[serde(deny_unknown_fields)]` now says so, with
+/// `additionalProperties: false` beside those:
+///
+/// ```ignore
+/// #[derive(Deserialize, Describe)]
+/// #[serde(deny_unknown_fields)]
+/// struct RouteConfig {
+///     /// Where the route sends traffic.
+///     upstream: String,
+/// }
+/// ```
+///
+/// Read from the serde attribute rather than a second annotation of this crate's own, so the
+/// schema and the deserialiser cannot come to disagree about which fields exist. Nothing is
+/// emitted for a struct without it — `serde` accepts an undeclared field by default, and a schema
+/// refusing one would refuse a file that loads.
 // `serde` is declared as a helper attribute as well as `config`. It is read, never consumed, and
 // serde's own derives declare it too — which is allowed, and is what lets a struct carry
 // `#[serde(rename_all = "…")]` under `Describe` alone. Without this, deriving `Describe` on a
@@ -139,6 +202,10 @@ fn expand_struct(
 ) -> syn::Result<TokenStream2> {
     let krate = &container.krate;
     let mut body = TokenStream2::new();
+    // First, so the level it closes is the one this type opened rather than one a field pushed.
+    if container.deny_unknown_fields {
+        body.extend(quote! { sink.deny_unknown_fields(); });
+    }
     for field in fields {
         body.extend(field_tokens(field, container)?);
     }
@@ -286,6 +353,9 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
         quote! { ::core::option::Option::None }
     };
     let aliases = &opts.aliases;
+    let bounds = opts
+        .range
+        .map_or_else(|| optional(None), |range| range.tokens(krate));
 
     let leaf = quote! {
         #krate::schema::Leaf {
@@ -293,6 +363,7 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
             docs: #docs,
             ty: ::core::option::Option::Some(#ty_text),
             values: #values,
+            bounds: #bounds,
             aliases: &[#(#aliases),*],
             note: #note,
             required: #required,
@@ -407,6 +478,9 @@ struct Container {
     rename_all: RenameRule,
     /// Whether `#[serde(default)]` on the container makes every field optional.
     field_default: bool,
+    /// The container's `#[serde(deny_unknown_fields)]` — whether a key it did not declare is an
+    /// error rather than something `serde` quietly ignores.
+    deny_unknown_fields: bool,
 }
 
 impl Container {
@@ -415,11 +489,15 @@ impl Container {
             krate: syn::parse_quote!(::terrace_config),
             rename_all: RenameRule::None,
             field_default: false,
+            deny_unknown_fields: false,
         };
 
         for meta in attr_metas(&input.attrs, "serde")? {
             match &meta {
                 Meta::Path(path) if path.is_ident("default") => container.field_default = true,
+                Meta::Path(path) if path.is_ident("deny_unknown_fields") => {
+                    container.deny_unknown_fields = true;
+                }
                 Meta::NameValue(nv) if nv.path.is_ident("default") => {
                     container.field_default = true;
                 }
@@ -490,6 +568,8 @@ struct FieldOpts {
     note: Option<String>,
     /// `#[config(values)]` — the field's type is an enum whose variants are the accepted values.
     values: bool,
+    /// `#[config(range(...))]` — the interval the field's number has to fall in.
+    range: Option<RangeOpts>,
     /// `#[config(element)]` or `#[config(element_values)]` — the field is a container, and this
     /// is what one element of it holds.
     element: Option<ElementKind>,
@@ -518,6 +598,216 @@ impl ElementKind {
             Self::Choice => "element_values",
         }
     }
+}
+
+/// A `#[config(range(...))]` bound, in the form it was written.
+///
+/// The literal's own kind is kept rather than everything becoming an `f64`, because an `f64` holds
+/// only the integers below 2^53 exactly and a bound that arrived rounded would be a *different*
+/// number than the one the field takes.
+#[derive(Clone, Copy)]
+enum BoundLit {
+    Integer(i64),
+    Fractional(f64),
+}
+
+impl BoundLit {
+    /// The expression reconstructing this as a `terrace_config::schema::Bound`.
+    fn tokens(self, krate: &Path) -> TokenStream2 {
+        match self {
+            Self::Integer(value) => quote! { #krate::schema::Bound::Integer(#value) },
+            Self::Fractional(value) => quote! { #krate::schema::Bound::Fractional(#value) },
+        }
+    }
+
+    /// The bound as a real number, for checking that `min` does not sit above `max`.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "the rounding decides an ordering; the literal is emitted unchanged"
+    )]
+    fn approximate(self) -> f64 {
+        match self {
+            Self::Integer(value) => value as f64,
+            Self::Fractional(value) => value,
+        }
+    }
+}
+
+/// Which end of a range a bound names.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Edge {
+    Lower,
+    Upper,
+}
+
+impl Edge {
+    /// The two spellings that set this end, for an error that can name both.
+    fn spellings(self) -> &'static str {
+        match self {
+            Self::Lower => "`min` and `exclusive_min`",
+            Self::Upper => "`max` and `exclusive_max`",
+        }
+    }
+}
+
+/// The bounds one field's `#[config(range(...))]` asks for.
+#[derive(Default, Clone, Copy)]
+struct RangeOpts {
+    min: Option<BoundLit>,
+    max: Option<BoundLit>,
+    min_exclusive: bool,
+    max_exclusive: bool,
+}
+
+impl RangeOpts {
+    /// Read one `range(...)` list into this, rejecting an end that is already set.
+    ///
+    /// Additive across attributes, so `#[config(range(min = 0), range(max = 1))]` means what it
+    /// looks like — but each end is settable once, because `min = 0, exclusive_min = 1` is two
+    /// answers to one question and picking either would be the silent wrong answer this derive
+    /// refuses everywhere else.
+    fn extend(&mut self, list: &MetaList) -> syn::Result<()> {
+        let bounds = nested_metas(list)?;
+        if bounds.is_empty() {
+            return Err(syn::Error::new_spanned(
+                list,
+                "`#[config(range(...))]` with no bounds says nothing about the value. It takes \
+                 `min`, `max`, `exclusive_min` and `exclusive_max`, at least one of them.",
+            ));
+        }
+
+        for meta in bounds {
+            let Meta::NameValue(nv) = &meta else {
+                return Err(syn::Error::new_spanned(
+                    &meta,
+                    "a range bound is written `name = number`, as in `min = 0` or `max = 1.0`.",
+                ));
+            };
+
+            let (edge, exclusive) = if nv.path.is_ident("min") {
+                (Edge::Lower, false)
+            } else if nv.path.is_ident("exclusive_min") {
+                (Edge::Lower, true)
+            } else if nv.path.is_ident("max") {
+                (Edge::Upper, false)
+            } else if nv.path.is_ident("exclusive_max") {
+                (Edge::Upper, true)
+            } else {
+                return Err(syn::Error::new_spanned(
+                    &nv.path,
+                    "unknown `#[config(range(...))]` bound. The four are `min`, `max`, \
+                     `exclusive_min` and `exclusive_max`.",
+                ));
+            };
+
+            let bound = bound_literal(&nv.value)?;
+            let held = match edge {
+                Edge::Lower => &mut self.min,
+                Edge::Upper => &mut self.max,
+            };
+            if held.is_some() {
+                return Err(syn::Error::new_spanned(
+                    nv,
+                    format!(
+                        "{} are the same end of the range, and this field sets it twice.",
+                        edge.spellings()
+                    ),
+                ));
+            }
+            *held = Some(bound);
+            match edge {
+                Edge::Lower => self.min_exclusive = exclusive,
+                Edge::Upper => self.max_exclusive = exclusive,
+            }
+        }
+
+        Ok(())
+    }
+
+    /// The two attribute names that set these ends, so an error can quote back what was written
+    /// rather than a canonical spelling the field does not use.
+    fn as_written(self) -> (&'static str, &'static str) {
+        (
+            if self.min_exclusive {
+                "exclusive_min"
+            } else {
+                "min"
+            },
+            if self.max_exclusive {
+                "exclusive_max"
+            } else {
+                "max"
+            },
+        )
+    }
+
+    /// The `terrace_config::schema::Bounds` literal these produce.
+    fn tokens(self, krate: &Path) -> TokenStream2 {
+        let min = optional(self.min.map(|bound| bound.tokens(krate)));
+        let max = optional(self.max.map(|bound| bound.tokens(krate)));
+        let (min_exclusive, max_exclusive) = (self.min_exclusive, self.max_exclusive);
+        quote! {
+            ::core::option::Option::Some(#krate::schema::Bounds {
+                min: #min,
+                max: #max,
+                min_exclusive: #min_exclusive,
+                max_exclusive: #max_exclusive,
+            })
+        }
+    }
+}
+
+/// The number behind `name = 0` or `name = -1.5`.
+///
+/// A negation is a unary expression rather than part of the literal, so it is unwrapped here — an
+/// attribute holding `min = -1` parses as `Expr::Unary` and would otherwise be rejected as "not a
+/// literal", which names the wrong problem.
+fn bound_literal(expr: &Expr) -> syn::Result<BoundLit> {
+    let (negated, expr) = match expr {
+        Expr::Unary(ExprUnary {
+            op: UnOp::Neg(_),
+            expr,
+            ..
+        }) => (true, &**expr),
+        other => (false, other),
+    };
+
+    let Expr::Lit(ExprLit { lit, .. }) = expr else {
+        return Err(syn::Error::new_spanned(
+            expr,
+            "a range bound is a numeric literal, as in `min = 0` or `max = 1.0`.",
+        ));
+    };
+
+    match lit {
+        Lit::Int(int) => {
+            let value: i64 = int.base10_parse()?;
+            Ok(BoundLit::Integer(if negated { -value } else { value }))
+        }
+        Lit::Float(float) => {
+            let value: f64 = float.base10_parse()?;
+            if !value.is_finite() {
+                return Err(syn::Error::new_spanned(
+                    float,
+                    "a range bound has to be a finite number. JSON has no spelling for an \
+                     infinity, so a schema could not carry this one.",
+                ));
+            }
+            Ok(BoundLit::Fractional(if negated { -value } else { value }))
+        }
+        other => Err(syn::Error::new_spanned(
+            other,
+            "a range bound is a numeric literal, as in `min = 0` or `max = 1.0`.",
+        )),
+    }
+}
+
+/// `inner` as an `Option` expression, which is how every optional field of a `Leaf` is emitted.
+fn optional(inner: Option<TokenStream2>) -> TokenStream2 {
+    inner.map_or_else(
+        || quote! { ::core::option::Option::None },
+        |tokens| quote! { ::core::option::Option::Some(#tokens) },
+    )
 }
 
 impl FieldOpts {
@@ -573,6 +863,9 @@ impl FieldOpts {
                 Meta::NameValue(nv) if nv.path.is_ident("note") => {
                     opts.note = Some(string_value(&nv.value)?);
                 }
+                Meta::List(list) if list.path.is_ident("range") => {
+                    opts.range.get_or_insert_default().extend(list)?;
+                }
                 // `default` was this attribute's name back when the prose *replaced* the observed
                 // value rather than accompanying it. Named rather than left to the catch-all,
                 // because the fix is a rename plus a reworded string, and a bare "unknown option"
@@ -589,23 +882,75 @@ impl FieldOpts {
                     return Err(syn::Error::new_spanned(
                         other,
                         "unknown `#[config(...)]` option. The field options are `nested`, \
-                         `secret`, `skip`, `values`, `element`, `element_values`, and \
-                         `note = \"…\"`.",
+                         `secret`, `skip`, `values`, `element`, `element_values`, \
+                         `note = \"…\"`, and `range(…)`.",
                     ));
                 }
             }
         }
 
-        if opts.nested && (opts.secret || opts.note.is_some() || opts.values) {
+        opts.check(field)?;
+        Ok(opts)
+    }
+
+    /// The combinations that cannot mean anything, rejected with the fix rather than resolved by
+    /// picking one.
+    ///
+    /// Separate from [`Self::parse`] because it is a separate job: reading an attribute list is
+    /// about what serde and this derive spell, and this is about which of those claims can hold at
+    /// once.
+    fn check(&self, field: &Field) -> syn::Result<()> {
+        if self.nested
+            && (self.secret || self.note.is_some() || self.values || self.range.is_some())
+        {
             return Err(syn::Error::new_spanned(
                 field,
                 "`#[config(nested)]` describes a subtree, which has no single value to mark \
-                 secret, to annotate, or to enumerate. Put `secret`, `note` or `values` on the \
-                 leaf fields inside it.",
+                 secret, to annotate, to enumerate, or to bound. Put `secret`, `note`, `values` \
+                 or `range` on the leaf fields inside it.",
             ));
         }
 
-        if opts.element.is_some() && (opts.nested || opts.values) {
+        if self.range.is_some() && self.values {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[config(values)]` says the key holds one of a fixed set of spellings, and \
+                 `#[config(range(...))]` says it holds a number in an interval. A key is one or \
+                 the other, and a field claiming both leaves the derive to pick.",
+            ));
+        }
+
+        if let Some(element) = self.element
+            && self.range.is_some()
+        {
+            let attribute = element.attribute();
+            return Err(syn::Error::new_spanned(
+                field,
+                format!(
+                    "`#[config({attribute})]` and `#[config(range(...))]` describe the same \
+                     position — what one element of the container holds. `{attribute}` says it \
+                     is a type with a shape of its own, `range` says it is a number in an \
+                     interval, and an element is one or the other. A bound on a field *inside* a \
+                     described element belongs on that element type's own field."
+                ),
+            ));
+        }
+
+        if let Some(range) = self.range
+            && let (Some(min), Some(max)) = (range.min, range.max)
+            && min.approximate() > max.approximate()
+        {
+            let (lower, upper) = range.as_written();
+            return Err(syn::Error::new_spanned(
+                field,
+                format!(
+                    "`{lower}` is above `{upper}`, so this range accepts no value at all. A \
+                     schema saying that rejects every configuration, including the ones that load."
+                ),
+            ));
+        }
+
+        if self.element.is_some() && (self.nested || self.values) {
             return Err(syn::Error::new_spanned(
                 field,
                 "`#[config(nested)]` and `#[config(values)]` describe the field's own type, and \
@@ -615,7 +960,7 @@ impl FieldOpts {
             ));
         }
 
-        Ok(opts)
+        Ok(())
     }
 
     /// Record what shape one element of this field's container has.
@@ -1000,6 +1345,123 @@ mod tests {
         assert!(error.contains("unknown `#[config(...)]` option"), "{error}");
         assert!(error.contains("`nested`"), "{error}");
         assert!(error.contains("`note = \"…\"`"), "{error}");
+    }
+
+    // ---- the interval a type cannot state ----
+
+    #[test]
+    fn a_range_emits_the_four_json_schema_keywords_it_was_given() {
+        let body =
+            generated("struct S { #[config(range(min = 0.0, exclusive_max = 1.0))] rate: f32 }");
+        assert!(body.contains("Bounds"), "{body}");
+        assert!(body.contains("Bound :: Fractional (0f64)"), "{body}");
+        assert!(body.contains("Bound :: Fractional (1f64)"), "{body}");
+        assert!(body.contains("min_exclusive : false"), "{body}");
+        assert!(body.contains("max_exclusive : true"), "{body}");
+    }
+
+    /// An integer literal stays an integer all the way to the emitted schema, so a bound past an
+    /// `f64`'s exact range is never rounded on the way through.
+    #[test]
+    fn an_integer_bound_keeps_its_literal_kind() {
+        let body = generated("struct S { #[config(range(min = 1, max = 63))] workers: u16 }");
+        assert!(body.contains("Bound :: Integer (1i64)"), "{body}");
+        assert!(body.contains("Bound :: Integer (63i64)"), "{body}");
+    }
+
+    /// A negation is a unary expression rather than part of the literal, so it has to be unwrapped
+    /// — otherwise the error names the wrong problem.
+    #[test]
+    fn a_negative_bound_is_a_literal_like_any_other() {
+        let body = generated("struct S { #[config(range(min = -5))] drift: i16 }");
+        assert!(body.contains("Bound :: Integer (- 5i64)"), "{body}");
+    }
+
+    /// A field that reported no interval must emit exactly what it emitted before, which is what
+    /// keeps a contract using neither attribute serialising byte for byte as it did.
+    #[test]
+    fn a_field_without_a_range_reports_none() {
+        let body = generated("struct S { a: u8 }");
+        assert!(
+            body.contains("bounds : :: core :: option :: Option :: None"),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn a_range_with_no_bounds_is_rejected() {
+        let error = rejected("struct S { #[config(range())] a: u8 }");
+        assert!(error.contains("says nothing about the value"), "{error}");
+        assert!(error.contains("`exclusive_max`"), "{error}");
+    }
+
+    #[test]
+    fn an_unknown_bound_lists_the_four_that_exist() {
+        let error = rejected("struct S { #[config(range(floor = 0))] a: u8 }");
+        assert!(
+            error.contains("unknown `#[config(range(...))]` bound"),
+            "{error}"
+        );
+    }
+
+    /// Two answers to one question, which is the silent wrong answer this derive refuses
+    /// everywhere else.
+    #[test]
+    fn one_end_of_a_range_cannot_be_set_twice() {
+        let error = rejected("struct S { #[config(range(min = 0, exclusive_min = 1))] a: u8 }");
+        assert!(error.contains("`min` and `exclusive_min`"), "{error}");
+        assert!(error.contains("sets it twice"), "{error}");
+    }
+
+    #[test]
+    fn a_non_numeric_bound_is_rejected() {
+        let error = rejected("struct S { #[config(range(min = \"0\"))] a: u8 }");
+        assert!(error.contains("a numeric literal"), "{error}");
+    }
+
+    #[test]
+    fn a_range_that_accepts_nothing_is_rejected() {
+        let error = rejected("struct S { #[config(range(min = 10, max = 1))] a: u8 }");
+        assert!(error.contains("`min` is above `max`"), "{error}");
+        assert!(error.contains("accepts no value at all"), "{error}");
+    }
+
+    #[test]
+    fn a_bounded_choice_is_rejected_because_a_key_is_one_or_the_other() {
+        let error = rejected("struct S { #[config(values, range(min = 0))] a: Level }");
+        assert!(error.contains("fixed set of spellings"), "{error}");
+    }
+
+    /// Both describe the position one element of the container holds, and an element is a shape or
+    /// a number rather than both.
+    #[test]
+    fn a_bounded_element_is_rejected_and_names_the_attribute_it_collides_with() {
+        let error = rejected("struct S { #[config(element, range(min = 0))] a: Vec<Route> }");
+        assert!(error.contains("`#[config(element)]`"), "{error}");
+        assert!(error.contains("describe the same position"), "{error}");
+    }
+
+    #[test]
+    fn a_bounded_subtree_is_rejected_for_the_reason_a_secret_one_is() {
+        let error = rejected("struct S { #[config(nested, range(min = 0))] inner: I }");
+        assert!(error.contains("describes a subtree"), "{error}");
+        assert!(error.contains("`range`"), "{error}");
+    }
+
+    // ---- a struct that refuses a key it did not declare ----
+
+    #[test]
+    fn deny_unknown_fields_is_reported_from_the_serde_attribute() {
+        let body = generated("#[serde(deny_unknown_fields)] struct S { a: u8 }");
+        assert!(body.contains("sink . deny_unknown_fields ()"), "{body}");
+    }
+
+    /// `serde` accepts a field nobody declared unless the struct says otherwise, so silence is the
+    /// answer for a struct that said nothing — and the feature never becomes a default.
+    #[test]
+    fn a_struct_that_did_not_say_so_reports_nothing() {
+        let body = generated("struct S { a: u8 }");
+        assert!(!body.contains("deny_unknown_fields"), "{body}");
     }
 
     #[test]

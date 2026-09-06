@@ -25,19 +25,28 @@
 //! opted-in enum needs no special case — the walk was already reading both containers correctly
 //! and only the bottom was blank.
 //!
+//! # The other thing a token cannot say
+//!
+//! `sample_rate: f32` is a number, and that it is a *fraction* is not in the spelling — the type
+//! admits every finite float and the service takes four hundredths of them. So the interval is
+//! supplied from outside too, by [`Bounds`], and it arrives at the same position for the same
+//! reason: the walk descends one path, so a bound written on a `Vec<f32>` bounds what is in the
+//! vector. What it must never do is *widen*, which is what [`bounded`] is careful about.
+//!
 //! [`Key::ty`]: super::Key::ty
 
 use serde_json::{Map, Value as Json, json};
 
-use super::TextForm;
+use super::{Bound, Bounds, TextForm};
 
-/// The JSON Schema keywords `ty` justifies, or [`None`] for a spelling with no certain meaning.
+/// The JSON Schema keywords `ty` justifies, narrowed by whatever `bounds` the key was annotated
+/// with — or [`None`] for a spelling with no certain meaning and nothing annotated.
 ///
 /// Keywords rather than a shape enum of this crate's own: they are the vocabulary the output is
 /// written in, and `items`, `uniqueItems` and `additionalProperties` all carry a nested schema,
 /// so a shape enum would end up re-deriving JSON Schema one variant at a time.
-pub(super) fn interpret(ty: &str) -> Option<Map<String, Json>> {
-    walk(ty, None)
+pub(super) fn interpret(ty: &str, bounds: Option<Bounds>) -> Option<Map<String, Json>> {
+    walk(ty, None, bounds)
 }
 
 /// The same keywords, with `element` standing in at the position the walk cannot name itself.
@@ -53,11 +62,15 @@ pub(super) fn interpret(ty: &str) -> Option<Map<String, Json>> {
 /// [`Describe`](super::Describe) reporting whatever type text it likes is what this protects
 /// against; the derive rejects the same shape at compile time, with a message that can name the
 /// field.
-pub(super) fn interpret_with(ty: &str, element: &Map<String, Json>) -> Option<Map<String, Json>> {
+pub(super) fn interpret_with(
+    ty: &str,
+    element: &Map<String, Json>,
+    bounds: Option<Bounds>,
+) -> Option<Map<String, Json>> {
     if !is_container(ty) {
         return None;
     }
-    walk(ty, Some(element))
+    walk(ty, Some(element), bounds)
 }
 
 /// Whether `ty` names something with an element position — a sequence, a set or a map.
@@ -90,9 +103,16 @@ fn is_container(ty: &str) -> bool {
 /// One spelling, read: the containers it is made of, and what it bottoms out in.
 ///
 /// `element` is what the bottom is when the spelling itself cannot say — [`None`] for an ordinary
-/// read, and the caller's element schema when a key reported one. It is carried down through every
-/// container and every transparent wrapper, so it lands wherever the recursion stops.
-fn walk(ty: &str, element: Option<&Map<String, Json>>) -> Option<Map<String, Json>> {
+/// read, and the caller's element schema when a key reported one. `bounds` is the interval the
+/// bottom must fall in, when the key was annotated with one. Both are carried down through every
+/// container and every transparent wrapper, so both land wherever the recursion stops: a bound
+/// written on a `Vec<f32>` bounds the numbers in the vector, which is the only thing it could
+/// mean.
+fn walk(
+    ty: &str,
+    element: Option<&Map<String, Json>>,
+    bounds: Option<Bounds>,
+) -> Option<Map<String, Json>> {
     let ty = strip_reference(ty.trim());
 
     // `[T; N]` and `[T]`, which have no head to look up.
@@ -101,7 +121,7 @@ fn walk(ty: &str, element: Option<&Map<String, Json>>) -> Option<Map<String, Jso
             Some((item, len)) => (item, len.trim().parse::<u64>().ok()),
             None => (inner, None),
         };
-        let mut schema = sequence(item, false, element);
+        let mut schema = sequence(item, false, element, bounds);
         if let Some(len) = len {
             // A fixed-length array is the one sequence whose length is part of its type, and
             // `serde` refuses a file supplying any other number of elements.
@@ -113,20 +133,44 @@ fn walk(ty: &str, element: Option<&Map<String, Json>>) -> Option<Map<String, Jso
 
     let (head, args) = split_generic(ty);
     let name = head.rsplit("::").next()?;
-    let schema = match (name, args.as_slice()) {
+
+    // Everything with an inside. Each of these has exactly one position the walk descends into, so
+    // this is where `element` and `bounds` are passed on rather than applied — there is nothing a
+    // `minimum` could say about a `Vec`, and the array itself is fully described by its spelling.
+    match (name, args.as_slice()) {
         // Wrappers `serde` sees straight through. `Option` is stripped by the derive already;
         // it is here because a hand-written `Describe` reports whatever text it likes.
         ("Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock", [inner]) => {
-            return walk(inner, element);
+            return walk(inner, element, bounds);
         }
-        ("Cow", [_lifetime, inner]) => return walk(inner, element),
+        ("Cow", [_lifetime, inner]) => return walk(inner, element, bounds),
 
-        ("bool", []) => json_map(&json!({ "type": "boolean" })),
-        ("f32" | "f64", []) => json_map(&json!({ "type": "number" })),
+        ("Vec" | "VecDeque", [item]) => return Some(sequence(item, false, element, bounds)),
+        ("HashSet" | "BTreeSet", [item]) => return Some(sequence(item, true, element, bounds)),
+
+        // The key type is ignored on purpose: a TOML table's keys are strings whatever the map
+        // is keyed by, so it constrains nothing that could be written in the file. Which is also
+        // why `element` goes to the value and never to the key.
+        ("HashMap" | "BTreeMap", [_key, value]) => {
+            let mut schema = json_map(&json!({ "type": "object" }));
+            if let Some(value) = walk(value, element, bounds) {
+                schema.insert("additionalProperties".to_owned(), Json::Object(value));
+            }
+            return Some(schema);
+        }
+        _ => {}
+    }
+
+    // The bottom of the walk, which is where both of the things a spelling cannot say arrive.
+    let stopped = match (name, args.as_slice()) {
+        ("bool", []) => Some(json_map(&json!({ "type": "boolean" }))),
+        ("f32" | "f64", []) => Some(json_map(&json!({ "type": "number" }))),
 
         // A `char` is a string of exactly one character once it has been through `serde`, and
         // saying so rejects the `mode = "ab"` that a bare string type would let through.
-        ("char", []) => json_map(&json!({ "type": "string", "minLength": 1, "maxLength": 1 })),
+        ("char", []) => Some(json_map(
+            &json!({ "type": "string", "minLength": 1, "maxLength": 1 }),
+        )),
 
         // Every one of these deserialises from a TOML string, and several of them — `PathBuf`,
         // `Url`, `IpAddr` — are the ones a configuration actually holds.
@@ -135,31 +179,126 @@ fn walk(ty: &str, element: Option<&Map<String, Json>>) -> Option<Map<String, Jso
             | "SecretString" | "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr"
             | "SocketAddrV4" | "SocketAddrV6",
             [],
-        ) => json_map(&json!({ "type": "string" })),
+        ) => Some(json_map(&json!({ "type": "string" }))),
 
-        ("Vec" | "VecDeque", [item]) => sequence(item, false, element),
-        ("HashSet" | "BTreeSet", [item]) => sequence(item, true, element),
-
-        // The key type is ignored on purpose: a TOML table's keys are strings whatever the map
-        // is keyed by, so it constrains nothing that could be written in the file. Which is also
-        // why `element` goes to the value and never to the key.
-        ("HashMap" | "BTreeMap", [_key, value]) => {
-            let mut schema = json_map(&json!({ "type": "object" }));
-            if let Some(value) = walk(value, element) {
-                schema.insert("additionalProperties".to_owned(), Json::Object(value));
-            }
-            schema
-        }
-
-        // The bottom of the walk. A spelling with no certain meaning is where a reported element
-        // schema belongs — and where, without one, this module says nothing rather than guessing.
-        (name, []) => match integer(name) {
-            Some(schema) => schema,
-            None => return element.cloned(),
-        },
-        _ => return element.cloned(),
+        // A spelling with no certain meaning is where a reported element schema belongs — and
+        // where, without one, this module says nothing rather than guessing.
+        (name, []) => integer(name).or_else(|| element.cloned()),
+        _ => element.cloned(),
     };
-    Some(schema)
+    bounded(stopped, bounds)
+}
+
+/// The annotated interval, applied to the schema the walk stopped on.
+///
+/// Both rules below are the rule this whole module is written around — never publish a keyword
+/// that rejects what the loader takes:
+///
+/// - **A looser bound is dropped.** `minimum` is one keyword rather than a list, so `max = 100_000`
+///   on a `u16` would *replace* the exact `65535` rather than sit beside it, and the schema would
+///   then accept a file that cannot load. Whichever of the two admits less survives.
+/// - **A bound on something that is not a number is dropped.** A spelling this module recognises
+///   as a string or a boolean has no interval to narrow. A spelling it recognises as *nothing*
+///   keeps the bound and carries it alone: a newtype over an `f32` is the case the annotation
+///   exists for, and `minimum` with no `type` beside it constrains numbers and lets everything
+///   else past — which is exactly what is known.
+fn bounded(schema: Option<Map<String, Json>>, bounds: Option<Bounds>) -> Option<Map<String, Json>> {
+    let Some(bounds) = bounds else {
+        return schema;
+    };
+    let mut schema = schema.unwrap_or_default();
+    if !matches!(
+        schema.get("type").and_then(Json::as_str),
+        None | Some("integer" | "number")
+    ) {
+        return Some(schema);
+    }
+
+    if let Some(min) = bounds.min {
+        narrow(&mut schema, Edge::Lower, min, bounds.min_exclusive);
+    }
+    if let Some(max) = bounds.max {
+        narrow(&mut schema, Edge::Upper, max, bounds.max_exclusive);
+    }
+    // An empty `Bounds` on an unrecognised spelling leaves nothing behind, and an empty object
+    // would claim a constraint where there is none.
+    (!schema.is_empty()).then_some(schema)
+}
+
+/// Which end of a range a bound is, and the pair of keywords that carry it.
+#[derive(Clone, Copy)]
+enum Edge {
+    Lower,
+    Upper,
+}
+
+impl Edge {
+    /// The inclusive and exclusive spellings of this end, in that order.
+    fn keywords(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Lower => ("minimum", "exclusiveMinimum"),
+            Self::Upper => ("maximum", "exclusiveMaximum"),
+        }
+    }
+
+    /// Whether a bound at `candidate` admits nothing a bound at `held` did not.
+    ///
+    /// Equality counts as tighter so that `exclusive_min = 0` on a `u16` replaces the type's
+    /// `minimum: 0` rather than being discarded as a repeat of it.
+    fn tightens(self, candidate: f64, held: f64) -> bool {
+        match self {
+            Self::Lower => candidate >= held,
+            Self::Upper => candidate <= held,
+        }
+    }
+}
+
+/// One end of the range, replaced only where the annotation admits less than what is already
+/// there.
+fn narrow(schema: &mut Map<String, Json>, edge: Edge, bound: Bound, exclusive: bool) {
+    let (inclusive_keyword, exclusive_keyword) = edge.keywords();
+    let held = schema
+        .get(inclusive_keyword)
+        .or_else(|| schema.get(exclusive_keyword))
+        .and_then(Json::as_f64);
+    if held.is_some_and(|held| !edge.tightens(approximate(bound), held)) {
+        return;
+    }
+
+    // Both spellings go, because the two are one end of one range: leaving a `minimum` beside a
+    // new `exclusiveMinimum` would publish the bound this annotation replaced.
+    schema.remove(inclusive_keyword);
+    schema.remove(exclusive_keyword);
+    let keyword = if exclusive {
+        exclusive_keyword
+    } else {
+        inclusive_keyword
+    };
+    schema.insert(keyword.to_owned(), number(bound));
+}
+
+/// A bound as a real number, for deciding which of two is tighter.
+///
+/// Only the comparison is approximate. What is written out is [`number`], which keeps an integer
+/// an integer — so a bound past an `f64`'s exact range is compared roughly and published exactly,
+/// rather than the other way round.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "the rounding decides which bound is tighter; the number emitted is the one written"
+)]
+fn approximate(bound: Bound) -> f64 {
+    match bound {
+        Bound::Integer(value) => value as f64,
+        Bound::Fractional(value) => value,
+    }
+}
+
+/// A bound as the JSON number it was written as.
+fn number(bound: Bound) -> Json {
+    match bound {
+        Bound::Integer(value) => json!(value),
+        Bound::Fractional(value) => json!(value),
+    }
 }
 
 /// The keywords an integer spelling justifies, bounds included where they are exact.
@@ -370,10 +509,16 @@ fn integer_text(name: &str) -> Option<Map<String, Json>> {
 }
 
 /// An array of `item`, with the element schema when `item` is a spelling this understands — or
-/// when the key reported one, which is what `element` carries.
-fn sequence(item: &str, unique: bool, element: Option<&Map<String, Json>>) -> Map<String, Json> {
+/// when the key reported one, which is what `element` carries. `bounds` goes to the item for the
+/// same reason: an interval describes what is in the array, not the array.
+fn sequence(
+    item: &str,
+    unique: bool,
+    element: Option<&Map<String, Json>>,
+    bounds: Option<Bounds>,
+) -> Map<String, Json> {
     let mut schema = json_map(&json!({ "type": "array" }));
-    if let Some(item) = walk(item, element) {
+    if let Some(item) = walk(item, element, bounds) {
         schema.insert("items".to_owned(), Json::Object(item));
     }
     if unique {
@@ -456,20 +601,23 @@ mod tests {
 
     #[test]
     fn an_unrecognised_spelling_constrains_nothing() {
-        assert_eq!(interpret("LogLevel"), None);
-        assert_eq!(interpret("crate::db::Pool"), None);
+        assert_eq!(interpret("LogLevel", None), None);
+        assert_eq!(interpret("crate::db::Pool", None), None);
     }
 
     /// A path spelling is the same type as its last segment, which is what a derive may or may
     /// not have been given.
     #[test]
     fn a_path_is_read_by_its_last_segment() {
-        assert_eq!(interpret("std::path::PathBuf"), interpret("PathBuf"));
+        assert_eq!(
+            interpret("std::path::PathBuf", None),
+            interpret("PathBuf", None)
+        );
     }
 
     #[test]
     fn an_unsigned_integer_cannot_be_negative() {
-        let schema = interpret("u16").expect("`u16` is understood");
+        let schema = interpret("u16", None).expect("`u16` is understood");
         assert_eq!(schema["type"], json!("integer"));
         assert_eq!(schema["minimum"], json!(0));
         assert_eq!(schema["maximum"], json!(65_535));
@@ -479,41 +627,41 @@ mod tests {
     /// written down wrong.
     #[test]
     fn a_sixty_four_bit_bound_is_left_off() {
-        let schema = interpret("u64").expect("`u64` is understood");
+        let schema = interpret("u64", None).expect("`u64` is understood");
         assert_eq!(schema["minimum"], json!(0));
         assert!(!schema.contains_key("maximum"), "{schema:?}");
     }
 
     #[test]
     fn a_sequence_carries_its_element_type() {
-        let schema = interpret("Vec<String>").expect("`Vec<String>` is understood");
+        let schema = interpret("Vec<String>", None).expect("`Vec<String>` is understood");
         assert_eq!(schema["type"], json!("array"));
         assert_eq!(schema["items"], json!({ "type": "string" }));
     }
 
     #[test]
     fn a_set_is_a_sequence_without_repeats() {
-        let schema = interpret("BTreeSet<u8>").expect("`BTreeSet<u8>` is understood");
+        let schema = interpret("BTreeSet<u8>", None).expect("`BTreeSet<u8>` is understood");
         assert_eq!(schema["uniqueItems"], json!(true));
     }
 
     #[test]
     fn a_map_is_an_object_over_its_value_type() {
-        let schema = interpret("HashMap<String, Vec<u8>>").expect("the map is understood");
+        let schema = interpret("HashMap<String, Vec<u8>>", None).expect("the map is understood");
         assert_eq!(schema["type"], json!("object"));
         assert_eq!(schema["additionalProperties"]["type"], json!("array"));
     }
 
     #[test]
     fn a_fixed_length_array_carries_its_length() {
-        let schema = interpret("[u8; 4]").expect("the array is understood");
+        let schema = interpret("[u8; 4]", None).expect("the array is understood");
         assert_eq!(schema["minItems"], json!(4));
         assert_eq!(schema["maxItems"], json!(4));
     }
 
     #[test]
     fn a_reported_element_fills_the_position_a_token_cannot_name() {
-        let schema = interpret_with("Vec<RouteConfig>", &element()).expect("a sequence");
+        let schema = interpret_with("Vec<RouteConfig>", &element(), None).expect("a sequence");
         assert_eq!(schema["type"], json!("array"));
         assert_eq!(schema["items"], Json::Object(element()));
     }
@@ -522,8 +670,8 @@ mod tests {
     /// this case is special beyond how deep the recursion goes.
     #[test]
     fn a_map_of_sets_reaches_the_element_through_both() {
-        let schema =
-            interpret_with("HashMap<String, HashSet<Method>>", &element()).expect("a map of sets");
+        let schema = interpret_with("HashMap<String, HashSet<Method>>", &element(), None)
+            .expect("a map of sets");
         assert_eq!(schema["type"], json!("object"));
         let set = &schema["additionalProperties"];
         assert_eq!(set["type"], json!("array"));
@@ -535,11 +683,11 @@ mod tests {
     #[test]
     fn a_wrapped_container_is_still_a_container() {
         assert_eq!(
-            interpret_with("Option<Vec<Entry>>", &element()),
-            interpret_with("Vec<Entry>", &element())
+            interpret_with("Option<Vec<Entry>>", &element(), None),
+            interpret_with("Vec<Entry>", &element(), None)
         );
         assert_eq!(
-            interpret_with("[Entry; 2]", &element()).expect("a fixed array")["items"],
+            interpret_with("[Entry; 2]", &element(), None).expect("a fixed array")["items"],
             Json::Object(element())
         );
     }
@@ -548,8 +696,8 @@ mod tests {
     /// itself would claim the key *is* one element.
     #[test]
     fn a_type_that_is_not_a_container_refuses_an_element() {
-        assert_eq!(interpret_with("RouteConfig", &element()), None);
-        assert_eq!(interpret_with("String", &element()), None);
+        assert_eq!(interpret_with("RouteConfig", &element(), None), None);
+        assert_eq!(interpret_with("String", &element(), None), None);
     }
 
     /// A container whose element the spelling already names keeps that reading. Nothing in the
@@ -558,16 +706,16 @@ mod tests {
     #[test]
     fn a_named_element_is_not_replaced_by_a_reported_one() {
         assert_eq!(
-            interpret_with("Vec<String>", &element()),
-            interpret("Vec<String>")
+            interpret_with("Vec<String>", &element(), None),
+            interpret("Vec<String>", None)
         );
     }
 
     #[test]
     fn a_wrapper_is_the_type_it_wraps() {
-        assert_eq!(interpret("Option<String>"), interpret("String"));
-        assert_eq!(interpret("Arc<Vec<u8>>"), interpret("Vec<u8>"));
-        assert_eq!(interpret("Cow<'a,str>"), interpret("String"));
-        assert_eq!(interpret("&'a str"), interpret("String"));
+        assert_eq!(interpret("Option<String>", None), interpret("String", None));
+        assert_eq!(interpret("Arc<Vec<u8>>", None), interpret("Vec<u8>", None));
+        assert_eq!(interpret("Cow<'a,str>", None), interpret("String", None));
+        assert_eq!(interpret("&'a str", None), interpret("String", None));
     }
 }
