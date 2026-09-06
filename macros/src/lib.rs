@@ -51,15 +51,61 @@ use syn::{
 /// | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key in the output |
 /// | `#[config(note = "…")]` | Annotate the observed default with prose |
 /// | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+/// | `#[config(values("…", "…"))]` | Report a literal list as the values the key accepts |
 /// | `#[config(range(…))]` | Bound the number the key accepts: `min`, `max`, `exclusive_min`, `exclusive_max` |
 /// | `#[config(element)]` | Report the shape of one element of a container-typed key |
 /// | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
+/// | `#[config(element_values("…", "…"))]` | The same literal list, one level down |
 /// | `#[config(skip)]` | Omit the key from the schema without affecting deserialisation |
 /// | `#[config(crate = "…")]` | Name the `terrace_config` crate, if it was renamed |
 ///
 /// `nested` is opt-in because no macro can tell a `PathBuf` from a nested config struct by
 /// looking at the type: both are one identifier and a module path. Guessing would mean either
 /// bare identifiers silently becoming leaves, or a bound on types that cannot satisfy it.
+///
+/// # A named type has to say something
+///
+/// Opt-in is not the same as optional. A field whose type is a bare name this crate does not
+/// recognise — not one of the leaf spellings, not a container — publishes *nothing*: no type, no
+/// values, no keys, and a row that looks exactly like a field which was described. That silence
+/// is the gap this derive exists to close, so it is a compile error rather than an omission:
+///
+/// ```ignore
+/// /// How much the service says.
+/// log_level: LogLevel,   // error: publishes no shape at all
+/// ```
+///
+/// Six attributes resolve it — `values`, `nested`, `element`, `element_values`, `range` for a
+/// numeric newtype whose interval is the whole of what a schema can say about it, and `skip` for a
+/// field that genuinely has no publishable shape. The error names the field, its type and all of
+/// them.
+///
+/// It fires on a bare name only. A container's *element* is checked the same way one level down,
+/// so `Vec<LogLevel>` is refused and `Vec<String>` is not.
+///
+/// # Values a trait cannot reach
+///
+/// `#[config(values)]` reads the field type's `Values` implementation, and the orphan rule puts a
+/// foreign enum out of reach: an application cannot write `impl Values for tracing::Level`, and
+/// this crate will not depend on `tracing` to write it here. A literal list bypasses the trait:
+///
+/// ```ignore
+/// /// How much the service says.
+/// #[config(values("trace", "debug", "info", "warn", "error"))]
+/// #[serde(default)]
+/// log_level: tracing::Level,
+///
+/// /// Levels each module is pinned to.
+/// #[config(element_values("trace", "debug", "info", "warn", "error"))]
+/// #[serde(default)]
+/// module_levels: HashMap<String, tracing::Level>,
+/// ```
+///
+/// **The list is an assertion this crate cannot check**, the same standing as
+/// `#[config(note = "…")]`: nothing here reads the type's `Deserialize`, so a list that disagrees
+/// with it publishes a schema rejecting a file the loader takes. It is the author's to keep true,
+/// and it satisfies the diagnostic above. Bare `#[config(values)]` is unchanged and still means
+/// "use the `Values` implementation". An empty list and a repeated spelling are rejected.
 ///
 /// # Container-typed keys
 ///
@@ -332,6 +378,14 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
         ));
     }
 
+    // After `skip`, after `nested` and after the `flatten` error, so a field that resolved its
+    // type by any of those never reaches this — and the three attributes left are checked here.
+    // `range` is one of them: a bound on a spelling this crate cannot read is carried alone, so
+    // an annotated domain newtype publishes an interval rather than nothing.
+    if opts.values.is_none() && opts.element.is_none() && opts.range.is_none() {
+        describes_something(field, ty)?;
+    }
+
     let name = opts.name(field, container)?;
     let docs = doc_comment(&field.attrs);
     let required = !(opts.has_serde_default || container.field_default || is_option(ty));
@@ -347,11 +401,11 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
     // actually has to supply is a `String`.
     let bare = unwrap_option(ty).unwrap_or(ty);
     let ty_text = type_text(bare);
-    let values = if opts.values {
-        quote! { ::core::option::Option::Some(<#bare as #krate::schema::Values>::VARIANTS) }
-    } else {
-        quote! { ::core::option::Option::None }
-    };
+    let values = optional(
+        opts.values
+            .as_ref()
+            .map(|source| source.tokens(bare, krate)),
+    );
     let aliases = &opts.aliases;
     let bounds = opts
         .range
@@ -373,19 +427,206 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
 
     // A container-typed key is still one key. What changes is that the element the type token
     // cannot name is reported alongside it, and lands nested inside the key's constraint.
-    let Some(element) = opts.element else {
+    let Some(element) = &opts.element else {
         return Ok(quote! { sink.leaf(#leaf); });
     };
+    // Asked for even by the literal form, which has no use for the item type: the check is that
+    // the field *is* a container, and reporting an element schema at a key that holds one value
+    // would say the key is an array of itself.
     let item = element_type(bare).ok_or_else(|| not_a_container(field, element))?;
     let reported = match element {
         ElementKind::Fields => {
             quote! { #krate::schema::Element::Fields(<#item as #krate::schema::Describe>::describe) }
         }
-        ElementKind::Choice => {
-            quote! { #krate::schema::Element::Choice(<#item as #krate::schema::Values>::VARIANTS) }
+        ElementKind::Choice(source) => {
+            let variants = source.tokens(item, krate);
+            quote! { #krate::schema::Element::Choice(#variants) }
         }
     };
     Ok(quote! { sink.repeated(#leaf, #reported); })
+}
+
+/// Refuse a field whose type publishes nothing and which was not told what it holds.
+///
+/// `values` and `nested` are opt-in and have to stay opt-in: a derive has only tokens, so it
+/// cannot tell whether a named type implements `Values` or `Describe`, and guessing is unsound in
+/// the direction that matters — a type whose `Deserialize` is `#[serde(try_from = "String")]` over
+/// a case-insensitive `FromStr` accepts spellings that are not variants, and publishing the
+/// variant list unasked would emit a schema rejecting a file the loader takes.
+///
+/// What a derive can do is refuse to be *silent*. `terrace_config` reads a leaf spelling it
+/// recognises and publishes nothing for one it does not, so a field left at that publishes a key
+/// with no shape — indistinguishable in the output from a key that was described. This is where
+/// forgetting the attribute stops being an invisible gap and becomes a compile error.
+///
+/// Only a bare name is judged, at the position [`described_position`] stops on. A tuple, a
+/// function pointer, a qualified path and a generic type this derive did not recognise as a
+/// container publish nothing either, and none of them is a shape the resolving attributes have an
+/// answer for — an error naming them would be a dead end rather than a fix.
+fn describes_something(field: &Field, ty: &Type) -> syn::Result<()> {
+    let position = described_position(ty);
+    if !is_undescribed(position) {
+        return Ok(());
+    }
+
+    let name = field
+        .ident
+        .as_ref()
+        .map_or_else(|| "this field".to_owned(), ToString::to_string);
+    let declared = type_text(ty);
+    let position = type_text(position);
+    let what = if position == declared {
+        format!("`{position}` is a name")
+    } else {
+        format!("one element of it is `{position}`, which is a name")
+    };
+
+    Err(syn::Error::new_spanned(
+        field,
+        format!(
+            "`{name}: {declared}` publishes no shape at all — {what}, and a derive has only \
+             tokens, so nothing here says whether it is a set of values, a subtree of keys, a \
+             number, or something with no publishable shape. A key documented as \"anything\" is \
+             the gap this schema exists to close, so an attribute is required rather than \
+             assumed: `#[config(values)]` if the type implements `Values`; \
+             `#[config(values(\"…\", \"…\"))]` if it cannot — a foreign enum, which the orphan \
+             rule puts out of reach — which asserts the accepted spellings the way \
+             `#[config(note = \"…\")]` asserts prose; `#[config(nested)]` if it implements \
+             `Describe` and its keys belong under this one; `#[config(element)]` or \
+             `#[config(element_values)]` if the field is a container and it is the *element* \
+             that is one of those; `#[config(range(…))]` if it is a number in an interval; and \
+             `#[config(skip)]` if the field genuinely has nothing to publish."
+        ),
+    ))
+}
+
+/// Whether a type is a bare name `terrace_config` will read nothing from.
+fn is_undescribed(ty: &Type) -> bool {
+    let Type::Path(path) = ty else { return false };
+    if path.qself.is_some() {
+        return false;
+    }
+    let Some(segment) = path.path.segments.last() else {
+        return false;
+    };
+    matches!(segment.arguments, PathArguments::None)
+        && !KNOWN_LEAVES.contains(&segment.ident.to_string().as_str())
+}
+
+/// Every type spelling `terrace_config` reads a shape out of on its own.
+///
+/// The list `src/schema/rust_type.rs` matches on, restated here because a proc-macro crate cannot
+/// depend on the crate it writes code for. Only *membership* has to agree — what each spelling
+/// publishes is that module's business, and this one asks only whether it publishes anything —
+/// and the two halves are held together by a test in `tests/schema.rs` that runs a field of every
+/// one of these through both.
+///
+/// A path is matched by its last segment, exactly as the runtime walk matches it, so a fully
+/// qualified `std::path::PathBuf` and a bare `PathBuf` are the same spelling and neither is
+/// resolved.
+const KNOWN_LEAVES: &[&str] = &[
+    // Read as a string, because each deserialises from one.
+    "String",
+    "str",
+    "PathBuf",
+    "Path",
+    "OsString",
+    "OsStr",
+    "CString",
+    "CStr",
+    "SecretString",
+    "Url",
+    "Uuid",
+    "IpAddr",
+    "Ipv4Addr",
+    "Ipv6Addr",
+    "SocketAddr",
+    "SocketAddrV4",
+    "SocketAddrV6",
+    // A string of exactly one character, once serde has been through it.
+    "char",
+    "bool",
+    "f32",
+    "f64",
+    // The integers, and the `NonZero` family that shares their bounds.
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "u128",
+    "usize",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "i128",
+    "isize",
+    "NonZeroU8",
+    "NonZeroU16",
+    "NonZeroU32",
+    "NonZeroU64",
+    "NonZeroU128",
+    "NonZeroUsize",
+    "NonZeroI8",
+    "NonZeroI16",
+    "NonZeroI32",
+    "NonZeroI64",
+    "NonZeroI128",
+    "NonZeroIsize",
+];
+
+/// The spellings behind `values("trace", "debug")`, checked for the two ways such a list says
+/// nothing.
+///
+/// Whether the list *matches the type* is not checkable here and is not checked: nothing in a
+/// derive reads a foreign type's `Deserialize`. What is checkable is that the assertion is well
+/// formed — an empty list claims the key accepts no value at all, and a repeated spelling is a
+/// list that was edited in two places and would reach the schema's `enum` twice.
+fn value_literals(list: &MetaList, attribute: &str) -> syn::Result<Vec<String>> {
+    let mut values: Vec<String> = Vec::new();
+    for expr in list.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)? {
+        let Expr::Lit(ExprLit {
+            lit: Lit::Str(literal),
+            ..
+        }) = &expr
+        else {
+            return Err(syn::Error::new_spanned(
+                &expr,
+                format!(
+                    "`#[config({attribute}(…))]` lists the spellings a configuration file may \
+                     hold, so each one is a string literal — \
+                     `{attribute}(\"trace\", \"debug\")`."
+                ),
+            ));
+        };
+
+        let value = literal.value();
+        if values.contains(&value) {
+            return Err(syn::Error::new_spanned(
+                literal,
+                format!(
+                    "`{value}` is listed twice, and a set of accepted values holds it once. A \
+                     repeated spelling is a list edited in two places, and it would reach the \
+                     schema's `enum` twice."
+                ),
+            ));
+        }
+        values.push(value);
+    }
+
+    if values.is_empty() {
+        return Err(syn::Error::new_spanned(
+            list,
+            format!(
+                "`#[config({attribute}())]` lists no value, so it says the key accepts nothing — \
+                 a schema rejecting every configuration, including the ones that load. List the \
+                 spellings, or drop the parentheses to report the type's own `Values` \
+                 implementation."
+            ),
+        ));
+    }
+
+    Ok(values)
 }
 
 /// The error for `#[config(element)]` on a field this derive cannot find a container in.
@@ -394,7 +635,7 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
 /// `routes` is an object because its element is a struct describes a file nobody can write. The
 /// alias case is called out because it is the one that looks like a bug in the derive — the type
 /// *is* a container, and a derive cannot see through a name to know it.
-fn not_a_container(field: &Field, element: ElementKind) -> syn::Error {
+fn not_a_container(field: &Field, element: &ElementKind) -> syn::Error {
     let attribute = element.attribute();
     syn::Error::new_spanned(
         field,
@@ -433,13 +674,48 @@ fn element_type(ty: &Type) -> Option<&Type> {
 /// table's keys are strings whatever the map is keyed by, so nothing in the file is constrained
 /// by it.
 fn container_item(ty: &Type) -> Option<&Type> {
+    match step(ty)? {
+        // A wrapper is not the container being looked for; what it holds may be.
+        Step::Through(inner) => container_item(inner),
+        Step::Into(item) => Some(item),
+    }
+}
+
+/// The type at the position the schema's reading of these tokens comes to rest.
+///
+/// The descent [`container_item`] makes, carried all the way down rather than stopping at the
+/// first container: past every transparent wrapper, into every element position, until something
+/// that is neither. `HashMap<String, Vec<Route>>` lands on `Route`, `Option<String>` lands on
+/// `String`, and `u16` lands on itself — which is exactly where `terrace_config`'s own reading of
+/// the type text stops, and so exactly where it has to be told what it cannot see.
+fn described_position(ty: &Type) -> &Type {
+    match step(ty) {
+        Some(Step::Through(inner) | Step::Into(inner)) => described_position(inner),
+        None => ty,
+    }
+}
+
+/// One step of the walk over a type's tokens.
+///
+/// The two are distinguished because [`container_item`] needs to know which it took — the `Vec` in
+/// an `Option<Vec<T>>` is the container the field holds and the `Option` is not — while
+/// [`described_position`] treats them alike.
+enum Step<'a> {
+    /// A wrapper `serde` sees straight through: what it holds *is* the value.
+    Through(&'a Type),
+    /// A container's element position — a sequence's item, or a map's value.
+    Into(&'a Type),
+}
+
+/// Past one wrapper, or into one container — or [`None`] for a type that is neither.
+fn step(ty: &Type) -> Option<Step<'_>> {
     match ty {
-        Type::Reference(reference) => container_item(&reference.elem),
-        Type::Paren(paren) => container_item(&paren.elem),
+        Type::Reference(reference) => Some(Step::Through(&reference.elem)),
+        Type::Paren(paren) => Some(Step::Through(&paren.elem)),
         // What a macro-expanded type arrives wrapped in, and invisible in the source.
-        Type::Group(group) => container_item(&group.elem),
-        Type::Slice(slice) => Some(&slice.elem),
-        Type::Array(array) => Some(&array.elem),
+        Type::Group(group) => Some(Step::Through(&group.elem)),
+        Type::Slice(slice) => Some(Step::Into(&slice.elem)),
+        Type::Array(array) => Some(Step::Into(&array.elem)),
         Type::Path(path) if path.qself.is_none() => {
             let segment = path.path.segments.last()?;
             let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
@@ -460,9 +736,9 @@ fn container_item(ty: &Type) -> Option<&Type> {
                     "Option" | "Box" | "Arc" | "Rc" | "RefCell" | "Cell" | "Mutex" | "RwLock"
                     | "Cow",
                     [inner],
-                ) => container_item(inner),
-                ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [item]) => Some(item),
-                ("HashMap" | "BTreeMap", [_key, value]) => Some(value),
+                ) => Some(Step::Through(inner)),
+                ("Vec" | "VecDeque" | "HashSet" | "BTreeSet", [item]) => Some(Step::Into(item)),
+                ("HashMap" | "BTreeMap", [_key, value]) => Some(Step::Into(value)),
                 _ => None,
             }
         }
@@ -566,8 +842,9 @@ struct FieldOpts {
     has_serde_default: bool,
     /// `#[config(note = "…")]`, the prose accompanying whatever value is observed.
     note: Option<String>,
-    /// `#[config(values)]` — the field's type is an enum whose variants are the accepted values.
-    values: bool,
+    /// `#[config(values)]` or `#[config(values("…", "…"))]` — the fixed set of spellings the
+    /// key accepts, and where it came from.
+    values: Option<ValueList>,
     /// `#[config(range(...))]` — the interval the field's number has to fall in.
     range: Option<RangeOpts>,
     /// `#[config(element)]` or `#[config(element_values)]` — the field is a container, and this
@@ -582,20 +859,47 @@ struct FieldOpts {
 /// The same split as `nested` and `values` one level down, and it exists for the same reason those
 /// are two attributes: a struct of named fields *has* keys, an enum of unit variants *is* a set of
 /// values, and a derive looking at `Vec<Thing>` cannot tell which `Thing` is.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum ElementKind {
     /// The element derives `Describe`: it has keys of its own.
     Fields,
-    /// The element derives `Values`: it is a fixed set of spellings.
-    Choice,
+    /// The element is a fixed set of spellings.
+    Choice(ValueList),
 }
 
 impl ElementKind {
     /// The attribute that asks for this, for an error message that can quote it back.
-    fn attribute(self) -> &'static str {
+    fn attribute(&self) -> &'static str {
         match self {
             Self::Fields => "element",
-            Self::Choice => "element_values",
+            Self::Choice(_) => "element_values",
+        }
+    }
+}
+
+/// Where the fixed set of spellings a key accepts comes from.
+///
+/// [`Self::Trait`] is the derived path and the one to prefer: the variants come from the type, so
+/// they cannot drift from it. [`Self::Literal`] exists because a trait cannot always be reached —
+/// `impl Values for tracing::Level` is an orphan-rule error in every crate that would want to
+/// write it, and this crate will not take a dependency on `tracing` to write it here.
+#[derive(Clone, PartialEq, Eq)]
+enum ValueList {
+    /// The type's own `Values` implementation.
+    Trait,
+    /// Spellings the author listed, for a type no `Values` implementation can reach.
+    ///
+    /// Unverifiable by construction — nothing here reads the type's `Deserialize` — which is the
+    /// standing `#[config(note = "…")]` already has, and is documented as such.
+    Literal(Vec<String>),
+}
+
+impl ValueList {
+    /// The `&'static [&'static str]` this reports, for a key or element whose type is `target`.
+    fn tokens(&self, target: &Type, krate: &Path) -> TokenStream2 {
+        match self {
+            Self::Trait => quote! { <#target as #krate::schema::Values>::VARIANTS },
+            Self::Literal(values) => quote! { &[#(#values),*] },
         }
     }
 }
@@ -853,18 +1157,30 @@ impl FieldOpts {
                 Meta::Path(path) if path.is_ident("nested") => opts.nested = true,
                 Meta::Path(path) if path.is_ident("secret") => opts.secret = true,
                 Meta::Path(path) if path.is_ident("skip") => opts.skip = true,
-                Meta::Path(path) if path.is_ident("values") => opts.values = true,
+                Meta::Path(path) if path.is_ident("values") => {
+                    opts.set_values(ValueList::Trait, field)?;
+                }
                 Meta::Path(path) if path.is_ident("element") => {
                     opts.set_element(ElementKind::Fields, field)?;
                 }
                 Meta::Path(path) if path.is_ident("element_values") => {
-                    opts.set_element(ElementKind::Choice, field)?;
+                    opts.set_element(ElementKind::Choice(ValueList::Trait), field)?;
                 }
                 Meta::NameValue(nv) if nv.path.is_ident("note") => {
                     opts.note = Some(string_value(&nv.value)?);
                 }
                 Meta::List(list) if list.path.is_ident("range") => {
                     opts.range.get_or_insert_default().extend(list)?;
+                }
+                // The literal forms. `range` is the precedent: an option that takes arguments is
+                // a `Meta::List`, and the bare `Meta::Path` spelling keeps the meaning it had.
+                Meta::List(list) if list.path.is_ident("values") => {
+                    let values = value_literals(list, "values")?;
+                    opts.set_values(ValueList::Literal(values), field)?;
+                }
+                Meta::List(list) if list.path.is_ident("element_values") => {
+                    let values = value_literals(list, "element_values")?;
+                    opts.set_element(ElementKind::Choice(ValueList::Literal(values)), field)?;
                 }
                 // `default` was this attribute's name back when the prose *replaced* the observed
                 // value rather than accompanying it. Named rather than left to the catch-all,
@@ -882,8 +1198,8 @@ impl FieldOpts {
                     return Err(syn::Error::new_spanned(
                         other,
                         "unknown `#[config(...)]` option. The field options are `nested`, \
-                         `secret`, `skip`, `values`, `element`, `element_values`, \
-                         `note = \"…\"`, and `range(…)`.",
+                         `secret`, `skip`, `values`, `values(…)`, `element`, `element_values`, \
+                         `element_values(…)`, `note = \"…\"`, and `range(…)`.",
                     ));
                 }
             }
@@ -901,7 +1217,7 @@ impl FieldOpts {
     /// once.
     fn check(&self, field: &Field) -> syn::Result<()> {
         if self.nested
-            && (self.secret || self.note.is_some() || self.values || self.range.is_some())
+            && (self.secret || self.note.is_some() || self.values.is_some() || self.range.is_some())
         {
             return Err(syn::Error::new_spanned(
                 field,
@@ -911,7 +1227,7 @@ impl FieldOpts {
             ));
         }
 
-        if self.range.is_some() && self.values {
+        if self.range.is_some() && self.values.is_some() {
             return Err(syn::Error::new_spanned(
                 field,
                 "`#[config(values)]` says the key holds one of a fixed set of spellings, and \
@@ -920,7 +1236,7 @@ impl FieldOpts {
             ));
         }
 
-        if let Some(element) = self.element
+        if let Some(element) = &self.element
             && self.range.is_some()
         {
             let attribute = element.attribute();
@@ -950,7 +1266,7 @@ impl FieldOpts {
             ));
         }
 
-        if self.element.is_some() && (self.nested || self.values) {
+        if self.element.is_some() && (self.nested || self.values.is_some()) {
             return Err(syn::Error::new_spanned(
                 field,
                 "`#[config(nested)]` and `#[config(values)]` describe the field's own type, and \
@@ -969,15 +1285,41 @@ impl FieldOpts {
     /// keys of its own or an enum of unit variants, never both, and a field claiming both leaves
     /// the derive to pick — which is the silent wrong answer this crate refuses everywhere else.
     fn set_element(&mut self, kind: ElementKind, field: &Field) -> syn::Result<()> {
-        if self.element.is_some_and(|held| held != kind) {
-            return Err(syn::Error::new_spanned(
+        match &self.element {
+            Some(held) if held.attribute() != kind.attribute() => Err(syn::Error::new_spanned(
                 field,
                 "`#[config(element)]` and `#[config(element_values)]` describe the same element \
                  two ways. It is either a type with keys of its own, which `element` reports, or \
                  an enum of unit variants, which `element_values` reports.",
+            )),
+            Some(held) if *held != kind => Err(syn::Error::new_spanned(
+                field,
+                "`#[config(element_values)]` names the spellings one element accepts twice, and \
+                 the two answers differ. Bare, it reports the element type's own `Values` \
+                 implementation; with a list, it reports the list.",
+            )),
+            _ => {
+                self.element = Some(kind);
+                Ok(())
+            }
+        }
+    }
+
+    /// Record where the values this key accepts come from.
+    ///
+    /// Repeating the attribute says nothing new, which is not the same as saying two things: bare
+    /// `values` reports the field type's own `Values` implementation and a list reports the list,
+    /// and a field asking for both leaves the derive to pick.
+    fn set_values(&mut self, source: ValueList, field: &Field) -> syn::Result<()> {
+        if self.values.as_ref().is_some_and(|held| *held != source) {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[config(values)]` names the values this key accepts twice, and the two \
+                 answers differ. Bare, it reports the field type's own `Values` implementation; \
+                 with a list, it reports the list.",
             ));
         }
-        self.element = Some(kind);
+        self.values = Some(source);
         Ok(())
     }
 
@@ -1238,8 +1580,8 @@ fn unwrap_option(ty: &Type) -> Option<&Type> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Container, DeriveInput, RenameRule, Type, doc_comment, expand, is_option, quote, type_text,
-        unwrap_option,
+        Container, DeriveInput, KNOWN_LEAVES, RenameRule, Type, doc_comment, expand, is_option,
+        quote, type_text, unwrap_option,
     };
 
     /// The generated `describe` body for `input`, whitespace-normalised so an assertion can be
@@ -1915,11 +2257,251 @@ mod tests {
         assert!(error.contains("`element_values`"), "{error}");
     }
 
+    // ---- a named type that describes nothing ----
+
+    /// The failure this diagnostic exists for: the field looks annotated enough, and publishes a
+    /// key with no shape at all.
+    #[test]
+    fn an_undescribed_named_type_is_rejected_naming_the_field_and_every_fix() {
+        let error = rejected("struct S { log_level: LogLevel }");
+        assert!(
+            error.contains("`log_level: LogLevel` publishes no shape at all"),
+            "{error}"
+        );
+        for attribute in [
+            "`#[config(values)]`",
+            r#"`#[config(values("…", "…"))]`"#,
+            "`#[config(nested)]`",
+            "`#[config(element)]`",
+            "`#[config(element_values)]`",
+            "`#[config(range(…))]`",
+            "`#[config(skip)]`",
+        ] {
+            assert!(error.contains(attribute), "{attribute}: {error}");
+        }
+    }
+
+    /// The same rule one level down, reported at the position that is actually blank.
+    #[test]
+    fn an_undescribed_element_is_rejected_and_names_the_element() {
+        let error = rejected("struct S { routes: Vec<Route> }");
+        assert!(error.contains("`routes: Vec<Route>`"), "{error}");
+        assert!(error.contains("one element of it is `Route`"), "{error}");
+    }
+
+    /// Every spelling `terrace_config` reads a shape out of on its own. A leaf added there and
+    /// forgotten here is a field this derive would refuse for no reason.
+    #[test]
+    fn every_known_leaf_needs_no_attribute() {
+        for leaf in KNOWN_LEAVES {
+            let body = generated(&format!("struct S {{ a: {leaf} }}"));
+            assert!(body.contains("sink . leaf"), "{leaf}: {body}");
+        }
+    }
+
+    /// A leaf is matched by the last segment of its path and through the wrappers serde sees
+    /// straight through, exactly as the runtime walk matches it.
+    #[test]
+    fn a_leaf_is_recognised_however_it_is_reached() {
+        for declared in [
+            "std::path::PathBuf",
+            "Option<String>",
+            "&'a str",
+            "Box<Option<u16>>",
+            "Cow<'a, str>",
+        ] {
+            let body = generated(&format!("struct S<'a> {{ a: {declared} }}"));
+            assert!(body.contains("sink . leaf"), "{declared}: {body}");
+        }
+    }
+
+    #[test]
+    fn a_container_of_leaves_needs_no_attribute() {
+        for declared in [
+            "Vec<String>",
+            "HashMap<String, u16>",
+            "Option<Vec<PathBuf>>",
+            "[u8; 4]",
+            "BTreeMap<String, HashSet<f64>>",
+        ] {
+            let body = generated(&format!("struct S {{ a: {declared} }}"));
+            assert!(body.contains("sink . leaf"), "{declared}: {body}");
+        }
+    }
+
+    /// Each of the five, on the shape it applies to. Any one of them is an answer to the question
+    /// the diagnostic asks, so any one of them has to end it.
+    #[test]
+    fn each_resolving_attribute_silences_the_diagnostic() {
+        for attribute in [
+            "values",
+            r#"values("a", "b")"#,
+            "nested",
+            "skip",
+            "range(min = 0.0, max = 1.0)",
+        ] {
+            let input = format!("struct S {{ #[config({attribute})] a: Level }}");
+            let parsed: DeriveInput = syn::parse_str(&input).expect("test input is valid Rust");
+            assert!(expand(&parsed).is_ok(), "{attribute}");
+        }
+        for attribute in ["element", "element_values", r#"element_values("a", "b")"#] {
+            let input = format!("struct S {{ #[config({attribute})] a: Vec<Level> }}");
+            let parsed: DeriveInput = syn::parse_str(&input).expect("test input is valid Rust");
+            assert!(expand(&parsed).is_ok(), "{attribute}");
+        }
+    }
+
+    /// A tuple, a qualified path and an unrecognised generic publish nothing either — and none of
+    /// the five attributes is an answer for them, so an error naming them would be a dead end.
+    #[test]
+    fn a_shape_that_is_not_a_bare_name_is_left_alone() {
+        for declared in ["(u8, String)", "<T as Trait>::Assoc", "Wrapper<Inner>"] {
+            let body = generated(&format!("struct S {{ a: {declared} }}"));
+            assert!(body.contains("sink . leaf"), "{declared}: {body}");
+        }
+    }
+
+    /// The documented case for `range`: a domain newtype over a number, where the annotated
+    /// interval is the whole of what a schema can say. It publishes something, so the diagnostic
+    /// has nothing to complain about.
+    #[test]
+    fn a_bounded_newtype_publishes_its_interval_rather_than_nothing() {
+        let body = generated("struct S { #[config(range(min = 0.0, max = 1.0))] ratio: Fraction }");
+        assert!(body.contains("Bound :: Fractional (0f64)"), "{body}");
+        assert!(
+            body.contains(r#"ty : :: core :: option :: Option :: Some ("Fraction")"#),
+            "{body}"
+        );
+    }
+
+    /// `skip` is the escape hatch, and it must not become the answer to everything: a field that
+    /// takes it is left out of the schema entirely.
+    #[test]
+    fn skip_resolves_it_by_omitting_the_key() {
+        assert!(!generated("struct S { #[config(skip)] a: Level }").contains("sink . leaf"));
+    }
+
+    // ---- values a trait cannot reach ----
+
+    /// The orphan rule puts `impl Values for tracing::Level` out of reach in every crate that
+    /// would want to write it, so a list is what a foreign enum has instead.
+    #[test]
+    fn a_literal_value_list_bypasses_the_values_trait() {
+        let body =
+            generated(r#"struct S { #[config(values("trace", "debug"))] a: tracing::Level }"#);
+        assert!(
+            body.contains(
+                r#"values : :: core :: option :: Option :: Some (& ["trace" , "debug"])"#
+            ),
+            "{body}"
+        );
+        // Nothing at all is asked of the type, which is the point.
+        assert!(
+            !body.contains("as :: terrace_config :: schema :: Values"),
+            "{body}"
+        );
+        // And the type column still reports what was written.
+        assert!(body.contains(r#"Some ("tracing::Level")"#), "{body}");
+    }
+
+    /// The bare form is unchanged, which is what keeps every existing consumer compiling.
+    #[test]
+    fn the_bare_values_attribute_still_means_the_trait() {
+        let body = generated("struct S { #[config(values)] a: LogLevel }");
+        assert!(
+            body.contains("< LogLevel as :: terrace_config :: schema :: Values > :: VARIANTS"),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn a_literal_element_list_reaches_a_container_of_a_foreign_enum() {
+        let body = generated(
+            r#"struct S {
+                #[config(element_values("trace", "debug"))]
+                a: HashMap<String, tracing::Level>
+            }"#,
+        );
+        assert!(body.contains("sink . repeated"), "{body}");
+        assert!(
+            body.contains(r#"Element :: Choice (& ["trace" , "debug"])"#),
+            "{body}"
+        );
+    }
+
+    /// A literal element list is still an element list: the field has to be a container, or the
+    /// schema would say the key itself is one element.
+    #[test]
+    fn a_literal_element_list_still_requires_a_container() {
+        let error = rejected(r#"struct S { #[config(element_values("a"))] a: Level }"#);
+        assert!(error.contains("not a container"), "{error}");
+    }
+
+    #[test]
+    fn an_empty_value_list_is_rejected_because_it_accepts_nothing() {
+        for attribute in ["values", "element_values"] {
+            let error = rejected(&format!(
+                "struct S {{ #[config({attribute}())] a: Vec<L> }}"
+            ));
+            assert!(error.contains("lists no value"), "{attribute}: {error}");
+            assert!(
+                error.contains("drop the parentheses"),
+                "{attribute}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_repeated_spelling_in_a_value_list_is_rejected() {
+        let error = rejected(r#"struct S { #[config(values("a", "b", "a"))] x: Level }"#);
+        assert!(error.contains("`a` is listed twice"), "{error}");
+    }
+
+    #[test]
+    fn a_value_list_holds_string_literals() {
+        let error = rejected("struct S { #[config(values(7))] a: Level }");
+        assert!(error.contains("each one is a string literal"), "{error}");
+    }
+
+    /// Two answers to one question, which is the silent wrong answer this derive refuses
+    /// everywhere else.
+    #[test]
+    fn two_different_value_sources_are_rejected() {
+        let error = rejected(r#"struct S { #[config(values, values("a"))] x: Level }"#);
+        assert!(
+            error.contains("names the values this key accepts twice"),
+            "{error}"
+        );
+
+        let error =
+            rejected(r#"struct S { #[config(element_values, element_values("a"))] x: Vec<L> }"#);
+        assert!(
+            error.contains("names the spellings one element accepts twice"),
+            "{error}"
+        );
+    }
+
+    /// Repeating one attribute says nothing new, which is not the same as saying two things.
+    #[test]
+    fn repeating_the_same_value_list_is_harmless() {
+        let body =
+            generated(r#"struct S { #[config(values("a"))] #[config(values("a"))] x: Level }"#);
+        assert!(body.contains(r#"& ["a"]"#), "{body}");
+    }
+
+    /// A list says the key holds one of a fixed set of spellings, which is the claim `range`
+    /// collides with however the set was arrived at.
+    #[test]
+    fn a_literal_value_list_still_collides_with_a_range() {
+        let error = rejected(r#"struct S { #[config(values("a"), range(min = 0))] x: Level }"#);
+        assert!(error.contains("fixed set of spellings"), "{error}");
+    }
+
     /// A container with no element attribute is the case that has to keep generating exactly what
     /// it generated before.
     #[test]
     fn a_container_that_says_nothing_is_still_a_plain_leaf() {
-        let body = generated("struct S { a: Vec<Route> }");
+        let body = generated("struct S { a: Vec<String> }");
         assert!(body.contains("sink . leaf"), "{body}");
         assert!(!body.contains("repeated"), "{body}");
     }

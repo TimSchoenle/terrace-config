@@ -166,6 +166,10 @@ pub trait Describe {
 /// `#[config(values)]` on the field. The variants are spelled the way `serde` will accept them,
 /// `#[serde(rename_all)]` and all, because a table that printed `Info` where the file must say
 /// `info` documents a value nobody can set.
+///
+/// A trait, so a foreign enum is out of reach — the orphan rule sits between an application and
+/// `impl Values for tracing::Level`. `#[config(values("…", "…"))]` is what such a field has
+/// instead: the spellings, asserted by the author and reported here unchanged.
 pub trait Values {
     /// Every value the type accepts, in declaration order.
     const VARIANTS: &'static [&'static str];
@@ -233,7 +237,7 @@ pub struct Leaf<'a> {
     pub docs: &'a str,
     /// The field's type as written, with any `Option<…>` stripped.
     pub ty: Option<&'a str>,
-    /// The fixed set of values the key accepts, from `#[config(values)]`.
+    /// The fixed set of values the key accepts, from `#[config(values)]` or its literal form.
     pub values: Option<&'a [&'a str]>,
     /// The interval the key's number must fall in, from `#[config(range(...))]`. See [`Bounds`]
     /// for where it lands and what is dropped rather than published.
@@ -321,12 +325,13 @@ pub enum Element<'a> {
     /// Pass its variants: `Element::Choice(<Severity as Values>::VARIANTS)`. The same schema
     /// `#[config(values)]` produces for a key, one level down.
     ///
-    /// **It says what the derive says, which is `serde`'s default wire form.** A type whose
-    /// `Deserialize` is not the derived one — `#[serde(try_from = "String")]` over a
+    /// **A derived list says what the derive says, which is `serde`'s default wire form.** A type
+    /// whose `Deserialize` is not the derived one — `#[serde(try_from = "String")]` over a
     /// case-insensitive `FromStr` is the case that turns up — accepts spellings that are not in
     /// this list, and a schema listing only the variants would reject a file the loader takes.
-    /// That is the one thing this crate will not publish, so annotate such a type nowhere and
-    /// leave the element undescribed.
+    /// That is the one thing this crate will not publish, so do not describe such an element:
+    /// `#[config(skip)]` the key, or spell out what the `Deserialize` accepts with
+    /// `#[config(element_values("…", "…"))]`, which asks nothing of the type at all.
     Choice(&'a [&'a str]),
 }
 

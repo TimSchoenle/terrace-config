@@ -39,14 +39,20 @@ struct Github {
 | `#[config(nested)]` | Recurse into the field's type instead of treating it as a leaf |
 | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key |
 | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+| `#[config(values("…", "…"))]` | Report a literal list as the values the key accepts |
 | `#[config(range(…))]` | Bound the number the key accepts: `min`, `max`, `exclusive_min`, `exclusive_max` |
 | `#[config(element)]` | Report the shape of one element of a container-typed key |
 | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
+| `#[config(element_values("…", "…"))]` | The same literal list, one level down |
 | `#[config(note = "…")]` | Annotate the observed default with prose |
 | `#[config(skip)]` | Omit the key without affecting deserialisation |
 
 `#[serde(deny_unknown_fields)]` is read too, and is the one thing on this page that is not a
 `#[config(...)]` attribute — see [Closed structs](#closed-structs).
+
+The attributes that say what a key *holds* are opt-in but not optional: a field whose type is a
+bare name this crate does not recognise is a compile error rather than a key with no shape — see
+[A named type has to say something](#a-named-type-has-to-say-something).
 
 Three things are why this is a derive rather than runtime reflection. The key path, the
 environment spelling and whether a value is required are all recoverable at runtime; the sentence
@@ -71,6 +77,88 @@ struct Observability {
     log_level: LogLevel,
 }
 ```
+
+## A named type has to say something
+
+`values` and `nested` have to stay opt-in. A derive has only tokens, so it cannot tell whether a
+named type implements `Values` or `Describe`, and guessing is unsound in the direction that
+matters: a type whose `Deserialize` is something else — `#[serde(try_from = "String")]` over a
+case-insensitive `FromStr` — accepts spellings that are not in the variant list, so publishing that
+list unasked would emit a schema rejecting a file the loader takes.
+
+Opt-in is not the same as optional. A field whose type is a bare name this crate does not
+recognise — not one of the leaf spellings, not a container — publishes **nothing**: no type, no
+values, no keys, and a row indistinguishable from one that was described. That is the gap this
+whole feature exists to close, so it is a compile error:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Observability {
+    /// How much the service says.
+    #[serde(default)]
+    log_level: LogLevel,   // error: publishes no shape at all
+}
+```
+
+Six attributes resolve it, and the error names the field, its type and all of them:
+
+| Attribute | When it is the answer |
+|-----------|-----------------------|
+| `#[config(values)]` | The type implements `Values` — it derives `Describe` as an enum |
+| `#[config(values("…", "…"))]` | It cannot, and the list says what it accepts |
+| `#[config(nested)]` | The type implements `Describe`, and its keys belong under this one |
+| `#[config(element)]` / `#[config(element_values)]` | The field is a container, and the *element* is one of those |
+| `#[config(range(…))]` | It is a number in an interval, and the interval is the whole of what a schema can say |
+| `#[config(skip)]` | The field genuinely has nothing to publish |
+
+Two things worth knowing:
+
+- **It fires on a bare name only.** A container's *element* is checked the same way one level
+  down, so `Vec<LogLevel>` is refused and `Vec<String>` is not. A tuple, a qualified path and a
+  generic type this crate does not read as a container are left alone: none of them is a shape the
+  six attributes have an answer for, so an error naming them would be a dead end rather than a fix.
+- **`skip` omits the key.** It is the escape hatch for a field with no publishable shape, not a way
+  to silence the error while keeping the row — a domain newtype over `String` that has to keep its
+  key needs `range`, a description, or a hand-written `Describe`.
+
+## Values a trait cannot reach
+
+`#[config(values)]` reads the field type's `Values` implementation, and the orphan rule puts a
+foreign enum out of reach: an application cannot write `impl Values for tracing::Level`, and this
+crate will not depend on `tracing` to write it here. A literal list bypasses the trait:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Observability {
+    /// How much the service says.
+    #[config(values("trace", "debug", "info", "warn", "error"))]
+    #[serde(default)]
+    log_level: tracing::Level,
+
+    /// Levels each module is pinned to.
+    #[config(element_values("trace", "debug", "info", "warn", "error"))]
+    #[serde(default)]
+    module_levels: HashMap<String, tracing::Level>,
+}
+```
+
+What comes out is what the derived form produces — a bare `enum` in `constraint`, the trimming
+`pattern` in `text_constraint`, and the same `` `trace` \| `debug` `` cell in the table — so no
+rendering and no consumer can tell the two apart.
+
+Three things worth knowing before reaching for it:
+
+- **The list is an assertion this crate cannot check.** Nothing in a derive reads a foreign type's
+  `Deserialize`, so a list that disagrees with it publishes a schema rejecting a file the loader
+  takes. It is the author's to keep true, which is the standing `#[config(note = "…")]` already
+  has, and the standing this page already places on the author for `element_values` over a custom
+  `Deserialize`. Prefer the trait wherever the trait can be written: variants read off the type
+  cannot drift from it.
+- **It satisfies the diagnostic above**, which is the other half of why it exists. Before it, a
+  foreign enum had no honest annotation at all and two downstream repositories kept
+  `tracing::Level` undescribed.
+- **Bare `#[config(values)]` is unchanged.** It still means "use the `Values` implementation", and
+  an empty list or a repeated spelling is rejected rather than published.
 
 ## A key that holds many of something
 
@@ -118,9 +206,11 @@ is skipped, because a TOML table's keys are strings whatever the map is keyed by
 
 Three things worth knowing before reaching for it:
 
-- **It is opt-in, and a container that does not take it up is unchanged.** A field whose element is
-  deliberately a leaf — a map keyed by operator-chosen names, whose values are not a documented
-  shape — keeps publishing exactly the bytes it published before.
+- **It is opt-in, and a container of leaves does not need it.** `Vec<String>` and
+  `BTreeMap<String, u16>` are read to the bottom from the tokens and publish exactly the bytes they
+  always did. A container whose element is a *named* type this crate cannot read is the case the
+  [diagnostic](#a-named-type-has-to-say-something) refuses: describe the element, list its values,
+  or `#[config(skip)]` the key.
 - **The element type has to be spelled out.** A derive has only tokens, so
   `type Routes = Vec<RouteConfig>` is a bare identifier here and is rejected with an error saying
   so rather than guessed at. Spell the container out, or implement `Describe` by hand and call
@@ -128,8 +218,10 @@ Three things worth knowing before reaching for it:
 - **`element_values` reports what the derive reports, which is serde's default wire form.** A type
   whose `Deserialize` is something else — `#[serde(try_from = "String")]` over a case-insensitive
   `FromStr` is the one that turns up — accepts spellings that are not in the variant list, and a
-  schema listing only the variants would reject a file the loader takes. Leave such an element
-  undescribed; that is the one thing this crate will not publish.
+  schema listing only the variants would reject a file the loader takes. Do not describe such an
+  element: `#[config(skip)]` the key, or list the spellings the `Deserialize` actually accepts with
+  `element_values("…", "…")`. A schema that refuses a file the loader takes is the one thing this
+  crate will not publish.
 
 The environment layer is untouched by any of this. A container is still supplied as one TOML
 literal, so `text_form` stays `structured` and `text_constraint` stays the bracket pattern — the

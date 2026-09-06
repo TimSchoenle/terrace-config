@@ -1879,9 +1879,14 @@ enum Method {
 
 /// Deliberately not `Describe`: the keys under it are operator-chosen names, and the producer
 /// that owns this shape has said so. The feature must not force it to opt in.
+///
+/// Generic on purpose. The derive refuses a *bare* name it can read nothing from, so a fixture
+/// that has to reach the runtime interpreter with a meaningless spelling has to be one of the
+/// shapes the derive leaves alone — and what is under test is that module, which must keep
+/// publishing `{"type": "object"}` for a map whose value it cannot name.
 #[derive(Deserialize, Serialize, Default)]
-struct Opaque {
-    region: String,
+struct Opaque<T> {
+    region: T,
 }
 
 #[derive(Deserialize, Serialize, Default, Describe)]
@@ -1900,7 +1905,7 @@ struct Containers {
     paths: std::collections::HashMap<String, std::collections::HashSet<Method>>,
     /// Buckets, by the route name an operator chose.
     #[serde(default)]
-    entries: std::collections::HashMap<String, Opaque>,
+    entries: std::collections::HashMap<String, Opaque<String>>,
 }
 
 /// The described schema of the fixture above.
@@ -2386,4 +2391,187 @@ fn a_closed_document_still_closes_what_is_inside_a_closed_element() {
 fn neither_attribute_changes_the_shape_of_the_document() {
     assert_eq!(bounded().schema_version, SCHEMA_VERSION);
     assert_eq!(SCHEMA_VERSION, 2);
+}
+
+// ---- values a trait cannot reach ----
+
+/// Stands in for `tracing::Level`: an enum from a crate that neither implements
+/// `terrace_config::schema::Values` nor can be made to, because the orphan rule sits between the
+/// application and both halves of the impl.
+#[derive(Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+enum Foreign {
+    Trace,
+    #[default]
+    Info,
+}
+
+/// The whole of what the literal form does: the spellings reach the schema, and nothing is asked
+/// of the type they describe.
+#[test]
+fn a_literal_value_list_describes_a_type_no_impl_can_reach() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Observability {
+        /// How much the service says.
+        #[config(values("trace", "info"))]
+        #[serde(default)]
+        log_level: Foreign,
+    }
+
+    let schema = Terrace::new("T_").schema::<Observability>();
+    assert_eq!(key(&schema, "log_level").values, ["trace", "info"]);
+
+    // Reported exactly as the derived form is, which is what keeps every rendering unchanged.
+    let rendered = schema.to_json_schema().expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+    let level = &document["properties"]["log_level"];
+    assert_eq!(level["type"], json!("string"));
+    assert_eq!(level["enum"], json!(["trace", "info"]));
+
+    // And the type column still says what the field is written as, not what the list says.
+    assert_eq!(key(&schema, "log_level").ty.as_deref(), Some("Foreign"));
+}
+
+/// One level down, which is the position a container of a foreign enum leaves blank.
+#[test]
+fn a_literal_element_list_describes_a_container_of_one() {
+    #[derive(Deserialize, Serialize, Default, Describe)]
+    struct Observability {
+        /// Levels each module is pinned to.
+        #[config(element_values("trace", "info"))]
+        #[serde(default)]
+        module_levels: std::collections::BTreeMap<String, Foreign>,
+    }
+
+    let schema = Terrace::new("T_").schema::<Observability>();
+    let rendered = schema.to_json_schema().expect("the document serialises");
+    let document: serde_json::Value =
+        serde_json::from_str(&rendered).expect("the rendering is JSON");
+    let levels = &document["properties"]["module_levels"];
+
+    assert_eq!(levels["type"], json!("object"));
+    assert_eq!(
+        levels["additionalProperties"]["enum"],
+        json!(["trace", "info"])
+    );
+
+    // Still one key. An array index is not a key segment however the element was described.
+    assert_eq!(paths(&schema), ["module_levels"]);
+
+    // And the environment layer is untouched: the whole map is still one TOML literal.
+    assert_eq!(
+        key(&schema, "module_levels").text_form,
+        TextForm::Structured
+    );
+}
+
+// ---- the leaf list the derive and the interpreter share ----
+
+/// Aliases for the three spellings this crate reads as strings without depending on the crates
+/// they come from.
+///
+/// Both halves match the *last segment of the type token* and resolve nothing, so an alias named
+/// `Url` is exactly the same input as the real one — which is what makes this test possible
+/// without `url`, `uuid` and `secrecy` in the dependency list.
+mod leaf_alias {
+    pub(crate) type Url = String;
+    pub(crate) type Uuid = String;
+    pub(crate) type SecretString = String;
+}
+
+/// Every spelling the crate reads a shape out of, in one struct.
+///
+/// It holds the two halves of one fact together. The derive's own list decides which of these
+/// fields compile at all — a spelling missing from it is refused as publishing nothing — and
+/// `rust_type` decides which of them publish a constraint. A leaf recognised by one half and not
+/// the other fails here rather than in a consumer's build, and the key count below is what forces
+/// a leaf added to either half to arrive with a field of its own.
+#[derive(Describe)]
+struct Leaves {
+    string: String,
+    str_slice: &'static str,
+    path_buf: std::path::PathBuf,
+    path: &'static std::path::Path,
+    os_string: std::ffi::OsString,
+    os_str: &'static std::ffi::OsStr,
+    c_string: std::ffi::CString,
+    c_str: &'static std::ffi::CStr,
+    secret_string: leaf_alias::SecretString,
+    url: leaf_alias::Url,
+    uuid: leaf_alias::Uuid,
+    ip_addr: std::net::IpAddr,
+    ipv4_addr: std::net::Ipv4Addr,
+    ipv6_addr: std::net::Ipv6Addr,
+    socket_addr: std::net::SocketAddr,
+    socket_addr_v4: std::net::SocketAddrV4,
+    socket_addr_v6: std::net::SocketAddrV6,
+    character: char,
+    flag: bool,
+    float_32: f32,
+    float_64: f64,
+    unsigned_8: u8,
+    unsigned_16: u16,
+    unsigned_32: u32,
+    unsigned_64: u64,
+    unsigned_128: u128,
+    unsigned_size: usize,
+    signed_8: i8,
+    signed_16: i16,
+    signed_32: i32,
+    signed_64: i64,
+    signed_128: i128,
+    signed_size: isize,
+    non_zero_u8: std::num::NonZeroU8,
+    non_zero_u16: std::num::NonZeroU16,
+    non_zero_u32: std::num::NonZeroU32,
+    non_zero_u64: std::num::NonZeroU64,
+    non_zero_u128: std::num::NonZeroU128,
+    non_zero_usize: std::num::NonZeroUsize,
+    non_zero_i8: std::num::NonZeroI8,
+    non_zero_i16: std::num::NonZeroI16,
+    non_zero_i32: std::num::NonZeroI32,
+    non_zero_i64: std::num::NonZeroI64,
+    non_zero_i128: std::num::NonZeroI128,
+    non_zero_isize: std::num::NonZeroIsize,
+}
+
+#[test]
+fn every_known_leaf_is_read_by_both_halves() {
+    let schema = Schema::describe::<Leaves>(&Terrace::new("T_").dialect());
+    assert_eq!(schema.keys.len(), 45);
+    for entry in &schema.keys {
+        assert!(
+            entry.constraint.is_some(),
+            "`{}` compiled but publishes no constraint",
+            entry.path
+        );
+    }
+}
+
+/// The other half of the same fact: a container of any of them is read to the bottom, so it needs
+/// no attribute either.
+#[test]
+fn a_container_of_leaves_is_read_without_an_attribute() {
+    #[derive(Describe)]
+    struct Containers {
+        repos: Vec<String>,
+        labels: std::collections::BTreeMap<String, u16>,
+        ports: Option<Vec<std::num::NonZeroU16>>,
+        digest: [u8; 4],
+        nested: std::collections::HashMap<String, std::collections::HashSet<f64>>,
+    }
+
+    let schema = Schema::describe::<Containers>(&Terrace::new("T_").dialect());
+    for entry in &schema.keys {
+        assert!(
+            entry.constraint.is_some(),
+            "`{}` publishes no constraint",
+            entry.path
+        );
+    }
+    assert_eq!(
+        constraint(&schema, "labels")["additionalProperties"]["type"],
+        json!("integer")
+    );
 }
