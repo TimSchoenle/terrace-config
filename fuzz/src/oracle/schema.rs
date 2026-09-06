@@ -127,6 +127,7 @@ fn describe_one(sink: &mut Sink, segments: &[String], leaf: &LeafSpec) {
                 docs: &leaf.docs,
                 ty: leaf.ty.as_deref(),
                 values: (!values.is_empty()).then_some(values.as_slice()),
+                bounds: None,
                 aliases: &aliases,
                 note: leaf.note.as_deref(),
                 required: leaf.required,

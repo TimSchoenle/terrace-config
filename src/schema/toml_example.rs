@@ -52,8 +52,8 @@ const WIDTH: usize = 96;
 /// # impl Describe for Config {
 /// #     fn describe(sink: &mut Sink) {
 /// #         sink.leaf(Leaf { name: "ttl_secs", docs: "How long a page is served.\n\nThe rest.",
-/// #             ty: Some("u64"), values: None, aliases: &[], note: None, required: false,
-/// #             secret: false });
+/// #             ty: Some("u64"), values: None, bounds: None, aliases: &[], note: None,
+/// #             required: false, secret: false });
 /// #     }
 /// # }
 /// let options = TomlExample::new().header(false).docs(Docs::None).spellings(false);
@@ -396,7 +396,9 @@ fn literal(key: &Key, options: &TomlExample) -> String {
 
 /// A value of the key's type that is still obviously not an answer.
 fn placeholder(ty: Option<&str>, text: &str) -> String {
-    let interpreted = ty.and_then(super::rust_type::interpret);
+    // No bounds: this picks a placeholder from the *shape* — a number, a string, an array — and
+    // the interval a number has to fall in does not change which of those it is.
+    let interpreted = ty.and_then(|ty| super::rust_type::interpret(ty, None));
     let shape = interpreted
         .as_ref()
         .and_then(|schema| schema.get("type"))

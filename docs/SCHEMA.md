@@ -39,10 +39,14 @@ struct Github {
 | `#[config(nested)]` | Recurse into the field's type instead of treating it as a leaf |
 | `#[config(secret)]` | Render the default as `<redacted>`, and mark the key |
 | `#[config(values)]` | Report the field type's variants as the values the key accepts |
+| `#[config(range(…))]` | Bound the number the key accepts: `min`, `max`, `exclusive_min`, `exclusive_max` |
 | `#[config(element)]` | Report the shape of one element of a container-typed key |
 | `#[config(element_values)]` | Report the values one element of a container-typed key accepts |
 | `#[config(note = "…")]` | Annotate the observed default with prose |
 | `#[config(skip)]` | Omit the key without affecting deserialisation |
+
+`#[serde(deny_unknown_fields)]` is read too, and is the one thing on this page that is not a
+`#[config(...)]` attribute — see [Closed structs](#closed-structs).
 
 Three things are why this is a derive rather than runtime reflection. The key path, the
 environment spelling and whether a value is required are all recoverable at runtime; the sentence
@@ -130,6 +134,99 @@ Three things worth knowing before reaching for it:
 The environment layer is untouched by any of this. A container is still supplied as one TOML
 literal, so `text_form` stays `structured` and `text_constraint` stays the bracket pattern — the
 element lives in document space only.
+
+## A number the type is too wide for
+
+`sample_rate: f32` publishes `{"type": "number"}` and nothing more. That the value is a *fraction*
+is not in the type — `f32` admits every finite float and the service takes four hundredths of
+them — so every consumer that knew it has been writing `minimum: 0` and `maximum: 1` by hand.
+`#[config(range(...))]` says it once, where the field is:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Tracing {
+    /// Share of requests that are traced.
+    #[config(range(min = 0.0, max = 1.0))]
+    #[serde(default)]
+    sample_rate: f32,
+
+    /// Workers, which must leave one core for the reactor.
+    #[config(range(min = 1, max = 63))]
+    #[serde(default)]
+    workers: u16,
+
+    /// Backoff multipliers, none of which may shrink the wait.
+    #[config(range(exclusive_min = 1.0))]
+    #[serde(default)]
+    backoff: Vec<f64>,
+}
+```
+
+It takes `min`, `max`, `exclusive_min` and `exclusive_max` — at least one, at most one per end —
+and emits `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum`. It works on every
+numeric type the derive already reads: the integers, the `NonZero` family, `f32` and `f64`, and a
+domain newtype whose spelling this crate does not recognise at all.
+
+```json
+"sample_rate": { "type": "number",  "minimum": 0.0, "maximum": 1.0 },
+"workers":     { "type": "integer", "minimum": 1,   "maximum": 63 },
+"backoff":     { "type": "array", "items": { "type": "number", "exclusiveMinimum": 1.0 } }
+```
+
+Three things worth knowing before reaching for it:
+
+- **The bound lands where the type's own reading stops**, which for a container is the element:
+  `Vec<f64>` bounds the numbers in the vector, because a `minimum` on the vector itself would mean
+  nothing. That is the position `element` fills for a container of structs, reached through the
+  same stack of `Option`, `Vec`, `HashMap` and the rest — which is why the two do not combine on
+  one field.
+- **A bound never widens one the type already justifies.** `max = 100_000` on a `u16` is dropped
+  rather than published: `maximum` is one keyword, so it would *replace* the exact `65535` and the
+  schema would then accept a file the loader refuses. A bound on a type this crate reads as a
+  string or a boolean is dropped for the same reason — there is nothing there for it to mean.
+- **An integer literal stays an integer.** `min = 1` publishes `1` and `min = 1.0` publishes `1.0`,
+  because a consumer that walks the keywords itself reads those as different numbers, and nothing
+  about the annotation asked for the other one.
+
+The environment layer is untouched here too. A range applies to the parsed value; a `pattern`
+cannot express one, and half-expressing it — digits capped at five characters for a `u16` — would
+reject `00080`, which the loader takes. `text_constraint` keeps the sign-and-digits pattern it had.
+
+## Closed structs
+
+A struct published through `#[config(element)]` reports its `properties` and its `required`, which
+leaves a consumer unable to tell it from an open map: a misspelt field passes validation. Serde
+already has the answer, so it is read rather than annotated a second time:
+
+```rust
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(deny_unknown_fields)]
+struct RouteConfig {
+    /// Where the route delivers.
+    upstream: String,
+}
+```
+
+```json
+"routes": { "type": "array", "items": {
+    "type": "object",
+    "properties": { "upstream": { "type": "string", "description": "Where the route delivers." } },
+    "required": ["upstream"],
+    "additionalProperties": false } }
+```
+
+Reading it off `#[serde(deny_unknown_fields)]` is what keeps the schema and the deserialiser from
+coming to disagree about which fields exist. Nothing is emitted for a struct without it — serde
+accepts an undeclared field by default, and a schema refusing one would refuse a file that loads.
+
+It closes the level the attribute is on and no other. A struct inside a closed one that did not say
+so stays open, and the map *around* a closed element stays open too, because the keys in it are the
+ones an operator chose.
+
+This is a fact about the type, so it lands in `constraint` where no rendering option reaches it.
+Whether an undeclared key is an error anywhere *else* in the document remains
+`JsonSchema::closed`'s question — a chart's values carry keys belonging to the chart, and no
+configuration type has heard of those.
 
 ## Two outputs
 

@@ -171,6 +171,53 @@ pub trait Values {
     const VARIANTS: &'static [&'static str];
 }
 
+/// One end of the range a numeric key accepts, in the form it was written.
+///
+/// Two variants rather than one `f64`, because an `f64` holds only the integers below 2^53
+/// exactly. A bound that arrived rounded would be a *different* number than the one the field
+/// takes, which is the same reason this crate declines to publish `u64::MAX` as a `maximum`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Bound {
+    /// Written as an integer literal, as in `min = 0`.
+    Integer(i64),
+    /// Written as a floating-point literal, as in `max = 1.0`.
+    Fractional(f64),
+}
+
+/// The interval a numeric key accepts, from `#[config(range(...))]`.
+///
+/// A type says what a value *is*; this says which of those values the service will take.
+/// `sample_rate: f32` publishes `{"type": "number"}` and nothing more, so every consumer that
+/// knows the value is a fraction has been writing `minimum: 0` and `maximum: 1` itself.
+///
+/// The bounds land where the reading of [`Leaf::ty`] stops: on the field's own type for a scalar,
+/// and on the *element* for a container of numbers — a `minimum` on a `Vec` would mean nothing,
+/// and `Vec<f32>` bounds what is in the vector. That is the position [`Element`] fills for a
+/// container of structs, reached by the same walk and for the same reason.
+///
+/// **Narrowing only.** A bound looser than the one the type already justifies is dropped rather
+/// than published: `minimum` is one keyword, so `max = 100_000` on a `u16` would *replace* the
+/// exact `65535` rather than sit beside it, and the schema would then accept a file the loader
+/// refuses. A bound on a spelling this crate recognises as something other than a number is
+/// dropped for the matching reason — there is nothing there for it to mean. A spelling it
+/// recognises as *nothing* keeps it, because a newtype over an `f32` is the case the annotation
+/// exists for.
+// No `Eq`, for [`Key`]'s reason: a bound can be a float, and a float is not reflexively equal to
+// itself.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Bounds {
+    /// The smallest accepted value, from `min = …` or `exclusive_min = …`.
+    pub min: Option<Bound>,
+    /// The largest accepted value, from `max = …` or `exclusive_max = …`.
+    pub max: Option<Bound>,
+    /// Whether [`Self::min`] is itself outside the accepted range — `exclusiveMinimum` rather
+    /// than `minimum`.
+    pub min_exclusive: bool,
+    /// Whether [`Self::max`] is itself outside the accepted range — `exclusiveMaximum` rather
+    /// than `maximum`.
+    pub max_exclusive: bool,
+}
+
 /// One documented key, as the derive reports it.
 ///
 /// This is what a `///` comment and a `#[config(...)]` attribute survive as. The derive always
@@ -188,6 +235,9 @@ pub struct Leaf<'a> {
     pub ty: Option<&'a str>,
     /// The fixed set of values the key accepts, from `#[config(values)]`.
     pub values: Option<&'a [&'a str]>,
+    /// The interval the key's number must fall in, from `#[config(range(...))]`. See [`Bounds`]
+    /// for where it lands and what is dropped rather than published.
+    pub bounds: Option<Bounds>,
     /// Extra key names `serde` also accepts, from `#[serde(alias = "…")]`.
     pub aliases: &'a [&'a str],
     /// A `#[config(note = "…")]` annotation, reported *alongside* the observed default rather
@@ -220,6 +270,23 @@ pub struct Sink {
     /// justifies — one place decides what a key accepts, which is what stops the two from
     /// disagreeing.
     elements: BTreeMap<usize, Map<String, Json>>,
+    /// The bounds each key reported, by that key's index in [`Self::keys`].
+    ///
+    /// Held beside the keys for [`Self::elements`]' reason and composed in the same place: a bound
+    /// is part of what a key accepts, and [`Key::constraint`] is where what a key accepts is
+    /// published. It is not a field of [`Key`] because it would be a second spelling of two
+    /// keywords already inside that object, and two spellings of one fact is what
+    /// [`Self::into_keys`] exists to prevent.
+    bounds: BTreeMap<usize, Bounds>,
+    /// The paths whose type refuses a key it did not declare, from
+    /// `#[serde(deny_unknown_fields)]` — relative to this sink, so the described type's own level
+    /// is the empty string.
+    ///
+    /// Read only for a type published as an [`Element`], where the shape lands in
+    /// [`Key::constraint`] and no rendering option reaches it. Whether the *document* flags an
+    /// undeclared key stays [`JsonSchema::closed`]'s question: a Helm chart's values carry keys
+    /// belonging to the chart, and no configuration type knows about those.
+    closed: BTreeSet<String>,
     /// How many levels are open above this sink: its own [`Self::prefix`], plus the element scope
     /// of every sink it descends from.
     ///
@@ -274,7 +341,8 @@ impl Element<'_> {
             Self::Fields(describe) => {
                 let mut sink = Sink::at_depth(depth);
                 describe(&mut sink);
-                json_schema::element_object(&sink.into_keys())
+                let (keys, closed) = sink.into_keys();
+                json_schema::element_object(&keys, &closed)
             }
         }
     }
@@ -292,27 +360,34 @@ impl Sink {
             keys: Vec::new(),
             seen: BTreeSet::new(),
             elements: BTreeMap::new(),
+            bounds: BTreeMap::new(),
+            closed: BTreeSet::new(),
             depth,
         }
     }
 
-    /// The keys collected here, with everything a *type* can say about them filled in.
+    /// The keys collected here, with everything a *type* can say about them filled in, and the
+    /// levels that refuse a key they did not declare.
     ///
     /// The half of [`Schema::describe_at`]'s work that needs no [`Dialect`]: the two constraints
-    /// and the text form, with any element schema composed into the first. An element type's keys
-    /// get this half and no more, because the other half derives environment spellings and an
-    /// element has none to derive — which is the whole reason it is a nested schema and not a row
-    /// in the key list.
-    fn into_keys(mut self) -> Vec<Key> {
+    /// and the text form, with any element schema and any reported bounds composed into the first.
+    /// An element type's keys get this half and no more, because the other half derives
+    /// environment spellings and an element has none to derive — which is the whole reason it is a
+    /// nested schema and not a row in the key list.
+    fn into_keys(mut self) -> (Vec<Key>, BTreeSet<String>) {
         for (index, key) in self.keys.iter_mut().enumerate() {
-            key.constraint =
-                json_schema::constraint(key.ty.as_deref(), &key.values, self.elements.get(&index))
-                    .map(Json::Object);
+            key.constraint = json_schema::constraint(
+                key.ty.as_deref(),
+                &key.values,
+                self.elements.get(&index),
+                self.bounds.get(&index).copied(),
+            )
+            .map(Json::Object);
             let (form, text) = json_schema::text_constraint(key.ty.as_deref(), &key.values);
             key.text_form = form;
             key.text_constraint = text.map(Json::Object);
         }
-        self.keys
+        (self.keys, self.closed)
     }
 
     /// Record one key at the current prefix.
@@ -368,6 +443,32 @@ impl Sink {
             secret: leaf.secret,
             reserved: false,
         });
+
+        // Beside the key rather than in it, and only when there is something to hold: an
+        // unannotated key must leave `constraint` exactly as it was, which is what keeps a
+        // contract that uses neither attribute serialising byte for byte as it did.
+        if let Some(bounds) = leaf.bounds {
+            self.bounds.insert(self.keys.len() - 1, bounds);
+        }
+    }
+
+    /// Record that the type being described at this level refuses a key it did not declare.
+    ///
+    /// What `#[serde(deny_unknown_fields)]` does to the deserialiser, said in the schema. Without
+    /// it a closed struct and an open map are the same `properties` object, so a misspelt field
+    /// passes every validator — and the derive reads it off the serde attribute rather than a
+    /// second annotation, so the two cannot come to disagree.
+    ///
+    /// Reported by the type, once, before or after its keys — the level it closes is the one open
+    /// when it is called, so a `#[config(nested)]` struct inside an element closes itself and not
+    /// its parent.
+    ///
+    /// It is read for a type published as an [`Element`], whose shape lands in
+    /// [`Key::constraint`] where no rendering option reaches it. For the document itself the
+    /// question belongs to [`JsonSchema::closed`], because a chart's values carry keys that no
+    /// configuration type has heard of.
+    pub fn deny_unknown_fields(&mut self) {
+        self.closed.insert(self.prefix.join("."));
     }
 
     /// Record a subtree under `segment`.
@@ -414,7 +515,8 @@ impl Sink {
     /// impl Describe for Route {
     ///     fn describe(sink: &mut Sink) {
     ///         sink.leaf(Leaf { name: "name", docs: "What the route is called.", ty: Some("String"),
-    ///             values: None, aliases: &[], note: None, required: true, secret: false });
+    ///             values: None, bounds: None, aliases: &[], note: None, required: true,
+    ///             secret: false });
     ///     }
     /// }
     ///
@@ -423,7 +525,7 @@ impl Sink {
     ///     fn describe(sink: &mut Sink) {
     ///         sink.repeated(
     ///             Leaf { name: "routes", docs: "", ty: Some("Vec<Route>"), values: None,
-    ///                 aliases: &[], note: None, required: false, secret: false },
+    ///                 bounds: None, aliases: &[], note: None, required: false, secret: false },
     ///             Element::Fields(<Route as Describe>::describe),
     ///         );
     ///     }
@@ -525,11 +627,17 @@ pub struct Key {
     /// a consumer that walks the keywords rather than handing them to a validator has to recurse.
     /// [`SCHEMA_VERSION`] is what that consumer gates on.
     ///
-    /// The element is left **open**: no `additionalProperties: false`. `serde` accepts a field
-    /// nobody declared unless the struct says otherwise, and no derive can see
-    /// `#[serde(deny_unknown_fields)]` — so closing it here would reject a file the loader takes.
-    /// Whether an undeclared key is an error is [`JsonSchema::closed`]'s question, and
+    /// The element is **open unless its type closed it**. `serde` accepts a field nobody declared
+    /// unless the struct says otherwise, so closing one that said nothing would reject a file the
+    /// loader takes — but a struct carrying `#[serde(deny_unknown_fields)]` did say otherwise, and
+    /// the derive reports it as `additionalProperties: false` on that level and no other. Whether
+    /// an undeclared key is an error *elsewhere* is [`JsonSchema::closed`]'s question, and
     /// [`Schema::to_json_schema`] answers it for what it renders.
+    ///
+    /// **It carries numeric bounds**, from a `#[config(range(...))]` field — `minimum`, `maximum`
+    /// and their exclusive spellings, at the same position an element lands: the key itself for a
+    /// scalar, and inside the containers for a bounded element. See [`Bounds`], which never lets
+    /// one widen a bound the type already justified.
     ///
     /// [`None`] means unconstrained, and says exactly as much as [`Self::ty`] does about a domain
     /// newtype: the key exists and nothing here can check its value.
@@ -892,7 +1000,10 @@ impl Schema {
         // The constraints and the text form come back filled in: they are what a type says, and
         // need no dialect. Everything below is what a *dialect* says, which is the half an element
         // type never gets.
-        let mut keys = sink.into_keys();
+        // The closed levels are dropped here and read only for an [`Element`]: this is the
+        // *document*, and whether an undeclared key in it is an error is `JsonSchema::closed`'s
+        // question — one a chart's values answer differently from the type they configure.
+        let (mut keys, _closed) = sink.into_keys();
         for key in &mut keys {
             let (env, canonical_reason) = env_spelling(dialect, &key.path);
             key.env = env;
@@ -1045,7 +1156,7 @@ impl Schema {
     /// # impl terrace_config::schema::Describe for Config {
     /// #     fn describe(sink: &mut terrace_config::schema::Sink) {
     /// #         sink.leaf(terrace_config::schema::Leaf {
-    /// #             name: "ttl_secs", docs: "", ty: Some("u64"), values: None,
+    /// #             name: "ttl_secs", docs: "", ty: Some("u64"), values: None, bounds: None,
     /// #             aliases: &[], note: None, required: false, secret: false,
     /// #         });
     /// #     }
@@ -1119,14 +1230,14 @@ impl Schema {
     /// # struct Csp;
     /// # impl Describe for Csp {
     /// #     fn describe(sink: &mut Sink) {
-    /// #         sink.leaf(Leaf { name: "csp", docs: "", ty: None, values: None,
+    /// #         sink.leaf(Leaf { name: "csp", docs: "", ty: None, values: None, bounds: None,
     /// #             aliases: &[], note: None, required: false, secret: false });
     /// #     }
     /// # }
     /// # struct Github;
     /// # impl Describe for Github {
     /// #     fn describe(sink: &mut Sink) {
-    /// #         sink.leaf(Leaf { name: "github", docs: "", ty: None, values: None,
+    /// #         sink.leaf(Leaf { name: "github", docs: "", ty: None, values: None, bounds: None,
     /// #             aliases: &[], note: None, required: false, secret: false });
     /// #     }
     /// # }
