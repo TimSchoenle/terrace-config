@@ -1,9 +1,9 @@
 // The document model and everything true of a contract regardless of loader (PR 4). Knows about
 // documents, not about binders — no Spring, no reflection over user types. Depended on by
 // -loader, -spring-boot and -spec-tck; depends on nothing that knows about either.
-description = "The envelope model and the eight build-time refusals (PR 4). The nine renderings " +
-    "beyond `json` (markdown, toml, json-schema, contract, labels, dockerfile, ...) are not yet " +
-    "implemented. See java/README.md."
+description = "The envelope model, the eight build-time refusals, and the `json-schema` " +
+    "rendering (PR 4). The remaining renderings beyond `json` (markdown, toml, contract, " +
+    "labels, dockerfile, ...) are not yet implemented. See java/README.md."
 
 // Applying the plugin (rather than hand-rolled `compileOnly`/`annotationProcessor` lines) wires
 // main *and* test sources, and points `javadoc` at delomboked sources automatically — see
@@ -28,3 +28,9 @@ dependencies {
 // compile classpath needs the same `compileOnly` Jackson types main has — the `java` plugin
 // does not extend `testCompileOnly` from `compileOnly` on its own.
 configurations.testCompileOnly.get().extendsFrom(configurations.compileOnly.get())
+
+dependencies {
+    // Used only by TomlExampleRendererTest, to prove the generated example actually parses --
+    // never a main-source dependency, since -core's TOML rendering writes text, it never reads it.
+    testImplementation(libs.tomlj)
+}

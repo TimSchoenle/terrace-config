@@ -11,13 +11,13 @@ what remains open.
 
 | Module | What it is | Status |
 |---|---|---|
-| `terrace-config-annotations` | `@TerraceConfig` and the rest of the vocabulary a service's own types carry. Depends on nothing but the JDK. | not started |
-| `terrace-config-core` | The envelope model and the eight build-time refusals. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the codecs. | **implemented** — validation and a Jackson-version-agnostic model; the nine renderings (json, markdown, toml, json-schema, contract, labels, dockerfile, ...) live in the codec modules below |
+| `terrace-config-annotations` | `@TerraceConfig` and the rest of the vocabulary a service's own types carry. Depends on nothing but the JDK. | **implemented** |
+| `terrace-config-core` | The envelope model, the eight build-time refusals, and the `json-schema` rendering. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the `json` codecs. | **implemented** — validation, a Jackson-version-agnostic model, and `Schema.toJsonSchema()`; the remaining renderings (markdown, toml, contract, labels, dockerfile, ...) are open |
 | `terrace-config-core-jackson2` | The byte-stable `json` codec for the `-core` model, built on Jackson 2.x. | **implemented** |
 | `terrace-config-core-jackson3` | The same codec, built on Jackson 3.x instead. | **implemented** |
-| `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. | not started |
-| `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | not started |
-| `terrace-config-spring-boot` | The Spring Boot starter and producer over Spring's `Binder`. `producer.loader` will be `spring-boot`, target **tier 1**, divergence documented once it exists. | not started |
+| `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. | **implemented** |
+| `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | **implemented** — layers, dialect and shadow policy; schema/`explain()`/watched-reload wiring against the processor's descriptors is open |
+| `terrace-config-spring-boot` | The Spring Boot starter over Spring's `Binder`. `producer.loader` is `spring-boot`, target **tier 1**. | **implemented** — the `_FILE` indirection `EnvironmentPostProcessor`, the `_`-vs-`__` dialect divergence, and `SpringContractProducer` assembling a full validated `Contract` from a `TypeDescriptor`; a starter auto-configuration is still open |
 | `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3 |
 
 ## Building and testing
@@ -40,8 +40,14 @@ exercise for real. Each codec module's own corpus test (`ContractCorpusRoundTrip
 deserialises every stored case into the shared model and re-serialises it, asserting the result is
 byte-identical to the stored file — the strongest check the model has, run once per Jackson major
 against the exact same model classes, and the one the plan calls for before any producer exists.
-The remaining four modules (`terrace-config-annotations`, `-processor`, `-loader`,
-`-spring-boot`) are still empty placeholders — they compile, but there is nothing in them yet.
+`terrace-config-processor`'s own suite (`TerraceConfigProcessorTest`) runs the processor through
+`compile-testing` against small in-memory sources rather than the corpus — it has no producer or
+Json document of its own to check against yet, only whether a given annotated type's shape is
+resolved or correctly refused. `terrace-config-loader`'s own suite exercises real files in a JUnit
+`@TempDir` (a TOML fragment, a secrets directory, `_FILE` indirection) rather than the corpus,
+since it has no `Contract`-shaped output of its own yet — see below. `terrace-config-spring-boot`'s
+own suite uses a `MockEnvironment` from `spring-test` rather than a real `SpringApplication`, since
+`EnvironmentPostProcessor`s run before there is a context to boot — see below.
 
 ## Conventions
 
@@ -78,6 +84,72 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   passes all eight), each built with a minimal `Contract` rather than a full corpus case, to keep
   the refusal under test isolated from the other seven. The byte-stable round-trip test lives in
   each codec module instead (see below), since it needs an actual `ObjectMapper` to run.
+- **`Schema.toJsonSchema()` / `toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`)
+  render a `Schema` as the JSON Schema document an editor or a Helm chart validates a rendered
+  configuration against — a straight port of the Rust crate's `schema::json_schema` module.
+  `Node` groups the flat, dotted `Key.path` list into the nested tree a `properties` object needs
+  (shared with nothing else yet, since the TOML/Markdown renderings aren't built); `leaf` copies
+  each key's own `constraint` in rather than re-deriving it, adds `description`/`default`/
+  `writeOnly`; `JsonSchemaOptions.forContract()` is draft-07, closed, `requirePresent` off — the
+  exact options a `Contract`'s embedded `json_schema` half uses in the Rust crate — ready for a
+  future `Contract` producer to call. Every map returned is a `TreeMap`, so its iteration order is
+  already alphabetical, the same order `serde_json`'s own (non-`preserve_order`) map produces.
+- **`JsonSchemaRendererCorpusTest`** (in `-core-jackson2`, since it needs a real `ObjectMapper` to
+  parse the corpus) re-renders each stored case's `schema` and asserts it structurally equals that
+  same case's stored `json_schema` field — proving the port against real output rather than only
+  hand-built fixtures, with no Java producer of its own needed to do it.
+- **`de.timscho.config.core.descriptor.SchemaAssembler`** combines a dialect-agnostic
+  `TypeDescriptor` (from `terrace-config-processor`) with a `Dialect` into a full `Schema` — the
+  Java equivalent of `Schema::describe_at`, and what unblocked `-loader`'s `schema()`/`schemaAt()`
+  (see below). It walks a type's fields into a flat `Key` list (a `@Nested` field opens a level
+  rather than becoming a key of its own; a container field — `List`/`Set`/`Map`, nested-struct
+  elements included — stays one `Structured`-form key, since an environment variable cannot address
+  an index inside itself), and ports `env_spelling`/`secrets_file_name` field for field: an
+  environment name that a case-folding, separator-splitting reader can't map back to the same path
+  is `Unreachable.Unnameable`; a name colliding with the indirection suffix is
+  `Unreachable.Indirection`; a reserved key's file spellings are cleared, exactly as
+  `describe_at` does. `Key.required` is still derived from the field's own `Optional`-wrapping
+  rather than a live default value — see `Schema.withDefaultsFromValue` below for the piece of
+  `Schema::with_defaults_from` that *is* ported.
+- **`Schema.toMarkdown()` / `toMarkdownWith(List<Column>)` / `toMarkdownLoader()` /
+  `toMarkdownKeys(List<Column>)`** (`de.timscho.config.core.schema`) render GitHub-flavoured
+  tables — a port of the Rust crate's `schema::markdown` module. `Column` is a 13-value enum
+  (`PATH`, `TYPE`, `ALIASES`, `ENV`, `ENV_FILE`, `SECRETS_FILE`, `DEFAULT`, `DEFAULT_VALUE`,
+  `NOTE`, `FLAGS`, `REQUIRED`, `SECRET`, `DOCS`); `Column.DEFAULT_COLUMNS` is the narrower set
+  `toMarkdown()` actually uses. Every cell escapes `|` and `\`, since a cell is prose with a page
+  width to stay inside, not a value to interpret.
+- **`Schema.toTomlExample()` / `toTomlExampleWith(TomlExampleOptions)`** render a commented
+  `config.toml` — a port of `schema::toml_example`. Everything with a default is commented out (a
+  commented key and a deleted key mean the same thing to the loader); a `Key.secret` key is always
+  written as a placeholder (`<secret>` by default) regardless of its real default, never its
+  actual value; and every literal is rendered as real TOML (strings quoted and escaped, integers
+  bounds-checked against TOML's signed 64 bits, floats never bare digits). `TomlExampleRendererTest`
+  proves this by parsing the generated file with `tomlj`, not just asserting on substrings.
+- **`Schema.withDefaultsFromValue(Map<String, Object>)`** is the Java piece of
+  `Schema::with_defaults_from_value` that is portable without a Jackson runtime in `-core`: given
+  an already-nested map (e.g. `objectMapper.convertValue(instance, Map.class)` from a caller that
+  does have one), it fills in each non-required key's `defaultText`/`defaultValue` from the
+  observed value, redacting a `Key.secret` key to `<redacted>` after rendering rather than before
+  (an unset secret is not a secret worth hiding). A required key is left untouched by definition.
+- **A real Lombok/Gradle interaction, found while adding this**: `Node`'s package-private-by-default
+  fields compiled as *private* and broke access from `JsonSchemaRenderer` in the same package,
+  because `java/lombok.config`'s `lombok.fieldDefaults.defaultPrivate = true` applies to every
+  field with no explicit access modifier in any Lombok-processed module, not only fields on
+  Lombok-annotated classes. Fixed by giving `Node`'s fields an explicit `public` modifier — harmless
+  since `Node` itself is package-private.
+- **`de.timscho.config.core.contract.ContractAssembler`** combines a built `Schema` with an `App`
+  and a `Producer` into a full, validated `Contract` — the Java equivalent of the Rust crate's
+  `Schema::into_contract` followed by `ContractBuilder::build`. It renders `json_schema` via
+  `JsonSchemaOptions.forContract()`, derives a declared `ExternalVar`'s `constraint` from its
+  `ty`/`values` wherever a caller left it unset (the escape hatch for a domain type is stating the
+  constraint outright, exactly as the Rust crate's own builder leaves it alone once set), and
+  finally runs the already-existing `ContractValidator` — written once here so `-loader` and
+  `-spring-boot` do not each reimplement assembly. `ProducerIdentity` supplies the one `Producer`
+  identity this module is allowed to publish (`name`/`version` are not caller-settable, on the
+  same reasoning the Rust crate's `Producer::current` gives). `Contract` itself grew the
+  label/Dockerfile helpers `labels`/`toDockerfileLabels`/`toDockerfileBlock`/`checkLabels`/
+  `verifyLabels` (throwing `ContractLabelException`, naming every mismatched or missing label at
+  once, not just the first) — a straight port of the Rust crate's own `Contract` methods.
 
 ## `terrace-config-core-jackson2` / `terrace-config-core-jackson3`
 
@@ -138,10 +210,12 @@ version pinned once in `buildSrc/build.gradle.kts`, is wired up by the
 `terrace-config.lombok-conventions` plugin (see "buildSrc" above) rather than applied by hand in
 each module — so a module opts in with a single `id("terrace-config.lombok-conventions")` line,
 no repeated `lombok { version.set(...) }` block. It's applied (transitively) to every module that
-has, or will have, bean-shaped classes: `terrace-config-core`, `terrace-config-processor`,
-`terrace-config-loader` and `terrace-config-spring-boot`. Two modules deliberately opt out, each
-for its own reason documented in its `build.gradle.kts`: `terrace-config-annotations` (annotation
-types can't carry Lombok annotations, and the module's whole point is "nothing but the JDK"), and
+has, or will have, bean-shaped classes: `terrace-config-core`, `terrace-config-loader` and
+`terrace-config-spring-boot`. Three modules deliberately opt out, each for its own reason
+documented in its `build.gradle.kts`: `terrace-config-annotations` (annotation types can't carry
+Lombok annotations, and the module's whole point is "nothing but the JDK"), `terrace-config-processor`
+(its own code is plain `javax.annotation.processing`/`javax.lang.model` logic, and the descriptors
+it emits reference `-core`'s plain Java records, never a Lombok-annotated class of its own), and
 `terrace-config-spec-tck` (its classes predate the plugin and aren't bean-shaped; new classes there
 can still opt in).
 
@@ -184,3 +258,187 @@ usable under either major, rather than two model copies.
   follows whichever Jackson major the consuming app's own Spring Boot BOM resolves (2.x under Boot
   3, 3.x's `tools.jackson` coordinates under Boot 4) without needing a `-spring-boot4` sibling —
   unlike the codec, there is no `ObjectMapper` of its own to fork.
+
+## `terrace-config-annotations` and `terrace-config-processor`
+
+The Java answer to `#[derive(Describe)]` (see `rust/docs/SCHEMA.md`): a service annotates its own
+configuration types, and `terrace-config-processor` (a JSR-269 annotation processor) generates a
+sibling `<Type>Descriptor` class per annotated type, exposing `public static final TypeDescriptor
+DESCRIPTOR` — one new record type in `de.timscho.config.core.descriptor`
+(`TypeDescriptor`/`KeyDescriptor`/`ElementDescriptor`/`RangeConstraint`). A descriptor is
+deliberately **dialect-agnostic** — no environment spelling, no alias derivation, no `text_form` —
+a loader or Spring producer combines it with its own dialect to build the actual `Key` model in
+`de.timscho.config.core.model`; that split is what keeps the processor usable by both.
+
+- **`@TerraceConfig`** marks a class (or record) whose fields become keys, or an enum whose
+  constants become the values one key accepts. **`@Nested`** recurses into a field's own
+  `@TerraceConfig`-annotated type; **`@Values`**/`@Values(from = ...)`/`@Values({"a", "b"})` report
+  a field's accepted spellings — bare, from a mirror enum, or a literal list, exactly the three
+  forms `SCHEMA.md`'s `values`/`values_from`/`values(...)` draw; **`@Range`** bounds a numeric
+  field; **`@Note`** and **`@Secret`** and **`@Skip`** match their Rust equivalents one for one.
+  **`@Element`**/**`@ElementValues`** ask the same `@Nested`/`@Values` questions one level into a
+  container's element (`Optional`/`List`/`Set`/`Map`, found by unwrapping generics — a map's *key*
+  type is skipped, since a TOML table's keys are strings whatever the map is keyed by).
+- **The compile error is the feature**, exactly as `SCHEMA.md` insists: a field whose type is
+  none of the recognised leaves (`String`, the primitives and their boxes, `BigInteger`,
+  `BigDecimal`) and carries none of the resolving annotations fails the build, naming the field,
+  its type, and the attributes that would resolve it — not a key silently published with no shape.
+  The same diagnostic covers a container whose element publishes nothing, a `@Range` on a
+  non-numeric type or with no bound set, a `@Nested`/`@Values` pointed at a type that isn't
+  annotated the right way, and more than one shape annotation on one field.
+- **Jackson is read, not duplicated.** A struct's `closed` flag and an enum constant's spelling
+  are read off `com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = false)` and
+  `@JsonProperty` respectively — via `AnnotationMirror`, by qualified name, so the processor takes
+  no compile dependency on either Jackson major (`jackson-annotations` is shared by both, see
+  above, but even that import is avoided).
+- **Generated descriptors are always top-level classes**, even for a `@TerraceConfig` type nested
+  inside another class: `Filer.createSourceFile` treats every dot in a name as a package
+  separator, so `Outer.Inner` cannot become `Outer.InnerDescriptor` by simple concatenation — it
+  would ask for a class in a package literally named `Outer`. `DescriptorNaming` instead joins
+  every enclosing simple name with `$` (`Outer$InnerDescriptor`), living directly in the type's own
+  package, and both the processor and field resolution use it consistently so cross-references
+  between two generated descriptors (nested/values pointing at another `@TerraceConfig` type)
+  compile.
+- **Tested with `compile-testing`** (`TerraceConfigProcessorTest`): one compilation per resolvable
+  shape (plain leaves, `@Nested`, all three `@Values` forms, `@Range`, `@Element`,
+  `@ElementValues`, `@Skip`) and one per refusal, asserting the diagnostic text — 15 cases in all.
+
+## `terrace-config-loader`
+
+The vanilla five-layer loader, `de.timscho.config.loader` — the Java equivalent of the Rust
+crate's own `Terrace`/`Dialect`/`provider::*`/`layers::*`, ported class for class rather than
+redesigned, since the layering *is* the product this loader exists to offer.
+
+- **`Dialect`** carries the prefix, nesting separator (`__`), `_FILE` suffix, and the set of
+  reserved keys a file may never supply — immutable, `with`-style methods, matching the Rust
+  builder's own consuming style. `keyPath`/`envSpelling` round-trip a key between its two
+  spellings; both the separator and reserved-key matching are case-insensitive, for the same
+  Windows-environment and mixed-case-file reasons the Rust doc comments give.
+- **The three layers** — `TomlLayers` (one file, or every `*.toml` in a directory, sorted and
+  deep-merged), `SecretsDir` (a directory of key-named files, dotfiles and non-regular entries
+  skipped, symlinks followed so a Kubernetes projected `Secret` volume works), `FileSuffixEnv`
+  (`<PREFIX><KEY>_FILE=/path` indirection, scanned rather than looked up since the keys are
+  open-ended) — each produce a nested `Map<String, Object>` rather than a `figment::Provider`,
+  since there is no figment equivalent on the classpath; `LayerValues` holds the shared
+  `insertNested`/`deepMerge`/`readValue` (UTF-8-strict, trailing `\r`/`\n` trimmed, never spaces)
+  helpers every layer needs.
+- **`ShadowPolicy`** (`REJECT`, the default, or `LAST_WINS`) and **`FileLayers`** — collecting the
+  secrets-directory and indirection layers together so the shadow check can see both at once, and
+  refusing (under `REJECT`) a key supplied by more than one of the environment, the secrets
+  directory, or indirection — are ported one for one from `layers.rs`, error messages included.
+- **`TerraceLoader`** is the builder: `configVar`/`secretsDirVar`/`defaultConfigPath`/
+  `fileSuffix`/`nestingSeparator`/`reserve`/`shadowPolicy`, then `load(Class<T>)`. Layers merge
+  lowest-precedence first — TOML, then prefixed environment variables (excluding reserved names
+  and `_FILE` indirections, which are this loader's own mechanism, not configuration), then the
+  file-backed layers on top — into one nested map, bound to the caller's type with a plain
+  Jackson `ObjectMapper.convertValue`, an internal detail exactly as `-core`'s own Jackson
+  dependency is. A second `load(Class<T>, Map<String, String>)` overload takes an explicit
+  environment map instead of `System.getenv()` — the seam the test suite uses instead of actually
+  mutating the process environment.
+- **A real bug, found and fixed before it shipped**: `tomlj`'s `TomlTable.toMap()` does not
+  recursively convert nested tables — a nested `[section]` stays a live `TomlTable` object rather
+  than becoming a plain `Map`, which Jackson then reads through bean introspection instead of as a
+  JSON object, surfacing as a spurious `"empty"` property (from `TomlTable`'s own `isEmpty()`)
+  wherever a contract had non-flat TOML. Fixed with `TomlLayers`' own recursive
+  `TomlTable`/`TomlArray` → `Map`/`List`/scalar converter, using the public `keySet()`/`get()`
+  accessors rather than trusting `toMap()`.
+- **Tested with real files in a JUnit `@TempDir`** rather than the corpus, since this loader has
+  no `Contract`-shaped output to compare against a stored case yet: `DialectTest` (8 cases, ported
+  from `dialect.rs`'s own unit tests) and `TerraceLoaderTest` (8 cases) — a TOML file alone, an
+  environment variable overriding a TOML value, a secrets-directory file, `_FILE` indirection, a
+  shadowed key rejected under `REJECT`, the same key resolved under `LAST_WINS`, a reserved key
+  refused from a secrets file, and a missing TOML file being silently skipped rather than an
+  error.
+- **`schema()`/`schemaAt(descriptor, root)`** describe every key a `TypeDescriptor` (usually a
+  generated `<Type>Descriptor.DESCRIPTOR`) can carry, spelled in this loader's own dialect,
+  mirroring `Terrace::schema`/`schema_at` — see `SchemaAssembler` under `terrace-config-core`,
+  below, for the algorithm; this method just supplies the loader's own dialect settings and the
+  three loader-read variables (`config`, `secrets_dir`, each `reserve`d key) as `LoaderVar`s, the
+  half no descriptor can see.
+- **`explain()`/`explain(Map<String, String>)`** report which layer supplied every key this
+  loader can see, without binding to any type — the Java `Terrace::explain`, ported field for
+  field from `explain.rs`'s `Layer`/`Fragment`/`Origin`/`Explanation`. `Layer` is a sealed
+  interface (`Toml`, `Env`, `SecretsFile`, `Indirection`) rather than the Rust `enum`, giving the
+  same exhaustiveness at compile time; `Origin` names the effective layer plus every layer that
+  lost, lowest precedence first; `Explanation.toString()` renders the same report the Rust crate's
+  `Display` impl does (prefix, key count, contested count, one header line per layer, then every
+  key indented under `keys:`), and, like the Rust type, **carries no configuration value** — only
+  paths and variable names — so logging one is safe by construction. A shared package-private
+  `TerraceLoader.Layers` record now holds each layer's own unmerged read, used by both `assemble`
+  (which merges it for `load`) and `Explanation.of` (which reports on it instead), so the two can
+  never disagree about what was actually read.
+- **Tested with `ExplanationTest`** (7 cases): a TOML-only value with no shadowing, an environment
+  override reported as shadowing the TOML value, a secrets-directory file attributed by its own
+  path, `_FILE` indirection attributed to both the indirection variable and the file it named, a
+  missing TOML file reported as `missing` rather than an error, an unreadable TOML file reported as
+  `not valid TOML` with no parse detail leaked, and the full rendered report's header lines.
+- **`loadWatched(Class)`/`loadWatched(Class, Map<String, String>)`** return a `Loaded<T>` (the
+  bound value plus a `Sources`) instead of just the value — the Java `Terrace::load_watched`.
+  `FileSuffixEnv.watchPaths()`/`FileLayers.watchPaths()` collect the *parent* directory of every
+  file-backed input (the secrets directory, each `_FILE` indirection target), not the file
+  itself, since a Kubernetes volume update replaces a file by renaming a whole new `..data`
+  directory over the old one — a watch on the old file's inode never fires again.
+  `Sources.differsFrom` compares the pre-binding merged map structurally, with `Double`/`Float`
+  compared by raw bits rather than `==`, so a configuration holding `NaN` compares equal to
+  itself instead of every reload looking like a change. `Sources.toString()` never prints the
+  fingerprint — it is every configuration value, secrets included.
+
+## `terrace-config-spring-boot`
+
+The Spring Boot side, `de.timscho.config.spring` — deliberately not a second copy of
+`terrace-config-loader`'s five layers. Spring's own `Binder`/`ConfigDataEnvironmentPostProcessor`
+already give an application every layer the vanilla loader has to build by hand (files, profiles,
+relaxed environment binding); this module only adds what Spring genuinely lacks.
+
+- **`FileIndirectionEnvironmentPostProcessor`** is the one layer Spring doesn't already have:
+  `<NAME>_FILE=/path` naming a file whose contents supply the property `<NAME>` would otherwise
+  have named directly — the same convention `terrace-config-loader`'s `FileSuffixEnv` implements
+  for the vanilla loader, and the one a mounted Kubernetes `Secret` or Docker secret is addressed
+  by. It runs once, early (`EnvironmentPostProcessor`s execute before any bean — including the
+  application's own — exists), scanning the environment's own `systemEnvironment` property source
+  for `_FILE`-suffixed names, reading each file it finds (UTF-8-strict, trailing `\r`/`\n` trimmed,
+  never spaces), and publishing the results in a new property source added at the *front* of the
+  environment — so a mounted secret always outranks a plain environment variable or a
+  configuration file, the same "file layers win" precedence `terrace-config-loader`'s own
+  `FileLayers` documents. Registered via `META-INF/spring.factories`, since `EnvironmentPostProcessor`
+  is one of the few extension points Spring Boot 3 still wires that way rather than through
+  `AutoConfiguration.imports` — this class has to run before that mechanism even exists.
+- **`SpringDialect`** names the one real divergence from `terrace-config-loader`'s own `Dialect`,
+  rather than leaving it implicit: Spring's relaxed binding already treats a single `_` as the
+  environment's nesting separator (`MYAPP_GITHUB_TOKEN` binds `myapp.github.token`), where the
+  vanilla loader deliberately uses `__` so a field may itself be named with an underscore without
+  colliding with nesting. This module cannot change Spring's own convention without breaking every
+  property Spring already binds correctly, so the ambiguity is real and permanent for this
+  producer — documented and exercised by `SpringDialectTest` rather than left as a surprise.
+- **`SpringContractProducer.produce`** is the `Contract` producer: it wires `SpringDialect` into a
+  `de.timscho.config.core.model.Dialect` (same prefix, `_` nesting, `_FILE` suffix), hands a
+  `TypeDescriptor` and that dialect to `-core`'s `SchemaAssembler`, and passes the resulting
+  `Schema` to `-core`'s `ContractAssembler` alongside the caller's own `App` — the same three-step
+  composition `terrace-config-loader`'s `schemaAt` uses for its own `Schema`, one level further.
+  `schema.loader` is always empty for this producer: Spring's `Binder` decides what the layers are
+  from its own property sources, unlike the vanilla loader's `config`/`secrets_dir` variables, so
+  there is nothing to publish there. Callable directly from a hand-written `@Configuration` class,
+  or through the starter auto-configuration below.
+- **`TerraceContractProperties`/`TerraceContractAutoConfiguration`** are the zero-hand-written-
+  `@Configuration`-class path: a service states `terrace.contract.type` (the annotated
+  configuration type's fully qualified name) and `terrace.contract.env-prefix`, and
+  `TerraceContractAutoConfiguration` looks up `<Type>Descriptor.DESCRIPTOR` by reflection and
+  calls `SpringContractProducer.produce` itself, publishing a `Contract` bean. Registered through
+  `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` (the
+  mechanism that replaced `spring.factories` for `@Configuration` classes in Spring Boot 3 —
+  unlike `FileIndirectionEnvironmentPostProcessor` above, which still needs `spring.factories`
+  since it has to run before any `@Configuration` class could), and gated on
+  `terrace.contract.type` being set via `@ConditionalOnProperty`, so a service that doesn't set it
+  gets no `Contract` bean and no reflective lookup is even attempted. Only a top-level annotated
+  type is supported this way — a nested one still needs `SpringContractProducer.produce` called
+  by hand, since reconstructing the processor's own `$`-joined naming from a bare class name isn't
+  attempted.
+- **Tested with a `MockEnvironment`** (`spring-test`) standing in for the real system environment
+  property source, not a booted `SpringApplication`: `SpringDialectTest` (7 cases) and
+  `FileIndirectionEnvironmentPostProcessorTest` (7 cases — a file supplying its target, trailing
+  newline trimmed but not other whitespace, a plain variable left alone, no indirection meaning no
+  property source added, a missing file and an invalid-UTF-8 file each refused naming the
+  variable, and a file-backed value outranking an ordinary property already present).
+  `SpringContractProducerTest` (2 cases) proves the whole path against a real generated descriptor
+  (`ServiceConfig`/`ServiceConfigDescriptor`): a validated `Contract` with the right dialect,
+  secret and env spelling, and the empty-prefix refusal still firing through `ContractValidator`.

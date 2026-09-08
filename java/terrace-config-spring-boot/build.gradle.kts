@@ -3,7 +3,8 @@
 // missing layers as Spring machinery (an EnvironmentPostProcessor for _FILE indirection) rather
 // than describing a dialect nothing implements.
 description = "terrace-config-spring: starter + producer over Spring's Binder, target tier 1 — " +
-    "not started yet (PR 7). See java/README.md."
+    "the _FILE indirection EnvironmentPostProcessor is implemented; the Contract producer " +
+    "itself is open, pending -core's json-schema rendering. See java/README.md."
 
 plugins {
     id("terrace-config.lombok-conventions")
@@ -20,4 +21,6 @@ dependencies {
     implementation(project(":terrace-config-annotations"))
     implementation(libs.spring.boot.starter)
     testImplementation(libs.spring.boot.starter.test)
+    testCompileOnly(project(":terrace-config-processor"))
+    testAnnotationProcessor(project(":terrace-config-processor"))
 }

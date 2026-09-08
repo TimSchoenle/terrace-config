@@ -85,7 +85,7 @@ jobs:
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: rust/Cargo.toml
-          docs-directory: rust/docs
+          docs-dir: rust/docs
           extra: ${{ steps.config.outputs.json }}
 
       - name: Render and commit the README
@@ -163,7 +163,7 @@ jobs:
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: rust/Cargo.toml
-          docs-directory: rust/docs
+          docs-dir: rust/docs
           extra: ${{ steps.config.outputs.json }}
 
       # Writes nothing; fails with the first differing line when README.md is stale.
