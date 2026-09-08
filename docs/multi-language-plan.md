@@ -11,6 +11,27 @@ so it states the decisions already taken and the reasoning behind them rather th
 `rust/` therefore do not resolve until Phase 0 has landed; links into `spec/` and `docs/` resolve
 either way, because neither directory moves.
 
+### Its half of the problem
+
+[`contract-cli-plan.md`](contract-cli-plan.md) — merged as
+[#96](https://github.com/TimSchoenle/terrace-config/pull/96) — owns everything downstream of a
+contract document: the nine renderings, `conform`, `validate`, `stamp`, `image`, and the chart
+gates, all in one `terrace-contract` binary that depends on no implementation. **Where the two
+documents overlap, that one is senior**, and the sections below that were written before it have
+been corrected rather than left to contradict it.
+
+This document owns the other half: the repository move, and the per-language producer — types to
+descriptors to a `Contract` to JSON. That is the seam #96 draws, and it is worth restating in its
+own words, because it removes about two thirds of what a new implementation used to owe:
+
+> A new implementation's obligation is one sentence: emit a document that passes
+> `terrace-contract conform --tier <n>`.
+
+Not a renderer per format, not a validator, not a test kit. Three consequences run through
+everything below — the Java side writes **no renderings**, its TCK is a **wrapper around the
+binary** rather than a reimplementation of it, and `conform` is **normative** where a per-language
+check disagrees.
+
 ---
 
 ## 0. Where this starts
@@ -44,7 +65,7 @@ change them deliberately rather than by drift.
 | 2 | **The vanilla implementation is a Java port of the five layers**, not a producer bolted onto somebody else's binder. `producer.loader` is `terrace-java`. | A producer must name the library whose environment reads its `text_constraint` patterns were measured against. Wrapping Jackson would mean publishing Jackson's reads and shipping no loader; Java would get a document generator and no runtime. Porting the layers is the only option where `terrace-java` is a thing a service can actually load configuration with, and the only one that can honestly aim at tier 2. |
 | 3 | **Schema declaration is an annotation processor**, mirroring `#[derive(Describe)]`. | Java reflection can see types, generics and enum constants; it cannot see the Javadoc, and it cannot refuse to compile. [`rust/docs/SCHEMA.md`](../rust/docs/SCHEMA.md) treats *"a field whose type publishes no shape is a compile error"* as the whole point of the feature — a runtime-reflection design turns that into a generation-time failure discovered by whoever runs the generator, which is later and quieter. Rules out `@Description("…")` duplicated beside the Javadoc. |
 | 4 | **Both producers are built in parallel over a shared core**, rather than one then the other. | Forces the core/adapter boundary to be correct rather than refactored into existence, and the two loaders disagree about enough — naming, list spellings, indirection — that a core designed against one of them alone would encode its assumptions. |
-| 5 | **Maven, Java 21, `dev.terrace` groupId.** | Not asked, chosen: Maven is Spring Boot's documented default and the reproducibility story is simpler; Java 21 is the current LTS and above Spring Boot 3's floor; `dev.terrace` matches the OCI label namespace `dev.terrace.config.*` that `FORMAT.md` already fixes. Revisit freely before Phase 1 lands; after it, the coordinates are published. |
+| 5 | **Gradle, Java 21, `dev.terrace` groupId.** | Settled by `contract-cli-plan.md`, not chosen here: its worked example pipes `./gradlew -q terraceContract` into `conform`, and its phase 2 lands a Gradle plugin. Java 21 is the current LTS and above Spring Boot 3's floor; `dev.terrace` matches the OCI label namespace `dev.terrace.config.*` that `FORMAT.md` already fixes. (An earlier draft of this document said Maven, on the reasoning that it is Spring Boot's documented default. Main says otherwise and main is where the plugin is being built.) |
 
 ### Tier targets
 
@@ -69,8 +90,11 @@ State these in each module's README, and do not claim them before the corpus pas
 │       ├── CONFORMANCE.md
 │       ├── contract.schema.json
 │       └── conformance/      gains a per-language source block per case
-├── docs/                     repo-level docs only
+├── docs/                     cross-language docs only
+│   ├── contract-cli-plan.md      the other half of the plan; senior where they overlap
 │   └── multi-language-plan.md    ← this file, stays here
+├── cli/                      already at the root. A sibling of rust/, never a member
+│   └── …                     the terrace-contract binary; its own Cargo workspace
 ├── rust/                     everything the crate is today
 │   ├── Cargo.toml
 │   ├── CHANGELOG.md
@@ -79,19 +103,24 @@ State these in each module's README, and do not claim them before the corpus pas
 │   ├── docs/                 SCHEMA.md, CONTRACT.md, RELOAD.md, … and config-contract-plan.md
 │   ├── src/  macros/  tests/  examples/  fuzz/
 ├── java/
-│   ├── pom.xml                                aggregator, no code
+│   ├── build.gradle.kts, settings.gradle.kts  the build; no code
 │   ├── terrace-config-annotations/            @TerraceConfig and friends; compile scope only
-│   ├── terrace-config-core/                   document model, renderers, the eight refusals
+│   ├── terrace-config-core/                   model, ContractAssembler, ContractCodec — no renderers
 │   ├── terrace-config-processor/              JSR-269 processor → descriptors
 │   ├── terrace-config-loader/                 the vanilla five-layer loader
 │   ├── terrace-config-spring-boot/            starter + producer over Spring's Binder
-│   └── terrace-config-spec-tck/               corpus runner and tier comparators
+│   └── terrace-config-spec-tck/               a JUnit wrapper around `terrace-contract conform`
 ├── README.md                 front door for the repository, not for the crate
 ├── LICENSE  SECURITY.md
 └── .github/
 ```
 
-Three things in that tree are load-bearing and easy to get wrong:
+Four things in that tree are load-bearing and easy to get wrong:
+
+- **`cli/` is a sibling of `rust/`, not a member of it**, and Phase 0 must not sweep it up with the
+  move. `contract-cli-plan.md` puts the whole architectural claim in one line of tree: the binary
+  is not part of the Rust implementation, it is *written in* Rust. It keeps its own Cargo
+  workspace and its own lock file, and CI asserts it depends on no implementation.
 
 - **`spec/` does not move.** `.gitattributes` pins `spec/** text eol=lf` because the corpus is
   compared byte for byte and the tree is authored on Windows. Moving it would silently invalidate
@@ -210,8 +239,9 @@ permanently; it is the only check that the published install snippet is true.
   Java-only pull request can skip the 25-minute fuzz job without the required check disappearing.
   Add `rust` and `java` path filters, and add every new Java job to the `needs:` list of `ci` — a
   job absent from that list is a job branch protection does not enforce.
-- **Renovate learns Maven.** Enable the maven manager for `java/**/pom.xml`, and group the Java
-  test-scoped dependencies the way `fuzz/` is grouped today.
+- **Renovate learns Gradle.** Enable the gradle manager for `java/`, and group the Java
+  test-scoped dependencies the way `fuzz/` is grouped today. `cli/` and `cli/fuzz/` arrived with
+  #96 as two more Cargo workspaces and want the same treatment.
 - **`docs/CONTRIBUTING.md`**, or a section in the root README: the two toolchains, the two test
   commands, and the rule that a spec change and both implementations' corpus updates are one pull
   request.
@@ -222,38 +252,33 @@ permanently; it is the only check that the published install snippet is true.
 
 ### PR 3 — `java/` build and `terrace-config-spec-tck`
 
-The TCK comes first, before any producer, and it is testable before any producer exists — it can
-run against the stored corpus itself. That is the point: a harness that has never failed is a
-harness nobody has debugged.
+**This section was rewritten after #96.** An earlier draft specified a Java meta-schema validator
+and a Java tier comparator — a second implementation of `conform`, in a second language, held to
+nothing. `cli/` now ships both, tested by 26 property tests and three fuzz oracles, and the whole
+point of that binary is that nobody writes them again.
 
-**What it contains.**
+So the TCK is a **JUnit wrapper around `terrace-contract`**, and it is small:
 
-- A **meta-schema validator**. Use `com.networknt:json-schema-validator`, which handles draft-07
-  and resolves nothing over the network. `contract.schema.json` is self-contained by design; the
-  validator must be configured to refuse remote references outright rather than to happen not to
-  need them.
-- **Two entry points**, matching the Rust suite: the whole envelope against the schema root, and
-  the `schema` half alone against `#/$defs/schema`, because that half is published as an artefact
-  in its own right.
-- **A tier comparator.** Given a produced document and a stored case, compare only what the claimed
-  tier covers:
-  - *tier 1* — schema-valid, the eight refusals honoured, a `producer` block present, and the
-    document byte-stable across two renders of the same input;
-  - *tier 2* — tier 1, plus field-for-field equality of `env`, `env_file`, `secrets_file`,
-    `env_aliases`, `env_file_aliases`, `secrets_file_aliases` and `unreachable` for every key;
-  - *tier 3* — byte equality after substituting `producer.version` with `0.0.0-conformance`.
-  The comparator's failure output must be a readable diff, not an assertion message. The diff *is*
-  the deliverable when a rendering changes.
-- **The `producer.version` substitution**, `0.0.0-conformance`, exactly as `rust/tests/spec.rs`
-  applies it. Nothing else is normalised — not field order, not escaping, not whitespace.
+- **Locate the binary.** A system property or environment variable, falling back to `$PATH`. The
+  build resolves it from the pinned `terrace-contract` release, or from the container image the
+  `contract-cli-plan.md` distribution section describes — never by building `cli/` from source as
+  part of the Java build, which would couple the two toolchains for no gain.
+- **`validate`**, on every document a fixture produces and on every stored corpus document. The
+  second needs no producer at all, which is what makes the harness testable on the day it lands: a
+  harness that has never failed is a harness nobody has debugged.
+- **`conform --tier <n>`**, at the tier the implementation under test claims. The tier is a
+  parameter of the test, not a constant in it, so that claiming tier 2 for the vanilla loader and
+  tier 1 for Spring is a fact the build enforces rather than a sentence in a README.
+- **Exit-code discipline.** `0` clean, `1` read it and found it wanting, `2` could not read it. A
+  wrapper that collapses the last two turns a broken binary into a failing gate, and the next
+  person debugs the wrong thing.
+- **The failure surface is the binary's output**, passed through verbatim. Do not re-render it into
+  assertion messages; `conform`'s diff is the deliverable when a rendering changes.
 
-**How it is proved before a producer exists.** Two tests that need no implementation: every stored
-`contract.json` validates against the meta-schema, and each case round-trips through the core model
-once that lands (PR 4). A corpus case that no longer validates is the one failure a corpus alone
-cannot catch — an expectation blessed while wrong — and the Rust suite checks for it, so the Java
-side must too.
+What the TCK does **not** contain: a JSON Schema engine, a tier comparator, a
+`producer.version` substitution, or any knowledge of what tier 2 covers. All four moved to `cli/`.
 
-**Also in this PR:** the aggregator `pom.xml`, the module skeletons, the formatter and linter
+**Also in this PR:** the Gradle build for `java/`, the module skeletons, the formatter and linter
 configuration, and a `java/README.md` that says which modules exist and claims no tier yet.
 
 ---
@@ -274,21 +299,31 @@ it. No Spring, no reflection over user types, no I/O beyond serialising.
   a fixed pretty-printer. Add a test that renders the same input twice and compares bytes; add
   another that renders it in a JVM started with `-XX:hashCode=2` if you want the failure to be
   reproducible rather than occasional.
-- **The eight refusals**, from [*What a producer MUST refuse*](../spec/v1/FORMAT.md#what-a-producer-must-refuse).
-  Each gets its own exception type and its own test. `CONFORMANCE.md` is explicit that a producer
-  emitting a secret with a default "is not tier 1 however well-formed the JSON is" — these are not
-  validation niceties, they are the tier.
+- **`ContractAssembler` and `ContractCodec`** — descriptors to a `Contract`, and a `Contract` to
+  JSON. Those two names are `contract-cli-plan.md`'s, in its table of what each language keeps;
+  use them rather than inventing a third spelling for the same seam.
+- **The eight refusals**, from [*What a producer MUST refuse*](../spec/v1/FORMAT.md#what-a-producer-must-refuse),
+  as a `ContractValidator` with an exception type and a test each. Note the division of labour
+  #96 settles: **`conform` is normative and the Java check is a fast path**, whose only job is a
+  better message — it knows the field, the annotation and the source position where the binary
+  knows a JSON pointer. Where the two disagree, `conform` is right and the Java one is a bug. It
+  earns its place because `FORMAT.md` says a producer MUST *fail rather than emit*, and a producer
+  that emits and then has a separate tool refuse the result has not quite done that.
 - **The `unreachable` machinery**: `unnameable` for a path that does not survive the case fold or
   already carries the nesting separator, `indirection` for a spelling colliding with another key's
   `_FILE` variable. This is shared between both producers and is most of what tier 2 costs.
-- **The renderings**, mirroring the Rust `Format` enum: `json`, `markdown`, `markdown-loader`,
-  `markdown-keys`, `toml`, `json-schema`, `contract`, `labels`, `dockerfile`. `contract` and
-  `json-schema` are required for conformance; the markdown trio and `toml` are what makes the
-  implementation usable and can land in a follow-up if the PR gets too large.
+- **No renderings.** Not markdown, not TOML, not JSON Schema, not labels, not the Dockerfile block.
+  `terrace-contract render` produces all nine from the document alone, byte-identical across every
+  producer, and `spec/v1/conformance/<case>/rendered/` holds it to that. Nine Java renderers would
+  each have had to be byte-identical to Rust's to be worth anything. The only JSON this module
+  writes is the contract itself.
 
 **Test it against the corpus without a producer**: deserialise each stored `contract.json` into the
 model, re-serialise, and compare bytes. That single test exercises the whole model and every
 ordering decision, and it fails the moment the model cannot represent something the format allows.
+Note the ordering rule #96 found the hard way — a producer builds its JSON from an alphabetical
+map, so *every* object in a published document is alphabetical, the JSON Schema's `properties`
+included. Jackson must be made to sort the same way or the round trip is not a round trip.
 
 ### PR 5 — `terrace-config-processor`
 
@@ -350,7 +385,7 @@ ones take in `FORMAT.md`. Write them into `FORMAT.md` between marker comments un
 their own, regenerated by a bless flag mirroring `TERRACE_SPEC_BLESS`:
 
 ```bash
-cd java && mvn -pl terrace-config-loader test -Dterrace.reads.bless=true
+cd java && ./gradlew :terrace-config-loader:test -Pterrace.reads.bless=true
 ```
 
 A hand-written table drifts from the binder silently, and every published pattern must be a
@@ -439,12 +474,13 @@ which tier the change affects.
 
 Not scheduled. Listed so it is visible that the migration does not end at a conforming document.
 
-- A **Maven plugin** producing the contract at build time — the Java equivalent of
-  [`rust/src/schema/cli/`](../rust/src/schema/cli/), whose whole argument is that every service was
-  otherwise writing the same two-hundred-line generator and three of them ended up disagreeing
-  about how to cut a `LABEL` block out of a Dockerfile.
-- The **`verify` half** — checking a built image against what was generated. Rust has it in
-  `schema/cli/verify.rs`; a chart's CI job in a Java shop needs it too.
+- A **Gradle plugin** emitting the contract at build time — the `terraceContract` task
+  `contract-cli-plan.md` pipes into `conform`. It is scheduled *there*, in that plan's phase 2, not
+  here; it is listed for completeness so nobody plans it twice. Note how little it does now: emit
+  the document to stdout. Rendering, stamping and the image read-back are the binary's.
+- **`image verify`** — checking a built image against what was generated — is likewise the binary's
+  and needs no Java at all. Listed because an earlier draft of this document scheduled a Java port
+  of it.
 - **Reload** for the vanilla loader: rebuilding a running service when the files under it change.
   The Rust `reload` feature deliberately does not depend on `loader`, and the Java port should keep
   that independence.
@@ -463,9 +499,9 @@ These are the house rules, and they are not negotiable per-file.
 - **Separation of concerns.** `-core` knows about documents, not about binders. `-loader` and
   `-spring-boot` know about their binder and produce core's model. The TCK knows about neither and
   compares documents. A Spring import in `-core` is a design failure, not a shortcut.
-- **Minimal dependencies.** Jackson for JSON, networknt for schema validation, a TOML parser for
-  the file layer, Lombok. Every addition beyond that needs an argument, and `-annotations` takes
-  none at all.
+- **Minimal dependencies.** Jackson for JSON, a TOML parser for the file layer, Lombok. Every
+  addition beyond that needs an argument, and `-annotations` takes none at all. A JSON Schema
+  engine is *not* on the list any more — `terrace-contract validate` is the one that runs.
 - **Deterministic by construction**, not by test. Ordered collections in the render path, explicit
   property order, no reliance on annotation-processing round order for output ordering.
 - **Comments explain why.** The Rust tree's comments are load-bearing — the `figment/test` note in
@@ -493,16 +529,29 @@ Re-blessing the corpus, which is what produces the diff every other implementati
 cd rust && TERRACE_SPEC_BLESS=1 cargo test --all-features --test spec
 ```
 
+The shared toolchain, which is its own workspace and not part of either implementation:
+
+```bash
+cd cli && cargo test
+```
+
 Java, from Phase 1:
 
 ```bash
-cd java && mvn -B verify
+cd java && ./gradlew build
 ```
 
 Regenerating the measured reads tables in `spec/v1/FORMAT.md`:
 
 ```bash
-cd java && mvn -B test -Dterrace.reads.bless=true
+cd java && ./gradlew test -Pterrace.reads.bless=true
+```
+
+What a Java producer actually owes, and the command that says whether it has paid — the vanilla
+loader claims tier 2, Spring Boot tier 1:
+
+```bash
+./gradlew -q terraceContract | terrace-contract conform --tier 2 -
 ```
 
 ---
@@ -542,17 +591,20 @@ corpus diff, not here.
 | Measured reads drift from the binder after a dependency bump | Any Renovate PR touching Spring or the TOML parser | Generate the tables from the measurement, so a bump that changes a read fails the build that proposes it. |
 | Tier claimed above tier delivered | Anywhere | `CONFORMANCE.md`: claiming a tier you do not meet is worse than claiming none. The TCK enforces the claim; keep the claim in code, not only in prose. |
 | Phase 0 lands while Phase 3 is in flight | Merge conflicts across every path in the tree | Phase 0 is two PRs and they merge before anything under `java/` is written. Do not parallelise across the move. |
+| Phase 0 sweeps `cli/` under `rust/` | The move, silently — it is a Cargo workspace and would still build | `cli/` is named in the layout as a sibling and excluded from the `git mv` list. `contract-cli-plan.md` treats the distinction as its central claim. |
+| Java renderers get written before the cutover | Wherever the `java/` tree is being developed today | `contract-cli-plan.md` §6 calls this the time-critical part of its plan: every week it waits, more of the ~1,300 lines it wants deleted has been written. This document's PR 4 is the version that never writes them. Reconcile with whoever holds that tree before starting Phase 2. |
 
 ---
 
 ## Open, and deliberately not decided here
 
-- **Build tool.** Maven was chosen without being asked. Revisit before PR 3 lands; after it, the
-  coordinates are published and the cost rises sharply.
+- ~~**Build tool.**~~ Settled by `contract-cli-plan.md`: Gradle.
 - **Whether the Java artefacts are published**, and where. The crate is `publish = false` and
-  distributed by git tag; Java has no equivalent idiom, and consuming a Maven module by git is
+  distributed by git tag; Java has no equivalent idiom, and consuming a Gradle module by git is
   materially worse than consuming a crate that way. This needs an answer before Phase 3 ends, and
-  it may be the thing that argues for GitHub Packages or Maven Central.
+  it may be the thing that argues for GitHub Packages or Maven Central. Note that
+  `contract-cli-plan.md` answers the same question for the *binary* — a container image, release
+  binaries, a composite action — and none of those shapes carries a Java library.
 - **Whether `rust/docs/config-contract-plan.md` belongs under `rust/`.** It is design, not crate
   documentation, and the argument for moving it to root `docs/` is decent. Left with the crate
   because it is the design that produced the crate, and because splitting it costs a link audit for
