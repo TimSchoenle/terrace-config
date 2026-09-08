@@ -23,7 +23,7 @@ Layered figment configuration that survives mounted-secret rotation.
 
 [![Release](https://img.shields.io/github/v/release/TimSchoenle/terrace-config?sort=semver)](https://github.com/TimSchoenle/terrace-config/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/TimSchoenle/terrace-config/ci.yml?branch=main&label=ci)](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml)
-[![Licence](https://img.shields.io/github/license/TimSchoenle/terrace-config)](LICENSE)
+[![Licence](https://img.shields.io/github/license/TimSchoenle/terrace-config)](../LICENSE)
 [![MSRV](https://img.shields.io/badge/MSRV-1.94-blue)](Cargo.toml)
 
 ## What this is
@@ -278,7 +278,7 @@ for everything this crate does at runtime should not link a test harness.
 | [terrace-contract: one toolchain for every implementation](docs/contract-cli-plan.md) | A plan for a single binary that is everything the configuration contract needs after a document |
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
-to run a campaign, and [spec/](spec/) is the contract format itself — normative, language-neutral,
+to run a campaign, and [spec/](../spec/) is the contract format itself — normative, language-neutral,
 and what an implementation in another language conforms to. The table above documents *this*
 implementation; the spec documents the document.
 
@@ -292,7 +292,7 @@ breaking change move the minor while the crate is pre-1.0; `fix` moves the patch
 pull request and commits the result back to the branch, and a push to `main` whose `README.md`
 does not match its template fails.
 
-The gates a pull request has to pass are in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
+The gates a pull request has to pass are in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml);
 all of them run locally:
 
 ```bash
@@ -311,9 +311,9 @@ place of the value, and no error in this crate prints a value either, so a log l
 to leak a credential. `Terrace::explain` records no value at all, so there is nothing in it to
 redact.
 
-[SECURITY.md](SECURITY.md) has the reporting instructions. Do not open a public issue for a
+[SECURITY.md](../SECURITY.md) has the reporting instructions. Do not open a public issue for a
 vulnerability.
 
 ## Licence
 
-MIT. [LICENSE](LICENSE) has the terms.
+MIT. [LICENSE](../LICENSE) has the terms.
