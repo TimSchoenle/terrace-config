@@ -43,7 +43,8 @@ Phase 0 and most of phase 1 are built, in `cli/`. What exists and is under test:
 | `validate` | any document against the embedded `spec/v1/contract.schema.json` |
 | `image` | the label comparison and the Dockerfile block reader |
 | `stamp` | build identity onto a document, with the round trip that makes it safe |
-| CI | `fmt`, `clippy` in both feature sets, the corpus tests, and the assertion that `cli/` depends on no implementation |
+| tests | 26 property tests over hand-built documents — one per refusal, the tier 2 boundaries, a foreign `ty`, an integer past TOML's range — plus `cli/fuzz/`: three oracles that replay a committed corpus and a fixed-seed sweep on a plain `cargo test` |
+| CI | `fmt`, `clippy` in both feature sets, the corpus tests, the fuzz oracles, and the assertion that `cli/` depends on no implementation |
 
 `spec/v1/conformance/<case>/rendered/` landed with it: seven files per case, blessed by the Rust
 implementation's own `TERRACE_SPEC_BLESS` run, which is §5 arriving with phase 1 rather than after
@@ -57,6 +58,11 @@ Two things found while building, both now fixed in the plan's own terms rather t
 - **The TOML rendering's placeholder was `ty`-keyed** in the implementation it was ported from,
   which §7.3 says a shared renderer must never be. It reads the published `constraint` instead —
   the same answer, arrived at by the producer that did have the type, and right for every producer.
+- **The fuzz oracles found three defects in themselves** before they found any in the crate, which
+  is what §12 means by an oracle needing validating: a column check comparing the loader table's
+  four columns against the key table's six, an agreement check that string-matched the validator's
+  error text and so fired on unrelated documents, and an assertion about structured keys that no
+  rule anywhere makes. All three would have been noise in a suite people learn to ignore.
 - **`serde_json`'s `preserve_order` was wrong.** A producer builds its JSON with `serde_json::Map`,
   a `BTreeMap`, so every object in a published document is alphabetical — the JSON Schema's
   `properties` included. Sorting the same way is what makes `--format contract` a byte-for-byte
