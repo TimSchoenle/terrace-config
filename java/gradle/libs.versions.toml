@@ -5,14 +5,19 @@
 [versions]
 junit = "5.11.4"
 assertj = "3.27.3"
-# Jackson 2.x, `com.fasterxml.jackson:*` — used directly only by -core and -spec-tck as an
-# internal implementation detail, never exposed on a public API. Jackson 3.x renamed its Maven
-# coordinates to `tools.jackson:*` (except jackson-annotations, which stays on 2.x for both), so
-# there is no version to "align" with a Jackson-3-based consumer (e.g. a future Spring Boot 4
-# app) — the two are different artifacts entirely. See docs/migration-progress.md, "Lombok and
-# the Jackson 2 vs. 3 split".
+# Jackson 2.x, `com.fasterxml.jackson:*` — the codec `-core-jackson2` builds against; also used by
+# -spec-tck as an internal implementation detail, never exposed on a public API.
 jackson = "2.18.3"
-lombok = "1.18.36"
+# Jackson 3.x, `tools.jackson.core:*` — the codec `-core-jackson3` builds against. Jackson 3
+# renamed its Maven coordinates from `com.fasterxml.jackson` (except jackson-annotations, which
+# deliberately stayed on 2.x so both majors can depend on it), so a 2.x and a 3.x Jackson artifact
+# are different artifacts entirely and can coexist on one classpath without colliding. See
+# docs/migration-progress.md, "Dual Jackson 2 / 3 support".
+jackson3 = "3.0.0"
+# 1.18.44+ is required for `lombok.jacksonized.jacksonVersion`, which lets one `@Jacksonized`
+# model emit both Jackson 2's and Jackson 3's `@JsonDeserialize`/`@JsonPOJOBuilder` at once — see
+# the same migration-progress.md section.
+lombok = "1.18.46"
 # The io.freefair.lombok Gradle *plugin*, not the lombok library above — tracks the Gradle
 # wrapper's own minor version per the plugin's compatibility policy, not the lombok library
 # version. Consumed by buildSrc/build.gradle.kts to build the shared convention plugin that
@@ -26,6 +31,7 @@ compile-testing = "0.21.0"
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-databind-v3 = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson3" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 compile-testing = { module = "com.google.testing.compile:compile-testing", version.ref = "compile-testing" }

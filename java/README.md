@@ -12,7 +12,9 @@ what remains open.
 | Module | What it is | Status |
 |---|---|---|
 | `terrace-config-annotations` | `@TerraceConfig` and the rest of the vocabulary a service's own types carry. Depends on nothing but the JDK. | not started |
-| `terrace-config-core` | The envelope model, the eight refusals, the renderings. Knows about documents, not binders. | not started |
+| `terrace-config-core` | The envelope model and the eight build-time refusals. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the codecs. | **implemented** — validation and a Jackson-version-agnostic model; the nine renderings (json, markdown, toml, json-schema, contract, labels, dockerfile, ...) live in the codec modules below |
+| `terrace-config-core-jackson2` | The byte-stable `json` codec for the `-core` model, built on Jackson 2.x. | **implemented** |
+| `terrace-config-core-jackson3` | The same codec, built on Jackson 3.x instead. | **implemented** |
 | `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. | not started |
 | `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | not started |
 | `terrace-config-spring-boot` | The Spring Boot starter and producer over Spring's `Binder`. `producer.loader` will be `spring-boot`, target **tier 1**, divergence documented once it exists. | not started |
@@ -31,17 +33,75 @@ versions live in one place, `gradle/libs.versions.toml`, the same role `<depende
 played before. Shared build logic (the Java toolchain, test dependencies, Lombok wiring) lives in
 `buildSrc`'s convention plugins rather than being repeated per module — see "buildSrc" below.
 
-`terrace-config-spec-tck` is the only module with anything to test today: it reads
-`../spec/v1/contract.schema.json` and `../spec/v1/conformance/*/contract.json` directly, so it
-needs no producer and no other module to exercise for real. The other five modules are empty
-placeholders — they compile, but there is nothing in them yet.
+`terrace-config-spec-tck`, `terrace-config-core`, `terrace-config-core-jackson2` and
+`terrace-config-core-jackson3` are, so far, the modules with anything to test: all read
+`../spec/v1/conformance/*/contract.json` directly, so none needs a producer or any other module to
+exercise for real. Each codec module's own corpus test (`ContractCorpusRoundTripTest`)
+deserialises every stored case into the shared model and re-serialises it, asserting the result is
+byte-identical to the stored file — the strongest check the model has, run once per Jackson major
+against the exact same model classes, and the one the plan calls for before any producer exists.
+The remaining four modules (`terrace-config-annotations`, `-processor`, `-loader`,
+`-spring-boot`) are still empty placeholders — they compile, but there is nothing in them yet.
 
 ## Conventions
 
-No streams (loops), Lombok for the model classes once they exist, minimal dependencies, and
+No streams (loops), Lombok for the model classes, minimal dependencies, and
 deterministic-by-construction rendering — ordered collections and explicit property order rather
-than relying on incidental iteration order. Comments explain why, not what. `terrace-config-spec-tck`
-already follows all of them.
+than relying on incidental iteration order. Comments explain why, not what.
+`terrace-config-spec-tck` and `terrace-config-core` already follow all of them.
+
+## `terrace-config-core`
+
+The document model — `Contract` and everything it's built from (`de.timscho.config.core.model`)
+— and the eight build-time refusals (`de.timscho.config.core.refusal`), all mirroring
+[`spec/v1/contract.schema.json`](../spec/v1/contract.schema.json) field for field and property for
+property. Deliberately builds no `ObjectMapper` of either Jackson major itself — see
+`terrace-config-core-jackson2`/`-jackson3` below for the two codecs that do, and "Dual Jackson 2 /
+3 support" for why the split sits there and not here.
+
+- **The model** is one Lombok `@Value @Builder @Jacksonized` class per meta-schema object
+  (`Producer`, `App`, `Schema`, `Dialect`, `LoaderVar`, `Key`, `External`, `ExternalVar`), four
+  enums for the closed vocabularies (`LoaderRole`, `TextForm`, `UnreachableReason`,
+  `ExternalUnknownPolicy`), and one open, order-preserving `JsonSchemaDocument` for the
+  `json_schema` half, which has no closed shape by design. Every class carries an explicit
+  `@JsonPropertyOrder` and per-field `@JsonProperty` (rather than a class-level `@JsonNaming`,
+  which only Jackson 2's `databind` package understands) and, on `Key`/`ExternalVar`, explicit
+  `@JsonInclude` per field — the meta-schema's `required` list and its "open at every level"
+  properties list don't coincide (e.g. `constraint` is optional, `ty` is required-but-nullable),
+  so the inclusion rule has to be decided field by field rather than once per class.
+- **`ContractValidator.validate(Contract)`** runs `spec/v1/FORMAT.md`'s "What a producer MUST
+  refuse" — all eight ways a contract could quietly stop being one — and throws the first
+  violation as its own `ContractRefusalException` subclass. It lives here, once, rather than in
+  each of `-loader` and `-spring-boot`, because both build the same `Contract` shape and must
+  refuse the same eight things.
+- **`ContractValidatorTest`** has one test per refusal (plus one proving a well-formed contract
+  passes all eight), each built with a minimal `Contract` rather than a full corpus case, to keep
+  the refusal under test isolated from the other seven. The byte-stable round-trip test lives in
+  each codec module instead (see below), since it needs an actual `ObjectMapper` to run.
+
+## `terrace-config-core-jackson2` / `terrace-config-core-jackson3`
+
+Two sibling modules, each providing `de.timscho.config.core.io.ContractCodec` — the byte-stable
+`json` reader/writer for `-core`'s `Contract` — built on one Jackson major apiece
+(`com.fasterxml.jackson.databind` / `tools.jackson.databind`). Same package, same class name,
+same public methods (`read`/`write`), deliberately: a consumer picks one module as a dependency
+based on which Jackson major it already has, and the call sites look identical either way. Neither
+module depends on the other; both depend only on `-core` and their own Jackson major.
+
+- **`ContractCodec`** is the only place an `ObjectMapper` is constructed, once, statically. Its
+  `CompactEmptyContainerPrettyPrinter` exists for one reason: Jackson's own `DefaultPrettyPrinter`
+  renders an empty array as `[ ]` and a field separator as `"key" : value`, and the corpus (like
+  every hand-authored `contract.json`) uses `[]` and `"key": value`. `spec/v1/FORMAT.md`'s
+  "Publication" section defines the document as byte-stable, so this is not cosmetic — it's what
+  makes `ContractCorpusRoundTripTest` (below) possible at all. The Jackson 3 copy differs from the
+  Jackson 2 one only where the API forced it to: `writeObjectFieldValueSeparator` was renamed
+  `writeObjectNameValueSeparator`, `ObjectMapper` is built once, immutably, via `JsonMapper.builder()`
+  rather than mutated after construction, and its streaming methods throw the unchecked
+  `JacksonException` instead of `IOException`.
+- **`ContractCorpusRoundTripTest`**, one copy per module, deserialises every stored
+  `spec/v1/conformance/*/contract.json` into `Contract` and re-serialises it, asserting the result
+  is byte-identical to the file on disk — proving the exact same `-core` model classes really do
+  work under both Jackson majors, not just the one exercised first.
 
 ## buildSrc
 
@@ -95,29 +155,32 @@ walk at `java/`, so the rest of the repository is unaffected). IntelliJ/RustRove
 plugin installed and annotation processing enabled to display generated members while editing;
 both are already true for anyone who has opened `terrace-config-core` in this session.
 
-## Jackson: handling the 2.x / 3.x split
+## Dual Jackson 2 / 3 support
 
-Jackson 3.0 (GA'd October 2025, driven by Spring Boot 4's own move to it) renamed its group ID and
-Java packages from `com.fasterxml.jackson` to `tools.jackson` — except `jackson-annotations`,
-which deliberately stayed on `com.fasterxml.jackson` 2.x so both majors can depend on it. Because
-of that rename, a 2.x and a 3.x Jackson artifact are not two versions of "the same" dependency
-that Gradle/Maven needs to reconcile — they're different coordinates entirely and coexist on a
-classpath without conflict. That fact shapes the whole plan here, so no dependency-alignment
-scheme is needed:
+Jackson 3.0 (GA'd 2025, driven by Spring Boot 4's own move to it) renamed its group ID and Java
+packages from `com.fasterxml.jackson` to `tools.jackson` — except `jackson-annotations`, which
+deliberately stayed on `com.fasterxml.jackson` 2.x so both majors can depend on it. Because of that
+rename, a 2.x and a 3.x Jackson artifact are not two versions of "the same" dependency that
+Gradle/Maven needs to reconcile — they're different coordinates entirely and coexist on one
+classpath without conflict. That fact is what makes the actual design here possible: one model,
+usable under either major, rather than two model copies.
 
-- **`terrace-config-core`** depends on `jackson-databind` 2.x directly, pinned in the version
-  catalog, purely as an internal implementation detail of its own JSON rendering. No Jackson type
-  from it is ever exposed on a public API, so a consumer's own Jackson version (2.x or 3.x,
-  wherever it comes from) never has to match this module's.
-- **`terrace-config-spring-boot`** declares no Jackson dependency at all, directly or pinned — it
-  only ever touches JSON through Spring's own `Binder`/`ObjectMapper`, so it automatically follows
-  whichever Jackson major version the consuming app's own Spring Boot BOM resolves (2.x under Boot
-  3, 3.x's `tools.jackson` coordinates under Boot 4). This is the one module where the split can
-  actually surface, since it's the one module bound to Spring's own Jackson instance rather than
-  bringing its own.
-- If Spring Boot 4 / Jackson 3 support is needed while Boot 3 / Jackson 2 support still has to
-  ship, the plan is a sibling module — `terrace-config-spring-boot4` — with its own Spring Boot 4
-  BOM pin, not a branch inside `terrace-config-spring-boot` or a runtime version check. `-core` and
-  `-loader` need no equivalent split at all, since neither ever imports Spring's Jackson instance.
-  Not built yet, since nothing in this repository needs it before `terrace-config-spring-boot`
-  itself (PR 7) exists to fork from.
+- **The model in `-core` carries dual annotations.** `@Jacksonized` (Lombok's add-on for
+  `@Builder`) normally emits a *single* `@JsonDeserialize(builder = ...)`/`@JsonPOJOBuilder` pair,
+  and those two annotation types live in Jackson's `databind` package — `com.fasterxml.jackson`
+  for 2.x, `tools.jackson` for 3.x — so by default a Lombok-built model only deserialises under
+  whichever major it was generated for. Lombok 1.18.44 added
+  `lombok.jacksonized.jacksonVersion`, which makes `@Jacksonized` emit *both* pairs at once; this
+  repo's `java/lombok.config` sets it to both `2` and `3`. `terrace-config-core` itself declares
+  both Jackson databind artifacts as `compileOnly` (never `implementation` — the model needs the
+  annotation *types* resolvable at compile time, not either `ObjectMapper` at runtime), pinned in
+  `gradle/libs.versions.toml`.
+- **The actual `ObjectMapper` lives in two sibling codec modules**, `terrace-config-core-jackson2`
+  and `terrace-config-core-jackson3` (see above), so that depending on `-core` alone pulls in
+  neither Jackson major, and a consumer adds exactly one codec module — whichever major it already
+  has — as an `implementation` dependency.
+- **`terrace-config-spring-boot`** will declare no Jackson dependency at all, directly or pinned —
+  it only ever touches JSON through Spring's own `Binder`/`ObjectMapper`, so it automatically
+  follows whichever Jackson major the consuming app's own Spring Boot BOM resolves (2.x under Boot
+  3, 3.x's `tools.jackson` coordinates under Boot 4) without needing a `-spring-boot4` sibling —
+  unlike the codec, there is no `ObjectMapper` of its own to fork.
