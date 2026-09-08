@@ -11,6 +11,7 @@
 pub mod image;
 pub mod json_schema;
 pub mod markdown;
+pub mod toml;
 pub mod tree;
 
 use std::fmt;
@@ -23,6 +24,7 @@ use crate::document::Contract;
 
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, Docs, JsonSchema};
 pub use markdown::Column;
+pub use toml::TomlExample;
 
 /// One of the renderings a build can ask for.
 ///
@@ -48,6 +50,8 @@ pub enum Format {
     MarkdownLoader,
     /// The configuration keys alone, as a table.
     MarkdownKeys,
+    /// The commented file an operator copies to `config.toml`.
+    Toml,
     /// A JSON Schema, for an editor to validate a configuration file against.
     JsonSchema,
     /// The whole document, which is what a build embeds in its image.
@@ -65,6 +69,7 @@ impl Format {
         Self::Markdown,
         Self::MarkdownLoader,
         Self::MarkdownKeys,
+        Self::Toml,
         Self::JsonSchema,
         Self::Contract,
         Self::Labels,
@@ -78,6 +83,7 @@ impl Format {
             Self::Markdown => "markdown",
             Self::MarkdownLoader => "markdown-loader",
             Self::MarkdownKeys => "markdown-keys",
+            Self::Toml => "toml",
             Self::JsonSchema => "json-schema",
             Self::Contract => "contract",
             Self::Labels => "labels",
@@ -152,6 +158,8 @@ pub struct Options<'a> {
     pub columns: &'a [Column],
     /// How the JSON Schema rendering is shaped.
     pub json_schema: JsonSchema,
+    /// How the TOML rendering is shaped.
+    pub toml_example: TomlExample,
 }
 
 impl Default for Options<'_> {
@@ -160,6 +168,7 @@ impl Default for Options<'_> {
             path: crate::document::DEFAULT_PATH,
             columns: Column::DEFAULT,
             json_schema: JsonSchema::default(),
+            toml_example: TomlExample::default(),
         }
     }
 }
@@ -179,6 +188,7 @@ pub fn render(contract: &Contract, format: Format, options: &Options<'_>) -> Res
         Format::Markdown => markdown::markdown(&contract.schema, options.columns),
         Format::MarkdownLoader => markdown::markdown_loader(&contract.schema),
         Format::MarkdownKeys => markdown::markdown_keys(&contract.schema, options.columns),
+        Format::Toml => toml::toml_example(&contract.schema, &options.toml_example),
         Format::JsonSchema => to_json_pretty(
             &Json::Object(json_schema::document(
                 &contract.schema,

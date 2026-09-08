@@ -61,6 +61,11 @@ clap = { version = "4", features = ["derive"], optional = true }
 # known-good against this meta-schema, and default features off keeps `reqwest` and a TLS stack out
 # of a validator that must refuse a remote `$ref` rather than fetch one.
 jsonschema = { version = "=0.55.0", default-features = false }
+# The TOML rendering's own claim is that the file it writes *loads*. A renderer that emits an
+# example an operator copies into a deployment has to be held to that by something that actually
+# parses it, not by a golden file that would happily pin a broken one.
+toml = "0.8"
+
 
 [lints]
 workspace = true

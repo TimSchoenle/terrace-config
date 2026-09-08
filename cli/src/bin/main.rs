@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use terrace_contract::render::{self, Column, Format, JsonSchema, Options, image};
+use terrace_contract::render::{
+    self, Column, Docs, Format, JsonSchema, Options, TomlExample, image,
+};
 use terrace_contract::{Contract, DEFAULT_PATH, Error};
 
 /// Read, render and check configuration contracts.
@@ -68,6 +70,20 @@ enum Command {
         /// open schema catches none of them.
         #[arg(long)]
         open: bool,
+
+        /// Leave the preamble off the TOML rendering.
+        ///
+        /// For a file embedded in an image, or one whose page already says what it is.
+        #[arg(long)]
+        no_header: bool,
+
+        /// Carry the whole doc comment above each key rather than its first paragraph.
+        ///
+        /// For a `config.example.toml` that is the only documentation an operator gets: it is read
+        /// once while being filled in, and the paragraphs below the summary are what explain the
+        /// shape.
+        #[arg(long)]
+        full_docs: bool,
     },
 
     /// Write a build's identity onto a document, changing nothing else.
@@ -197,6 +213,8 @@ fn render_command(command: Command) -> Result<ExitCode, Error> {
         title,
         id,
         open,
+        no_header,
+        full_docs,
     } = command
     else {
         unreachable!("dispatched on the variant")
@@ -216,6 +234,11 @@ fn render_command(command: Command) -> Result<ExitCode, Error> {
             id,
             closed: !open,
             ..JsonSchema::default()
+        },
+        toml_example: TomlExample {
+            header: !no_header,
+            docs: if full_docs { Docs::Full } else { Docs::Summary },
+            ..TomlExample::default()
         },
     };
 

@@ -31,6 +31,7 @@ const RENDERINGS: &[(Format, &str)] = &[
     (Format::Markdown, "markdown.md"),
     (Format::MarkdownLoader, "markdown-loader.md"),
     (Format::MarkdownKeys, "markdown-keys.md"),
+    (Format::Toml, "config.toml"),
     (Format::JsonSchema, "schema.json"),
     (Format::Labels, "labels.txt"),
     (Format::Dockerfile, "Dockerfile.part"),
@@ -155,6 +156,25 @@ fn the_schema_half_is_the_stored_one() {
         .expect("the rendered schema is JSON");
 
         assert_eq!(rendered, stored["schema"], "`{case}`");
+    }
+}
+
+/// The `config.example.toml` rendering parses.
+///
+/// The goldens pin what it *says*; this pins that what it says loads. An example file is copied
+/// into a deployment rather than read and closed, so one that fails to parse is a defect that
+/// reaches production through the one artefact nobody validates.
+#[test]
+fn the_example_file_loads() {
+    for case in CASES {
+        let rendered = render::render(&contract(case), Format::Toml, &Options::default())
+            .expect("the example renders");
+        toml::from_str::<toml::Value>(&rendered).unwrap_or_else(|e| {
+            panic!(
+                "`{case}`'s example does not parse: {e}
+{rendered}"
+            )
+        });
     }
 }
 
