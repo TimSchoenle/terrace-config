@@ -1,0 +1,96 @@
+# The shared toolchain: everything the configuration contract needs *after* a document exists.
+#
+# Its own workspace, and a sibling of the Rust implementation rather than a member of it. That is
+# the architectural claim in one file: the binary is not part of the Rust implementation, it is
+# *written in* Rust. A crate nested under the implementation would be read as that implementation's
+# tool by everyone who did not read `docs/contract-cli-plan.md`, and the Java side would be right
+# to treat it that way.
+#
+# The separate workspace follows `fuzz/`'s reasoning: entirely different dependency weight,
+# entirely different audience, and no reason for one lock file to arbitrate between a library that
+# must stay light enough for a service to link and a binary that carries an argument parser and a
+# JSON Schema engine.
+#
+# **It must not depend on `terrace-config`.** Not as a path dependency, not transitively. Every
+# rendering here is a pure function of the published document, which is what makes it a renderer
+# for the Java producer and for producers that do not exist yet. CI asserts the absence.
+[workspace]
+members = []
+
+[package]
+name = "terrace-contract"
+version = "0.1.0"
+edition = "2024"
+authors = ["Tim Schönle"]
+license = "MIT"
+description = "Read, render, check and gate configuration contracts, in any producer's language."
+repository = "https://github.com/TimSchoenle/terrace-config"
+keywords = ["configuration", "contract", "kubernetes", "helm", "cli"]
+categories = ["command-line-utilities", "config"]
+rust-version = "1.94"
+# Distributed as release binaries and a container image rather than through crates.io, which is
+# what a consuming build actually wants: no toolchain, no compile, no platform detection. The name
+# stays reserved.
+publish = false
+
+[features]
+default = ["cli"]
+# The producer-side half is what is left with `--no-default-features`, and keeping it compiling is
+# the mechanical check that no consumer-side concept — a chart, a manifest, a Helm marker — has
+# leaked down into the document model or the renderers. A language's build links this half.
+cli = ["dep:clap"]
+
+[[bin]]
+name = "terrace-contract"
+path = "src/bin/main.rs"
+required-features = ["cli"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Deliberately *without* `preserve_order`. A producer builds its JSON with `serde_json::Map`, which
+# is a `BTreeMap`, so every object in a published document is already alphabetical — the `properties`
+# of a JSON Schema included, which is why they do not follow declaration order. Sorting the same way
+# is what makes `--format contract` a byte-for-byte round trip and `--format json-schema` reproduce
+# the corpus; preserving insertion order instead would differ from every document ever published.
+serde_json = "1"
+thiserror = "2"
+# A real dependency, not a dev one: `validate` holds any producer's document to the published
+# meta-schema, which is the first question a new implementation asks. Default features off keeps
+# `reqwest` and a TLS stack out of a validator whose job includes *refusing* a remote `$ref`
+# rather than fetching one.
+jsonschema = { version = "=0.55.0", default-features = false }
+clap = { version = "4", features = ["derive"], optional = true }
+
+[dev-dependencies]
+# The TOML rendering's own claim is that the file it writes *loads*. A renderer that emits an
+# example an operator copies into a deployment has to be held to that by something that actually
+# parses it, not by a golden file that would happily pin a broken one.
+toml = "0.8"
+
+
+[lints]
+workspace = true
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+multiple_crate_versions = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+doc_markdown = "warn"
+too_long_first_doc_paragraph = "warn"
+must_use_candidate = "allow"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+unescaped_backticks = "warn"

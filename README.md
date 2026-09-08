@@ -275,6 +275,7 @@ for everything this crate does at runtime should not link a test harness.
 | [Generating the configuration reference](docs/SCHEMA.md) | The schema feature derives a reference table, an example file and a JSON Schema from the types. |
 | [Testing your configuration](docs/TESTING.md) | The testing feature is a jail that arranges both halves of a layer and restores the environment. |
 | [The config contract: image-embedded configuration schemas, validated by the charts](docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. |
+| [terrace-contract: one toolchain for every implementation](docs/contract-cli-plan.md) | A plan for a single binary that is everything the configuration contract needs after a document |
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
 to run a campaign, and [spec/](spec/) is the contract format itself — normative, language-neutral,

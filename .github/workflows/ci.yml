@@ -244,12 +244,81 @@ jobs:
           toolchain: ${{ steps.msrv.outputs.version }}
       - run: cargo check --workspace --all-features --all-targets
 
+  # The shared toolchain, which is a separate workspace and so is invisible to every job above:
+  # `cargo fmt --all`, `--workspace` and `cargo deny` all stop at the root manifest's members.
+  #
+  # Three things are checked here that are checked nowhere else:
+  #
+  #   - `--no-default-features`, which is the mechanical proof that no consumer-side concept has
+  #     leaked down into the document model or the renderers. That half is what a language's build
+  #     links, and it must never learn what a chart is.
+  #   - the renderings against `spec/v1/conformance/*/rendered/`, which is the whole claim the
+  #     shared toolchain rests on: a rendering is a pure function of the published document, so it
+  #     can be written once instead of once per producer.
+  #   - that it does **not** depend on `terrace-config`. A renderer reaching for one producer's
+  #     types would be that producer's renderer wearing a shared name, and nothing else in this
+  #     repository would notice that edge appearing.
+  cli:
+    name: cli
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          components: rustfmt, clippy
+          workspaces: cli
+      - name: fmt
+        run: cargo fmt --check
+        working-directory: cli
+      - name: clippy
+        run: cargo clippy --all-targets
+        working-directory: cli
+      - name: clippy (no default features)
+        run: cargo clippy --all-targets --no-default-features
+        working-directory: cli
+      - name: test
+        run: cargo test
+        working-directory: cli
+      # The fuzz crate is a third workspace, and its oracles are the only thing checking that a
+      # rendering keeps its own promise on documents nobody wrote: that the TOML file parses, that
+      # a Markdown row has its header's column count, that a placeholder's shape comes from
+      # `constraint` rather than from `ty`. It replays without libFuzzer on purpose — an oracle
+      # that only runs under a nightly sanitizer is an oracle nobody checks.
+      - name: fuzz oracles
+        run: cargo test
+        working-directory: cli/fuzz
+      - name: fuzz clippy
+        run: cargo clippy --all-targets
+        working-directory: cli/fuzz
+      # `^terrace-config( |$)` and not a bare grep: the checkout path contains the string, so a
+      # looser pattern reports a dependency that is not there and this gate stops meaning anything.
+      - name: it depends on no implementation
+        working-directory: cli
+        run: |
+          if cargo tree --prefix none | grep -qE '^terrace-config( |$)'; then
+            echo "::error::cli/ has grown a dependency on the Rust implementation."
+            echo "Every rendering here is a pure function of the published document, which is"
+            echo "what makes it a renderer for every producer rather than for one."
+            cargo tree --invert terrace-config
+            exit 1
+          fi
+          echo "no dependency on any implementation"
+
   # The single required check. It fails if any job failed and passes when jobs were skipped, so
   # branch protection needs one entry that cannot silently stop existing.
   ci:
     name: ci
     if: always()
-    needs: [fmt, clippy, test, features, doc, fuzz, deny, msrv]
+    needs: [fmt, clippy, test, features, doc, fuzz, deny, msrv, cli]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

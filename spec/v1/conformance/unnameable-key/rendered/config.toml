@@ -1,0 +1,30 @@
+# Configuration for a service reading EDGE_-prefixed keys.
+#
+# Generated from the configuration type, so it lists every key that type can carry and nothing
+# else. Each key shows the value it already has, commented out: a commented key and a deleted key
+# mean the same thing to the loader, so uncomment one only to change it. A key that is not
+# commented out has no default, and nothing loads until something supplies it.
+#
+# Three layers can supply any key below, and all three win over this file: the environment
+# variable named above the key, a file named by that variable plus `_FILE`, and a key-named file
+# in the secrets directory. A secret belongs in one of those — this file is usually committed.
+#
+# Read before this file exists:
+#
+#   EDGE_CONFIG — config, default `config.toml`
+#     Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name
+#     order.
+#
+#   EDGE_SECRETS_DIR — secrets dir
+#     Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file
+#     supplies the key its name spells.
+
+# Where the bundle is read from.
+# Type: String
+# Only this file supplies this key: no environment or secrets-directory spelling reaches it.
+# distDir = "public"
+
+# How long a rendered page stays fresh.
+# Type: u64
+# Only this file supplies this key: no environment or secrets-directory spelling reaches it.
+# maxAgeSecs = 0

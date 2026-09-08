@@ -1,0 +1,77 @@
+# Configuration for a service reading PORTFOLIO_-prefixed keys.
+#
+# Generated from the configuration type, so it lists every key that type can carry and nothing
+# else. Each key shows the value it already has, commented out: a commented key and a deleted key
+# mean the same thing to the loader, so uncomment one only to change it. A key that is not
+# commented out has no default, and nothing loads until something supplies it.
+#
+# Three layers can supply any key below, and all three win over this file: the environment
+# variable named above the key, a file named by that variable plus `_FILE`, and a key-named file
+# in the secrets directory. A secret belongs in one of those — this file is usually committed.
+#
+# Read before this file exists:
+#
+#   PORTFOLIO_CONFIG — config, default `config.toml`
+#     Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name
+#     order.
+#
+#   PORTFOLIO_SECRETS_DIR — secrets dir
+#     Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file
+#     supplies the key its name spells.
+#
+#   PORTFOLIO_PROFILE — reserved
+#     Read directly from the environment before the layered config exists, so no file may supply
+#     it.
+
+# Bundle directory the readiness probe checks.
+# Type: String
+# Also from: PORTFOLIO_DIST_DIR, PORTFOLIO_DIST_DIR_FILE=/path/to/file, dist_dir in the secrets
+#   directory
+# dist_dir = "public"
+
+# Base URL every outbound request is resolved against.
+# Type: String
+# Also from: PORTFOLIO_API_BASE, PORTFOLIO_API_BASE_FILE=/path/to/file, api_base in the secrets
+#   directory
+# Required: nothing loads until this key is supplied.
+api_base = "<value>"
+
+# How much the service says.
+# Type: LogLevel — one of: trace, debug, info, warn
+# Also from: PORTFOLIO_LOG_LEVEL, PORTFOLIO_LOG_LEVEL_FILE=/path/to/file, log_level in the secrets
+#   directory
+# log_level = "info"
+
+# Fraction of requests sampled for tracing.
+# Type: f64
+# Also from: PORTFOLIO_SAMPLE_RATE, PORTFOLIO_SAMPLE_RATE_FILE=/path/to/file, sample_rate in the
+#   secrets directory
+# sample_rate = 0.0
+
+# Methods every route admits.
+# Type: Vec<Method>
+# Also from: PORTFOLIO_METHODS, PORTFOLIO_METHODS_FILE=/path/to/file, methods in the secrets
+#   directory
+# methods = []
+
+[github]
+# User whose repositories are listed.
+# Type: String
+# Also accepted as: github.user
+# Also from: PORTFOLIO_GITHUB__USERNAME, PORTFOLIO_GITHUB__USERNAME_FILE=/path/to/file,
+#   github__username in the secrets directory
+# Required: nothing loads until this key is supplied.
+username = "<value>"
+
+# Bearer token lifting the API rate limit.
+# Type: String
+# Also from: PORTFOLIO_GITHUB__TOKEN, PORTFOLIO_GITHUB__TOKEN_FILE=/path/to/file, github__token in
+#   the secrets directory
+# Secret: the value below is a placeholder.
+# token = "<secret>"
+
+# Revalidation interval in seconds.
+# Type: u64
+# Also from: PORTFOLIO_GITHUB__TTL_SECS, PORTFOLIO_GITHUB__TTL_SECS_FILE=/path/to/file,
+#   github__ttl_secs in the secrets directory
+# ttl_secs = 0

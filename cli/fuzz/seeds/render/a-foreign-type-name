@@ -1,0 +1,4 @@
+minimal
+k=0:ty=java.util.List
+k=0:constraint={"type":"array"}
+k=0:default_value=null
