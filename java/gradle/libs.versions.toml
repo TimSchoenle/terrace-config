@@ -1,0 +1,33 @@
+# Kept in one place so every module builds against the same versions.
+# `terrace-config-annotations` must not take a dependency from here at all, by design: a service
+# annotating its configuration types should not have to pull in Jackson or a schema validator just
+# to compile against the annotations.
+[versions]
+junit = "5.11.4"
+assertj = "3.27.3"
+# Jackson 2.x, `com.fasterxml.jackson:*` — used directly only by -core and -spec-tck as an
+# internal implementation detail, never exposed on a public API. Jackson 3.x renamed its Maven
+# coordinates to `tools.jackson:*` (except jackson-annotations, which stays on 2.x for both), so
+# there is no version to "align" with a Jackson-3-based consumer (e.g. a future Spring Boot 4
+# app) — the two are different artifacts entirely. See docs/migration-progress.md, "Lombok and
+# the Jackson 2 vs. 3 split".
+jackson = "2.18.3"
+lombok = "1.18.36"
+# The io.freefair.lombok Gradle *plugin*, not the lombok library above — tracks the Gradle
+# wrapper's own minor version per the plugin's compatibility policy, not the lombok library
+# version. Consumed by buildSrc/build.gradle.kts to build the shared convention plugin that
+# applies it; kept in this same catalog so there's still exactly one file to bump either version.
+lombok-plugin = "9.1.0"
+json-schema-validator = "1.5.5"
+spring-boot = "3.4.2"
+compile-testing = "0.21.0"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+compile-testing = { module = "com.google.testing.compile:compile-testing", version.ref = "compile-testing" }
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter", version.ref = "spring-boot" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
