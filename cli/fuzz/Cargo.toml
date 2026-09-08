@@ -30,7 +30,7 @@ terrace-contract = { path = "..", default-features = false }
 serde_json = "1"
 # The TOML oracle's central claim is that the rendered example *loads*. Asserting that needs a
 # parser, not a golden file.
-toml = "0.8"
+toml = "0.9"
 
 # `-Z sanitizer=address` instruments the crate under test, so the fuzz binary must be built with
 # debug assertions on: an arithmetic overflow that panics is a finding, and one that silently
