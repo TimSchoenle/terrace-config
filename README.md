@@ -275,6 +275,7 @@ for everything this crate does at runtime should not link a test harness.
 | [Generating the configuration reference](docs/SCHEMA.md) | The schema feature derives a reference table, an example file and a JSON Schema from the types. |
 | [Testing your configuration](docs/TESTING.md) | The testing feature is a jail that arranges both halves of a layer and restores the environment. |
 | [The config contract: image-embedded configuration schemas, validated by the charts](docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. |
+| [Migrating to a multi-language repository](docs/multi-language-plan.md) | Moving the Rust crate under rust/, and adding two Java producers — vanilla and Spring Boot — that |
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
 to run a campaign, and [spec/](spec/) is the contract format itself — normative, language-neutral,
