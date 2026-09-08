@@ -13,7 +13,7 @@ use clap::{Args, Parser, Subcommand};
 use terrace_contract::render::{
     self, Column, Docs, Format, JsonSchema, Options, TomlExample, image,
 };
-use terrace_contract::{Contract, DEFAULT_PATH, Error};
+use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, validate};
 
 /// Read, render and check configuration contracts.
 #[derive(Parser)]
@@ -108,6 +108,34 @@ enum Command {
         source: Option<String>,
     },
 
+    /// Hold a document to the specification, at a tier.
+    ///
+    /// This is the whole of a new implementation's obligation. `spec/v1/` says what a contract is;
+    /// this says it back in a form a build can run, so a producer in any language answers "is what
+    /// I emitted a contract?" by invoking this rather than by re-reading prose.
+    Conform {
+        #[command(flatten)]
+        input: Input,
+
+        /// Which tier to hold it to: 1 (document), 2 (dialect) or 3 (byte).
+        ///
+        /// Claim the one you meet. An implementation claiming a tier it does not meet is worse
+        /// than one claiming none, because the point of the document is that a consumer can act on
+        /// it without reading the producer's source.
+        #[arg(long, default_value = "1")]
+        tier: Tier,
+
+        /// Skip the meta-schema check and run only the rules a schema cannot express.
+        #[arg(long)]
+        no_schema: bool,
+    },
+
+    /// Check a document against the published meta-schema, and nothing else.
+    Validate {
+        #[command(flatten)]
+        input: Input,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -156,16 +184,25 @@ struct Input {
 
 impl Input {
     fn read(&self) -> Result<Contract, Error> {
-        let text = if self.contract == "-" {
+        Contract::from_json(&self.read_text()?)
+    }
+
+    /// The bytes, unparsed.
+    ///
+    /// `conform` and `validate` need these rather than a `Contract`: a document that fails the
+    /// meta-schema may not deserialise at all, and reporting "not a valid document" when the real
+    /// answer is "the `dialect` object is missing its `prefix`" is the difference between a
+    /// message a producer's author can act on and one they cannot.
+    fn read_text(&self) -> Result<String, Error> {
+        if self.contract == "-" {
             let mut buffer = String::new();
             std::io::stdin()
                 .read_to_string(&mut buffer)
                 .map_err(|e| Error::io("<stdin>", e))?;
-            buffer
+            Ok(buffer)
         } else {
-            read(Path::new(&self.contract))?
-        };
-        Contract::from_json(&text)
+            read(Path::new(&self.contract))
+        }
     }
 }
 
@@ -192,6 +229,20 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
     match cli.command {
         Command::Render { .. } => render_command(cli.command),
         Command::Stamp { .. } => stamp_command(cli.command),
+        Command::Conform {
+            input,
+            tier,
+            no_schema,
+        } => conform_command(&input, tier, no_schema),
+
+        Command::Validate { input } => {
+            let errors = validate::validate(&input.read_text()?)?;
+            Ok(report_lines(
+                &errors,
+                "the document does not satisfy `spec/v1/contract.schema.json`:",
+            ))
+        }
+
         Command::Image { command } => {
             let ImageCommand::Verify {
                 input,
@@ -202,6 +253,55 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             verify_command(&input, labels.as_deref(), dockerfile.as_deref(), &path)
         }
     }
+}
+
+/// Print a list of findings, or say nothing and succeed.
+fn report_lines(findings: &[String], headline: &str) -> ExitCode {
+    if findings.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    eprintln!("{headline}");
+    for finding in findings {
+        eprintln!("  {finding}");
+    }
+    // 1, not 2: the tool worked and the document is wrong.
+    ExitCode::FAILURE
+}
+
+fn conform_command(input: &Input, tier: Tier, no_schema: bool) -> Result<ExitCode, Error> {
+    let text = input.read_text()?;
+
+    // The meta-schema first, and its failures are not merged with the rule failures below. A
+    // document that is not the right *shape* produces rule violations that are artefacts of the
+    // misreading, and a producer's author chasing those is chasing the wrong bug.
+    if !no_schema {
+        let errors = validate::validate(&text)?;
+        if !errors.is_empty() {
+            return Ok(report_lines(
+                &errors,
+                "the document does not satisfy `spec/v1/contract.schema.json`, so the rules \
+                 below it were not run:",
+            ));
+        }
+    }
+
+    let contract = Contract::from_json(&text)?;
+    if let Some(ahead) = contract.schema_version_ahead() {
+        eprintln!(
+            "note: the document declares `schema_version` {ahead}, and this build \n             understands {}. Every field this build knows still means what it \n             meant; there may be more here than was checked.",
+            terrace_contract::SCHEMA_VERSION
+        );
+    }
+
+    let violations: Vec<String> = conform::conform(&contract, tier)
+        .into_iter()
+        .map(|violation| violation.to_string())
+        .collect();
+
+    Ok(report_lines(
+        &violations,
+        &format!("the document does not conform at tier {tier}:"),
+    ))
 }
 
 fn render_command(command: Command) -> Result<ExitCode, Error> {
@@ -299,7 +399,7 @@ fn verify_command(
 ) -> Result<ExitCode, Error> {
     if labels.is_none() && dockerfile.is_none() {
         return Err(Error::Invalid(
-            "nothing to verify against: pass --labels, --dockerfile, or both. A verify with              neither would report success without comparing anything, which is the one outcome              this check cannot afford."
+            "nothing to verify against: pass --labels, --dockerfile, or both. A verify with neither would report success without comparing anything, which is the one outcome this check cannot afford."
                 .to_owned(),
         ));
     }

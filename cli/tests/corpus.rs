@@ -21,7 +21,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use terrace_contract::render::{self, Format, Options};
-use terrace_contract::{Contract, DEFAULT_PATH};
+use terrace_contract::{Contract, DEFAULT_PATH, Tier};
 
 /// Every stored case, by directory name.
 const CASES: &[&str] = &["minimal", "full-surface", "unnameable-key"];
@@ -190,4 +190,42 @@ fn first_difference(found: &str, expected: &str) -> String {
         found.lines().count(),
         expected.lines().count()
     )
+}
+
+/// Every stored case conforms at tier 2.
+///
+/// The Rust implementation claims tier 3 against itself, and tier 3 includes tier 2 — so a corpus
+/// case failing here is either a defect in `conform` or a document the reference producer should
+/// never have emitted. Both are worth failing a build for, and this is the only test that would
+/// catch the second.
+#[test]
+fn the_corpus_conforms_at_the_dialect_tier() {
+    for case in CASES {
+        let violations = terrace_contract::conform::conform(&contract(case), Tier::Dialect);
+        assert!(
+            violations.is_empty(),
+            "`{case}` does not conform at tier 2: {}",
+            violations
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+}
+
+/// Every stored case satisfies the meta-schema this binary embeds.
+///
+/// The corpus is checked against `contract.schema.json` on the producer's side too. This is the
+/// same check from the consumer's, and it is what says the *embedded* copy is the published one —
+/// a binary shipping a stale meta-schema would validate documents against a specification nobody
+/// else is holding them to.
+#[test]
+fn the_corpus_satisfies_the_embedded_meta_schema() {
+    for case in CASES {
+        let text = std::fs::read_to_string(case_dir(case).join("contract.json"))
+            .expect("the stored contract can be read");
+        let errors = terrace_contract::validate::validate(&text).expect("the meta-schema compiles");
+        assert!(errors.is_empty(), "`{case}`: {}", errors.join("; "));
+    }
 }

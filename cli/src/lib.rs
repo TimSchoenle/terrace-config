@@ -7,10 +7,11 @@
 //!
 //! ```text
 //! per language, once                    this crate, for everyone
-//! ───────────────────────────────       ─────────────────────────────────────────
-//! types ──> Schema ──> Contract ──JSON──> render   the tables, the file, the labels
+//! â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€       â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//! types â”€â”€> Schema â”€â”€> Contract â”€â”€JSONâ”€â”€> render   the tables, the file, the labels
 //!                                         stamp    build identity onto a document
 //!                                         conform  the refusals, and a tier
+//!                                         validate the published meta-schema
 //!                                         image    labels and Dockerfile block, read back
 //! ```
 //!
@@ -34,10 +35,13 @@
 //! meeting a loader it does not know must skip the read that depends on them rather than perform
 //! it with the wrong rules.
 
+pub mod conform;
 pub mod document;
 mod error;
 pub mod render;
+pub mod validate;
 
+pub use conform::{Tier, Violation};
 pub use document::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, Dialect, External, ExternalVar, Key, LoaderRole,
     LoaderVar, Producer, SCHEMA_VERSION, Schema, TextForm, Unknown, Unreachable,

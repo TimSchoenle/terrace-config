@@ -54,13 +54,14 @@ serde = { version = "1", features = ["derive"] }
 # the corpus; preserving insertion order instead would differ from every document ever published.
 serde_json = "1"
 thiserror = "2"
+# A real dependency, not a dev one: `validate` holds any producer's document to the published
+# meta-schema, which is the first question a new implementation asks. Default features off keeps
+# `reqwest` and a TLS stack out of a validator whose job includes *refusing* a remote `$ref`
+# rather than fetching one.
+jsonschema = { version = "=0.55.0", default-features = false }
 clap = { version = "4", features = ["derive"], optional = true }
 
 [dev-dependencies]
-# The same pin the Rust implementation's spec suite uses, and for the same two reasons: it is
-# known-good against this meta-schema, and default features off keeps `reqwest` and a TLS stack out
-# of a validator that must refuse a remote `$ref` rather than fetch one.
-jsonschema = { version = "=0.55.0", default-features = false }
 # The TOML rendering's own claim is that the file it writes *loads*. A renderer that emits an
 # example an operator copies into a deployment has to be held to that by something that actually
 # parses it, not by a golden file that would happily pin a broken one.
