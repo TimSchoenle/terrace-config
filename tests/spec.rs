@@ -19,7 +19,11 @@
 //! failure mode a corpus alone cannot catch: an expectation that was blessed while wrong.
 
 #![cfg(feature = "schema")]
-#![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
+// Deliberately no `#![expect(dead_code, …)]`, unlike `contract.rs` next door, whose fixtures carry
+// fields nothing reads. Every fixture field here is read by its `Serialize` derive and every
+// function below is called, so the expectation would be *unfulfilled* — which is a warning, and on
+// the MSRV toolchain that the `msrv` job runs with, a failing build. Add one only when something
+// here genuinely stops being read, and check it against that toolchain rather than against stable.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
