@@ -74,6 +74,13 @@ fn schema(keys: &Json) -> Json {
     })
 }
 
+/// The default a secret is given when a test needs one to carry.
+///
+/// Deliberately inert. The rule under test is "a secret carries a default at all", never that the
+/// default is plausible — and a fixture that reads like a real credential is what a secret scanner
+/// is built to notice, in this repository and in every fork of it.
+const PLACEHOLDER_DEFAULT: &str = "not-a-credential";
+
 fn no_external() -> Json {
     json!({"env": [], "ignore": [], "unknown": "reject"})
 }
@@ -167,7 +174,7 @@ fn refusal_6_a_secret_carrying_a_default_in_either_half() {
     let on_a_key = document(
         &schema(&json!([key(
             "token",
-            json!({"secret": true, "default_value": "hunter2"})
+            json!({"secret": true, "default_value": PLACEHOLDER_DEFAULT})
         )])),
         &no_external(),
     );
@@ -177,7 +184,7 @@ fn refusal_6_a_secret_carrying_a_default_in_either_half() {
         &schema(&json!([])),
         &json!({
             "env": [{"name": "TOKEN", "docs": "", "values": [], "text_form": "text",
-                     "default": "hunter2", "required": false, "secret": true}],
+                     "default": PLACEHOLDER_DEFAULT, "required": false, "secret": true}],
             "ignore": [], "unknown": "reject"
         }),
     );
@@ -513,17 +520,21 @@ fn a_violation_names_a_location_a_reader_can_follow() {
     let contract = document(
         &schema(&json!([key(
             "token",
-            json!({"secret": true, "default_value": "x"})
+            json!({"secret": true, "default_value": PLACEHOLDER_DEFAULT})
         )])),
         &no_external(),
     );
     let violations = conform::conform(&contract, Tier::Document);
-    let secret = violations
+    let refusal = violations
         .iter()
         .find(|violation| violation.rule == "refusal 6")
         .expect("the refusal fires");
-    assert_eq!(secret.at, "/schema/keys/0");
-    assert!(secret.detail.contains("token"), "{secret}");
+    assert_eq!(refusal.at, "/schema/keys/0");
+    // A violation's detail names the *key*, never the value — which is what makes it printable at
+    // all. `refusal 6` exists because a document is meant to be safe to read, and a report that
+    // quoted the credential to say so would undo the rule it was enforcing.
+    assert!(refusal.detail.contains("token"), "{refusal}");
+    assert!(!refusal.detail.contains(PLACEHOLDER_DEFAULT), "{refusal}");
 }
 
 #[test]
