@@ -54,7 +54,7 @@ format, and it is written for you rather than set: it names this crate, its vers
 **figment** — the library whose environment reads every `text_constraint` below was measured
 against. A consumer must not apply those reads to a document naming a loader it does not know, so
 the field is what makes the rest of the document safely readable rather than plausibly readable.
-See [spec/v1/FORMAT.md](../spec/v1/FORMAT.md) for the format itself, which is where a producer in
+See [spec/v1/FORMAT.md](../../spec/v1/FORMAT.md) for the format itself, which is where a producer in
 another language starts.
 
 Every field is `snake_case`, the envelope's own included. One document in two conventions —
@@ -218,7 +218,7 @@ and mounts from a secrets file perfectly well.
 
 They also *read* differently, which is a third rule and not the table above — and it is the
 spec's rather than this page's, because a consumer applying it may be written in any language:
-[*Reading a variable*](../spec/v1/FORMAT.md#reading-a-variable) tabulates all three layers and
+[*Reading a variable*](../../spec/v1/FORMAT.md#reading-a-variable) tabulates all three layers and
 marks them as figment's reads rather than as the format's. The half worth repeating here is the one
 that catches people. A file's trailing `\r` and `\n` are stripped and no other whitespace is —
 every editor and every YAML block scalar adds a line ending nobody meant as part of the value,
@@ -297,7 +297,7 @@ language is a place for two implementations to disagree about what is exempt fro
 
 **Moved.** The rules a consumer follows — the ordered list that classifies every environment
 variable on a container, the two-step check a variable gets, and the reads each `text_form` names —
-are in [spec/v1/FORMAT.md](../spec/v1/FORMAT.md), under *Reading a container* and *Reading a
+are in [spec/v1/FORMAT.md](../../spec/v1/FORMAT.md), under *Reading a container* and *Reading a
 variable*.
 
 They live there because they are not Rust's. A consumer implementing them is a chart's CI job or a

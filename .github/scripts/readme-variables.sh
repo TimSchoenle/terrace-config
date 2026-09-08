@@ -20,7 +20,7 @@
 # and a script that only runs on the CI runner is a script nobody checks their edit against.
 set -euo pipefail
 
-manifest="${1:-Cargo.toml}"
+manifest="${1:-rust/Cargo.toml}"
 
 # Reads a top-level `key = "value"` from the manifest and rejects anything that would need JSON
 # escaping. Both fields are version strings, so the accepted alphabet is the whole contract —

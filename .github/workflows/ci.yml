@@ -36,6 +36,7 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+        working-directory: rust
 
   clippy:
     name: clippy (${{ matrix.features }})
@@ -62,6 +63,7 @@ jobs:
           egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/clippy@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
+          working-directory: rust
           clippy_arguments: ${{ matrix.features }} --all-targets
 
   test:
@@ -81,6 +83,7 @@ jobs:
           egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/test@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
+          working-directory: rust
           # `--workspace`, not just `--all-features`: the derive's parser is tested in
           # `macros/`, and without this cargo tests only the root package and reports green
           # while running none of them.
@@ -117,6 +120,7 @@ jobs:
           egress-policy: audit
       - uses: TimSchoenle/actions/actions/rust/cargo-check@90667cd95bd8ee306fbd54412c2e082448fb5a40
         with:
+          working-directory: rust
           check_arguments: --lib ${{ matrix.features }}
 
   doc:
@@ -139,15 +143,22 @@ jobs:
       # Once per feature set: the crate documentation is itself feature-gated, so a broken
       # intra-doc link can hide in a set `--all-features` never renders.
       - run: cargo doc --all-features --no-deps
+        working-directory: rust
       - run: cargo doc --no-default-features --features loader --no-deps
+        working-directory: rust
       - run: cargo doc --no-default-features --features schema --no-deps
+        working-directory: rust
       - run: cargo doc --no-default-features --features explain --no-deps
+        working-directory: rust
       - run: cargo doc --no-default-features --features testing --no-deps
+        working-directory: rust
       - run: cargo doc --no-default-features --features reload --no-deps
+        working-directory: rust
       # The only step that runs the doctests at all: `test` delegates to `cargo nextest`, which
       # does not run them by design. It is also the job that sets `RUSTDOCFLAGS`, so a doctest
       # carrying a rustdoc warning fails here.
       - run: cargo test --doc --all-features
+        working-directory: rust
 
   # `fuzz/` is a workspace of its own on a nightly toolchain, so none of the jobs above touch it.
   #
@@ -178,23 +189,24 @@ jobs:
         with:
           tool: cargo-fuzz
       - name: Replay the corpus
-        working-directory: fuzz
+        working-directory: rust/fuzz
         env:
           # Larger than the local default: this runs once per push, not on every `cargo test`.
           TERRACE_FUZZ_ITERATIONS: "5000"
         run: cargo test
       - name: Lint the oracles
-        working-directory: fuzz
+        working-directory: rust/fuzz
         run: cargo clippy --all-targets
       # The `doc` job above cannot reach here: `fuzz/` is a workspace of its own. Without this
       # step its `[lints.rustdoc]` table is declared and enforced by nothing, and a broken
       # intra-doc link renders as literal text nobody sees.
       - name: Document the oracles
-        working-directory: fuzz
+        working-directory: rust/fuzz
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --lib --no-deps
       - name: Short campaign
+        working-directory: rust
         run: |
           host="$(rustc -vV | sed -n 's/^host: //p')"
           for target in env_load secrets_dir toml_layers schema explain; do
@@ -202,6 +214,34 @@ jobs:
               "fuzz/corpus/$target" "fuzz/seeds/$target" \
               -- -dict=fuzz/dictionaries/config.dict -max_total_time=60
           done
+
+  # The crate is distributed as a git dependency with no `path` component, relying on Cargo's
+  # search of the whole repository for a package named `terrace-config`. This is the only check
+  # that the published install snippet — a bare `{ git = "..." }` with no `path` key — actually
+  # resolves now that the package lives under `rust/`. Keep it permanently; it is cheap and it is
+  # the one thing that must never regress silently.
+  consumer-smoke-test:
+    name: consumer smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      - name: Build a throwaway crate depending on this checkout by git URL
+        run: |
+          set -euo pipefail
+          cargo new --bin /tmp/consumer-smoke-test
+          cd /tmp/consumer-smoke-test
+          cargo add terrace-config --git "file://${GITHUB_WORKSPACE}"
+          cargo build
 
   deny:
     name: deny
@@ -220,6 +260,7 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+          manifest-path: rust/Cargo.toml
       # `cli/` is a second workspace and a second dependency tree — an archive reader, a hash, a
       # YAML reader, a schema validator — none of which this action would see from the root.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
@@ -244,11 +285,12 @@ jobs:
       # Read from the manifest rather than repeated inline, so the pin cannot drift from the
       # `rust-version` it is meant to verify.
       - id: msrv
-        run: echo "version=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(grep -m1 '^rust-version' rust/Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
       - run: cargo check --workspace --all-features --all-targets
+        working-directory: rust
       # Declared in `cli/Cargo.toml` as well, and checked by nothing until now: it is the version
       # a consuming repository has to be able to build the toolchain with.
       - run: cargo check --workspace --all-features --all-targets
@@ -352,7 +394,8 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [fmt, clippy, test, features, doc, fuzz, deny, msrv, cli]
+    needs:
+      [fmt, clippy, test, features, doc, fuzz, deny, msrv, cli, consumer-smoke-test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
