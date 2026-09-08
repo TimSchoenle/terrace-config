@@ -68,3 +68,4 @@ desktop.ini
 # and the lock file is what makes a release build reproducible and what cargo-deny and Renovate act
 # on.
 !/cli/Cargo.lock
+!/cli/fuzz/Cargo.lock

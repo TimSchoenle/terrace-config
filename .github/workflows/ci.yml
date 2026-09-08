@@ -288,6 +288,17 @@ jobs:
       - name: test
         run: cargo test
         working-directory: cli
+      # The fuzz crate is a third workspace, and its oracles are the only thing checking that a
+      # rendering keeps its own promise on documents nobody wrote: that the TOML file parses, that
+      # a Markdown row has its header's column count, that a placeholder's shape comes from
+      # `constraint` rather than from `ty`. It replays without libFuzzer on purpose — an oracle
+      # that only runs under a nightly sanitizer is an oracle nobody checks.
+      - name: fuzz oracles
+        run: cargo test
+        working-directory: cli/fuzz
+      - name: fuzz clippy
+        run: cargo clippy --all-targets
+        working-directory: cli/fuzz
       # `^terrace-config( |$)` and not a bare grep: the checkout path contains the string, so a
       # looser pattern reports a dependency that is not there and this gate stops meaning anything.
       - name: it depends on no implementation

@@ -3,3 +3,9 @@
 # part of those bytes, and the generator behind `TERRACE_SPEC_BLESS` writes LF, so a working tree
 # that checked the corpus out as CRLF would be dirty from the moment it was cloned.
 spec/** text eol=lf
+
+# A fuzz seed is an input, not a text file: its bytes are what reproduce a finding, and a CRLF
+# checkout would hand the harness a directive it never saw. The same reasoning as `spec/**` above,
+# one layer down.
+cli/fuzz/seeds/** text eol=lf
+cli/fuzz/corpus/** text eol=lf
