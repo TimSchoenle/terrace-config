@@ -1,0 +1,5 @@
+# The spec is read by toolchains that are not this repository's — a Java build, a chart's CI job, a
+# JSON Schema validator — and its conformance corpus is compared byte for byte. Line endings are
+# part of those bytes, and the generator behind `TERRACE_SPEC_BLESS` writes LF, so a working tree
+# that checked the corpus out as CRLF would be dirty from the moment it was cloned.
+spec/** text eol=lf

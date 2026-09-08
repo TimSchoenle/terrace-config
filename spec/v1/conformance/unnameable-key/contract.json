@@ -1,0 +1,113 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config",
+    "version": "0.0.0-conformance",
+    "loader": "figment"
+  },
+  "app": {
+    "name": "edge",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "EDGE_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "EDGE_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "EDGE_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file supplies the key its name spells.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "distDir",
+        "env": null,
+        "env_file": null,
+        "secrets_file": null,
+        "docs": "Where the bundle is read from.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "unreachable": "unnameable",
+        "default": "public",
+        "default_value": "public",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "maxAgeSecs",
+        "env": null,
+        "env_file": null,
+        "secrets_file": null,
+        "docs": "How long a rendered page stays fresh.",
+        "ty": "u64",
+        "values": [],
+        "constraint": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "unreachable": "unnameable",
+        "default": "0",
+        "default_value": 0,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "distDir": {
+        "default": "public",
+        "description": "Where the bundle is read from.",
+        "type": "string"
+      },
+      "maxAgeSecs": {
+        "default": 0,
+        "description": "How long a rendered page stays fresh.",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "title": "edge configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}
