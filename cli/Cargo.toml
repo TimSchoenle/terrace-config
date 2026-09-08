@@ -65,7 +65,7 @@ clap = { version = "4", features = ["derive"], optional = true }
 # The TOML rendering's own claim is that the file it writes *loads*. A renderer that emits an
 # example an operator copies into a deployment has to be held to that by something that actually
 # parses it, not by a golden file that would happily pin a broken one.
-toml = "0.9"
+toml = "=0.9.12+spec-1.1.0"
 
 
 [lints]
