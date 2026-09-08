@@ -24,7 +24,7 @@ Nothing in this comment may contain a mustache that is not a real reference.
 [![Release](https://img.shields.io/github/v/release/{{ repo.slug }}?sort=semver)]({{ repo.url }}/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/{{ repo.slug }}/ci.yml?branch={{ repo.branch }}&label=ci)]({{ repo.url }}/actions/workflows/ci.yml)
 [![Licence](https://img.shields.io/github/license/{{ repo.slug }})](LICENSE)
-[![MSRV](https://img.shields.io/badge/MSRV-{{ toolchain.msrv }}-blue)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-{{ toolchain.msrv }}-blue)](../rust/Cargo.toml)
 
 ## What this is
 
@@ -272,7 +272,7 @@ for everything this crate does at runtime should not link a test harness.
 {{/each}}
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
-to run a campaign, and [spec/](spec/) is the contract format itself — normative, language-neutral,
+to run a campaign, and [spec/](../spec/) is the contract format itself — normative, language-neutral,
 and what an implementation in another language conforms to. The table above documents *this*
 implementation; the spec documents the document.
 
@@ -286,7 +286,7 @@ breaking change move the minor while the crate is pre-1.0; `fix` moves the patch
 pull request and commits the result back to the branch, and a push to `main` whose `README.md`
 does not match its template fails.
 
-The gates a pull request has to pass are in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
+The gates a pull request has to pass are in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml);
 all of them run locally:
 
 ```bash
@@ -305,9 +305,9 @@ place of the value, and no error in this crate prints a value either, so a log l
 to leak a credential. `Terrace::explain` records no value at all, so there is nothing in it to
 redact.
 
-[SECURITY.md](SECURITY.md) has the reporting instructions. Do not open a public issue for a
+[SECURITY.md](../SECURITY.md) has the reporting instructions. Do not open a public issue for a
 vulnerability.
 
 ## Licence
 
-{{ repo.license }}. [LICENSE](LICENSE) has the terms.
+{{ repo.license }}. [LICENSE](../LICENSE) has the terms.

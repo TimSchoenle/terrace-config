@@ -49,6 +49,7 @@ const BLESS: &str = "TERRACE_SPEC_BLESS";
 
 fn spec_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
         .join("spec")
         .join("v1")
 }

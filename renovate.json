@@ -13,7 +13,7 @@
     },
     {
       "description": "`fuzz/` is a separate workspace whose lockfile only ever backs a local fuzzing run. Bumps there are grouped so they cost one pull request rather than one per crate.",
-      "matchFileNames": ["fuzz/Cargo.toml"],
+      "matchFileNames": ["rust/fuzz/Cargo.toml"],
       "groupName": "fuzz harness dependencies"
     }
   ]
