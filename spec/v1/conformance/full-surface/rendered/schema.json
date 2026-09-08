@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "api_base": {
+      "description": "Base URL every outbound request is resolved against.\n\nNo default and not optional, so some layer has to supply it — which is what `required`\nsays, and which is not what a JSON Schema `required` list would say about the rendered\ndocument.",
+      "type": "string"
+    },
+    "dist_dir": {
+      "default": "public",
+      "description": "Bundle directory the readiness probe checks.",
+      "type": "string"
+    },
+    "github": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "username"
+              ]
+            },
+            {
+              "required": [
+                "user"
+              ]
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "token": {
+          "description": "Bearer token lifting the API rate limit.\n\nSupply it as a mounted file, so the value never reaches the process environment.",
+          "type": "string",
+          "writeOnly": true
+        },
+        "ttl_secs": {
+          "default": 0,
+          "description": "Revalidation interval in seconds.\n\nDefault: permanent.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "user": {
+          "description": "Another spelling of `github.username`.",
+          "type": "string"
+        },
+        "username": {
+          "description": "User whose repositories are listed.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "log_level": {
+      "default": "info",
+      "description": "How much the service says.",
+      "enum": [
+        "trace",
+        "debug",
+        "info",
+        "warn"
+      ],
+      "type": "string"
+    },
+    "methods": {
+      "default": [],
+      "description": "Methods every route admits.",
+      "items": {
+        "enum": [
+          "GET",
+          "POST"
+        ],
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "sample_rate": {
+      "default": 0.0,
+      "description": "Fraction of requests sampled for tracing.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "api_base",
+    "github"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,5 @@
+# terrace-config:labels:begin
+LABEL dev.terrace.config.contract.version="1" \
+      dev.terrace.config.contract.path="/config/contract.json" \
+      dev.terrace.config.prefix="PORTFOLIO_"
+# terrace-config:labels:end
