@@ -31,6 +31,39 @@ that document exists is the binary.
 
 ---
 
+## Status
+
+Phase 0 and most of phase 1 are built, in `cli/`. What exists and is under test:
+
+| | |
+|---|---|
+| `document` | the envelope, read tolerantly, gating on `terrace_contract` before believing anything |
+| `render` | **all seven renderings**, each byte-identical to the Rust implementation's over the whole corpus |
+| `conform` | the eight refusals, and tier 2's spelling derivation |
+| `validate` | any document against the embedded `spec/v1/contract.schema.json` |
+| `image` | the label comparison and the Dockerfile block reader |
+| `stamp` | build identity onto a document, with the round trip that makes it safe |
+| CI | `fmt`, `clippy` in both feature sets, the corpus tests, and the assertion that `cli/` depends on no implementation |
+
+`spec/v1/conformance/<case>/rendered/` landed with it: seven files per case, blessed by the Rust
+implementation's own `TERRACE_SPEC_BLESS` run, which is §5 arriving with phase 1 rather than after
+it.
+
+Still to come, in the order §11 gives: the Java cutover (phase 2), then the chart half — `k8s`,
+the gates, the marker language, the derived documents and the writers.
+
+Two things found while building, both now fixed in the plan's own terms rather than only in code:
+
+- **The TOML rendering's placeholder was `ty`-keyed** in the implementation it was ported from,
+  which §7.3 says a shared renderer must never be. It reads the published `constraint` instead —
+  the same answer, arrived at by the producer that did have the type, and right for every producer.
+- **`serde_json`'s `preserve_order` was wrong.** A producer builds its JSON with `serde_json::Map`,
+  a `BTreeMap`, so every object in a published document is alphabetical — the JSON Schema's
+  `properties` included. Sorting the same way is what makes `--format contract` a byte-for-byte
+  round trip.
+
+---
+
 ## 1. Why the first plan no longer fits
 
 The first draft was right about the chart half and wrong about the shape, because it was written
