@@ -277,7 +277,9 @@ for everything this crate does at runtime should not link a test harness.
 | [The config contract: image-embedded configuration schemas, validated by the charts](docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. |
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
-to run a campaign.
+to run a campaign, and [spec/](spec/) is the contract format itself — normative, language-neutral,
+and what an implementation in another language conforms to. The table above documents *this*
+implementation; the spec documents the document.
 
 ## Contributing
 

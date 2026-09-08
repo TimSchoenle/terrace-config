@@ -1,0 +1,377 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://terrace.dev/spec/v1/contract.schema.json",
+  "title": "Terrace configuration contract, envelope version 1",
+  "description": "The document an image publishes saying what configuration it takes. Normative prose is in FORMAT.md; this file is what a producer is checked against and what a consumer may validate before reading. Objects here are deliberately open — the format evolves by addition, and a consumer that ignores what it does not recognise stays correct. Producer typos are caught by the conformance corpus, not by this file.",
+  "type": "object",
+  "required": [
+    "terrace_contract",
+    "producer",
+    "app",
+    "schema",
+    "json_schema",
+    "external"
+  ],
+  "properties": {
+    "terrace_contract": {
+      "description": "The version of this envelope's shape. A consumer refuses a version it was not written against rather than reading it optimistically.",
+      "const": 1
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "app": { "$ref": "#/$defs/app" },
+    "schema": { "$ref": "#/$defs/schema" },
+    "json_schema": { "$ref": "#/$defs/json_schema" },
+    "external": { "$ref": "#/$defs/external" }
+  },
+
+  "$defs": {
+    "producer": {
+      "$anchor": "producer",
+      "title": "Which implementation wrote this document",
+      "description": "Not a fact about the configuration. `loader` is what makes every `text_constraint` in the document safe to apply: those patterns were measured against a named library's environment reads, and another library has different answers. A consumer that does not recognise the loader must not apply the reads in FORMAT.md.",
+      "type": "object",
+      "required": ["name", "version", "loader"],
+      "properties": {
+        "name": {
+          "description": "The implementation, e.g. `terrace-config`. A stable identifier, not a display name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "description": "The implementation's own version. Not `app.version`, which versions the service being described.",
+          "type": "string",
+          "minLength": 1
+        },
+        "loader": {
+          "description": "The library whose environment reads the text constraints were measured against, e.g. `figment`. Named rather than restated: a vocabulary describing every way a binder might read a string is a language two implementations can disagree in.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+
+    "app": {
+      "$anchor": "app",
+      "title": "Which build this contract describes",
+      "description": "Every field moves independently of the configuration surface, which is why they are collected: a consumer diffing two contracts to see whether the configuration changed diffs everything except this.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string" },
+        "revision": {
+          "description": "The commit the image was built from.",
+          "type": "string"
+        },
+        "created": {
+          "description": "Build time, RFC 3339.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Where the source lives.",
+          "type": "string"
+        }
+      }
+    },
+
+    "schema": {
+      "$anchor": "schema",
+      "title": "Every key the loader can carry, in every spelling that can supply it",
+      "description": "Also the whole of what a producer's `json` rendering emits, so this subschema is addressable on its own as `contract.schema.json#schema`.",
+      "type": "object",
+      "required": ["schema_version", "dialect", "loader", "keys"],
+      "properties": {
+        "schema_version": {
+          "description": "The version of this half's shape, moving independently of `terrace_contract`. Version 2 added nesting inside `constraint`. A consumer gates on this before widening its keyword allowlist.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "dialect": { "$ref": "#/$defs/dialect" },
+        "loader": {
+          "description": "The variables the loader reads to decide what the layers are, rather than to fill a key. Step 1 of the ordered read in FORMAT.md.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/loader_var" }
+        },
+        "keys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/key" }
+        }
+      }
+    },
+
+    "dialect": {
+      "$anchor": "dialect",
+      "title": "How a key path becomes a name in each layer",
+      "type": "object",
+      "required": ["prefix", "nesting_separator", "indirection_suffix"],
+      "properties": {
+        "prefix": {
+          "description": "The environment namespace this contract governs, e.g. `PORTFOLIO_`. Never empty: a prefixless loader cannot tell its own namespace from the machine's, and every gate in FORMAT.md rests on that distinction.",
+          "type": "string",
+          "minLength": 1
+        },
+        "nesting_separator": {
+          "description": "What separates path segments in an environment spelling, e.g. `__`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "indirection_suffix": {
+          "description": "What marks a variable as naming a file rather than holding a value, e.g. `_FILE`.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+
+    "loader_var": {
+      "$anchor": "loader_var",
+      "type": "object",
+      "required": ["env", "role", "docs", "default"],
+      "properties": {
+        "env": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "role": {
+          "description": "What the loader does with it. `other` is the degradation target for a role a reader does not know; a reader meeting it should say it skipped the variable rather than treat it as checked.",
+          "enum": ["config", "secrets_dir", "reserved", "other"]
+        },
+        "docs": { "type": "string" },
+        "default": {
+          "description": "What the loader assumes when the variable is unset. Null when there is no default.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+
+    "key": {
+      "$anchor": "key",
+      "title": "One configuration key, in every spelling that can supply it",
+      "type": "object",
+      "required": [
+        "path",
+        "env",
+        "env_file",
+        "secrets_file",
+        "docs",
+        "ty",
+        "values",
+        "text_form",
+        "aliases",
+        "env_aliases",
+        "env_file_aliases",
+        "secrets_file_aliases",
+        "default",
+        "default_value",
+        "note",
+        "required",
+        "secret",
+        "reserved"
+      ],
+      "properties": {
+        "path": {
+          "description": "The document path, e.g. `csp.cloudflare.turnstile`. Unique across `keys`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "env": {
+          "description": "The variable supplying it directly. Null means no variable names it, and `unreachable` says why.",
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "env_file": {
+          "description": "The variable naming a file that holds it.",
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "secrets_file": {
+          "description": "The file name inside the secrets directory that supplies it.",
+          "type": ["string", "null"]
+        },
+        "docs": {
+          "description": "Prose describing the key. Empty when there was none. Markdown; the first paragraph is the summary.",
+          "type": "string"
+        },
+        "ty": {
+          "description": "The producer's own name for the field's type, with any optionality stripped — `required` already says whether the key may be left out. Token text in the producer's language, not a portable type name: read `constraint` to check a value, never this.",
+          "type": ["string", "null"]
+        },
+        "values": {
+          "description": "The fixed set of values the key accepts, spelled as the loader accepts them. Empty when the key is not a choice.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "constraint": {
+          "description": "What the value must be once it is in the document, as JSON Schema keywords. Absent means no check is possible — a type the producer could not interpret — and a consumer must not invent one. Nests under `items` and `additionalProperties` from schema_version 2.",
+          "type": "object"
+        },
+        "text_constraint": {
+          "description": "What the characters of an environment variable must be, before anything parses them. Complementary to `constraint`, never an alternative: a consumer checking a variable applies this to the raw text and `constraint` to whatever the parse produced. Measured against `producer.loader`.",
+          "type": "object"
+        },
+        "text_form": { "$ref": "#/$defs/text_form" },
+        "aliases": {
+          "description": "Other document spellings of this key. A file using one loads, so a consumer must accept them.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "env_aliases": {
+          "description": "The environment spellings of `aliases`, derived by the producer rather than left to a consumer — a derivation written as prose is one each consumer gets differently wrong.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+        },
+        "env_file_aliases": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+        },
+        "secrets_file_aliases": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "unreachable": {
+          "$ref": "#/$defs/unreachable"
+        },
+        "default": {
+          "description": "The observed default, rendered for display. Null when the key has none. `<redacted>` for a secret.",
+          "type": ["string", "null"]
+        },
+        "default_value": {
+          "description": "The same default as a value rather than as text, for a consumer that wants to compare rather than print. Null when the key has none, which is indistinguishable from a default that is itself null — use `default` and `required` to tell those apart."
+        },
+        "note": {
+          "description": "Prose qualifying the default, e.g. `permanent` for a zero that means no expiry.",
+          "type": ["string", "null"]
+        },
+        "required": {
+          "description": "Whether some layer must supply the key. Not JSON Schema's `required`, which asks whether one document carries it: a required secret is supplied by a mounted file and the rendered document does not carry it at all.",
+          "type": "boolean"
+        },
+        "secret": {
+          "description": "Whether the value is a credential. A secret never carries a default, anywhere in the document.",
+          "type": "boolean"
+        },
+        "reserved": {
+          "description": "Whether the loader reads it directly from the environment, before the layers exist. No file may supply it.",
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "title": "A key the environment cannot name says why",
+          "description": "The two reasons differ in whether the environment can reach the key at all, and a consumer treating a bare null as `skip this key` is right for one and wrong for the other.",
+          "if": {
+            "properties": { "env": { "type": "null" } },
+            "required": ["env"]
+          },
+          "then": { "required": ["unreachable"] }
+        },
+        {
+          "title": "A secret carries no default",
+          "description": "Refused at build time in either order the two were declared. This is the point the document crosses into a public registry.",
+          "if": {
+            "properties": { "secret": { "const": true } },
+            "required": ["secret"]
+          },
+          "then": {
+            "properties": {
+              "default": { "type": "null" },
+              "default_value": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+
+    "text_form": {
+      "$anchor": "text_form",
+      "description": "How to read the characters a variable holds, before checking the result against `constraint`. Always present, so that a null `text_constraint` has one meaning: `text` says any text is fine, `unknown` says nothing could be determined. The read each form names belongs to `producer.loader`, not to this document.",
+      "enum": ["text", "integer", "boolean", "choice", "structured", "unknown"]
+    },
+
+    "unreachable": {
+      "$anchor": "unreachable",
+      "description": "Why no environment variable is published for a key. `unnameable`: no variable names it, so the document is the only layer left. `indirection`: a name this schema gives another key also fills this one, which a producer refuses to publish.",
+      "enum": ["unnameable", "indirection", "other"]
+    },
+
+    "json_schema": {
+      "$anchor": "json_schema",
+      "title": "The same keys as a JSON Schema, for validating the document a chart renders",
+      "description": "The only half a stock validator acts on, and it carries no environment spellings at all. Draft-07 by default, because that is what Helm validates values.schema.json against.",
+      "type": "object",
+      "required": ["$schema"],
+      "properties": {
+        "$schema": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "external": {
+      "$anchor": "external",
+      "title": "The surface outside the loader's namespace",
+      "description": "What else this image reads, and what it does not care about. A positive declaration rather than a suppression list: a declared variable is checked exactly like a configuration key, an ignored one may be misspelt freely.",
+      "type": "object",
+      "required": ["env", "ignore", "unknown"],
+      "properties": {
+        "env": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/external_var" }
+        },
+        "ignore": {
+          "description": "Names nobody owns. Only a trailing `*` is a wildcard — every consumer implements this matching itself, and a pattern language is a place for two implementations to disagree about what is exempt from a check.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^*]+\\*?$"
+          }
+        },
+        "unknown": {
+          "description": "What to do with a variable no rule accounted for. Step 7 of the ordered read.",
+          "enum": ["allow", "warn", "reject"]
+        }
+      }
+    },
+
+    "external_var": {
+      "$anchor": "external_var",
+      "title": "A variable this image reads that is nobody's configuration key",
+      "type": "object",
+      "required": ["name", "docs", "values", "text_form", "required", "secret"],
+      "properties": {
+        "name": {
+          "description": "Never carries `dialect.prefix`: everything in that namespace is a configuration key, and declaring one external would leave it governed and exempt at once.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "owner": {
+          "description": "What reads it — a toolchain, a base image, a library.",
+          "type": "string"
+        },
+        "docs": { "type": "string" },
+        "ty": { "type": ["string", "null"] },
+        "values": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "constraint": { "type": "object" },
+        "text_constraint": { "type": "object" },
+        "text_form": { "$ref": "#/$defs/text_form" },
+        "default": { "type": ["string", "null"] },
+        "required": { "type": "boolean" },
+        "secret": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "title": "A secret carries no default",
+          "if": {
+            "properties": { "secret": { "const": true } },
+            "required": ["secret"]
+          },
+          "then": {
+            "properties": { "default": { "type": "null" } }
+          }
+        }
+      ]
+    }
+  }
+}

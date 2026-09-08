@@ -150,6 +150,16 @@ pub const LABEL_PREFIX: &str = "dev.terrace.config.prefix";
 /// Where [`LABEL_PATH`] points unless a build says otherwise.
 pub const DEFAULT_PATH: &str = "/config/contract.json";
 
+/// The [`Producer::name`] this crate writes.
+pub const PRODUCER_NAME: &str = "terrace-config";
+
+/// The [`Producer::loader`] this crate writes.
+///
+/// The library whose environment reads every [`text_constraint`](super::Key::text_constraint) in
+/// a document from this crate was measured against. It is named rather than restated: see
+/// [`Producer`].
+pub const PRODUCER_LOADER: &str = "figment";
+
 /// Opens the region of a Dockerfile that [`Contract::to_dockerfile_block`] owns.
 ///
 /// The block is generated and pasted, so something has to say where the pasted text begins and
@@ -195,6 +205,8 @@ pub const MARKER_END: &str = "# terrace-config:labels:end";
 pub struct Contract {
     /// The version of this envelope's shape. See [`CONTRACT_VERSION`].
     pub terrace_contract: u32,
+    /// Which implementation wrote this document, and which loader it describes.
+    pub producer: Producer,
     /// Which build this describes.
     pub app: App,
     /// Every key the loader can carry, in every spelling that can supply it.
@@ -204,6 +216,67 @@ pub struct Contract {
     /// The surface outside the loader's namespace: what else this image reads, and what it does
     /// not care about.
     pub external: External,
+}
+
+/// Which implementation wrote a [`Contract`], and which loader its text constraints were measured
+/// against.
+///
+/// The one part of the envelope that says nothing about the configuration and everything about how
+/// to read the rest of it. While there was one producer both facts were derivable: every document
+/// came from this crate wrapping figment, and a consumer could hard-code them. A second
+/// implementation in another language makes both a question, and the two answers are needed for
+/// different reasons.
+///
+/// **[`name`](Self::name) and [`version`](Self::version) are who to ask.** A consumer meeting a
+/// document it cannot make sense of has one useful thing to say about it, and "written by X
+/// version Y" is that thing. Without it a defect in one implementation gets reported against
+/// whichever one the reporter had heard of.
+///
+/// **[`loader`](Self::loader) is what makes [`text_constraint`](super::Key::text_constraint)
+/// safe to apply.** Those patterns are not derived from a grammar — they were *measured* against
+/// the library the image links, and a different library has different answers about `+5`, `007`,
+/// `TRUE`, and how a list is spelled in a single variable. A consumer applying one loader's
+/// reading rules to another loader's document is wrong in the direction that costs a deployment,
+/// and until this field existed it had no way to tell the two apart.
+///
+/// It **names** the loader rather than restating its rules. A vocabulary rich enough to describe
+/// every way a binder might read a string is a language two implementations can disagree in, and
+/// this document deliberately carries as little of that as it can — the single trailing `*` in
+/// [`External::ignore`] is the whole of its pattern syntax, for the same reason. A name is a
+/// lookup, and a consumer meeting one it does not recognise can say exactly that instead of
+/// guessing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Producer {
+    /// The implementation, e.g. `terrace-config`.
+    ///
+    /// A stable identifier rather than a display name: a consumer matching on it should not have
+    /// to learn about a rename.
+    pub name: String,
+    /// The implementation's own version, e.g. `0.11.0`.
+    ///
+    /// Not [`App::version`], which is the version of the service being described. The two move
+    /// independently and a consumer chasing a rendering defect wants this one.
+    pub version: String,
+    /// The library whose environment reads the text constraints were measured against, e.g.
+    /// `figment`.
+    pub loader: String,
+}
+
+impl Producer {
+    /// What this crate writes into every contract it builds.
+    ///
+    /// Not settable, and deliberately: a producer that could name itself something else could
+    /// publish a document whose reading rules are another implementation's, which is the single
+    /// claim in this envelope a consumer cannot check for itself.
+    #[must_use]
+    pub fn current() -> Self {
+        Self {
+            name: PRODUCER_NAME.to_owned(),
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            loader: PRODUCER_LOADER.to_owned(),
+        }
+    }
 }
 
 /// Which build a [`Contract`] describes.
@@ -425,9 +498,16 @@ impl App {
 /// name is not merely a validation nuisance — `PORTFOLIO_PORT` is a spelling of the key `port`,
 /// so a service link would *supply* that key, from the environment layer, outranking the mounted
 /// file. That is a live misconfiguration this document cannot fix and can only refuse to hide.
-// Not rustdoc: the ordered list above is duplicated in `docs/CONTRACT.md`, which is what a
-// pipeline implementer reads. Edit both or neither. Two normative statements that disagree is
-// the same defect as no normative statement, and worse for being harder to notice.
+// Not rustdoc: the ordered list above and the read tables beside it are **restatements**. The
+// normative copy is `spec/v1/FORMAT.md`, under *Reading a container* and *Reading a variable*,
+// because those rules are not this crate's — a consumer implementing them is a pipeline in
+// whatever language that pipeline is written in, and a second producer reads them to know what its
+// output has to make possible.
+//
+// So: edit the spec first, then this, then re-bless the conformance corpus. Two normative
+// statements that disagree is the same defect as no normative statement, and worse for being
+// harder to notice. This one stays a restatement rather than a link because the reader it is for
+// is already inside the type they need it for.
 //
 // Also not rustdoc: two spellings of the read rule have already been made here, and whoever
 // edits it next is the reader who needs them. Inferring "a pattern means integer" was right for
@@ -844,6 +924,7 @@ impl ContractBuilder {
 
         Ok(Contract {
             terrace_contract: CONTRACT_VERSION,
+            producer: Producer::current(),
             app,
             schema,
             json_schema: Json::Object(rendered),

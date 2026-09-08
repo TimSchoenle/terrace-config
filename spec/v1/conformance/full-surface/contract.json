@@ -1,0 +1,381 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config",
+    "version": "0.0.0-conformance",
+    "loader": "figment"
+  },
+  "app": {
+    "name": "portfolio",
+    "version": "2.5.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "PORTFOLIO_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "PORTFOLIO_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "PORTFOLIO_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file supplies the key its name spells.",
+        "default": null
+      },
+      {
+        "env": "PORTFOLIO_PROFILE",
+        "role": "reserved",
+        "docs": "Read directly from the environment before the layered config exists, so no file may supply it.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "dist_dir",
+        "env": "PORTFOLIO_DIST_DIR",
+        "env_file": "PORTFOLIO_DIST_DIR_FILE",
+        "secrets_file": "dist_dir",
+        "docs": "Bundle directory the readiness probe checks.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "public",
+        "default_value": "public",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "api_base",
+        "env": "PORTFOLIO_API_BASE",
+        "env_file": "PORTFOLIO_API_BASE_FILE",
+        "secrets_file": "api_base",
+        "docs": "Base URL every outbound request is resolved against.\n\nNo default and not optional, so some layer has to supply it — which is what `required`\nsays, and which is not what a JSON Schema `required` list would say about the rendered\ndocument.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "log_level",
+        "env": "PORTFOLIO_LOG_LEVEL",
+        "env_file": "PORTFOLIO_LOG_LEVEL_FILE",
+        "secrets_file": "log_level",
+        "docs": "How much the service says.",
+        "ty": "LogLevel",
+        "values": [
+          "trace",
+          "debug",
+          "info",
+          "warn"
+        ],
+        "constraint": {
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn"
+          ],
+          "type": "string"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*(trace|debug|info|warn)\\s*$",
+          "type": "string"
+        },
+        "text_form": "choice",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "info",
+        "default_value": "info",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "sample_rate",
+        "env": "PORTFOLIO_SAMPLE_RATE",
+        "env_file": "PORTFOLIO_SAMPLE_RATE_FILE",
+        "secrets_file": "sample_rate",
+        "docs": "Fraction of requests sampled for tracing.",
+        "ty": "f64",
+        "values": [],
+        "constraint": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "text_form": "unknown",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "0",
+        "default_value": 0.0,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "methods",
+        "env": "PORTFOLIO_METHODS",
+        "env_file": "PORTFOLIO_METHODS_FILE",
+        "secrets_file": "methods",
+        "docs": "Methods every route admits.",
+        "ty": "Vec<Method>",
+        "values": [],
+        "constraint": {
+          "items": {
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*[\\[\\{][\\s\\S]*[\\]\\}]\\s*$",
+          "type": "string"
+        },
+        "text_form": "structured",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "[]",
+        "default_value": [],
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "github.username",
+        "env": "PORTFOLIO_GITHUB__USERNAME",
+        "env_file": "PORTFOLIO_GITHUB__USERNAME_FILE",
+        "secrets_file": "github__username",
+        "docs": "User whose repositories are listed.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [
+          "github.user"
+        ],
+        "env_aliases": [
+          "PORTFOLIO_GITHUB__USER"
+        ],
+        "env_file_aliases": [
+          "PORTFOLIO_GITHUB__USER_FILE"
+        ],
+        "secrets_file_aliases": [
+          "github__user"
+        ],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "github.token",
+        "env": "PORTFOLIO_GITHUB__TOKEN",
+        "env_file": "PORTFOLIO_GITHUB__TOKEN_FILE",
+        "secrets_file": "github__token",
+        "docs": "Bearer token lifting the API rate limit.\n\nSupply it as a mounted file, so the value never reaches the process environment.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": true,
+        "reserved": false
+      },
+      {
+        "path": "github.ttl_secs",
+        "env": "PORTFOLIO_GITHUB__TTL_SECS",
+        "env_file": "PORTFOLIO_GITHUB__TTL_SECS_FILE",
+        "secrets_file": "github__ttl_secs",
+        "docs": "Revalidation interval in seconds.",
+        "ty": "u64",
+        "values": [],
+        "constraint": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "0",
+        "default_value": 0,
+        "note": "permanent",
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "api_base": {
+        "description": "Base URL every outbound request is resolved against.\n\nNo default and not optional, so some layer has to supply it — which is what `required`\nsays, and which is not what a JSON Schema `required` list would say about the rendered\ndocument.",
+        "type": "string"
+      },
+      "dist_dir": {
+        "default": "public",
+        "description": "Bundle directory the readiness probe checks.",
+        "type": "string"
+      },
+      "github": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "description": "Bearer token lifting the API rate limit.\n\nSupply it as a mounted file, so the value never reaches the process environment.",
+            "type": "string",
+            "writeOnly": true
+          },
+          "ttl_secs": {
+            "default": 0,
+            "description": "Revalidation interval in seconds.\n\nDefault: permanent.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "user": {
+            "description": "Another spelling of `github.username`.",
+            "type": "string"
+          },
+          "username": {
+            "description": "User whose repositories are listed.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "log_level": {
+        "default": "info",
+        "description": "How much the service says.",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn"
+        ],
+        "type": "string"
+      },
+      "methods": {
+        "default": [],
+        "description": "Methods every route admits.",
+        "items": {
+          "enum": [
+            "GET",
+            "POST"
+          ],
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "sample_rate": {
+        "default": 0.0,
+        "description": "Fraction of requests sampled for tracing.",
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+      }
+    },
+    "title": "portfolio configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [
+      {
+        "name": "PORT",
+        "owner": "runtime",
+        "docs": "Bind port. Read by the server toolchain, not by this loader.",
+        "ty": "u16",
+        "values": [],
+        "constraint": {
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "default": "8080",
+        "required": false,
+        "secret": false
+      },
+      {
+        "name": "RUST_LOG",
+        "owner": "tracing",
+        "docs": "",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "required": false,
+        "secret": false
+      }
+    ],
+    "ignore": [
+      "KUBERNETES_*",
+      "HOSTNAME"
+    ],
+    "unknown": "reject"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config",
+    "version": "0.0.0-conformance",
+    "loader": "figment"
+  },
+  "app": {
+    "name": "minimal",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "MINIMAL_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "MINIMAL_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "MINIMAL_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file supplies the key its name spells.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "dist_dir",
+        "env": "MINIMAL_DIST_DIR",
+        "env_file": "MINIMAL_DIST_DIR_FILE",
+        "secrets_file": "dist_dir",
+        "docs": "Bundle directory the readiness probe checks.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "public",
+        "default_value": "public",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "dist_dir": {
+        "default": "public",
+        "description": "Bundle directory the readiness probe checks.",
+        "type": "string"
+      }
+    },
+    "title": "minimal configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

@@ -41,12 +41,21 @@ std::fs::write("contract.json", contract.to_json()?)?;
 ```json
 {
   "terrace_contract": 1,
+  "producer": { "name": "terrace-config", "version": "0.11.0", "loader": "figment" },
   "app": { "name": "portfolio", "version": "v2.5.0" },
   "schema": { "schema_version": 2, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
   "json_schema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
   "external": { "env": [ … ], "ignore": ["KUBERNETES_*", "HOSTNAME"], "unknown": "reject" }
 }
 ```
+
+`producer` is the field that matters once there is more than one implementation of this
+format, and it is written for you rather than set: it names this crate, its version, and
+**figment** — the library whose environment reads every `text_constraint` below was measured
+against. A consumer must not apply those reads to a document naming a loader it does not know, so
+the field is what makes the rest of the document safely readable rather than plausibly readable.
+See [spec/v1/FORMAT.md](../spec/v1/FORMAT.md) for the format itself, which is where a producer in
+another language starts.
 
 Every field is `snake_case`, the envelope's own included. One document in two conventions —
 `text_constraint` on a key and `textConstraint` on the variable beside it — is a field name a
@@ -207,23 +216,23 @@ needs, and the two differ for every type whose `Deserialize` parses a string. An
 `text_form: unknown` — no pattern here describes an address — and it is a string in the document
 and mounts from a secrets file perfectly well.
 
-They also *read* differently, which is a third rule and not the table above. Trailing `\r` and
-`\n` are stripped and no other whitespace is — every editor and every YAML block scalar adds a
-line ending nobody meant as part of the value, whereas a trailing space can be a real character of
-a real password. So `"x\n"` supplies a `char` key and `"x "` does not:
+They also *read* differently, which is a third rule and not the table above — and it is the
+spec's rather than this page's, because a consumer applying it may be written in any language:
+[*Reading a variable*](../spec/v1/FORMAT.md#reading-a-variable) tabulates all three layers and
+marks them as figment's reads rather than as the format's. The half worth repeating here is the one
+that catches people. A file's trailing `\r` and `\n` are stripped and no other whitespace is —
+every editor and every YAML block scalar adds a line ending nobody meant as part of the value,
+whereas a trailing space can be a real character of a real password — so `"x\n"` supplies a `char`
+key and `"x "` does not, which is the opposite of the environment layer's trim.
 
-| layer | read |
-|---|---|
-| environment | trim all surrounding whitespace, then the form's read |
-| secrets file, `_FILE` target | strip trailing line terminators, and nothing else |
-| the document | nothing; it is already a parsed value |
-
-Which is enough for a consumer holding a rendered `Secret` to check its **values** as well as its
+That is enough for a consumer holding a rendered `Secret` to check its **values** as well as its
 file names: strip the trailing line terminators and apply `constraint`. Not `text_constraint` —
 that is the one that looks right because it takes a string, and it is exactly wrong here, because
-it permits the surrounding whitespace an environment spelling may carry and a file keeps. That is deliberate: those layers exist to carry secrets, and a
-secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file has made a
-mistake no file contents can fix, and a validator can say so from `constraint` alone.
+it permits the surrounding whitespace an environment spelling may carry and a file keeps.
+
+The blunter rule above it is deliberate rather than a limitation: those layers exist to carry
+secrets, and a secret is an opaque byte string. A chart mounting `isr__ttl_secs` as a secret file
+has made a mistake no file contents can fix, and a validator can say so from `constraint` alone.
 
 ## The half no derive can see
 
@@ -286,72 +295,27 @@ language is a place for two implementations to disagree about what is exempt fro
 
 ## How a validator reads it
 
-Normative, and an ordered list because it has to be — two consumers running these in a different
-order disagree about whether a deployment is valid, which is the failure the single wildcard form
-exists to prevent, reached through evaluation order instead of pattern syntax. For each environment
-variable on a container, first match winning:
+**Moved.** The rules a consumer follows — the ordered list that classifies every environment
+variable on a container, the two-step check a variable gets, and the reads each `text_form` names —
+are in [spec/v1/FORMAT.md](../spec/v1/FORMAT.md), under *Reading a container* and *Reading a
+variable*.
 
-1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
-2. some `schema.keys[].env` **or one of that key's `env_aliases`** — that key, from the
-   environment layer. Check it in two steps; see below.
-3. some `schema.keys[].env_file` **or one of its `env_file_aliases`** — that key, by
-   indirection. The value is a path, so neither constraint applies; what applies is that the path
-   is mounted.
-4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
-   image reads. Neither `external.env` nor `external.ignore` can reach this step, because `build`
-   refuses both when they carry the prefix.
-5. some `external.env[].name` — check it the same two ways, against that entry's
-   `text_constraint` and `constraint`.
-6. some `external.ignore` pattern — skip it.
-7. otherwise — `external.unknown`.
+They live there because they are not Rust's. A consumer implementing them is a chart's CI job or a
+deployment gate written in whatever that pipeline is written in, and a second *producer* in another
+language reads the same rules to know what its output has to make possible. Restating them here
+would leave two normative statements to be edited together, which is what a duplicated normative
+statement always costs: two copies to keep in step, and no way to notice when only one moved.
 
-That list is duplicated in `External`'s own rustdoc, and the two must be edited together: two
-normative statements that disagree is the same defect as none, and harder to notice.
+What stays on this page is what building a contract with **this crate** involves. Two things worth
+carrying across from the spec, because they are what the API on this page is shaped around:
 
-The alias spellings in steps 2 and 3 matter more than they look. A key with `#[serde(alias = "…")]`
-answers to every one of them — measured, in the environment layer and in the secrets directory
-alike — so a chart still using a name kept alive by an alias is a *correct* deployment. Publishing
-only the canonical spelling would send it to step 4 and reject it, turning the shim that makes a
-rename safe into the thing that fails the gate. `env_aliases`, `env_file_aliases` and
-`secrets_file_aliases` are those spellings, derived by the same rules as the canonical three
-because a derivation left to prose is one each consumer gets differently wrong.
+- **A variable is checked twice**, against `text_constraint` for its form and then, after reading
+  the text according to `text_form`, against `constraint` for its range. Skipping the second leaves
+  every bound decorative; applying `constraint` to raw text rejects `"0"` for an integer key.
+- **The reads that step depends on are figment's**, measured rather than derived, and a document
+  from another producer says so in `producer.loader`. A consumer applying figment's reads to a
+  document that names a different loader is wrong in the direction that costs a deployment.
 
-**Steps 2 and 5 are two checks, and both are needed.** A variable holds text and a configuration
-holds a value:
-
-1. **Form.** The text must satisfy `text_constraint`, when there is one. `"http"` is not an
-   integer in any spelling, and this is the check that says so.
-2. **Range.** *Read* the text according to `text_form`, then check the result against
-   `constraint`. This is where `minimum`, `maximum`, `minLength` and a document-space `enum` live,
-   and it is the only step that can reach them: a pattern matches characters, so `99999` is a
-   well-formed integer and only a bound catches it not fitting a `u16`.
-
-| `text_form` | read |
-|---|---|
-| `integer` | trim, drop a leading `+`, parse as an integer |
-| `boolean` | trim, compare to `true` |
-| `choice` | trim |
-| `structured` | trim, parse as a TOML literal |
-| `text`, `unknown` | trim |
-
-**Every read begins by trimming**, because the environment layer trimmed before it parsed anything
-— measured, and it holds for a plain `String` and a `char` as much as for an integer. A read that
-skipped it would refuse `" x "` for a `char` key against a `minLength` of 1, on a value that loads.
-
-`text_form` is what says which read, never the shape of `constraint`. `text` and `unknown` still
-reach `constraint`, because their read is a trim rather than nothing — which is how a `char` key's
-`minLength`/`maxLength` is checked, and where a future pattern for a `Uuid` or an address would
-apply.
-
-Skipping the second leaves every bound in the document decorative: a deployment that passes every
-gate and fails at boot. Applying `constraint` to the raw text instead rejects `"0"` for an integer
-key — a correct deployment refused.
-
-**A 64-bit range is not checkable from this document at all.** `u64::MAX` is not representable as
-an IEEE double, so no `maximum` is published rather than one that is a different number than the
-type accepts. A `u64` key given `18446744073709551616` satisfies everything here and still fails to
-load; loading the configuration with the real binary is what closes that, and no arrangement of
-these fields would.
 
 ## What the contract deliberately cannot say
 
