@@ -32,7 +32,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
-use terrace_config::schema::{App, Contract, Describe, External, ExternalVar, Unknown};
+use terrace_config::schema::{
+    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, Unknown,
+};
 
 /// The version string every corpus document carries in place of the real one.
 ///
@@ -469,4 +471,130 @@ fn a_key_the_environment_cannot_name_says_why() {
     for key in unnameable {
         assert_eq!(key["unreachable"], json!("unnameable"), "{key}");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The rendered corpus
+//
+// `contract.json` pins what a *producer* emits. These pin what a *renderer* emits from it, which
+// is a different artefact with a different audience.
+//
+// Every rendering below is a pure function of the document — nothing in a markdown table or a TOML
+// skeleton needs this crate's types — so they are the half of the toolchain that can be shared
+// across implementations rather than written once per language. `cli/` renders them from the
+// document alone; this crate renders them from the types it derived the document from. Two
+// renderers is a drift waiting to happen, and one set of bytes both are held to is what stops it.
+//
+// Each file carries exactly one trailing newline, whatever the rendering itself ended with. That
+// is what `Cli::main` already does for the shell redirect a build writes with, so the stored bytes
+// are the bytes a build produces rather than an internal form nothing consumes.
+// ---------------------------------------------------------------------------------------------
+
+/// Exactly one trailing newline, whatever the rendering ended with.
+///
+/// The renderings disagree: `to_markdown*` and `to_toml_example` end in one, the label formats and
+/// the Dockerfile block do not. `Cli::main` normalises the same way, for the same reason.
+fn one_newline(mut text: String) -> String {
+    while text.ends_with('\n') {
+        text.pop();
+    }
+    text.push('\n');
+    text
+}
+
+/// Every rendering of one case, as the file name it is stored under.
+///
+/// `DEFAULT_PATH` for the two image formats rather than a per-case path: the path is the build's
+/// choice and says nothing about the document, so a corpus case that varied it would be pinning a
+/// caller's argument instead of a rendering.
+fn renderings(contract: &Contract) -> Vec<(&'static str, String)> {
+    let contract = normalise(contract);
+    let schema = &contract.schema;
+
+    vec![
+        (
+            "markdown.md",
+            one_newline(schema.to_markdown_with(Column::DEFAULT)),
+        ),
+        (
+            "markdown-loader.md",
+            one_newline(schema.to_markdown_loader()),
+        ),
+        (
+            "markdown-keys.md",
+            one_newline(schema.to_markdown_keys(Column::DEFAULT)),
+        ),
+        ("config.toml", one_newline(schema.to_toml_example())),
+        (
+            "schema.json",
+            one_newline(schema.to_json_schema().expect("the JSON Schema renders")),
+        ),
+        (
+            "labels.txt",
+            one_newline(
+                contract
+                    .labels(DEFAULT_PATH)
+                    .into_iter()
+                    .map(|(name, value)| format!("{name}={value}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+        ),
+        (
+            "Dockerfile.part",
+            one_newline(contract.to_dockerfile_block(DEFAULT_PATH)),
+        ),
+    ]
+}
+
+fn rendered_path(case: &str, file: &str) -> PathBuf {
+    spec_dir()
+        .join("conformance")
+        .join(case)
+        .join("rendered")
+        .join(file)
+}
+
+#[test]
+fn the_rendered_corpus_matches_what_the_crate_renders() {
+    let bless = std::env::var_os(BLESS).is_some();
+    let mut stale: BTreeMap<String, String> = BTreeMap::new();
+
+    for (case, contract) in cases() {
+        for (file, expected) in renderings(&contract) {
+            let path = rendered_path(case, file);
+
+            if bless {
+                std::fs::create_dir_all(path.parent().expect("the rendering has a directory"))
+                    .expect("the rendering directory can be created");
+                std::fs::write(&path, expected.as_bytes()).expect("the rendering can be written");
+                continue;
+            }
+
+            let key = format!("{case}/{file}");
+            match std::fs::read_to_string(&path) {
+                Ok(found) => {
+                    let found = found.replace("\r\n", "\n");
+                    if found != expected {
+                        stale.insert(key, first_difference(&found, &expected));
+                    }
+                }
+                Err(e) => {
+                    stale.insert(key, format!("could not be read: {e}"));
+                }
+            }
+        }
+    }
+
+    let mut report = String::new();
+    for (name, detail) in &stale {
+        write!(report, "\n`{name}`: {detail}").expect("writing to a String cannot fail");
+    }
+
+    assert!(
+        stale.is_empty(),
+        "the rendered corpus no longer matches what this crate renders. If the change is \
+         intended, regenerate with `{BLESS}=1 cargo test --all-features --test spec` and read the \
+         diff — it is the change every other renderer now has to match.\n{report}"
+    );
 }

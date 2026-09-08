@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "distDir": {
+      "default": "public",
+      "description": "Where the bundle is read from.",
+      "type": "string"
+    },
+    "maxAgeSecs": {
+      "default": 0,
+      "description": "How long a rendered page stays fresh.",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}

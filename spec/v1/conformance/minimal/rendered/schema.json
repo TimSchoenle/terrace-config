@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "dist_dir": {
+      "default": "public",
+      "description": "Bundle directory the readiness probe checks.",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

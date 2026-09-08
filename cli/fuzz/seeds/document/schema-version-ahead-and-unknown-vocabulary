@@ -1,0 +1,1 @@
+{"terrace_contract": 1, "producer": {"name": "x", "version": "1", "loader": "figment"}, "app": {"name": "x"}, "schema": {"schema_version": 9, "dialect": {"prefix": "X_", "nesting_separator": "__", "indirection_suffix": "_FILE"}, "loader": [], "keys": []}, "json_schema": {}, "external": {"env": [], "ignore": [], "unknown": "audit"}, "later": {"field": 1}}

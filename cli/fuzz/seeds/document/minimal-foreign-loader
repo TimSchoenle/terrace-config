@@ -1,0 +1,1 @@
+{"terrace_contract": 1, "producer": {"name": "x", "version": "1", "loader": "spring-boot"}, "app": {"name": "x"}, "schema": {"schema_version": 2, "dialect": {"prefix": "X_", "nesting_separator": "__", "indirection_suffix": "_FILE"}, "loader": [], "keys": []}, "json_schema": {}, "external": {"env": [], "ignore": [], "unknown": "reject"}}

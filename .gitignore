@@ -59,3 +59,13 @@ mutants.out.old/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# The shared toolchain is its own workspace, so it has its own target directory.
+/cli/target/
+
+# ...and, unlike the library above, its lock file is committed. A library resolves against whatever
+# a consumer already has, so pinning here would be a claim it cannot keep; `cli/` ships a *binary*,
+# and the lock file is what makes a release build reproducible and what cargo-deny and Renovate act
+# on.
+!/cli/Cargo.lock
+!/cli/fuzz/Cargo.lock
