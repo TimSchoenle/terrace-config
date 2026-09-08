@@ -8,6 +8,8 @@ rootProject.name = "terrace-config-parent"
 include(
     "terrace-config-annotations",
     "terrace-config-core",
+    "terrace-config-core-jackson2",
+    "terrace-config-core-jackson3",
     "terrace-config-processor",
     "terrace-config-loader",
     "terrace-config-spring-boot",
