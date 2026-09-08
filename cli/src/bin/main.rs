@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use terrace_contract::render::{self, Column, Format, Options, image};
+use terrace_contract::render::{self, Column, Format, JsonSchema, Options, image};
 use terrace_contract::{Contract, DEFAULT_PATH, Error};
 
 /// Read, render and check configuration contracts.
@@ -47,6 +47,27 @@ enum Command {
         /// Which columns the key table carries, comma-separated.
         #[arg(long, value_delimiter = ',')]
         columns: Vec<Column>,
+
+        /// The JSON Schema's `title`.
+        ///
+        /// Per-service, and the one thing about that rendering a document cannot supply: a title
+        /// is what an editor shows, and "configuration" is not it.
+        #[arg(long)]
+        title: Option<String>,
+
+        /// The JSON Schema's `$id`.
+        ///
+        /// No default, deliberately. An `$id` is a URL under the service's own repository, and a
+        /// wrong one is worse than none because an editor will try to resolve it.
+        #[arg(long)]
+        id: Option<String>,
+
+        /// Emit a schema that permits keys it does not declare.
+        ///
+        /// Off by default: an unknown key is the defect this whole scheme exists to catch, and an
+        /// open schema catches none of them.
+        #[arg(long)]
+        open: bool,
     },
 
     /// Write a build's identity onto a document, changing nothing else.
@@ -150,117 +171,149 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<ExitCode, Error> {
+    // One arm per subcommand and nothing else: each of the three below owns its own arguments, so
+    // adding a fourth is a function rather than another branch in a growing match.
     match cli.command {
-        Command::Render {
-            input,
-            format,
-            path,
-            columns,
-        } => {
-            let contract = input.read()?;
-            let columns = if columns.is_empty() {
-                Column::DEFAULT.to_vec()
-            } else {
-                columns
-            };
-            let options = Options {
-                path: &path,
-                columns: &columns,
-            };
-            // Exactly one trailing newline, whatever the rendering ended with, because a build
-            // redirects this into a committed file and a trailing blank line is invisible on a
-            // terminal and a diff in the file.
-            print!(
-                "{}",
-                render::one_newline(render::render(&contract, format, &options)?)
-            );
-            Ok(ExitCode::SUCCESS)
-        }
-
-        Command::Stamp {
-            input,
-            app_version,
-            revision,
-            created,
-            source,
-        } => {
-            let mut contract = input.read()?;
-            // Each field is set only when given, so stamping twice with different arguments
-            // accumulates rather than clearing what the first run wrote.
-            if app_version.is_some() {
-                contract.app.version = app_version;
-            }
-            if revision.is_some() {
-                contract.app.revision = revision;
-            }
-            if created.is_some() {
-                contract.app.created = created;
-            }
-            if source.is_some() {
-                contract.app.source = source;
-            }
-            print!(
-                "{}",
-                render::one_newline(render::render(
-                    &contract,
-                    Format::Contract,
-                    &Options::default()
-                )?)
-            );
-            Ok(ExitCode::SUCCESS)
-        }
-
-        Command::Image {
-            command:
-                ImageCommand::Verify {
-                    input,
-                    labels,
-                    dockerfile,
-                    path,
-                },
-        } => {
-            if labels.is_none() && dockerfile.is_none() {
-                return Err(Error::Invalid(
-                    "nothing to verify against: pass --labels, --dockerfile, or both. A verify \
-                     with neither would report success without comparing anything, which is the \
-                     one outcome this check cannot afford."
-                        .to_owned(),
-                ));
-            }
-
-            let contract = input.read()?;
-            let mut failed = false;
-
-            if let Some(path_to_labels) = &labels {
-                let found = image::labels_from_json(&read(path_to_labels)?)?;
-                if let Some(report) = image::report(&image::check_labels(&contract, &path, &found))
-                {
-                    eprintln!("{report}");
-                    failed = true;
-                }
-            }
-
-            if let Some(path_to_dockerfile) = &dockerfile {
-                let text = read(path_to_dockerfile)?;
-                let committed = image::committed_block(&text)?.replace("\r\n", "\n");
-                let expected = image::dockerfile_labels(&contract, &path);
-                if committed.trim_end() != expected.trim_end() {
-                    eprintln!(
-                        "{}: the committed label block is not the one this document renders.\n\
-                         --- committed\n{committed}\n--- expected\n{}",
-                        path_to_dockerfile.display(),
-                        expected.trim_end()
-                    );
-                    failed = true;
-                }
-            }
-
-            // 1, not 2: the tool worked and the image is wrong.
-            Ok(if failed {
-                ExitCode::FAILURE
-            } else {
-                ExitCode::SUCCESS
-            })
+        Command::Render { .. } => render_command(cli.command),
+        Command::Stamp { .. } => stamp_command(cli.command),
+        Command::Image { command } => {
+            let ImageCommand::Verify {
+                input,
+                labels,
+                dockerfile,
+                path,
+            } = command;
+            verify_command(&input, labels.as_deref(), dockerfile.as_deref(), &path)
         }
     }
+}
+
+fn render_command(command: Command) -> Result<ExitCode, Error> {
+    let Command::Render {
+        input,
+        format,
+        path,
+        columns,
+        title,
+        id,
+        open,
+    } = command
+    else {
+        unreachable!("dispatched on the variant")
+    };
+
+    let contract = input.read()?;
+    let columns = if columns.is_empty() {
+        Column::DEFAULT.to_vec()
+    } else {
+        columns
+    };
+    let options = Options {
+        path: &path,
+        columns: &columns,
+        json_schema: JsonSchema {
+            title,
+            id,
+            closed: !open,
+            ..JsonSchema::default()
+        },
+    };
+
+    // Exactly one trailing newline, whatever the rendering ended with, because a build redirects
+    // this into a committed file and a trailing blank line is invisible on a terminal and a diff
+    // in the file.
+    print!(
+        "{}",
+        render::one_newline(render::render(&contract, format, &options)?)
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn stamp_command(command: Command) -> Result<ExitCode, Error> {
+    let Command::Stamp {
+        input,
+        app_version,
+        revision,
+        created,
+        source,
+    } = command
+    else {
+        unreachable!("dispatched on the variant")
+    };
+
+    let mut contract = input.read()?;
+    // Each field is set only when given, so stamping twice with different arguments accumulates
+    // rather than clearing what the first run wrote.
+    if app_version.is_some() {
+        contract.app.version = app_version;
+    }
+    if revision.is_some() {
+        contract.app.revision = revision;
+    }
+    if created.is_some() {
+        contract.app.created = created;
+    }
+    if source.is_some() {
+        contract.app.source = source;
+    }
+
+    print!(
+        "{}",
+        render::one_newline(render::render(
+            &contract,
+            Format::Contract,
+            &Options::default()
+        )?)
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn verify_command(
+    input: &Input,
+    labels: Option<&Path>,
+    dockerfile: Option<&Path>,
+    path: &str,
+) -> Result<ExitCode, Error> {
+    if labels.is_none() && dockerfile.is_none() {
+        return Err(Error::Invalid(
+            "nothing to verify against: pass --labels, --dockerfile, or both. A verify with              neither would report success without comparing anything, which is the one outcome              this check cannot afford."
+                .to_owned(),
+        ));
+    }
+
+    let contract = input.read()?;
+    let mut failed = false;
+
+    if let Some(path_to_labels) = labels {
+        let found = image::labels_from_json(&read(path_to_labels)?)?;
+        if let Some(report) = image::report(&image::check_labels(&contract, path, &found)) {
+            eprintln!("{report}");
+            failed = true;
+        }
+    }
+
+    if let Some(path_to_dockerfile) = dockerfile {
+        let text = read(path_to_dockerfile)?;
+        // A Dockerfile checked out with CRLF would otherwise never match a block rendered
+        // with LF, and the diff would be invisible in every terminal that shows it.
+        let committed = image::committed_block(&text)?.replace("\r\n", "\n");
+        let expected = image::dockerfile_labels(&contract, path);
+        if committed.trim_end() != expected.trim_end() {
+            eprintln!(
+                "{}: the committed label block is not the one this document renders.\n\
+                 --- committed\n{committed}\n\
+                 --- expected\n{}",
+                path_to_dockerfile.display(),
+                expected.trim_end()
+            );
+            failed = true;
+        }
+    }
+
+    // 1, not 2: the tool worked and the image is wrong.
+    Ok(if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }

@@ -47,10 +47,12 @@ required-features = ["cli"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-# `preserve_order` so a rendering that echoes part of the document back — the JSON Schema half of a
-# contract, most of all — emits it in the order the producer wrote it. Alphabetising it would make
-# every document this tool round-trips differ from the one the producer published.
-serde_json = { version = "1", features = ["preserve_order"] }
+# Deliberately *without* `preserve_order`. A producer builds its JSON with `serde_json::Map`, which
+# is a `BTreeMap`, so every object in a published document is already alphabetical — the `properties`
+# of a JSON Schema included, which is why they do not follow declaration order. Sorting the same way
+# is what makes `--format contract` a byte-for-byte round trip and `--format json-schema` reproduce
+# the corpus; preserving insertion order instead would differ from every document ever published.
+serde_json = "1"
 thiserror = "2"
 clap = { version = "4", features = ["derive"], optional = true }
 

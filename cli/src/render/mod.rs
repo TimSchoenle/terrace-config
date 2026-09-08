@@ -9,14 +9,19 @@
 //! against this renderer and against every implementation that renders in-process.
 
 pub mod image;
+pub mod json_schema;
 pub mod markdown;
+pub mod tree;
 
 use std::fmt;
 use std::str::FromStr;
 
+use serde_json::Value as Json;
+
 use crate::Error;
 use crate::document::Contract;
 
+pub use json_schema::{DRAFT_07, DRAFT_2020_12, Docs, JsonSchema};
 pub use markdown::Column;
 
 /// One of the renderings a build can ask for.
@@ -43,6 +48,8 @@ pub enum Format {
     MarkdownLoader,
     /// The configuration keys alone, as a table.
     MarkdownKeys,
+    /// A JSON Schema, for an editor to validate a configuration file against.
+    JsonSchema,
     /// The whole document, which is what a build embeds in its image.
     Contract,
     /// The image labels that make that document discoverable, one `NAME=value` per line.
@@ -58,6 +65,7 @@ impl Format {
         Self::Markdown,
         Self::MarkdownLoader,
         Self::MarkdownKeys,
+        Self::JsonSchema,
         Self::Contract,
         Self::Labels,
         Self::Dockerfile,
@@ -70,6 +78,7 @@ impl Format {
             Self::Markdown => "markdown",
             Self::MarkdownLoader => "markdown-loader",
             Self::MarkdownKeys => "markdown-keys",
+            Self::JsonSchema => "json-schema",
             Self::Contract => "contract",
             Self::Labels => "labels",
             Self::Dockerfile => "dockerfile",
@@ -141,6 +150,8 @@ pub struct Options<'a> {
     pub path: &'a str,
     /// Which columns the key table carries.
     pub columns: &'a [Column],
+    /// How the JSON Schema rendering is shaped.
+    pub json_schema: JsonSchema,
 }
 
 impl Default for Options<'_> {
@@ -148,6 +159,7 @@ impl Default for Options<'_> {
         Self {
             path: crate::document::DEFAULT_PATH,
             columns: Column::DEFAULT,
+            json_schema: JsonSchema::default(),
         }
     }
 }
@@ -167,6 +179,13 @@ pub fn render(contract: &Contract, format: Format, options: &Options<'_>) -> Res
         Format::Markdown => markdown::markdown(&contract.schema, options.columns),
         Format::MarkdownLoader => markdown::markdown_loader(&contract.schema),
         Format::MarkdownKeys => markdown::markdown_keys(&contract.schema, options.columns),
+        Format::JsonSchema => to_json_pretty(
+            &Json::Object(json_schema::document(
+                &contract.schema,
+                &options.json_schema,
+            )),
+            "JSON Schema",
+        )?,
         Format::Contract => to_json_pretty(contract, "contract")?,
         Format::Labels => image::labels(contract, options.path),
         Format::Dockerfile => image::dockerfile_block(contract, options.path),

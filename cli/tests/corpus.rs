@@ -31,6 +31,7 @@ const RENDERINGS: &[(Format, &str)] = &[
     (Format::Markdown, "markdown.md"),
     (Format::MarkdownLoader, "markdown-loader.md"),
     (Format::MarkdownKeys, "markdown-keys.md"),
+    (Format::JsonSchema, "schema.json"),
     (Format::Labels, "labels.txt"),
     (Format::Dockerfile, "Dockerfile.part"),
 ];
