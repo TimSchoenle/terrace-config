@@ -21,5 +21,15 @@ public enum LoaderRole {
     RESERVED,
 
     @JsonProperty("other")
-    OTHER
+    OTHER;
+
+    /** The word this role goes by in a rendering, e.g. the Markdown loader-variable table. */
+    public String label() {
+        return switch (this) {
+            case CONFIG -> "config";
+            case SECRETS_DIR -> "secrets dir";
+            case RESERVED -> "reserved";
+            case OTHER -> "other";
+        };
+    }
 }

@@ -23,7 +23,7 @@ import lombok.extern.jackson.Jacksonized;
  * optional fields and are omitted, not null-valued, when absent.
  */
 @Value
-@Builder
+@Builder(toBuilder = true)
 @Jacksonized
 @JsonPropertyOrder({
         "path", "env", "env_file", "secrets_file", "docs", "ty", "values",

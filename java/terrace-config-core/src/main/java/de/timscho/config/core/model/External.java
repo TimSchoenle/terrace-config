@@ -14,7 +14,7 @@ import lombok.extern.jackson.Jacksonized;
  * variable is checked exactly like a configuration key, an ignored one may be misspelt freely.
  */
 @Value
-@Builder
+@Builder(toBuilder = true)
 @Jacksonized
 @JsonPropertyOrder({"env", "ignore", "unknown"})
 public class External {

@@ -26,6 +26,10 @@ lombok-plugin = "9.1.0"
 json-schema-validator = "1.5.5"
 spring-boot = "3.4.2"
 compile-testing = "0.21.0"
+# TOML parsing for `terrace-config-loader`'s file layer. Returns nested `Map`/`List`/scalar Java
+# types directly (`TomlParseResult.toMap()`), which is exactly the shape the loader's other
+# layers (environment, secrets directory, `_FILE` indirection) already produce.
+tomlj = "1.1.1"
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -37,3 +41,4 @@ json-schema-validator = { module = "com.networknt:json-schema-validator", versio
 compile-testing = { module = "com.google.testing.compile:compile-testing", version.ref = "compile-testing" }
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter", version.ref = "spring-boot" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }

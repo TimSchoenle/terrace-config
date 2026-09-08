@@ -18,7 +18,7 @@ import lombok.extern.jackson.Jacksonized;
  * {@link de.timscho.config.core.refusal.ExternalVariableInPrefixException}).
  */
 @Value
-@Builder
+@Builder(toBuilder = true)
 @Jacksonized
 @JsonPropertyOrder({
         "name", "owner", "docs", "ty", "values", "constraint", "text_constraint",
