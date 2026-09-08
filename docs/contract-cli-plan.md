@@ -18,7 +18,9 @@ in `TimSchoenle/actions`, and a Helm plugin. `helm-charts` keeps its charts, its
 `just` recipes; it stops keeping an implementation of this format.
 
 Three things move that are not obviously ours, and section 5 is about why they come anyway and
-what stops them contaminating `spec/v1/`.
+what stops them contaminating `spec/v1/`. A second producer is being written in Java while
+this is being read, and section 6 is what that changes — including three rules the Python has
+wrong today, which the port must fix rather than carry across.
 
 ---
 
@@ -130,7 +132,8 @@ contract/
     document.rs         the envelope, read tolerantly
     union.rs            several images, one document
     classify.rs         the ordered variable classification
-    value.rs            check_text then check_parsed, driven by text_form
+    value.rs            check_text, then check_parsed if the loader is known (§6.1)
+    conform.rs          hold a document to a conformance tier
     shape.rs            a key's element schema, composed through items/additionalProperties
     probe.rs            a value a key accepts that no chart produces by accident
     diff.rs             findings between two documents, and their impact
@@ -140,7 +143,7 @@ contract/
     gate/               document, container, requiredness
     helm/               declaration, bindings, schema_block, readme, coverage,
                         scaffold, unittest, secrets, tree
-    oci.rs              resolve, verify, discover, fetch — by delegation (§6.4)
+    oci.rs              resolve, verify, discover, fetch — by delegation (§7.4)
     bin/main.rs         argument parsing and exit codes, and nothing else
   tests/                the ported suites, over the ported corpus
 ```
@@ -191,7 +194,7 @@ keeping it compiling is what stops Helm vocabulary leaking down into the reader.
 | a YAML pair | see below | the one open technical question |
 | `thiserror` / `anyhow` | errors | `thiserror` in the lib as the crate already does, `anyhow` in the bin |
 
-No OCI client crate. See §6.4.
+No OCI client crate. See §7.4.
 
 ### The open question: YAML with comments
 
@@ -242,7 +245,8 @@ Global: `--charts <dir>` (default `charts`), `--format text|json|github`, `--cha
 narrow. Exit `0` clean, `1` findings, `2` usage or IO. Two more the Python never had because a
 script directory cannot offer them: `terrace-contract completions <shell>` and
 `terrace-contract validate <file>` — validate any contract against `spec/v1/contract.schema.json`,
-useful to a producer in another language with no Rust toolchain.
+useful to a producer in another language with no Rust toolchain; and
+`terrace-contract conform --tier <n>`, which is what a second producer's own build runs (§6.5).
 
 One subcommand is new and belongs here rather than in `schema-cli`: `terrace-contract image
 verify`, which is [`schema::cli::verify`](../src/schema/cli/verify.rs) reachable without writing a
@@ -293,9 +297,125 @@ leaked into `document` or `classify`.
 
 ---
 
-## 6. Distribution
+## 6. A second producer
 
-### 6.1 Release binaries — the primary channel
+A Java implementation is being written now. It changes what a consumer is allowed to assume, and
+three of the changes are not additive: the Python gets them wrong today, invisibly, because there
+has only ever been one producer. The port must fix them rather than carry them across, and the
+fixes are cheap now and expensive after the first Java-produced contract is vendored.
+
+### 6.1 The reads belong to the loader, and the consumer must ask
+
+`FORMAT.md` is unambiguous: the reads it tabulates "are normative for `producer.loader ==
+"figment"` and for nothing else. A consumer meeting a loader it does not know MUST skip step 2
+and say so."
+
+`config_gate_container.py:189-192` calls `check_text` and then `check_parsed` unconditionally, and
+`config_contract.py` never reads `producer` at all — the field does not appear in the module.
+Against a Spring-binder document vendored beside a figment one, that applies figment's measured
+patterns to text Spring reads differently, and it fails in the expensive direction: a pattern that
+refuses text the loader accepts stops a deployment that was correct, which is the exact failure
+`FORMAT.md`'s superset rule exists to prevent.
+
+So `value` is not a pair of functions; it is a registry.
+
+```rust
+/// One loader's environment reads, as measured against that loader.
+pub trait Reads {
+    fn parse(&self, form: TextForm, text: &str) -> Option<Json>;
+}
+
+/// `None` means: skip step 2, and report it as skipped rather than passed.
+pub fn reads_for(loader: &str) -> Option<&'static dyn Reads>;
+```
+
+`figment` is built in and already pinned by [`tests/contract_read.rs`](../tests/contract_read.rs).
+The Java binder's table lands here in the same change that adds it to `FORMAT.md`, which
+`CONFORMANCE.md` already requires of a tier 1 implementation. An unknown loader yields a finding at
+warning severity — `report`'s existing distinction between "found wrong" and "could not check" is
+exactly the right shape for it and needs no new concept.
+
+### 6.2 Tier 2 is an assumption, and one rule already makes it silently
+
+`Union.structured_parent` decides that a name extending a `structured` key's spelling by
+`dialect.nesting_separator` addresses a leaf of that map. That is true of figment. It is not true
+of a binder with its own relaxed-binding rules, which is precisely the case `CONFORMANCE.md`
+predicts: "An implementation that hands naming to a binder with its own relaxed-binding rules will
+not reach tier 2 without overriding it, and should not pretend to."
+
+The port's rule, stated so it can be checked rather than remembered: **derive nothing the document
+states.** Everything that reads `env`, `env_file`, `secrets_file` and `unreachable` as published is
+tier 1 work and stays unconditional — which is most of the toolchain, and is why a tier 1 Java
+producer is usable by the gates on the day it emits its first document. Everything that *derives* a
+spelling sits behind the registry in §6.1. Mechanically: `grep -r nesting_separator contract/src`
+must return hits only in `value`, `conform` and `diff`.
+
+### 6.3 `ty` is not a type name
+
+`FORMAT.md` says so already, and the Python is nearly clean by accident — two uses, a display set
+in `config_shapes.py` and a severity row in `config_diff.py`, neither of which switches behaviour
+on the value. Neither may start. `shape` and `probe` read `constraint`, `text_form` and
+`text_constraint`; a `java.time.Duration` has to reach them exactly as `u64` does, and the moment
+one `match` arm spells a Rust type name the crate has quietly become single-producer again.
+
+### 6.4 `schema_version: 1` is not hypothetical
+
+A new producer implements the simple thing first, and the one non-Rust document in the corpus today
+— `foreign-dialect.json` — is `schema_version: 1`, the version before `constraint` learned to nest.
+`shape` must degrade to "no element schema published" rather than assume `items`, and the
+generators must emit a narrower `@schema` block rather than refuse to emit one.
+
+That fixture is also **not valid against
+[`spec/v1/contract.schema.json`](../spec/v1/contract.schema.json)**: it carries no `producer` block
+and the schema requires one. The Python never noticed, because it never reads the field. Correcting
+it belongs to phase 1 — and a hand-written fixture that drifted from the published schema is itself
+the argument for `terrace-contract validate` existing.
+
+### 6.5 What the Java build needs from this binary
+
+The Java producer's build has the same two questions the Rust one does, and neither answer needs a
+Rust toolchain:
+
+- **is what I emitted a valid contract, at the tier I claim?** — `terrace-contract conform --tier 1
+  contract.json`. Validate against `spec/v1/contract.schema.json`, then assert every MUST in
+  `FORMAT.md` checkable from one document: the eight refusals, a `producer` block naming a loader,
+  `unreachable` set wherever `env` is null, no external variable reaching into the loader's
+  namespace. `--tier 2` adds the re-derivation of every spelling from the dialect and compares.
+- **did the image I built actually carry it?** — `terrace-contract image verify`, which reads
+  labels and a Dockerfile and knows nothing about any language.
+
+That is the whole of the Java side's dependency on this repository: one pinned binary, from the
+same release as §7.1. A Gradle plugin wrapping it is worth doing if the Java side asks for it, on
+the same terms as the Helm plugin — a thin wrapper, a third channel, not the first.
+
+It also settles a question §7.5 would otherwise leave awkward. The binary's version is this
+crate's, and this crate is the Rust producer; a Java shop pinning `terrace-contract v0.12.0` should
+not be pinning "the Rust implementation". So the CLI gates on the **envelope** — `terrace_contract`
+and `schema.schema_version` — never on `producer.version`, and `terrace-contract --version` prints
+the envelope versions it reads alongside its own. Lockstep versioning stays; what it means is
+stated.
+
+### 6.6 The corpus grows on the consumer side
+
+`spec/v1/conformance/` holds three producer cases. A second producer means it must also hold the
+documents a *consumer* has to survive, and none of them exist:
+
+| Case | Asserts |
+|---|---|
+| `foreign-loader/` | step 2 is skipped and reported, not silently performed |
+| `schema-version-1/` | `shape` degrades and the generators narrow, rather than either failing |
+| `tier-1-spellings/` | no rule re-derives a spelling the document states |
+| `foreign-ty/` | a type vocabulary from another language changes no behaviour |
+
+They are cheap to write, they are checkable before any Java image exists, and they are what catches
+the Java integration breaking months before there is a contract to vendor. Write them in phase 1,
+against the reader, while the reader is the only thing that exists.
+
+---
+
+## 7. Distribution
+
+### 7.1 Release binaries — the primary channel
 
 A new `.github/workflows/release-binaries.yml`, triggered by the tag release-please pushes.
 Cross-compiles, attaches archives plus `SHA256SUMS` to the GitHub release, and signs keyless with
@@ -315,23 +435,23 @@ by release URL. That is the pattern the repository already chose, for the stated
 pinned single binary "runs identically in a Git Bash shell and keeps a `pip install` out of a
 recipe" — and this replaces two of the three tools it was chosen for.
 
-### 6.2 Composite action
+### 7.2 Composite action
 
 `TimSchoenle/actions/actions/terrace-contract/install`: takes a version, resolves the platform,
 verifies the checksum and the cosign signature, caches, and puts the binary on `PATH`. Every job
 in `helm-charts` that today installs `jv` by release URL becomes one `uses:`. Renovate already
 tracks that repository's action tags, so the version bump arrives the way every other one does.
 
-### 6.3 Helm plugin
+### 7.3 Helm plugin
 
 `plugin.yaml` with an install hook downloading the same release asset, so
 `helm plugin install https://github.com/TimSchoenle/terrace-config` gives an operator
 `helm terrace-contract explain portfolio 'sentry.*'` without a checkout. Thin by construction — it
 is the same binary under a different name — and worth exactly what that costs, which is a
 `plugin.yaml`, an install hook and a row in the release matrix. It is the third channel, not the
-first: CI uses 6.1 and 6.2.
+first: CI uses §7.1 and §7.2.
 
-### 6.4 The registry, by delegation
+### 7.4 The registry, by delegation
 
 `pull` shells out to `oras` and `cosign` rather than linking an OCI client. Three reasons, in
 order of weight: the signature **policy** — which workflow identity a contract must be signed by —
@@ -340,7 +460,7 @@ option for it; `helm-charts` already pins both binaries; and an OCI client plus 
 large dependency and a large attack surface for one subcommand. The delegation sits behind a trait
 so a future `--feature oci-native` can supply the other implementation without moving the rules.
 
-### 6.5 Versioning
+### 7.5 Versioning
 
 release-please's config declares one package at `.` and `include-component-in-tag: false`;
 `macros/` is already version-locked at `0.11.0` under it. `terrace-contract` joins on the same
@@ -351,11 +471,11 @@ makes "this chart was gated by `terrace-contract v0.12.0`" a statement about the
 The cost is real and worth stating: a chart-side bug fix now needs a release of this repository.
 Mitigation is an escape hatch rather than a second version line — `helm-charts` recipes honour
 `TERRACE_CONTRACT_BIN`, so a branch build can be pointed at without cutting a release, and that is
-also what makes the parity harness in §7 possible.
+also what makes the parity harness in §8 possible.
 
 ---
 
-## 7. Migration
+## 8. Migration
 
 Six phases plus a phase 0. Each ends with something deleted from `helm-charts` — a phase that adds
 a Rust implementation and leaves the Python running is a phase that has doubled the number of
@@ -369,11 +489,15 @@ corpus of nine charts and twenty-odd contracts, and the corpus is the part that 
 tests do not. Every later phase's exit criterion is "parity, or a documented deliberate
 difference".
 
-**Phase 1 — the format core.** `document`, `union`, `classify`, `value`, `report`. Port
-`test_contract_union.py` and `test_contract_values.py`. Add the consumer side of
+**Phase 1 — the format core.** `document`, `union`, `classify`, `value`, `conform`, `report`.
+Port `test_contract_union.py` and `test_contract_values.py`. Add the consumer side of
 `spec/v1/conformance/`: every case in the corpus is read back and asserted about, so a
-misreading of `unreachable: indirection` fails here. Nothing is deleted from `helm-charts` yet;
-this is the phase that has no user.
+misreading of `unreachable: indirection` fails here. Everything in §6 lands in this phase and
+not later — the loader registry, the four consumer cases, the corrected fixture and
+`conform` — because every one of them is a constraint on the reader's shape rather than a
+feature on top of it, and retrofitting a registry to a call site that assumed figment is how the
+Python arrived where it is. Nothing is deleted from `helm-charts` yet; this is the phase that
+has no user.
 
 **Phase 2 — the gates.** `k8s`, `gate::{document, container}`, and the `helm::declaration` reader
 they need. Ship `terrace-contract check`. *Delete* `check-config.py`, `config_gate_*.py`,
@@ -405,12 +529,14 @@ the tree, where the parity harness cannot see it as a diff.
 
 ---
 
-## 8. Testing
+## 9. Testing
 
 **The corpus moves first.** `helm-charts/.github/testdata/contracts/` — `api.json`,
 `conflicting.json`, `deep.json`, `foreign-dialect.json`, `remote-ref.json`, `worker.json` — becomes
 `contract/tests/fixtures/`. Two of those (`foreign-dialect`, `remote-ref`) are refusal cases and
-belong in `spec/v1/conformance/` proper, as the consumer-side cases the corpus currently lacks.
+belong in `spec/v1/conformance/` proper, alongside the four new consumer cases in §6.6 — and
+`foreign-dialect.json` is corrected on the way in, since it does not validate against the
+schema it claims to conform to.
 
 **The 8,093 lines of Python tests port as integration tests**, not as unit tests inside modules:
 they are already written as "construct a document and a manifest, call the rule, read the findings
@@ -420,7 +546,7 @@ back", which is an integration test in Rust's vocabulary and keeps the lib's pub
 regression gate for the format core. It is the only test with a real corpus.
 
 **`fuzz/` gains two targets**: the document reader, over arbitrary JSON, because it is now parsing
-untrusted-ish input from a registry; and the marker scanner, over arbitrary YAML, because it is
+input written by a producer this repository does not control; and the marker scanner, over arbitrary YAML, because it is
 line-keyed and line-keyed parsers are where panics live. The existing convention applies — the
 oracles run under `cd fuzz && cargo test` without libFuzzer.
 
@@ -431,7 +557,7 @@ drift it exists to remove.
 
 ---
 
-## 9. What it costs this repository
+## 10. What it costs this repository
 
 `cargo build` for a service is unchanged: nothing in `terrace-config` depends on
 `terrace-contract`, and the arrow must stay pointing that way — a lint-level rule for review, not
@@ -450,7 +576,7 @@ table are template edits, not README edits.
 
 ---
 
-## 10. Risks
+## 11. Risks
 
 | Risk | Answer |
 |---|---|
@@ -460,11 +586,13 @@ table are template edits, not README edits.
 | Helm concepts erode the format core | `--no-default-features` in the features matrix, and `spec/helm/v1/` kept out of `spec/v1/` |
 | A generator writes a wrong file the diff cannot see | Phase 5 is late, and every generator ships `--check` from the same code path |
 | Windows Git Bash | It is the development shell; `x86_64-pc-windows-msvc` is in the matrix from the first release, and the parity harness runs there |
+| The Java producer lands mid-port | Everything it needs is phase 1 (§6): the registry, `conform`, and four corpus cases. A tier 1 document is readable by the gates with no further work |
+| A rule quietly assumes figment again | `grep -r nesting_separator contract/src` in CI, and `reads_for` returning `Option` rather than a default — the type makes the skip unforgettable |
 | Scope | 23,000 lines is a quarter's work at a steady pace. The phases are independently shippable and each one deletes Python; a stop after phase 2 still leaves the repository better than it is |
 
 ---
 
-## 11. Open questions
+## 12. Open questions
 
 1. **The YAML pair.** §3. Blocks phase 3, not phases 0–2.
 2. **`spec/helm/v1/` here, or in `helm-charts`?** The argument for here is that the binary
@@ -475,3 +603,9 @@ table are template edits, not README edits.
    one implementation in the library with two callers.
 4. **Does the parity harness need `helm-charts` checked out, or a vendored fixture tree?**
    Checked out finds more; vendored is reproducible. Start checked out at a pinned ref.
+5. **Where does the Java binder's read table live?** `FORMAT.md` under a heading of its own is
+   what `CONFORMANCE.md` already mandates. Confirm the Java side agrees before it ships a
+   document, because the table is what makes its `text_constraint` fields actionable rather
+   than decorative.
+6. **Does the Java side want a Gradle plugin, or is a pinned binary enough?** §6.5. Ask them;
+   do not build it speculatively.
