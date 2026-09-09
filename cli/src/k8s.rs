@@ -243,6 +243,31 @@ pub fn inside_a_mount(container: &Json, path: &str) -> bool {
 /// looked up rather than assumed empty — a chart pointing at an existing Secret is the case that
 /// would otherwise go unchecked.
 pub fn projected_file_names(manifests: &[Json], spec: &Json, volume_name: &str) -> Vec<String> {
+    file_names(
+        manifests,
+        spec,
+        volume_name,
+        &[("secret", "Secret"), ("configMap", "ConfigMap")],
+    )
+}
+
+/// The file names one volume presents *from Secret sources only*.
+///
+/// [`projected_file_names`] answers the neighbouring question and deliberately merges Secret and
+/// `ConfigMap` sources, because a gate asking whether a name spells a key does not care where the
+/// bytes came from. A caller reasoning about a credential's blast radius does: `config.toml`
+/// arriving from a `ConfigMap` in the same projected volume is not one. Same walk, one source kind.
+pub fn secret_file_names(manifests: &[Json], spec: &Json, volume_name: &str) -> Vec<String> {
+    file_names(manifests, spec, volume_name, &[("secret", "Secret")])
+}
+
+/// One volume's presented file names, restricted to the source kinds the caller asked for.
+fn file_names(
+    manifests: &[Json],
+    spec: &Json,
+    volume_name: &str,
+    kinds: &[(&str, &str)],
+) -> Vec<String> {
     let Some(volume) = spec
         .get("volumes")
         .and_then(Json::as_array)
@@ -279,7 +304,7 @@ pub fn projected_file_names(manifests: &[Json], spec: &Json, volume_name: &str) 
 
     let mut names: BTreeSet<String> = BTreeSet::new();
     for source in &sources {
-        for (field, kind) in [("secret", "Secret"), ("configMap", "ConfigMap")] {
+        for &(field, kind) in kinds {
             let Some(body) = source.get(field).and_then(Json::as_object) else {
                 continue;
             };

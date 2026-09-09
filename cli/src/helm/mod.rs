@@ -19,6 +19,7 @@ pub mod coverage;
 pub mod declaration;
 pub mod diff;
 pub mod markers;
+pub mod secrets;
 pub mod shapes;
 
 pub use bindings::{Bindings, check as check_bindings};
@@ -30,6 +31,7 @@ pub use declaration::{
 };
 pub use diff::{ChartDiff, Committed, Diffed, Revision, collect};
 pub use markers::{Block, Class, Marker};
+pub use secrets::{Credential, Surface, reconcile as reconcile_secrets};
 pub use shapes::{Divergence, Shape};
 
 use serde_json::Value as Json;

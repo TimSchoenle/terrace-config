@@ -199,14 +199,14 @@ fn the_rules_agree_about_a_tree_that_is_wrong() {
         return;
     }
 
-    let mutant = Mutant::of(&rendered);
+    let mutant = Mutant::of(&rendered, &mutate);
     let ours = rust_side(&root, mutant.path());
     let theirs = python_side(&root, mutant.path()).expect("the oracle was there a moment ago");
 
     assert!(
         ours.len() > 20,
-        "the mutation reached nothing: {} finding(s) over a tree broken in three places. Either the          mutations no longer apply to this corpus or the rules stopped running.
-{}",
+        "the mutation reached nothing: {} finding(s) over a tree broken in three places. Either \
+         the mutations no longer apply to this corpus or the rules stopped running.\n{}",
         ours.len(),
         render(&ours.iter().collect::<Vec<_>>())
     );
@@ -218,12 +218,8 @@ fn the_rules_agree_about_a_tree_that_is_wrong() {
 
     assert!(
         unexplained_ours.is_empty() && unexplained_theirs.is_empty(),
-        "the two implementations disagree about a deliberately broken tree.
-
-found only by this          crate ({}):
-{}
-found only by the oracle ({}):
-{}",
+        "the two implementations disagree about a deliberately broken tree.\n\nfound only by \
+         this crate ({}):\n{}\nfound only by the oracle ({}):\n{}",
         unexplained_ours.len(),
         render(&unexplained_ours),
         unexplained_theirs.len(),
@@ -251,8 +247,15 @@ found only by the oracle ({}):
 struct Mutant(PathBuf);
 
 impl Mutant {
-    fn of(rendered: &Path) -> Self {
-        let at = std::env::temp_dir().join(format!("terrace-parity-{}", std::process::id()));
+    /// A copy of one rendered tree with `apply` run over every manifest in it.
+    fn of(rendered: &Path, apply: &dyn Fn(&mut serde_json::Value)) -> Self {
+        // The process id and a counter, so two mutants of one tree can be alive at once.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let at = std::env::temp_dir().join(format!(
+            "terrace-parity-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&at);
         std::fs::create_dir_all(&at).expect("a mutant tree is created");
 
@@ -267,7 +270,7 @@ impl Mutant {
                 let Ok(mut value) = serde::Deserialize::deserialize(document) else {
                     continue;
                 };
-                mutate(&mut value);
+                apply(&mut value);
                 written.push_str(
                     "---
 ",
@@ -829,6 +832,353 @@ fn the_diff_rules_agree_over_revisions_that_actually_moved() {
         "diff parity over {compared} revision(s) of {}",
         root.display()
     );
+}
+
+#[test]
+fn the_credential_rules_agree_with_the_implementation_they_were_ported_from() {
+    // Three answers in one comparison, because they are one walk: the inventory the contracts
+    // declare, the surface a render was found to deliver, and the findings that fall out of holding
+    // one against the other.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+    let rendered = root.join("rendered");
+    if !rendered.is_dir() {
+        eprintln!(
+            "skipped: no rendered/ in {}; run the render once",
+            root.display()
+        );
+        return;
+    }
+    if !root.join(".github/scripts/config-secrets.py").is_file() {
+        eprintln!("skipped: the oracle is gone");
+        return;
+    }
+
+    let theirs = ask(
+        &root,
+        &[
+            "secrets",
+            &root.display().to_string(),
+            &rendered.display().to_string(),
+        ],
+    );
+
+    let charts = root.join("charts");
+    let inventory = terrace_contract::helm::secrets::credentials(
+        &terrace_contract::helm::secrets::inventory(&charts).expect("the contracts are readable"),
+    );
+    let surface = terrace_contract::helm::secrets::reconcile(&charts, &rendered)
+        .expect("the tree is reconcilable");
+    let report = terrace_contract::helm::secrets::report_of(&surface);
+
+    compare_inventory(&theirs["inventory"]["credentials"], &inventory);
+
+    // The surface, which is where a disagreement about *scope* would show: a container the two
+    // implementations reach differently produces a different mount, not a different sentence.
+    assert_eq!(
+        theirs["surface"]["charts"],
+        serde_json::json!(surface.charts)
+    );
+    assert_eq!(
+        theirs["surface"]["values_files"],
+        serde_json::json!(surface.values_files)
+    );
+    assert_eq!(theirs["surface"]["notes"], serde_json::json!(surface.notes));
+    for (name, mounts) in [
+        ("unclaimed", &surface.unclaimed),
+        ("over_projected", &surface.over_projected),
+    ] {
+        let mine: Vec<serde_json::Value> = mounts
+            .iter()
+            .map(|mount| {
+                serde_json::json!({
+                    "chart": mount.chart,
+                    "container": mount.container,
+                    "file_name": mount.file_name,
+                    "workload": mount.workload,
+                })
+            })
+            .collect();
+        let theirs: Vec<serde_json::Value> = theirs["surface"][name]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .map(|mount| {
+                serde_json::json!({
+                    "chart": mount["chart"],
+                    "container": mount["container"],
+                    "file_name": mount["file_name"],
+                    "workload": mount["workload"],
+                })
+            })
+            .collect();
+        assert_eq!(
+            theirs, mine,
+            "the two implementations disagree about {name}"
+        );
+    }
+
+    // The findings, with the one difference the two are known to have normalised away. The Python
+    // sorts the files it found a credential named in by `pathlib.Path`, which case-folds on
+    // Windows and does not on Linux; this build sorts by code point everywhere, which is the Linux
+    // answer and the same answer on every machine. Comparing the *set* is what keeps a harness run
+    // on a developer's Windows box from reporting a difference that CI does not have.
+    let mine = sorted_findings(&serde_json::json!({
+        "findings": report
+            .entries()
+            .iter()
+            .map(|entry| serde_json::json!({
+                "where": entry.at,
+                "level": entry.finding.level.label(),
+                "message": entry.finding.message,
+            }))
+            .collect::<Vec<_>>(),
+    }));
+    let theirs = sorted_findings(&theirs);
+    assert_eq!(theirs.len(), mine.len(), "different numbers of findings");
+    for (theirs, ours) in theirs.iter().zip(&mine) {
+        assert_eq!(named_files(theirs), named_files(ours), "different messages");
+    }
+    eprintln!(
+        "{} credential finding(s) agree over {}",
+        mine.len(),
+        root.display()
+    );
+}
+
+/// Every declared credential, field by field.
+fn compare_inventory(
+    theirs: &serde_json::Value,
+    ours: &[terrace_contract::helm::secrets::Credential],
+) {
+    assert_eq!(
+        theirs.as_array().map(Vec::len),
+        Some(ours.len()),
+        "the two implementations count the declared credentials differently"
+    );
+    for (theirs, ours) in theirs.as_array().expect("an inventory").iter().zip(ours) {
+        assert_eq!(theirs["chart"].as_str(), Some(ours.chart.as_str()));
+        assert_eq!(theirs["path"].as_str(), Some(ours.path.as_str()));
+        assert_eq!(
+            theirs["secrets_file"].as_str(),
+            Some(ours.secrets_file.as_str())
+        );
+        assert_eq!(theirs["env"].as_str(), Some(ours.env.as_str()));
+        assert_eq!(theirs["env_file"].as_str(), Some(ours.env_file.as_str()));
+        assert_eq!(theirs["required"].as_bool(), Some(ours.required));
+        assert_eq!(theirs["summary"].as_str(), Some(ours.summary.as_str()));
+        assert_eq!(theirs["images"], serde_json::json!(ours.images));
+        assert_eq!(theirs["contracts"], serde_json::json!(ours.contracts));
+        assert_eq!(theirs["documents"], serde_json::json!(ours.documents));
+    }
+}
+
+/// One finding with any comma-separated run of chart file names in its message sorted.
+///
+/// The only place the two implementations are permitted to differ, and normalising it here rather
+/// than in the rule is deliberate: the rule's order is the one that is the same on every machine,
+/// and only the *oracle* varies by platform. The Python sorts those names by `pathlib.Path`, which
+/// case-folds on Windows and does not on Linux; this build sorts by code point everywhere, which is
+/// the Linux answer and the same answer on every machine.
+fn named_files(finding: &Finding) -> (&str, &str, String, Vec<&str>) {
+    let (at, level, message) = (finding.0.as_str(), finding.1.as_str(), finding.2.as_str());
+    let Some((head, rest)) = message.split_once(", in ") else {
+        return (at, level, message.to_owned(), Vec::new());
+    };
+    let (files, tail) = rest.split_once(", so it has heard").unwrap_or((rest, ""));
+    let mut named: Vec<&str> = files.split(", ").collect();
+    named.sort_unstable();
+    (at, level, format!("{head}||{tail}"), named)
+}
+
+/// Deliver a file no contract can claim, to every container of every pod.
+///
+/// The two rules a correct corpus cannot reach. Both are about a file arriving somewhere no gate
+/// looks: `unclaimed` when no contract of the chart names it, `over_projected` when a sibling
+/// image's does and the container's own does not.
+///
+/// Two mutations, because either alone is absorbed. A name is added to what every Secret-sourced
+/// volume *presents* — through `items` where a source enumerates them and through the Secret's own
+/// keys where one does not — so a name exists that no contract can spell. And every volume is
+/// mounted a second time at a path nothing resolved, so the file also arrives outside the reach of
+/// the gate that would otherwise have judged it and left this report silent.
+const UNCLAIMED: &str = "parity__unclaimed__name";
+
+fn mutate_secrets(value: &mut serde_json::Value) {
+    if value.get("kind").and_then(|kind| kind.as_str()) == Some("Secret")
+        && let Some(fields) = value.as_object_mut()
+    {
+        let held = fields
+            .entry("stringData")
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(held) = held.as_object_mut() {
+            held.insert(
+                UNCLAIMED.to_owned(),
+                serde_json::Value::String("x".to_owned()),
+            );
+        }
+    }
+
+    walk_pod_specs(value, &mut |spec| {
+        let volumes: Vec<String> = spec
+            .get("volumes")
+            .and_then(|volumes| volumes.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|volume| volume.get("name").and_then(|name| name.as_str()))
+            .map(str::to_owned)
+            .collect();
+
+        for volume in spec
+            .get_mut("volumes")
+            .and_then(|volumes| volumes.as_array_mut())
+            .into_iter()
+            .flatten()
+        {
+            present_unclaimed(volume);
+        }
+
+        for group in ["initContainers", "containers"] {
+            let Some(containers) = spec.get_mut(group).and_then(|held| held.as_array_mut()) else {
+                continue;
+            };
+            for container in containers {
+                let Some(container) = container.as_object_mut() else {
+                    continue;
+                };
+                let mounts = container
+                    .entry("volumeMounts")
+                    .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+                let Some(mounts) = mounts.as_array_mut() else {
+                    continue;
+                };
+                for volume in &volumes {
+                    mounts.push(serde_json::json!({
+                        "name": volume,
+                        "mountPath": format!("/parity-cross/{volume}"),
+                        "readOnly": true,
+                    }));
+                }
+            }
+        }
+    });
+}
+
+/// Add the undeclared name to whatever one volume presents, when it enumerates what that is.
+///
+/// Only where the source enumerates them: a source without `items` presents every key of the object
+/// it names, and the key added to the Secret itself is already among those.
+fn present_unclaimed(volume: &mut serde_json::Value) {
+    let item = || serde_json::json!({"key": UNCLAIMED, "path": UNCLAIMED});
+
+    if let Some(sources) = volume
+        .get_mut("projected")
+        .and_then(|projected| projected.get_mut("sources"))
+        .and_then(|sources| sources.as_array_mut())
+    {
+        for source in sources {
+            if let Some(items) = source
+                .get_mut("secret")
+                .and_then(|secret| secret.get_mut("items"))
+                .and_then(|items| items.as_array_mut())
+            {
+                items.push(item());
+            }
+        }
+        return;
+    }
+
+    if let Some(items) = volume
+        .get_mut("secret")
+        .and_then(|secret| secret.get_mut("items"))
+        .and_then(|items| items.as_array_mut())
+    {
+        items.push(item());
+    }
+}
+
+#[test]
+fn the_credential_rules_agree_about_a_render_that_delivers_too_much() {
+    // `unclaimed` and `over_projected` fire on nothing in a correct corpus, so the clean comparison
+    // says only that both implementations walked the same containers. This is where the two rules
+    // themselves are compared.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+    let rendered = root.join("rendered");
+    if !rendered.is_dir() || !root.join(".github/scripts/config-secrets.py").is_file() {
+        eprintln!("skipped: no rendered tree, or the oracle is gone");
+        return;
+    }
+
+    let mutant = Mutant::of(&rendered, &mutate_secrets);
+    let charts = root.join("charts");
+    let surface = terrace_contract::helm::secrets::reconcile(&charts, mutant.path())
+        .expect("the mutant is reconcilable");
+    let theirs = ask(
+        &root,
+        &[
+            "secrets",
+            &root.display().to_string(),
+            &mutant.path().display().to_string(),
+        ],
+    );
+
+    assert!(
+        surface.unclaimed.len() > 20,
+        "the mutation reached nothing: {} unclaimed mount(s). Either the corpus stopped rendering \
+         Secrets or the rule stopped running.",
+        surface.unclaimed.len()
+    );
+
+    for (name, mounts) in [
+        ("unclaimed", &surface.unclaimed),
+        ("over_projected", &surface.over_projected),
+    ] {
+        let mine: Vec<serde_json::Value> = mounts.iter().map(mount_json).collect();
+        let theirs: Vec<serde_json::Value> = theirs["surface"][name]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .map(|mount| {
+                serde_json::json!({
+                    "chart": mount["chart"],
+                    "container": mount["container"],
+                    "file_name": mount["file_name"],
+                    "mount_path": mount["mount_path"],
+                    "values_file": mount["values_file"],
+                    "workload": mount["workload"],
+                })
+            })
+            .collect();
+        assert_eq!(
+            theirs, mine,
+            "the two implementations disagree about {name}"
+        );
+    }
+
+    eprintln!(
+        "{} unclaimed and {} over-projected mount(s) agree over a mutant of {}",
+        surface.unclaimed.len(),
+        surface.over_projected.len(),
+        rendered.display()
+    );
+}
+
+/// One mount, as both sides describe it.
+fn mount_json(mount: &terrace_contract::helm::secrets::Mount) -> serde_json::Value {
+    serde_json::json!({
+        "chart": mount.chart,
+        "container": mount.container,
+        "file_name": mount.file_name,
+        "mount_path": mount.mount_path,
+        "values_file": mount.values_file,
+        "workload": mount.workload,
+    })
 }
 
 /// A copy of a chart tree whose first marker in each values file names a key that is not there.
