@@ -35,12 +35,22 @@
 //! meeting a loader it does not know must skip the read that depends on them rather than perform
 //! it with the wrong rules.
 
+pub mod classify;
 pub mod conform;
 pub mod document;
 mod error;
 pub mod render;
+pub mod report;
+pub mod union;
 pub mod validate;
+pub mod value;
 
+#[cfg(feature = "k8s")]
+pub mod gate;
+#[cfg(feature = "k8s")]
+pub mod k8s;
+
+pub use classify::{Classification, Kind, classify};
 pub use conform::{Tier, Violation};
 pub use document::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, Dialect, External, ExternalVar, Key, LoaderRole,
@@ -48,3 +58,6 @@ pub use document::{
 };
 pub use error::Error;
 pub use render::{Column, Format, Options};
+pub use report::{Finding, Level, Report};
+pub use union::{Merged, Union, union_contracts};
+pub use value::{Range, Reads, reads_for};

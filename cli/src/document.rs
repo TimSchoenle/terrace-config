@@ -71,7 +71,20 @@ pub struct Contract {
     /// The version of this envelope's shape.
     pub terrace_contract: u32,
     /// Which implementation wrote this document, and which loader it describes.
-    pub producer: Producer,
+    ///
+    /// Optional here and required by `spec/v1/contract.schema.json`, and the asymmetry is
+    /// deliberate. The field was added *within* envelope 1, so documents predating it are legal
+    /// `terrace_contract: 1` bytes that a reader as strict as the writer would refuse — and every
+    /// contract vendored by the chart repository this consumer half was ported against is one of
+    /// them. A reader that refuses a document it should have read is the failure this module opens
+    /// by naming. `conform` and `validate` still require it, through the meta-schema, which is
+    /// where "this producer is not emitting what it must" belongs.
+    ///
+    /// [`None`] is not the same as absent to a consumer, either: it means the loader whose
+    /// environment reads every `text_constraint` here was measured against is unknown, so the range
+    /// check must be skipped and reported as skipped. See [`crate::value`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer: Option<Producer>,
     /// Which build this describes.
     pub app: App,
     /// Every key the loader can carry, in every spelling that can supply it.
@@ -443,6 +456,26 @@ mod tests {
     use super::{Contract, LoaderRole, TextForm, Unknown, Unreachable};
 
     #[test]
+    fn a_document_written_before_producer_existed_is_still_read() {
+        // Legal `terrace_contract: 1` bytes: the field was added within the envelope, so refusing
+        // one would be a reader that is as strict as a writer.
+        let document = r#"{
+            "terrace_contract": 1,
+            "app": {"name": "x"},
+            "schema": {
+                "schema_version": 2,
+                "dialect": {"prefix": "X_", "nesting_separator": "__",
+                            "indirection_suffix": "_FILE"},
+                "loader": [], "keys": []
+            },
+            "json_schema": {},
+            "external": {"env": [], "ignore": [], "unknown": "reject"}
+        }"#;
+        let contract = Contract::from_json(document).expect("a document without a producer reads");
+        assert!(contract.producer.is_none());
+    }
+
+    #[test]
     fn an_unreadable_envelope_version_names_itself() {
         let error = Contract::from_json(r#"{"terrace_contract": 99}"#)
             .expect_err("envelope 99 is not readable");
@@ -488,6 +521,9 @@ mod tests {
             "something_later": {"added": true}
         }"#;
         let contract = Contract::from_json(document).expect("an unknown field is not a refusal");
-        assert_eq!(contract.producer.loader, "figment");
+        assert_eq!(
+            contract.producer.map(|producer| producer.loader).as_deref(),
+            Some("figment")
+        );
     }
 }

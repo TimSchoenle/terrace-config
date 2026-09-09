@@ -35,10 +35,18 @@ publish = false
 
 [features]
 default = ["cli"]
-# The producer-side half is what is left with `--no-default-features`, and keeping it compiling is
-# the mechanical check that no consumer-side concept — a chart, a manifest, a Helm marker — has
-# leaked down into the document model or the renderers. A language's build links this half.
-cli = ["dep:clap"]
+# The features stack, and the arrow points one way: `cli` -> `helm` -> `k8s` -> the core. The
+# producer-side half is what is left with `--no-default-features`, and keeping it compiling is the
+# mechanical check that no consumer-side concept — a chart, a manifest, a Helm marker — has leaked
+# down into the document model, the renderers or the value checks. A language's build links that
+# half and nothing above it.
+cli = ["dep:clap", "helm"]
+# A chart repository's own conventions: `config-contract.yaml`, the vendored contracts, the values
+# tree. They arrive in a repository that publishes a language-neutral format, and this is what keeps
+# that from being a mistake — every one of them sits above `k8s`, so nothing below can read them.
+helm = ["k8s"]
+# Rendered Kubernetes manifests. Knows what a workload is and not what a chart is.
+k8s = ["dep:serde_norway"]
 
 [[bin]]
 name = "terrace-contract"
@@ -60,11 +68,21 @@ thiserror = "2"
 # rather than fetching one.
 jsonschema = { version = "=0.55.0", default-features = false }
 clap = { version = "4", features = ["derive"], optional = true }
-
-[dev-dependencies]
-# The TOML rendering's own claim is that the file it writes *loads*. A renderer that emits an
-# example an operator copies into a deployment has to be held to that by something that actually
-# parses it, not by a golden file that would happily pin a broken one.
+# Ignore patterns are a trailing `*` and nothing more, but a `constraint`'s `pattern` is whatever
+# JSON Schema keyword the producer published, so one real engine is needed for the value checks.
+regex = "1"
+# The typed half of the YAML question. `serde_yaml` is unmaintained and `deny.toml` would say so;
+# this is the maintained fork with the same `serde` surface, and it reads a multi-document rendered
+# file, a chart's values and a declaration. The *other* half — a scanner with line and column, for
+# the `@config` markers that live inside comments — is a separate decision and a later phase, because
+# no crate here preserves a comment and the marker language is the only thing that needs one.
+serde_norway = { version = "0.9", optional = true }
+# A real dependency now rather than only a dev one. It was here so that the TOML rendering's claim —
+# that the file it writes *loads* — was held by something that actually parses it; it is here as
+# well because a rendered configuration document is usually TOML and gate 1 has to read one, and
+# because a `structured` value is a TOML literal that the loader's own read parses. Pinned exactly,
+# as `main` pinned it: the version suffix names the TOML specification it implements, and a document
+# gate that silently moved between specifications would change what it accepts.
 toml = "=0.9.12+spec-1.1.0"
 
 
