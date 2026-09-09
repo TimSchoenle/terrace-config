@@ -180,6 +180,30 @@ enum Command {
         format: Output,
     },
 
+    /// Write every bound value's `@schema` block from the contract that describes it.
+    ///
+    /// A contract states a key's type as JSON Schema, and since `schema_version: 2` it states what
+    /// one *element* of a container holds. This is what turns that into the block a chart ships, so
+    /// an operator's editor catches a misspelt field before the service does.
+    ///
+    /// The writer and the checker are one code path, so the two cannot disagree about what "already
+    /// correct" means. `--check` additionally holds every hand transcription against the release it
+    /// was read at, which is the one thing the writer cannot repair: re-reading a struct somebody
+    /// else owns is a person's job.
+    Shapes {
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// Report what would change instead of writing it.
+        #[arg(long)]
+        check: bool,
+
+        /// How to write the findings.
+        #[arg(long, default_value = "text")]
+        format: Output,
+    },
+
     /// Report which charts a configuration contract covers, and which it does not.
     ///
     /// Adopting one is opt-in: a chart that carries a declaration is covered, and one that does not
@@ -366,6 +390,12 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             ))
         }
 
+        Command::Shapes {
+            charts,
+            check,
+            format,
+        } => shapes_command(&charts, check, format),
+
         Command::Coverage {
             charts,
             first_party,
@@ -444,6 +474,79 @@ fn write_report(report: &Report, format: Output, headline: &str, clean: &str) ->
     );
     // 1, not 2: the tool worked and the tree is wrong.
     ExitCode::FAILURE
+}
+
+/// Write or check every generated `@schema` block.
+///
+/// One walk, two endings. The writer replaces a block that does not match; the checker reports it
+/// and adds the one assertion the writer deliberately does not make — that a hand transcription is
+/// still current — because a writer that refused over it would turn the job that repairs the tree
+/// into a gate over the one thing in it no repair reaches.
+fn shapes_command(charts: &Path, check: bool, format: Output) -> Result<ExitCode, Error> {
+    let mut report = Report::new();
+    let mut written = 0;
+    let mut derived = 0;
+    let mut transcriptions = 0;
+
+    for chart_dir in helm::declaration::chart_dirs(charts)? {
+        if !chart_dir.join("values.yaml").is_file() {
+            continue;
+        }
+        let mut chart = helm::shapes::Chart::read(&chart_dir)?;
+
+        derived += chart
+            .shapes
+            .iter()
+            .filter(|shape| !shape.handwritten)
+            .count();
+        transcriptions += chart
+            .shapes
+            .iter()
+            .filter(|shape| shape.handwritten)
+            .count();
+
+        if check {
+            helm::shapes::check(&mut chart);
+            let transcribed: Vec<_> = chart
+                .shapes
+                .iter()
+                .filter(|shape| shape.handwritten)
+                .cloned()
+                .collect();
+            for shape in &transcribed {
+                chart.check_handwritten(shape);
+            }
+        } else {
+            let (text, count) = helm::shapes::rewrite(&mut chart);
+            if count > 0 {
+                std::fs::write(chart_dir.join("values.yaml"), text)
+                    .map_err(|e| Error::io(chart_dir.join("values.yaml").display(), e))?;
+                written += count;
+                println!("wrote: {} ({count} block(s))", chart.name);
+            }
+        }
+
+        for problem in &chart.problems {
+            report.fail(format!("{}: values.yaml", chart.name), problem.clone());
+        }
+    }
+
+    if format == Output::Text || format == Output::Github {
+        if check && !report.failed() {
+            println!(
+                "==> {derived} generated and {transcriptions} hand-transcribed config shape(s), all current"
+            );
+        } else if !check && written == 0 {
+            println!("==> every generated `@schema` block already matches its contract");
+        }
+    }
+
+    Ok(write_report(
+        &report,
+        format,
+        "Derived value schemas",
+        "Every bound value's `@schema` block is the one its contract describes.",
+    ))
 }
 
 /// Print a list of findings, or say nothing and succeed.

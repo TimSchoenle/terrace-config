@@ -18,6 +18,7 @@ pub mod check;
 pub mod coverage;
 pub mod declaration;
 pub mod markers;
+pub mod shapes;
 
 pub use bindings::{Bindings, check as check_bindings};
 pub use check::{Checked, check};
@@ -27,6 +28,7 @@ pub use declaration::{
     load_declaration, resolve_image,
 };
 pub use markers::{Block, Class, Marker};
+pub use shapes::{Divergence, Shape};
 
 use serde_json::Value as Json;
 

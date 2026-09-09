@@ -600,6 +600,15 @@ fn split_comment(line: &str) -> (String, Option<String>) {
     (line.to_owned(), None)
 }
 
+/// Whether one line inside a block opens with a marker rather than with schema.
+///
+/// The split a caller regenerating a block needs: the marker run is hand-written and none of the
+/// generator's business, and everything after it is what a regeneration replaces.
+pub fn opens_with_a_marker(line: &str) -> bool {
+    let (_, comment) = split_comment(line);
+    is_marker(schema_comment(comment.as_deref()).as_deref())
+}
+
 /// Whether a comment body is a marker, and not merely a word beginning the same way.
 fn is_marker(comment: Option<&str>) -> bool {
     comment.is_some_and(|comment| comment == MARKER || comment.starts_with(&format!("{MARKER} ")))

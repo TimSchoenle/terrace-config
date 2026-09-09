@@ -693,6 +693,84 @@ found only by the oracle ({}):
     );
 }
 
+#[test]
+fn the_derived_schema_blocks_are_the_ones_the_tree_already_carries() {
+    // The strongest single check the renderer has, and it needs no oracle: run the writer over a
+    // copy of a tree whose blocks are correct, and every byte must come back unchanged. That
+    // covers the derivation, the ordering, the quoting, the indentation and the line endings at
+    // once — a renderer that got any of them wrong would rewrite something.
+    //
+    // It also outlives the Python, which is the point of putting it here rather than in a
+    // comparison: an idempotent writer over a real corpus is a property, not an agreement.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+
+    let copy = Charts::copy_of(&root.join("charts"));
+    let mut written = 0;
+    let mut problems: Vec<String> = Vec::new();
+    for chart_dir in
+        terrace_contract::helm::declaration::chart_dirs(&copy.path()).expect("the copy is readable")
+    {
+        if !chart_dir.join("values.yaml").is_file() {
+            continue;
+        }
+        let mut chart =
+            terrace_contract::helm::shapes::Chart::read(&chart_dir).expect("the chart reads");
+        let (text, count) = terrace_contract::helm::shapes::rewrite(&mut chart);
+        problems.extend(chart.problems.clone());
+        if count > 0 {
+            written += count;
+            std::fs::write(chart_dir.join("values.yaml"), text).expect("the file is written");
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "the writer could not derive every block:
+  {}",
+        problems.join(
+            "
+  "
+        )
+    );
+    assert_eq!(
+        written, 0,
+        "the writer rewrote {written} block(s) in a tree whose blocks the oracle calls current"
+    );
+
+    let differences = differing_files(&root.join("charts"), &copy.path());
+    assert!(
+        differences.is_empty(),
+        "the writer changed {} file(s) it should have left alone: {}",
+        differences.len(),
+        differences.join(", ")
+    );
+
+    eprintln!(
+        "derived schema parity over {}: every block reproduced byte for byte",
+        root.display()
+    );
+}
+
+/// Every file whose bytes differ between two trees.
+fn differing_files(left: &Path, right: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let Ok(entries) = std::fs::read_dir(left) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let theirs = right.join(entry.file_name());
+        if entry.path().is_dir() {
+            found.extend(differing_files(&entry.path(), &theirs));
+        } else if std::fs::read(entry.path()).ok() != std::fs::read(&theirs).ok() {
+            found.push(theirs.display().to_string());
+        }
+    }
+    found
+}
+
 /// A copy of a chart tree whose first marker in each values file names a key that is not there.
 ///
 /// A whole copy rather than an edit in place, because the tree belongs to another repository and a
@@ -700,6 +778,14 @@ found only by the oracle ({}):
 struct Charts(PathBuf);
 
 impl Charts {
+    /// A copy with nothing changed, for a check that only wants somewhere writable.
+    fn copy_of(charts: &Path) -> Self {
+        let at = std::env::temp_dir().join(format!("terrace-parity-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&at);
+        copy_tree(charts, &at.join("charts"));
+        Self(at)
+    }
+
     fn of(charts: &Path) -> Self {
         let at = std::env::temp_dir().join(format!("terrace-parity-charts-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&at);
