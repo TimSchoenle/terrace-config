@@ -829,6 +829,74 @@ fn empty_credential_blocks(charts: &Path) -> usize {
     emptied
 }
 
+#[test]
+fn the_generated_suites_are_the_ones_the_tree_already_carries() {
+    // The strongest check the generator has, and it needs no oracle: delete every generated suite
+    // in a copy of a tree whose suites are current, write them back, and every byte must return.
+    // That covers the probe chosen for each key, the assertion pattern, the skip reasons, the
+    // wrapped prose, the coverage counts and the line endings at once.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+
+    let copy = Charts::copy_of(&root.join("charts"));
+    let deleted = delete_generated_suites(&copy.path());
+    assert!(
+        deleted > 5,
+        "only {deleted} generated suite(s) in this tree, so this proves almost nothing"
+    );
+
+    let generated =
+        terrace_contract::helm::suites::collect(&copy.path(), None).expect("the copy is readable");
+    assert_eq!(
+        generated.suites.len(),
+        deleted,
+        "the generator wants {} suite(s) where the tree carried {deleted}",
+        generated.suites.len()
+    );
+    let outcome = terrace_contract::helm::suites::sync(&generated).expect("the copy is writable");
+    assert_eq!(outcome.written.len(), deleted);
+    assert!(
+        outcome.removed.is_empty(),
+        "the generator removed {} suite(s) it had just been asked to write",
+        outcome.removed.len()
+    );
+
+    let differences = differing_files(&root.join("charts"), &copy.path());
+    assert!(
+        differences.is_empty(),
+        "the generator did not reproduce {} file(s): {}",
+        differences.len(),
+        differences.join(", ")
+    );
+
+    eprintln!(
+        "generated suite parity over {}: {deleted} suite(s) reproduced byte for byte",
+        root.display()
+    );
+}
+
+/// Remove every generated round-trip suite in a tree, returning how many there were.
+fn delete_generated_suites(charts: &Path) -> usize {
+    let mut deleted = 0;
+    for chart_dir in
+        terrace_contract::helm::declaration::chart_dirs(charts).expect("the copy is readable")
+    {
+        let Ok(entries) = std::fs::read_dir(chart_dir.join("tests")) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with("contract_roundtrip_") && name.ends_with("_test.yaml") {
+                std::fs::remove_file(entry.path()).expect("the suite is removable");
+                deleted += 1;
+            }
+        }
+    }
+    deleted
+}
+
 /// Every file whose bytes differ between two trees.
 fn differing_files(left: &Path, right: &Path) -> Vec<String> {
     let mut found = Vec::new();

@@ -22,6 +22,8 @@ pub mod markers;
 pub mod readme;
 pub mod secrets;
 pub mod shapes;
+pub mod suites;
+pub mod testgen;
 
 pub use bindings::{Bindings, check as check_bindings};
 pub use check::{Checked, check};

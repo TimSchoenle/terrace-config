@@ -388,6 +388,29 @@ const ANNOTATIONS: &[&str] = &[
     "format",
 ];
 
+/// Keywords of a constraint that are neither a flat assertion nor an annotation.
+///
+/// What a caller synthesising a value has to know: a keyword outside the flat vocabulary is one no
+/// candidate walk can be steered by, so the key it belongs to is reported as unprobeable rather than
+/// probed with a value nothing checked. The `schema_version: 2` container keywords are outside it on
+/// purpose — a key carrying one describes a container, and a container's leaves are the operator's
+/// own names.
+#[must_use]
+pub fn beyond_scalar_vocabulary(constraint: &Json) -> Vec<String> {
+    let Some(schema) = constraint.as_object() else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = schema
+        .keys()
+        .filter(|keyword| {
+            !ASSERTIONS.contains(&keyword.as_str()) && !ANNOTATIONS.contains(&keyword.as_str())
+        })
+        .cloned()
+        .collect();
+    found.sort();
+    found
+}
+
 /// Validate one value against the JSON Schema subset a contract may use.
 ///
 /// Recurses, as of `schema_version: 2`: a container-typed key carries its element under `items` or
@@ -668,7 +691,9 @@ pub fn is_type(value: &Json, declared: &Json) -> bool {
 mod tests {
     use serde_json::{Map, Value as Json, json};
 
-    use super::{Entry, Range, assert_value, form, range, reads_for};
+    use super::{
+        ASSERTIONS, Entry, Range, assert_value, beyond_scalar_vocabulary, form, range, reads_for,
+    };
     use crate::document::TextForm;
 
     fn entry(value: &Json) -> Map<String, Json> {
@@ -794,5 +819,31 @@ mod tests {
             .text_form()
             .expect_err("a form this build has not implemented is refused");
         assert!(error.to_string().contains("duration"), "{error}");
+    }
+
+    #[test]
+    fn every_flat_assertion_a_contract_may_use_is_inside_the_scalar_vocabulary() {
+        // A keyword a contract is accepted for carrying and a value synthesiser refuses would be
+        // an unexplained skip: a key with no probe, for a reason nothing in the document says.
+        for keyword in ASSERTIONS {
+            let schema = json!({*keyword: 1, "type": "integer"});
+            assert!(
+                !beyond_scalar_vocabulary(&schema).contains(&(*keyword).to_owned()),
+                "{keyword}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_container_keyword_is_outside_it_and_an_annotation_is_not() {
+        // The container keywords belong to a key that describes a container, whose leaves are the
+        // operator's own names — so a caller synthesising a value has nothing to synthesise. An
+        // annotation asserts nothing, so it steers nothing and refuses nothing.
+        assert_eq!(
+            beyond_scalar_vocabulary(&json!({"type": "array", "items": {}, "minItems": 1})),
+            ["items", "minItems"]
+        );
+        assert!(beyond_scalar_vocabulary(&json!({"type": "string", "default": "x"})).is_empty());
+        assert!(beyond_scalar_vocabulary(&json!(null)).is_empty());
     }
 }

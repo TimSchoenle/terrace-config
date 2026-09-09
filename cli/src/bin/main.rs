@@ -309,6 +309,29 @@ enum Command {
         check: bool,
     },
 
+    /// Generate the round-trip suites a chart's contracts imply, or report the ones that drifted.
+    ///
+    /// The document gate proves a rendered document satisfies the contract, and a document missing
+    /// a setting entirely satisfies it perfectly. These cases prove the other half: that a setting
+    /// written into the chart's values arrives in the application's document, at the path the image
+    /// reads it from, carrying the value that was asked for.
+    ///
+    /// A chart is generated for when it carries `contract-tests.yaml`, so the rollout is a property
+    /// of the tree rather than of a list somebody edits.
+    Tests {
+        /// One chart, or every enrolled chart.
+        #[arg(value_name = "CHART")]
+        chart: Option<String>,
+
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// Report drifted suites and exit non-zero instead of writing them.
+        #[arg(long)]
+        check: bool,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -494,6 +517,12 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
         } => secrets_command(&charts, reconcile.as_deref(), json, exit_code),
 
         Command::Readme { charts, check } => readme_command(&charts, check),
+
+        Command::Tests {
+            chart,
+            charts,
+            check,
+        } => tests_command(&charts, chart.as_deref(), check),
 
         Command::Coverage {
             charts,
@@ -1076,6 +1105,48 @@ fn readme_command(charts: &Path, check: bool) -> Result<ExitCode, Error> {
         println!("==> rewrote {} credential reference(s)", written.touched);
     } else {
         println!("==> every credential reference already matches its contract");
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Write, or compare, every enrolled chart's generated round-trip suites.
+fn tests_command(charts: &Path, only: Option<&str>, check: bool) -> Result<ExitCode, Error> {
+    let generated = helm::suites::collect(charts, only)?;
+    for chart in &generated.unenrolled {
+        println!("==> {chart}: not enrolled, skipping");
+    }
+
+    if check {
+        let outcome = helm::suites::check(&generated);
+        if outcome.drift.is_empty() {
+            println!(
+                "==> {} generated suite(s) are in step with their contracts",
+                generated.suites.len()
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
+        for entry in &outcome.drift {
+            eprintln!("{entry}");
+        }
+        eprintln!("regenerate them to bring the tree back into step");
+        return Ok(ExitCode::from(1));
+    }
+
+    let outcome = helm::suites::sync(&generated)?;
+    for path in &outcome.written {
+        println!("==> {}: written", path.display());
+    }
+    for path in &outcome.removed {
+        println!(
+            "==> {}: removed, its document is no longer declared",
+            path.display()
+        );
+    }
+    if outcome.written.is_empty() && outcome.removed.is_empty() {
+        println!(
+            "==> {} generated suite(s) were already in step with their contracts",
+            generated.suites.len()
+        );
     }
     Ok(ExitCode::SUCCESS)
 }

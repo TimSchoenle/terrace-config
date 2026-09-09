@@ -642,7 +642,12 @@ fn optional_text(
 }
 
 /// Refuse a key nobody reads, which for a file whose job is to be exhaustive is a typo.
-fn reject_unknown(at: &str, where_: &str, mapping: &Json, allowed: &[&str]) -> Result<(), Error> {
+pub(super) fn reject_unknown(
+    at: &str,
+    where_: &str,
+    mapping: &Json,
+    allowed: &[&str],
+) -> Result<(), Error> {
     let mut unknown: Vec<&str> = mapping
         .as_object()
         .into_iter()
