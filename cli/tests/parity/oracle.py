@@ -14,6 +14,7 @@ Usage: python oracle.py check    <helm-charts root> <rendered dir>
        python oracle.py bindings <helm-charts root> [<charts dir>]
        python oracle.py diff     <helm-charts root> <revision>
        python oracle.py secrets  <helm-charts root> <rendered dir>
+       python oracle.py explain  <helm-charts root> <chart> [pattern]
 
 The root always names the checkout the *scripts* come from. A charts directory may be given
 separately, so the harness can point the oracle at a mutated copy of the tree without copying the
@@ -37,6 +38,10 @@ def load(scripts: Path, name: str, file_name: str):
     if spec is None or spec.loader is None:
         return None
     module = importlib.util.module_from_spec(spec)
+    # Registered before it is executed: `dataclasses` resolves a field's annotation by looking the
+    # defining module up here, and a module that is not registered fails to define its first frozen
+    # dataclass.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -110,6 +115,33 @@ def main(argv: list[str]) -> int:
                         "inventory": module.inventory_json(root / "charts"),
                         "surface": module.surface_json(surface),
                         "findings": findings(module.report_of(surface)),
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+
+        if gate == "explain":
+            module = load(scripts, "explain_config_entry", "explain-config.py")
+            if module is None:
+                print(f"{scripts}: the Python gate is not there", file=sys.stderr)
+                return 3
+            from config_declaration import load_declaration  # noqa: PLC0415
+            from config_report import Report  # noqa: PLC0415
+
+            chart_dir = root / "charts" / argv[2]
+            pattern = argv[3] if len(argv) > 3 else None
+            report = Report()
+            surface = module.collect(chart_dir, load_declaration(chart_dir), report)
+            if surface is None:
+                print(json.dumps({"refused": True, "findings": findings(report)}, indent=2))
+                return 0
+            module.report_divergences(surface, pattern, report)
+            print(
+                json.dumps(
+                    {
+                        "surface": module.as_json(surface, pattern),
+                        "findings": findings(report),
                     },
                     indent=2,
                 )

@@ -18,6 +18,7 @@ pub mod check;
 pub mod coverage;
 pub mod declaration;
 pub mod diff;
+pub mod explain;
 pub mod markers;
 pub mod readme;
 pub mod secrets;

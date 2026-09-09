@@ -321,6 +321,21 @@ pub enum TextForm {
     Unknown,
 }
 
+impl TextForm {
+    /// The spelling a contract publishes, and the one every message names it by.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Integer => "integer",
+            Self::Boolean => "boolean",
+            Self::Choice => "choice",
+            Self::Structured => "structured",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// The surface outside the loader's namespace: what else the image reads, and what it ignores.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct External {

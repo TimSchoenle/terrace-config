@@ -897,6 +897,143 @@ fn delete_generated_suites(charts: &Path) -> usize {
     deleted
 }
 
+#[test]
+fn the_explanation_agrees_with_the_implementation_it_was_ported_from() {
+    // Every chart the corpus carries, and a pattern over the widest of them. What this compares is
+    // the machine-readable form rather than the printed one: the two are the same selection, and a
+    // difference in a rule shows up there without a formatting difference hiding it.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+    if !root.join(".github/scripts/explain-config.py").is_file() {
+        eprintln!("skipped: the oracle is gone");
+        return;
+    }
+
+    let charts = root.join("charts");
+    let mut compared = 0;
+    for (chart_dir, declaration) in
+        terrace_contract::helm::declared(&charts, true).expect("the tree is readable")
+    {
+        for pattern in [
+            None,
+            Some("log"),
+            Some("*.url"),
+            Some("zzz-matches-nothing"),
+        ] {
+            let mut report = terrace_contract::report::Report::new();
+            let ours =
+                terrace_contract::helm::explain::collect(&chart_dir, &declaration, &mut report)
+                    .expect("the chart is readable");
+
+            let mut ask_for = vec![
+                "explain".to_owned(),
+                root.display().to_string(),
+                declaration.chart.clone(),
+            ];
+            ask_for.extend(pattern.map(str::to_owned));
+            let held: Vec<&str> = ask_for.iter().map(String::as_str).collect();
+            let theirs = ask(&root, &held);
+
+            let Some(surface) = ours else {
+                assert_eq!(
+                    theirs["refused"].as_bool(),
+                    Some(true),
+                    "{}: this crate refused the interlock and the oracle did not",
+                    declaration.chart
+                );
+                continue;
+            };
+            assert!(
+                theirs["refused"].as_bool() != Some(true),
+                "{}: the oracle refused the interlock and this crate did not",
+                declaration.chart
+            );
+
+            terrace_contract::helm::explain::report_divergences(&surface, pattern, &mut report);
+            compare_explained(&theirs["surface"], &surface, pattern, &declaration.chart);
+            assert_eq!(
+                sorted_findings(&theirs),
+                sorted_findings(&serde_json::json!({
+                    "findings": report
+                        .entries()
+                        .iter()
+                        .map(|entry| serde_json::json!({
+                            "where": entry.at,
+                            "level": entry.finding.level.label(),
+                            "message": entry.finding.message,
+                        }))
+                        .collect::<Vec<_>>(),
+                })),
+                "{}: the two implementations found different divergences",
+                declaration.chart
+            );
+            compared += 1;
+        }
+    }
+
+    assert!(
+        compared > 0,
+        "no chart was explained, so nothing was compared"
+    );
+    eprintln!(
+        "explanation parity over {compared} selection(s) of {}",
+        root.display()
+    );
+}
+
+/// One surface, field by field, with the one difference the two are known to have set aside.
+fn compare_explained(
+    theirs: &serde_json::Value,
+    ours: &terrace_contract::helm::explain::Surface,
+    pattern: Option<&str>,
+    chart: &str,
+) {
+    use terrace_contract::helm::explain::select;
+
+    assert_eq!(theirs["chart"].as_str(), Some(chart));
+    assert_eq!(theirs["unknown"].as_str(), Some(ours.unknown.as_str()));
+    assert_eq!(theirs["ignore"], serde_json::json!(ours.ignore), "{chart}");
+    assert_eq!(
+        theirs["dialect"],
+        serde_json::Value::Object(ours.dialect.clone()),
+        "{chart}"
+    );
+
+    for (section, settings) in [
+        ("keys", &ours.keys),
+        ("loader", &ours.loader),
+        ("external", &ours.external),
+    ] {
+        let mine = select(settings, pattern);
+        let theirs = theirs[section].as_array().cloned().unwrap_or_default();
+        assert_eq!(
+            theirs.len(),
+            mine.len(),
+            "{chart}: different numbers of {section}"
+        );
+        for (theirs, ours) in theirs.iter().zip(&mine) {
+            // Compared as values rather than as text: the two agree on every field and disagree
+            // about the order they are written in, which is a property of the document model this
+            // build chose and is recorded on `Setting::representative`.
+            let mut held = ours.representative();
+            held.insert("readers".to_owned(), serde_json::json!(ours.readers()));
+            for name in ["text_form", "file_supplyable", "divergent"] {
+                if let Some(value) = theirs.get(name) {
+                    held.insert(name.to_owned(), value.clone());
+                }
+            }
+            assert_eq!(
+                theirs,
+                &serde_json::Value::Object(held),
+                "{chart}: {section} {} differs",
+                ours.name
+            );
+        }
+    }
+}
+
 /// Every file whose bytes differ between two trees.
 fn differing_files(left: &Path, right: &Path) -> Vec<String> {
     let mut found = Vec::new();

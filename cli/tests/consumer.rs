@@ -326,6 +326,9 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
         // new one's. It derives no spelling from any of them — a comparison of what two documents
         // state is the opposite of an assumption about what they imply.
         "diff.rs",
+        // Prints the separator in the header of an explanation, which is the one place a person is
+        // told what it is. Printing a published field is the opposite of deriving from it.
+        "explain.rs",
     ];
 
     let mut found: Vec<String> = Vec::new();
