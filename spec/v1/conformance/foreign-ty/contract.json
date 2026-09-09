@@ -1,0 +1,152 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config-java",
+    "version": "0.0.0-conformance",
+    "loader": "terrace-java"
+  },
+  "app": {
+    "name": "foreign-ty",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "FOREIGNTY_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "FOREIGNTY_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer.",
+        "default": "config.toml"
+      },
+      {
+        "env": "FOREIGNTY_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "cache.ttl",
+        "env": "FOREIGNTY_CACHE__TTL",
+        "env_file": "FOREIGNTY_CACHE__TTL_FILE",
+        "secrets_file": "cache__ttl",
+        "docs": "How long an entry survives.",
+        "ty": "java.time.Duration",
+        "values": [],
+        "constraint": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text_constraint": {
+          "type": "string",
+          "pattern": "^\\s*[+-]?[0-9]+\\s*$"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "300",
+        "default_value": 300,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "methods",
+        "env": "FOREIGNTY_METHODS",
+        "env_file": "FOREIGNTY_METHODS_FILE",
+        "secrets_file": "methods",
+        "docs": "HTTP methods the proxy forwards.",
+        "ty": "java.util.List<java.lang.String>",
+        "values": [],
+        "constraint": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text_form": "structured",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "token",
+        "env": "FOREIGNTY_TOKEN",
+        "env_file": "FOREIGNTY_TOKEN_FILE",
+        "secrets_file": "token",
+        "docs": "Credential for the upstream API.",
+        "ty": "javax.crypto.SecretKey",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": true,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "cache": {
+        "additionalProperties": false,
+        "properties": {
+          "ttl": {
+            "default": 300,
+            "description": "How long an entry survives.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "methods": {
+        "description": "HTTP methods the proxy forwards.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "token": {
+        "description": "Credential for the upstream API.",
+        "type": "string"
+      }
+    },
+    "required": [
+      "token"
+    ],
+    "title": "foreign-ty configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

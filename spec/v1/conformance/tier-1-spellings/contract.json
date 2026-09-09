@@ -1,0 +1,161 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "relaxed-binder",
+    "version": "0.0.0-conformance",
+    "loader": "spring-boot"
+  },
+  "app": {
+    "name": "tier-1-spellings",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "RELAXED_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "RELAXED_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer.",
+        "default": "config.toml"
+      },
+      {
+        "env": "RELAXED_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "server.port",
+        "env": "RELAXED_SERVERPORT",
+        "env_file": "RELAXED_SERVERPORT_FILE",
+        "secrets_file": "server__port",
+        "docs": "Port the HTTP listener binds.",
+        "ty": "int",
+        "values": [],
+        "constraint": {
+          "type": "integer",
+          "maximum": 65535
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "8080",
+        "default_value": 8080,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "data.source.url",
+        "env": "RELAXED_DATASOURCE_URL",
+        "env_file": "RELAXED_DATASOURCE_URL_FILE",
+        "secrets_file": "data__source__url",
+        "docs": "Where the database is.",
+        "ty": "java.net.URI",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "cache.ttl",
+        "env": null,
+        "env_file": null,
+        "secrets_file": "cache__ttl",
+        "docs": "How long an entry survives.",
+        "ty": "java.time.Duration",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "unreachable": "unnameable",
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "cache": {
+        "additionalProperties": false,
+        "properties": {
+          "ttl": {
+            "description": "How long an entry survives.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "data": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "description": "Where the database is.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "server": {
+        "additionalProperties": false,
+        "properties": {
+          "port": {
+            "default": 8080,
+            "description": "Port the HTTP listener binds.",
+            "maximum": 65535,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "data"
+    ],
+    "title": "tier-1-spellings configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}
