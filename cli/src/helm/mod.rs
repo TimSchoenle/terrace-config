@@ -16,6 +16,7 @@
 pub mod check;
 pub mod coverage;
 pub mod declaration;
+pub mod markers;
 
 pub use check::{Checked, check};
 pub use coverage::{Coverage, coverage};
@@ -23,6 +24,7 @@ pub use declaration::{
     Binding, Consumer, Declaration, Document, ImageRef, Vendored, bind, declared, load_declaration,
     resolve_image,
 };
+pub use markers::{Block, Class, Marker};
 
 use serde_json::Value as Json;
 

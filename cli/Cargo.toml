@@ -44,7 +44,7 @@ cli = ["dep:clap", "helm"]
 # A chart repository's own conventions: `config-contract.yaml`, the vendored contracts, the values
 # tree. They arrive in a repository that publishes a language-neutral format, and this is what keeps
 # that from being a mistake — every one of them sits above `k8s`, so nothing below can read them.
-helm = ["k8s"]
+helm = ["k8s", "dep:saphyr-parser"]
 # Rendered Kubernetes manifests. Knows what a workload is and not what a chart is.
 k8s = ["dep:serde_norway"]
 
@@ -77,6 +77,13 @@ regex = "1"
 # the `@config` markers that live inside comments — is a separate decision and a later phase, because
 # no crate here preserves a comment and the marker language is the only thing that needs one.
 serde_norway = { version = "0.9", optional = true }
+# The marker half of the YAML question, and not the half it was posed as. No Rust crate preserves
+# comments — `saphyr`, `yaml-rust2` and `marked-yaml` all discard them — and a `@config` marker *is*
+# a comment, so the comment scan is line-keyed whatever is linked. What this earns is the other
+# half: every event carries a span, so a value's dotted path comes from the document's own
+# structure rather than from indentation. That removes both exceptions a line reader needs, since a
+# `port: 1` inside a block scalar is one scalar event and not a mapping key.
+saphyr-parser = { version = "0.0.12", optional = true }
 # A real dependency now rather than only a dev one. It was here so that the TOML rendering's claim —
 # that the file it writes *loads* — was held by something that actually parses it; it is here as
 # well because a rendered configuration document is usually TOML and gate 1 has to read one, and
