@@ -261,14 +261,17 @@ pub enum Range {
 /// implement.
 pub fn range(entry: Entry<'_>, loader: &str, text: &str) -> Result<Range, Error> {
     let form = entry.text_form()?;
-    // `text` because a string is already its own value, `structured` because a TOML literal's
-    // contents are beyond what a flat constraint describes, `unknown` because nothing is known to
-    // read it as. Decided before the loader is consulted: there is no range here for any loader, so
+    // `text` because a string is already its own value, `unknown` because nothing is known to read
+    // it as. Decided before the loader is consulted: there is no read to perform for any loader, so
     // reporting one as unchecked would be reporting a gap that does not exist.
-    if matches!(
-        form,
-        TextForm::Text | TextForm::Structured | TextForm::Unknown
-    ) {
+    //
+    // `structured` is deliberately *not* here, and the distinction cost a real defect. A container
+    // still has to be read before anything can be said about it, and the read is what says that
+    // `a,b` is not a list — which is the deployment this form exists to name. Whether it is one is
+    // the loader's question and not this crate's: figment wants a TOML literal, and a binder that
+    // splits on commas reads the same text as two items. Skipping the read here made the check
+    // silently unreachable for every loader at once.
+    if matches!(form, TextForm::Text | TextForm::Unknown) {
         return Ok(Range::Ok);
     }
 

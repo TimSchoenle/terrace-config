@@ -13,6 +13,8 @@
 //! The cheapest tests in the suite, and the ones that catch the multi-producer integration breaking
 //! months before there is a second producer's document to vendor.
 
+#![cfg(feature = "k8s")]
+
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
@@ -213,14 +215,28 @@ fn a_version_below_the_current_one_is_not_reported_as_ahead() {
 }
 
 #[test]
-fn a_structured_key_has_no_range_step_for_any_loader() {
+fn a_structured_key_is_read_before_anything_is_said_about_it() {
+    // Not "no range step". A container still has to be *read* — the read is what says `a,b` is not
+    // a list — and whether it is one belongs to the loader: figment wants a TOML literal, and a
+    // binder that splits on commas reads the same text as two items.
     let merged = union("schema-version-1");
     let peers = merged.keys.get("peers").expect("peers");
     assert_eq!(
         range(peers.entry(), &merged.loader_name, "{a = 1}").expect("the form is known"),
-        Range::Ok,
-        "a TOML literal's contents are beyond what a flat constraint describes, so nothing is \
-         skipped and nothing should be reported as skipped"
+        Range::Ok
+    );
+    let found = range(peers.entry(), &merged.loader_name, "a,b").expect("the form is known");
+    let Range::Wrong(failure) = found else {
+        panic!("a list without its brackets is the deployment this form exists to name: {found:?}");
+    };
+    assert!(failure.contains("brackets"), "{failure}");
+
+    // And a version-1 document says nothing about the elements, so nothing is asserted about them:
+    // the container reads, and the reader degrades rather than inventing an element schema.
+    assert_eq!(
+        range(peers.entry(), &merged.loader_name, "{a = 1, b = \"two\"}")
+            .expect("the form is known"),
+        Range::Ok
     );
 }
 
