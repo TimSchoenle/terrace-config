@@ -413,6 +413,7 @@ fn python_side(root: &Path, rendered: &Path) -> Option<Vec<Finding>> {
     for interpreter in interpreters() {
         let attempt = Command::new(&interpreter)
             .arg(&adapter)
+            .arg("check")
             .arg(root)
             .arg(rendered)
             .output();
@@ -458,6 +459,317 @@ fn python_side(root: &Path, rendered: &Path) -> Option<Vec<Finding>> {
         .collect();
     found.sort();
     Some(found)
+}
+
+/// One chart's enrolment: its name, the contract keys it binds, and the external variables.
+type Enrolment = (String, usize, usize);
+
+/// What the bindings oracle finds, or [`None`] when its entry point is gone.
+fn python_bindings(root: &Path) -> Option<(Vec<Enrolment>, Vec<Finding>)> {
+    if !root
+        .join(".github/scripts/check-config-bindings.py")
+        .is_file()
+    {
+        return None;
+    }
+    let parsed = ask(root, &["bindings", &root.display().to_string()]);
+    let enrolled: Vec<Enrolment> = parsed["enrolled"]
+        .as_array()
+        .expect("the oracle prints what it enrolled")
+        .iter()
+        .map(|row| {
+            (
+                row[0].as_str().unwrap_or_default().to_owned(),
+                usize::try_from(row[1].as_u64().unwrap_or_default()).unwrap_or_default(),
+                usize::try_from(row[2].as_u64().unwrap_or_default()).unwrap_or_default(),
+            )
+        })
+        .collect();
+    Some((enrolled, sorted_findings(&parsed)))
+}
+
+/// Run the oracle under whichever interpreter works, and read its JSON back.
+///
+/// Panics rather than returning a failure: every caller has already established that the entry
+/// point is there, so an interpreter that cannot run it is a broken harness rather than a gone
+/// oracle, and the two must not look the same.
+fn ask(root: &Path, arguments: &[&str]) -> serde_json::Value {
+    let adapter = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("parity")
+        .join("oracle.py");
+
+    for interpreter in interpreters() {
+        let Ok(attempt) = Command::new(&interpreter)
+            .arg(&adapter)
+            .args(arguments)
+            .output()
+        else {
+            continue;
+        };
+        assert!(
+            attempt.status.success(),
+            "the oracle failed under {interpreter}:
+{}",
+            String::from_utf8_lossy(&attempt.stderr)
+        );
+        let parsed: serde_json::Value = serde_json::from_slice(&attempt.stdout)
+            .unwrap_or_else(|e| panic!("the oracle did not print JSON: {e}"));
+        assert!(
+            parsed.get("error").is_none(),
+            "the oracle could not run: {}",
+            parsed["error"]
+        );
+        return parsed;
+    }
+    panic!(
+        "the Python gate is present at {} and no interpreter could run it. Set          TERRACE_PARITY_PYTHON, or unset TERRACE_PARITY_CHARTS to skip.",
+        root.display()
+    )
+}
+
+/// The findings an oracle printed, sorted.
+fn sorted_findings(parsed: &serde_json::Value) -> Vec<Finding> {
+    let mut found: Vec<Finding> = parsed["findings"]
+        .as_array()
+        .expect("the oracle prints a list of findings")
+        .iter()
+        .map(|entry| {
+            (
+                entry["where"].as_str().unwrap_or_default().to_owned(),
+                entry["level"].as_str().unwrap_or_default().to_owned(),
+                entry["message"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn the_binding_rules_agree_with_the_implementation_they_were_ported_from() {
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+
+    let ours =
+        terrace_contract::helm::check_bindings(&root.join("charts")).unwrap_or_else(|failure| {
+            panic!("this crate could not read {}: {failure}", root.display())
+        });
+    let mut mine: Vec<Finding> = ours
+        .report
+        .entries()
+        .iter()
+        .map(|entry| {
+            (
+                entry.at.clone(),
+                match entry.finding.level {
+                    Level::Error => "error".to_owned(),
+                    Level::Warning => "warning".to_owned(),
+                },
+                entry.finding.message.clone(),
+            )
+        })
+        .collect();
+    mine.sort();
+
+    let Some((enrolled, theirs)) = python_bindings(&root) else {
+        eprintln!(
+            "the oracle is gone; {} chart(s) enrolled",
+            ours.enrolled.len()
+        );
+        assert!(
+            mine.is_empty(),
+            "{}",
+            render(&mine.iter().collect::<Vec<_>>())
+        );
+        return;
+    };
+
+    // The counts are the strongest single assertion available here: `tankovault` resolves 53
+    // markers into 219 bindings across nine documents, and a rule that resolved a scope or a
+    // write-off differently would land on a different number long before it landed on a finding.
+    assert_eq!(
+        ours.enrolled, enrolled,
+        "the two implementations enrol different charts, or bind a different number of keys"
+    );
+
+    let only_ours = missing_from(&mine, &theirs);
+    let only_theirs = missing_from(&theirs, &mine);
+    assert!(
+        unexplained(&only_ours, Side::Rust).is_empty()
+            && unexplained(&only_theirs, Side::Python).is_empty(),
+        "the two implementations disagree about the bindings.
+
+found only by this crate:
+{}
+         found only by the oracle:
+{}",
+        render(&only_ours),
+        render(&only_theirs)
+    );
+
+    eprintln!(
+        "binding parity over {}: {} chart(s), {} finding(s) agreed",
+        root.display(),
+        enrolled.len(),
+        mine.len()
+    );
+}
+
+#[test]
+fn the_binding_rules_agree_about_markers_that_are_wrong() {
+    // The same reasoning as the mutant tree: seven charts whose markers are all correct proves
+    // that neither implementation fell over. This renames the first marker target in every chart,
+    // which puts rule 1 and rule 5 both in play — the marker now names a key no contract carries,
+    // and the key it used to name is bound by nothing.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+    if python_bindings(&root).is_none() {
+        eprintln!("skipped: the oracle is gone, so there is nothing to compare a mutant against");
+        return;
+    }
+
+    let mutant = Charts::of(&root.join("charts"));
+    let ours = terrace_contract::helm::check_bindings(&mutant.path())
+        .expect("this crate reads the mutant tree");
+    let mut mine: Vec<Finding> = ours
+        .report
+        .entries()
+        .iter()
+        .map(|entry| {
+            (
+                entry.at.clone(),
+                match entry.finding.level {
+                    Level::Error => "error".to_owned(),
+                    Level::Warning => "warning".to_owned(),
+                },
+                entry.finding.message.clone(),
+            )
+        })
+        .collect();
+    mine.sort();
+
+    let parsed = ask(
+        &root,
+        &[
+            "bindings",
+            &root.display().to_string(),
+            &mutant.path().display().to_string(),
+        ],
+    );
+    let theirs = sorted_findings(&parsed);
+
+    assert!(
+        mine.len() > 10,
+        "the mutation reached nothing: {} finding(s) over seven charts with a renamed marker each",
+        mine.len()
+    );
+
+    let only_ours = missing_from(&mine, &theirs);
+    let only_theirs = missing_from(&theirs, &mine);
+    assert!(
+        unexplained(&only_ours, Side::Rust).is_empty()
+            && unexplained(&only_theirs, Side::Python).is_empty(),
+        "the two implementations disagree about markers that are wrong.
+
+found only by this          crate ({}):
+{}
+found only by the oracle ({}):
+{}",
+        only_ours.len(),
+        render(&only_ours),
+        only_theirs.len(),
+        render(&only_theirs)
+    );
+
+    eprintln!(
+        "binding parity over a mutant of {}: {} finding(s) agreed",
+        root.display(),
+        mine.len()
+    );
+}
+
+/// A copy of a chart tree whose first marker in each values file names a key that is not there.
+///
+/// A whole copy rather than an edit in place, because the tree belongs to another repository and a
+/// harness that mutates somebody's working directory is a harness people turn off.
+struct Charts(PathBuf);
+
+impl Charts {
+    fn of(charts: &Path) -> Self {
+        let at = std::env::temp_dir().join(format!("terrace-parity-charts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&at);
+        copy_tree(charts, &at.join("charts"));
+
+        for entry in std::fs::read_dir(at.join("charts")).expect("the copy is readable") {
+            let values = entry.expect("a chart").path().join("values.yaml");
+            if !values.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&values).expect("a values file is readable");
+            let mut rewritten = String::new();
+            let mut renamed = false;
+            for line in text.lines() {
+                if !renamed && line.contains("# @config ") {
+                    // Append a character to the *last* whitespace-separated token that looks like
+                    // the target. Renaming the target rather than the class keeps the marker
+                    // readable, so what fails is the rule and not the grammar.
+                    if let Some((head, target)) = split_target(line) {
+                        use std::fmt::Write as _;
+                        let _ = writeln!(rewritten, "{head}{target}zz");
+                        renamed = true;
+                        continue;
+                    }
+                }
+                rewritten.push_str(line);
+                rewritten.push('\n');
+            }
+            std::fs::write(&values, rewritten).expect("the mutant values file is written");
+        }
+        Self(at)
+    }
+
+    fn path(&self) -> PathBuf {
+        self.0.join("charts")
+    }
+}
+
+impl Drop for Charts {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// One marker line, split just before the target it names.
+///
+/// Returns everything up to the target, and the target itself, so a caller can write the line back
+/// with a name that is not there any more.
+fn split_target(line: &str) -> Option<(&str, &str)> {
+    let opening = line.find("# @config ")? + "# @config ".len();
+    let rest = &line[opening..];
+    let class_end = rest.find(' ')?;
+    let after_class = &rest[class_end + 1..];
+    let target = after_class.split_whitespace().next()?;
+    let start = opening + class_end + 1 + after_class.find(target)?;
+    Some((&line[..start], target))
+}
+
+/// Copy a directory tree, which `std` has no single call for.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("a directory is created");
+    for entry in std::fs::read_dir(from).expect("the source is readable") {
+        let entry = entry.expect("an entry");
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("a file is copied");
+        }
+    }
 }
 
 /// The interpreters to try, in order.

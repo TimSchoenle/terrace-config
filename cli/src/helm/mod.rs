@@ -13,16 +13,18 @@
 //! chart free. A chart with no declaration is skipped; a chart with `documents: []` has opted out
 //! explicitly and must say why, and that is the only permitted opt-out.
 
+pub mod bindings;
 pub mod check;
 pub mod coverage;
 pub mod declaration;
 pub mod markers;
 
+pub use bindings::{Bindings, check as check_bindings};
 pub use check::{Checked, check};
 pub use coverage::{Coverage, coverage};
 pub use declaration::{
-    Binding, Consumer, Declaration, Document, ImageRef, Vendored, bind, declared, load_declaration,
-    resolve_image,
+    Binding, Bound, Consumer, Declaration, Document, ImageRef, Vendored, bind, declared,
+    load_declaration, resolve_image,
 };
 pub use markers::{Block, Class, Marker};
 

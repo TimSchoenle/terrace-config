@@ -21,7 +21,7 @@ use serde_json::Value as Json;
 
 use crate::error::Error;
 use crate::gate::{DocumentFormat, DocumentSource, Relaxed};
-use crate::union::{Union, local_refs_only, union_contracts};
+use crate::union::{Ordered, Union, local_refs_only, union_contracts};
 
 use super::{DECLARATION, dig, release, shown};
 
@@ -978,6 +978,80 @@ pub fn vendored_for(chart_dir: &Path, document: &Document) -> Result<Vec<Loaded>
             })
         })
         .collect()
+}
+
+/// One chart's documents, resolved to the contracts that describe them.
+///
+/// Built **without** the staleness interlock [`bind`] applies, and deliberately so: a gate that
+/// refuses to run during a digest bump withdraws its report from the one pull request it exists
+/// for. Whether the vendored copy is for the digest the chart currently pins is a separate question
+/// from what the file says, and every reader of this answers it for itself.
+///
+/// `releases` is carried beside `unions` because the merge drops it: a union is what every reader
+/// of one document agrees the keys *are*, and which release each reader was built at is not part of
+/// that. It is still the answer to a question one rule has to ask — a chart whose services are
+/// separate images moves them one at a time, so "has the thing I transcribed moved?" is per image
+/// and not per chart.
+#[derive(Debug, Clone)]
+pub struct Bound {
+    /// The chart's directory name.
+    pub chart: String,
+    /// What it declared.
+    pub declaration: Declaration,
+    /// Every declared document, by name.
+    pub documents: BTreeMap<String, Document>,
+    /// Each document's contracts, merged.
+    pub unions: BTreeMap<String, Union>,
+    /// The releases each document's contracts were published at, sorted and deduplicated.
+    pub releases: BTreeMap<String, Vec<String>>,
+}
+
+impl Bound {
+    /// Resolve one chart's declaration to the contracts it names.
+    ///
+    /// # Errors
+    /// [`Error::Invalid`] when a vendored contract cannot be read, or two cannot be reconciled.
+    pub fn of(chart_dir: &Path, declaration: Declaration) -> Result<Self, Error> {
+        let mut documents = BTreeMap::new();
+        let mut unions = BTreeMap::new();
+        let mut releases = BTreeMap::new();
+
+        for document in &declaration.documents {
+            let loaded = vendored_for(chart_dir, document)?;
+            let contracts: Vec<(String, Json)> = loaded
+                .iter()
+                .map(|item| (item.label.clone(), item.vendored.contract.clone()))
+                .collect();
+            let mut published: Vec<String> = loaded
+                .iter()
+                .map(|item| item.vendored.published_version().to_owned())
+                .collect();
+            published.sort();
+            published.dedup();
+
+            unions.insert(document.name.clone(), union_contracts(&contracts)?);
+            releases.insert(document.name.clone(), published);
+            documents.insert(document.name.clone(), document.clone());
+        }
+
+        Ok(Self {
+            chart: declaration.chart.clone(),
+            declaration,
+            documents,
+            unions,
+            releases,
+        })
+    }
+
+    /// The half of one document's contract a marker of this class may name.
+    pub fn namespace(&self, document: &str, targets_a_key: bool) -> Option<&Ordered> {
+        let union = self.unions.get(document)?;
+        Some(if targets_a_key {
+            &union.keys
+        } else {
+            &union.external_env
+        })
+    }
 }
 
 /// The contracts one document is validated against, in the two scopes the gates need.

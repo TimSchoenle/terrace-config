@@ -163,6 +163,23 @@ enum Command {
         format: Output,
     },
 
+    /// Hold every `@config` marker in a chart's values against the contract it names.
+    ///
+    /// Coverage is chart-level: it answers whether a chart has a contract at all. This is the
+    /// key-level half, and it catches the failure a chart repository actually keeps hitting — an
+    /// image release adds a setting, an automated bump repins the digest and omits everything else,
+    /// and no gate notices that the new key is reached by no chart value. `check` cannot see it
+    /// either: a key nothing renders is not a key rendered wrongly.
+    Bindings {
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// How to write the findings.
+        #[arg(long, default_value = "text")]
+        format: Output,
+    },
+
     /// Report which charts a configuration contract covers, and which it does not.
     ///
     /// Adopting one is opt-in: a chart that carries a declaration is covered, and one that does not
@@ -325,7 +342,27 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
                 &checked.report,
                 format,
                 "Configuration contracts",
-                "Every rendered document, container environment and secret mount matches the                  contract of the image its chart pins.",
+                "Every rendered document, container environment and secret mount matches the contract of the image its chart pins.",
+            ))
+        }
+
+        Command::Bindings { charts, format } => {
+            let found = helm::check_bindings(&charts)?;
+            if format == Output::Text || format == Output::Github {
+                for (chart, keys, external) in &found.enrolled {
+                    println!(
+                        "bound: {chart} ({keys} contract key(s), {external} declared external variable(s))"
+                    );
+                }
+                if found.enrolled.is_empty() {
+                    println!("==> no chart carries a `@config` marker; nothing to check");
+                }
+            }
+            Ok(write_report(
+                &found.report,
+                format,
+                "Configuration bindings",
+                "Every contract key of every enrolled chart is bound by a value, or written off with a reason.",
             ))
         }
 
