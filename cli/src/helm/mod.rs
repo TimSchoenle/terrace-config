@@ -19,6 +19,7 @@ pub mod coverage;
 pub mod declaration;
 pub mod diff;
 pub mod markers;
+pub mod readme;
 pub mod secrets;
 pub mod shapes;
 

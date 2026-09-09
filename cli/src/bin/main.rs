@@ -292,6 +292,23 @@ enum Command {
         exit_code: bool,
     },
 
+    /// Write the credential reference each chart's README template carries, from the contract.
+    ///
+    /// Which credentials the image needs, what to name the keys of the Secret that carries them,
+    /// and which environment spelling addresses the same value are all published by the image, and
+    /// all three used to be transcribed by hand into prose nothing downstream reads. The one column
+    /// no contract can fill — *when* this chart needs the credential — stays hand-written, in the
+    /// declaration beside the keys it describes.
+    Readme {
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// Fail when a reference is behind its contract, rather than writing it.
+        #[arg(long)]
+        check: bool,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -475,6 +492,8 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             json,
             exit_code,
         } => secrets_command(&charts, reconcile.as_deref(), json, exit_code),
+
+        Command::Readme { charts, check } => readme_command(&charts, check),
 
         Command::Coverage {
             charts,
@@ -1034,6 +1053,31 @@ fn surface_json(surface: &helm::secrets::Surface) -> serde_json::Value {
         })).collect::<Vec<_>>(),
         "notes": surface.notes,
     })
+}
+
+/// Write, or compare, every chart's generated credential reference.
+fn readme_command(charts: &Path, check: bool) -> Result<ExitCode, Error> {
+    let written = helm::readme::walk(charts, check)?;
+
+    for problem in &written.problems {
+        eprintln!("{problem}");
+    }
+    if !written.problems.is_empty() {
+        eprintln!(
+            "\nerror: {} credential reference problem(s)",
+            written.problems.len()
+        );
+        return Ok(ExitCode::from(1));
+    }
+
+    if check {
+        println!("==> every credential reference is current");
+    } else if written.touched > 0 {
+        println!("==> rewrote {} credential reference(s)", written.touched);
+    } else {
+        println!("==> every credential reference already matches its contract");
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// Print a list of findings, or say nothing and succeed.

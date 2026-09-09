@@ -757,6 +757,78 @@ fn the_derived_schema_blocks_are_the_ones_the_tree_already_carries() {
     );
 }
 
+#[test]
+fn the_credential_reference_is_the_one_the_tree_already_carries() {
+    // The strongest check the writer has, and it needs no oracle: empty every generated block in a
+    // copy of a tree whose references are current, write them back, and every byte must return. A
+    // plain rerun would prove only that the writer left a file alone; emptying first is what makes
+    // it prove the *generation* — the columns, their order, the notes, the indentation and the line
+    // endings at once.
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+
+    let copy = Charts::copy_of(&root.join("charts"));
+    let emptied = empty_credential_blocks(&copy.path());
+    assert!(
+        emptied > 2,
+        "only {emptied} chart(s) carry a credential reference, so this proves almost nothing"
+    );
+
+    let written =
+        terrace_contract::helm::readme::walk(&copy.path(), false).expect("the copy is readable");
+    assert!(
+        written.problems.is_empty(),
+        "the writer could not generate every reference:\n  {}",
+        written.problems.join("\n  ")
+    );
+    assert_eq!(
+        written.touched, emptied,
+        "the writer rewrote {} of the {emptied} reference(s) it had just emptied",
+        written.touched
+    );
+
+    let differences = differing_files(&root.join("charts"), &copy.path());
+    assert!(
+        differences.is_empty(),
+        "the writer did not reproduce {} file(s): {}",
+        differences.len(),
+        differences.join(", ")
+    );
+
+    eprintln!(
+        "credential reference parity over {}: {emptied} block(s) reproduced byte for byte",
+        root.display()
+    );
+}
+
+/// Delete what sits between the credential markers of every template in a tree.
+fn empty_credential_blocks(charts: &Path) -> usize {
+    use terrace_contract::helm::readme::{CLOSE, OPEN, TEMPLATE};
+
+    let mut emptied = 0;
+    for chart_dir in
+        terrace_contract::helm::declaration::chart_dirs(charts).expect("the copy is readable")
+    {
+        let template = chart_dir.join(TEMPLATE);
+        let Ok(text) = std::fs::read_to_string(&template) else {
+            continue;
+        };
+        let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+        let lines: Vec<&str> = text.split(ending).collect();
+        let position = |marker: &str| lines.iter().position(|line| line.trim() == marker);
+        let (Some(open), Some(close)) = (position(OPEN), position(CLOSE)) else {
+            continue;
+        };
+        let mut kept: Vec<&str> = lines[..=open].to_vec();
+        kept.extend(&lines[close..]);
+        std::fs::write(&template, kept.join(ending)).expect("the emptied template is written");
+        emptied += 1;
+    }
+    emptied
+}
+
 /// Every file whose bytes differ between two trees.
 fn differing_files(left: &Path, right: &Path) -> Vec<String> {
     let mut found = Vec::new();
@@ -1190,7 +1262,14 @@ struct Charts(PathBuf);
 impl Charts {
     /// A copy with nothing changed, for a check that only wants somewhere writable.
     fn copy_of(charts: &Path) -> Self {
-        let at = std::env::temp_dir().join(format!("terrace-parity-copy-{}", std::process::id()));
+        // Counted as well as keyed on the process, because the tests run in parallel and two of
+        // them want their own writable tree at once.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let at = std::env::temp_dir().join(format!(
+            "terrace-parity-copy-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&at);
         copy_tree(charts, &at.join("charts"));
         Self(at)
