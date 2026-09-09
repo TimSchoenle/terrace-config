@@ -10,10 +10,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
+use terrace_contract::helm::{CHARTS_DIR, FIRST_PARTY};
 use terrace_contract::render::{
     self, Column, Docs, Format, JsonSchema, Options, TomlExample, image,
 };
-use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, validate};
+use terrace_contract::report::Report;
+use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, helm, validate};
 
 /// Read, render and check configuration contracts.
 #[derive(Parser)]
@@ -136,6 +138,54 @@ enum Command {
         input: Input,
     },
 
+    /// Hold a rendered Kubernetes tree to the contracts of the images its charts pin.
+    ///
+    /// The one thing no other gate can see into. A schema for a chart's *values* describes the
+    /// values; a Kubernetes validator describes Kubernetes objects, and a `ConfigMap` holding a stale
+    /// configuration document is a perfectly valid `ConfigMap`. So on the day an application renames a
+    /// key, every other gate passes, the pod starts, reports healthy, and runs on a compiled default
+    /// nobody chose.
+    Check {
+        /// The directory a render wrote into.
+        ///
+        /// Read rather than produced: the manifests checked here must be byte-identical to the ones
+        /// every other gate sees, and a second renderer with its own flags is a second answer to
+        /// what the chart produces.
+        #[arg(long, value_name = "DIR", default_value = "rendered")]
+        manifests: PathBuf,
+
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// How to write the findings.
+        #[arg(long, default_value = "text")]
+        format: Output,
+    },
+
+    /// Report which charts a configuration contract covers, and which it does not.
+    ///
+    /// Adopting one is opt-in: a chart that carries a declaration is covered, and one that does not
+    /// is reported rather than failed. Images adopt the format on their own release schedules, so a
+    /// gate that failed every chart whose image had not caught up would be red for reasons nobody in
+    /// the consuming repository can fix — and would end up disabled, which is worse than absent.
+    ///
+    /// What still fails is a chart contradicting itself: one that declares documents and leaves one
+    /// of its own first-party images unaccounted for.
+    Coverage {
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// The list of repositories this organisation builds.
+        #[arg(long, value_name = "FILE", default_value = FIRST_PARTY)]
+        first_party: PathBuf,
+
+        /// How to write the findings.
+        #[arg(long, default_value = "text")]
+        format: Output,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -168,6 +218,17 @@ enum ImageCommand {
         #[arg(long, default_value = DEFAULT_PATH)]
         path: String,
     },
+}
+
+/// How a run of findings is written.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Output {
+    /// Warnings to stdout, failures to stderr, one line each.
+    Text,
+    /// Every finding as one JSON object, for a tool rather than a person.
+    Json,
+    /// The text rendering, plus a table appended to `$GITHUB_STEP_SUMMARY`.
+    Github,
 }
 
 /// The document every subcommand starts from.
@@ -243,6 +304,53 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             ))
         }
 
+        Command::Check {
+            manifests,
+            charts,
+            format,
+        } => {
+            if !manifests.is_dir() {
+                return Err(Error::Invalid(format!(
+                    "{}: no rendered manifests; render the charts into it first",
+                    manifests.display()
+                )));
+            }
+            let checked = helm::check(&charts, &manifests)?;
+            if checked.charts == 0 {
+                // Worth saying out loud: a run that validated nothing looks exactly like a clean one
+                // from the outside.
+                println!("==> no chart declares a configuration contract; nothing to validate");
+            }
+            Ok(write_report(
+                &checked.report,
+                format,
+                "Configuration contracts",
+                "Every rendered document, container environment and secret mount matches the                  contract of the image its chart pins.",
+            ))
+        }
+
+        Command::Coverage {
+            charts,
+            first_party,
+            format,
+        } => {
+            let found = helm::coverage(&charts, &first_party)?;
+            if format == Output::Text || format == Output::Github {
+                for name in &found.covered {
+                    println!("covered: {name}");
+                }
+                if found.covered.is_empty() && found.uncovered.is_empty() {
+                    println!("==> no chart pins a first-party image");
+                }
+            }
+            Ok(write_report(
+                &found.report,
+                format,
+                "Contract coverage",
+                "Every chart pinning a first-party image declares a configuration contract.",
+            ))
+        }
+
         Command::Image { command } => {
             let ImageCommand::Verify {
                 input,
@@ -253,6 +361,52 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             verify_command(&input, labels.as_deref(), dockerfile.as_deref(), &path)
         }
     }
+}
+
+/// Write a report the way the caller asked for, and decide the exit code.
+///
+/// The rules returned findings and decided none of this. Which is the whole split: a build script, a
+/// test or a plugin calls the same code and never goes through a process.
+fn write_report(report: &Report, format: Output, headline: &str, clean: &str) -> ExitCode {
+    match format {
+        Output::Json => println!("{}", report.json()),
+        Output::Text | Output::Github => {
+            let (out, errors) = report.text();
+            print!("{out}");
+            eprint!("{errors}");
+        }
+    }
+
+    if format == Output::Github
+        && let Ok(path) = std::env::var("GITHUB_STEP_SUMMARY")
+    {
+        // A summary that could not be appended is not worth failing a gate over: the findings
+        // themselves already went to the streams above.
+        if let Ok(mut handle) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+        {
+            use std::io::Write as _;
+            let _ = handle.write_all(report.step_summary(headline, clean).as_bytes());
+        }
+    }
+
+    let failures = report.error_count();
+    if failures == 0 {
+        return ExitCode::SUCCESS;
+    }
+    eprintln!(
+        "
+{failures} {}",
+        if failures == 1 {
+            "configuration contract violation"
+        } else {
+            "configuration contract violations"
+        }
+    );
+    // 1, not 2: the tool worked and the tree is wrong.
+    ExitCode::FAILURE
 }
 
 /// Print a list of findings, or say nothing and succeed.

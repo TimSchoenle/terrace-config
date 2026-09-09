@@ -47,6 +47,8 @@ pub mod value;
 
 #[cfg(feature = "k8s")]
 pub mod gate;
+#[cfg(feature = "helm")]
+pub mod helm;
 #[cfg(feature = "k8s")]
 pub mod k8s;
 
