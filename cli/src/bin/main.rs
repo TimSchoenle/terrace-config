@@ -204,6 +204,43 @@ enum Command {
         format: Output,
     },
 
+    /// Report how a chart's vendored contracts changed against another revision, and what it costs.
+    ///
+    /// A refresh runs inside the pull request that repins the digest, so the new document and the
+    /// bump arrive together — which is the design's whole point, and also why the reviewer is
+    /// looking at a large reordered JSON diff instead of a sentence. This is the sentence.
+    ///
+    /// It writes no chart version. The severity table is a defensible default, and the reviewer is
+    /// the one who knows whether the chart writes the key that moved; a tool that edited the
+    /// version would be asserting it knows that, and would be wrong the first time a removed key
+    /// was one no template ever emitted.
+    Diff {
+        /// Only this chart.
+        #[arg(value_name = "CHART")]
+        chart: Option<String>,
+
+        /// The revision to compare against.
+        #[arg(long, default_value = "origin/main")]
+        since: String,
+
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// Emit the whole comparison as JSON, for something that is not a person.
+        #[arg(long)]
+        json: bool,
+
+        /// Report differences as an exit status: 0 identical, 1 could not answer, 2 differences.
+        ///
+        /// Three rather than two, because a status that meant both "differences" and "something
+        /// broke" would leave a caller unable to tell a changed contract from an unreadable one.
+        /// Off by default: differences are the normal outcome, so they exit 0 and only a failure
+        /// to answer exits 1.
+        #[arg(long)]
+        exit_code: bool,
+    },
+
     /// Report which charts a configuration contract covers, and which it does not.
     ///
     /// Adopting one is opt-in: a chart that carries a declaration is covered, and one that does not
@@ -396,6 +433,14 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             format,
         } => shapes_command(&charts, check, format),
 
+        Command::Diff {
+            chart,
+            since,
+            charts,
+            json,
+            exit_code,
+        } => diff_command(&charts, &since, chart.as_deref(), json, exit_code),
+
         Command::Coverage {
             charts,
             first_party,
@@ -547,6 +592,172 @@ fn shapes_command(charts: &Path, check: bool, format: Output) -> Result<ExitCode
         "Derived value schemas",
         "Every bound value's `@schema` block is the one its contract describes.",
     ))
+}
+
+/// Compare every vendored contract against another revision.
+fn diff_command(
+    charts: &Path,
+    since: &str,
+    only: Option<&str>,
+    as_json: bool,
+    exit_code: bool,
+) -> Result<ExitCode, Error> {
+    let revision = helm::Committed::resolve(since)?;
+    let found = helm::collect(charts, &revision, only)?;
+
+    if as_json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "tool": "terrace-contract diff",
+                "ref": since,
+                "commit": revision.commit(),
+                "changed": found.changed(),
+                "impact": found.impact().label(),
+                "charts": found.charts.iter().map(helm::ChartDiff::as_json).collect::<Vec<_>>(),
+                "problems": found.report.entries().iter().map(|entry| serde_json::json!({
+                    "where": entry.at,
+                    "level": entry.finding.level.label(),
+                    "message": entry.finding.message,
+                })).collect::<Vec<_>>(),
+            }))
+            .expect("a diff of owned values serialises")
+        );
+    } else {
+        print!("{}", render_diff(&found, since));
+    }
+
+    let (_, problems) = found.report.text();
+    eprint!("{problems}");
+
+    if found.report.failed() {
+        // Something could not be answered, which is a different outcome from a difference.
+        return Ok(ExitCode::from(1));
+    }
+    if exit_code && found.changed() {
+        return Ok(ExitCode::from(2));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Prose and prose alone are collapsed: they are real changes and they are shown, but one line per
+/// key would bury the findings a reviewer is here for.
+const PROSE_FIELDS: [&str; 2] = ["docs", "note"];
+
+/// The human report: one block per chart, and the suggestion with its reasons under it.
+fn render_diff(found: &helm::Diffed, reference: &str) -> String {
+    use std::fmt::Write as _;
+    use terrace_contract::diff::{Severity, Status};
+
+    let changed: Vec<&helm::ChartDiff> = found
+        .charts
+        .iter()
+        .filter(|chart| chart.impact() != Severity::None)
+        .collect();
+    if changed.is_empty() {
+        return format!("==> no vendored contract differs from {reference}\n");
+    }
+
+    let mut out = String::new();
+    for chart in &changed {
+        let _ = writeln!(out, "==> {}", chart.chart);
+        for contract in &chart.contracts {
+            if contract.status == Status::Unchanged {
+                continue;
+            }
+            let _ = writeln!(out, "  {}  ({})", contract.path, contract.status.label());
+
+            // Severity order, stable within a level. The reviewer's first question is whether
+            // anything here is major, and a document-order listing buries the answer under the
+            // digest line that every single refresh produces.
+            let mut ordered: Vec<&terrace_contract::diff::Change> =
+                contract.changes.iter().collect();
+            ordered.sort_by_key(|change| std::cmp::Reverse(change.severity));
+
+            let mut prose: Vec<&str> = Vec::new();
+            for change in ordered {
+                let is_prose = change
+                    .field
+                    .as_deref()
+                    .is_some_and(|field| PROSE_FIELDS.contains(&field));
+                if is_prose && change.severity == Severity::Patch {
+                    prose.push(&change.subject);
+                    continue;
+                }
+                let _ = writeln!(
+                    out,
+                    "    {:<5}  {:<8}  {}",
+                    change.severity.label(),
+                    change.area.label(),
+                    change.message
+                );
+            }
+            if !prose.is_empty() {
+                prose.sort_unstable();
+                prose.dedup();
+                let _ = writeln!(
+                    out,
+                    "    {:<5}  {:<8}  {} documentation-only change(s): {}",
+                    Severity::Patch.label(),
+                    "docs",
+                    prose.len(),
+                    prose.join(", ")
+                );
+            }
+        }
+
+        let _ = writeln!(out, "  impact: {}", chart.impact().label());
+        // Named rather than repeated in full: every driver has already been printed above, and the
+        // question this block answers is which of those lines set the impact.
+        for change in chart.drivers() {
+            let _ = writeln!(
+                out,
+                "    because  {} {}  {}",
+                change.area.label(),
+                change.kind.label(),
+                change.subject
+            );
+        }
+        let _ = writeln!(out, "  {}", version_line(chart, reference));
+        let _ = writeln!(out);
+    }
+
+    let _ = writeln!(
+        out,
+        "==> {} of {} chart(s) changed against {reference}; suggested impact {}",
+        changed.len(),
+        found.charts.len(),
+        terrace_contract::diff::worst(changed.iter().map(|chart| chart.impact())).label()
+    );
+    out
+}
+
+/// What the chart's version is, and whether the bump already in the branch is large enough.
+fn version_line(chart: &helm::ChartDiff, reference: &str) -> String {
+    use terrace_contract::diff::suggest_version;
+
+    let where_ = format!(
+        "version: {} at {reference}, {} in the working tree",
+        chart.old_version.as_deref().unwrap_or("unset"),
+        chart.new_version.as_deref().unwrap_or("unset")
+    );
+    let Some(suggested) = suggest_version(chart.new_version.as_deref(), chart.impact()) else {
+        return format!("{where_}; suggested impact is {}", chart.impact().label());
+    };
+    match chart.satisfied() {
+        None => format!(
+            "{where_}; a {} change suggests {suggested}",
+            chart.impact().label()
+        ),
+        Some(true) => format!(
+            "{where_}; the bump in this branch already covers a {} change",
+            chart.impact().label()
+        ),
+        Some(false) => format!(
+            "{where_}; a {} change suggests {suggested}, which this branch does not carry",
+            chart.impact().label()
+        ),
+    }
 }
 
 /// Print a list of findings, or say nothing and succeed.

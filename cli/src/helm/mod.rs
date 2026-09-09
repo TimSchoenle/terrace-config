@@ -17,6 +17,7 @@ pub mod bindings;
 pub mod check;
 pub mod coverage;
 pub mod declaration;
+pub mod diff;
 pub mod markers;
 pub mod shapes;
 
@@ -27,6 +28,7 @@ pub use declaration::{
     Binding, Bound, Consumer, Declaration, Document, ImageRef, Vendored, bind, declared,
     load_declaration, resolve_image,
 };
+pub use diff::{ChartDiff, Committed, Diffed, Revision, collect};
 pub use markers::{Block, Class, Marker};
 pub use shapes::{Divergence, Shape};
 

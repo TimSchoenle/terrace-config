@@ -12,6 +12,7 @@ the signal the harness needs to fall back to checking the Rust side alone agains
 
 Usage: python oracle.py check    <helm-charts root> <rendered dir>
        python oracle.py bindings <helm-charts root> [<charts dir>]
+       python oracle.py diff     <helm-charts root> <revision>
 
 The root always names the checkout the *scripts* come from. A charts directory may be given
 separately, so the harness can point the oracle at a mutated copy of the tree without copying the
@@ -47,6 +48,11 @@ def findings(report) -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
+    # A document's prose is UTF-8 — an em dash, a non-breaking space — and the default console
+    # encoding on Windows is not, so without this the oracle hands the harness mangled bytes and
+    # every difference it reports is its own.
+    sys.stdout.reconfigure(encoding="utf-8")
+
     if len(argv) < 2:
         print(__doc__, file=sys.stderr)
         return 2
@@ -71,6 +77,23 @@ def main(argv: list[str]) -> int:
             runner = module.Runner(root / "charts", Path(argv[2]).resolve(), module.find_jv(), report)
             charts = runner.run()
             print(json.dumps({"charts": charts, "findings": findings(report)}, indent=2))
+            return 0
+
+        if gate == "diff":
+            module = load(scripts, "contract_diff_entry", "contract-diff.py")
+            if module is None:
+                print(f"{scripts}: the Python gate is not there", file=sys.stderr)
+                return 3
+            import os
+
+            # The entry point resolves paths against the working directory, as a recipe does.
+            os.chdir(root)
+            from config_report import Report  # noqa: PLC0415
+
+            report = Report()
+            revision = module.Revision(argv[2])
+            diffs = module.collect(Path("charts"), revision, None, report)
+            print(json.dumps(module.as_json(diffs, argv[2], revision.commit, report), indent=2))
             return 0
 
         if gate == "bindings":

@@ -322,6 +322,10 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
         // `Union::container_of`, the dynamic-map legitimiser, which says so in its own
         // documentation and can only turn a finding into silence.
         "union.rs",
+        // Names the three dialect fields in order to compare the old document's values against the
+        // new one's. It derives no spelling from any of them — a comparison of what two documents
+        // state is the opposite of an assumption about what they imply.
+        "diff.rs",
     ];
 
     let mut found: Vec<String> = Vec::new();
@@ -347,7 +351,10 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
     allowed.sort();
     assert_eq!(
         found, allowed,
-        "a rule outside the three that admit to it is reading `dialect.nesting_separator`. Every          other rule must read the spellings the document published: a producer that hands naming          to a binder with its own relaxed-binding rules does not reach tier 2, and a rule that          assumes it silently is wrong about that producer."
+        "a rule outside the ones that admit to it is reading `dialect.nesting_separator`. Every \
+         other rule must read the spellings the document published: a producer that hands naming \
+         to a binder with its own relaxed-binding rules does not reach tier 2, and a rule that \
+         assumes it silently is wrong about that producer."
     );
 }
 

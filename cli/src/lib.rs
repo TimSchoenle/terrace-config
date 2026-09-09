@@ -37,10 +37,12 @@
 
 pub mod classify;
 pub mod conform;
+pub mod diff;
 pub mod document;
 mod error;
 pub mod render;
 pub mod report;
+pub mod text;
 pub mod union;
 pub mod validate;
 pub mod value;
@@ -54,6 +56,7 @@ pub mod k8s;
 
 pub use classify::{Classification, Kind, classify};
 pub use conform::{Tier, Violation};
+pub use diff::{Change, ContractDiff, Severity};
 pub use document::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, Dialect, External, ExternalVar, Key, LoaderRole,
     LoaderVar, Producer, SCHEMA_VERSION, Schema, TextForm, Unknown, Unreachable,

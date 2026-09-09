@@ -82,27 +82,11 @@ impl Relaxed {
     }
 }
 
-/// One string, quoted the way the reports this half was ported from quote one.
-///
-/// Deliberately not [`std::fmt::Debug`]'s spelling. Every message here names a key path, a file name
-/// or a variable, and the corpus of expected output those messages were written against uses single
-/// quotes — so keeping the spelling is what makes a difference in a report a difference in a rule.
-pub(crate) fn quoted(text: &str) -> String {
-    if text.contains('\'') && !text.contains('"') {
-        format!("\"{text}\"")
-    } else {
-        format!("'{}'", text.replace('\\', "\\\\").replace('\'', "\\'"))
-    }
-}
-
-/// One value, quoted the way JSON quotes it.
-pub(crate) fn json_text(text: &str) -> String {
-    serde_json::Value::String(text.to_owned()).to_string()
-}
+pub(crate) use crate::text::{json_text, quoted};
 
 #[cfg(test)]
 mod tests {
-    use super::{Relaxed, json_text, quoted};
+    use super::Relaxed;
 
     #[test]
     fn a_gate_name_outside_the_four_is_refused_rather_than_ignored() {
@@ -111,12 +95,5 @@ mod tests {
         assert!(relaxed.relax("gate2").is_none());
         assert!(relaxed.env);
         assert!(!relaxed.files);
-    }
-
-    #[test]
-    fn quoting_matches_the_spelling_the_reports_were_written_against() {
-        assert_eq!(quoted("server.port"), "'server.port'");
-        assert_eq!(quoted("it's"), "\"it's\"");
-        assert_eq!(json_text("a\"b"), "\"a\\\"b\"");
     }
 }

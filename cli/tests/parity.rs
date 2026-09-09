@@ -771,6 +771,66 @@ fn differing_files(left: &Path, right: &Path) -> Vec<String> {
     found
 }
 
+#[test]
+fn the_diff_rules_agree_over_revisions_that_actually_moved() {
+    // The revisions where a contract really changed, which a clean tree cannot supply: keys
+    // removed, constraints widened, a `text_form` going from `unknown` to `choice`, and the chart
+    // version suggestions that follow from all of it. Pinned commits rather than a range, so the
+    // comparison is about the rules and not about what happened to be merged this week.
+    const MOVED: [&str; 4] = ["d834d09~1", "ddc9cf5~1", "2fd611e~1", "73c6dc6~1"];
+
+    let Some(root) = tree() else {
+        eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
+        return;
+    };
+    if !root.join(".github/scripts/contract-diff.py").is_file() {
+        eprintln!("skipped: the oracle is gone");
+        return;
+    }
+
+    let mut compared = 0;
+    for reference in MOVED {
+        let Ok(revision) = terrace_contract::helm::Committed::resolve_in(&root, reference) else {
+            // A shallow checkout, or a history that has been rewritten. Skipping is right: this
+            // is a comparison of two implementations, not a check on the other repository.
+            eprintln!("skipped {reference}: not resolvable in {}", root.display());
+            continue;
+        };
+        let ours = terrace_contract::helm::collect(&root.join("charts"), &revision, None)
+            .unwrap_or_else(|failure| {
+                panic!("{reference}: this crate could not read it: {failure}")
+            });
+
+        let theirs = ask(&root, &["diff", &root.display().to_string(), reference]);
+        let mine: Vec<serde_json::Value> = ours
+            .charts
+            .iter()
+            .map(terrace_contract::helm::ChartDiff::as_json)
+            .collect();
+
+        assert_eq!(
+            theirs["impact"].as_str(),
+            Some(ours.impact().label()),
+            "{reference}: the two implementations grade the whole comparison differently"
+        );
+        assert_eq!(
+            serde_json::Value::Array(mine),
+            theirs["charts"],
+            "{reference}: the two implementations describe the charts differently"
+        );
+        compared += 1;
+    }
+
+    assert!(
+        compared > 0,
+        "no pinned revision resolved, so nothing was compared"
+    );
+    eprintln!(
+        "diff parity over {compared} revision(s) of {}",
+        root.display()
+    );
+}
+
 /// A copy of a chart tree whose first marker in each values file names a key that is not there.
 ///
 /// A whole copy rather than an edit in place, because the tree belongs to another repository and a
