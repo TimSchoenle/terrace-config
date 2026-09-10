@@ -16,9 +16,9 @@
 //! [`crate::value::range`] returns [`Range::NotChecked`] for a document whose `producer.loader` this
 //! build has no measured read table for, and this gate drops that answer rather than turning it into
 //! a finding. Not because it does not matter — it is reported, at warning severity, by
-//! [`crate::check`] once per document. It belongs there because it is a fact about the *document*
-//! and not about any one value: reporting it per value would say the same sentence two hundred times
-//! about one missing field.
+//! [`crate::helm::check()`] once per document. It belongs there because it is a fact about the
+//! *document* and not about any one value: reporting it per value would say the same sentence two
+//! hundred times about one missing field.
 
 use std::collections::BTreeMap;
 

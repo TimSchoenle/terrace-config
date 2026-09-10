@@ -8,7 +8,7 @@
 //!
 //! # Read tolerantly, gate on the envelope
 //!
-//! Two rules, both from [`spec/v1/FORMAT.md`]:
+//! Two rules, both from `spec/v1/FORMAT.md`:
 //!
 //! **Unknown fields are kept, not refused.** `serde`'s default is to ignore them, which is what
 //! this wants: a producer emitting a field this build has not learned is a producer that is ahead,

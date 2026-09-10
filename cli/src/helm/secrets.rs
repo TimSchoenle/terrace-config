@@ -59,7 +59,7 @@
 //!
 //! # Aliases are deliberately not consulted
 //!
-//! A key may carry `env_aliases`, `env_file_aliases` and `secrets_file_aliases`; [`crate::classify`]
+//! A key may carry `env_aliases`, `env_file_aliases` and `secrets_file_aliases`; [`mod@crate::classify`]
 //! and [`Union::key_by`] ignore them, and this module agrees with the normative reader rather than
 //! being independently cleverer than the gate whose findings it sits beside.
 
