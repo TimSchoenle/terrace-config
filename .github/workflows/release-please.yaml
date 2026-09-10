@@ -47,10 +47,8 @@ jobs:
       issues: write # to comment on the issues a release closes
       pull-requests: write # to open and maintain the release pull request
     # Per package, because `release-please` namespaces its outputs by path once a manifest names
-    # more than one. Nothing in this workflow consumes them today — `release-cli.yml` keys on the
-    # tag rather than on a `workflow_run`, so it can be re-run against a tag that already exists —
-    # and they are declared so that a job which needs them later does not have to guess the
-    # spelling.
+    # more than one. The `cli` pair is what the publish job below is gated on; the root pair is
+    # declared beside it so that a job which needs it later does not have to guess the spelling.
     outputs:
       root_released: ${{ steps.release.outputs['.--release_created'] }}
       root_tag: ${{ steps.release.outputs['.--tag_name'] }}
@@ -81,3 +79,31 @@ jobs:
           token: ${{ steps.generate_token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # ------------------------------------------------------------------------------------------
+  # Publishing what was just tagged
+  # ------------------------------------------------------------------------------------------
+  #
+  # A called workflow rather than one the tag triggers, and the difference is what "released"
+  # means. Called, the release either happened or it did not: the tag, the assets, the image and
+  # their signatures are one run, and a failure anywhere in it is one red run to re-run. Triggered
+  # separately, tagging can succeed while publishing fails — leaving a version that exists, that
+  # `helm-charts` will happily pin, and that nobody can install.
+  #
+  # Gated on `cli_released` rather than run every time: most merges to `main` produce no release at
+  # all, and a publish job that started on each of them would spend four cross-compiles to discover
+  # there is nothing to publish.
+  #
+  # The root package has no equivalent job and needs none — it is a library consumed as a tagged
+  # git dependency, so its tag *is* its artefact.
+  publish-cli:
+    name: Publish terrace-contract
+    needs: release-please
+    if: needs.release-please.outputs.cli_released == 'true'
+    permissions:
+      contents: write # to attach the assets to the release it just created
+      packages: write # to push the image
+      id-token: write # for keyless signing of both
+    uses: ./.github/workflows/release-cli.yml
+    with:
+      tag: ${{ needs.release-please.outputs.cli_tag }}

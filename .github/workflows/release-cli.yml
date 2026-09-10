@@ -21,14 +21,25 @@ name: release-cli
 # whose signer identity does not match the one it pins; a tool that validates signed documents,
 # arriving unsigned, is a hole in the same argument.
 #
-# Triggered by the tag `release-please` writes for the `cli` package. A tag rather than a
-# `workflow_run` on the release job: the tag is the artefact's identity, it is what a consumer pins,
-# and a workflow keyed on it can be re-run against a tag that already exists without inventing a way
-# to say which release it meant.
+# Called by `release-please.yaml` once it has cut the `cli` package's tag, and callable by hand
+# against a tag that already exists. It publishes what that tag names and never decides what to
+# release — the version, the changelog and the tag are release-please's, and a publisher that also
+# chose a version would be a second place the version lives.
 
 on:
-  push:
-    tags: ["terrace-contract-v*"]
+  # Called by `release-please.yaml` in the same run that cut the tag, rather than triggered by the
+  # tag landing. The two differ in one way that matters: a called workflow is part of the release
+  # run, so the release either happened or it did not — where a separate tag-triggered run can
+  # succeed at tagging and fail at publishing, leaving a tag nobody can install.
+  workflow_call:
+    inputs:
+      tag:
+        description: The tag to publish, e.g. terrace-contract-v0.1.0
+        required: true
+        type: string
+
+  # And by hand, against a tag that already exists: a publish that failed halfway — a registry
+  # outage, an expired token — is re-run rather than re-tagged.
   workflow_dispatch:
     inputs:
       tag:
@@ -37,9 +48,12 @@ on:
         type: string
 
 # A release must never be cancelled halfway: the assets, the image and the two signatures are
-# separate API calls, and a cancellation between them leaves a state no rerun can infer.
+# separate API calls, and a cancellation between them leaves a state no rerun can infer. Named for
+# this workflow rather than `github.workflow`, which for a called workflow is the *caller's* name —
+# so the group would otherwise be the release run's own, and a publish would cancel nothing but
+# would sit behind it.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
+  group: release-cli-${{ inputs.tag }}
   cancel-in-progress: false
 
 permissions: {}
@@ -47,7 +61,7 @@ permissions: {}
 env:
   # `terrace-contract-v0.1.0` is the tag; `0.1.0` is what the image is tagged with and what a
   # consumer pins. Derived once here rather than in four places that could disagree.
-  TAG: ${{ inputs.tag || github.ref_name }}
+  TAG: ${{ inputs.tag }}
 
 jobs:
   # ----------------------------------------------------------------------------------------------
