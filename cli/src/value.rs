@@ -80,13 +80,14 @@ impl Reads for Figment {
             TextForm::Choice => Some(Json::String(trimmed.to_owned())),
             TextForm::Structured => {
                 // A TOML literal, and the brackets are the whole point: `A=a,b` reads like a list
-                // and is not one, which is the deployment this form exists to name. Parsed by
-                // wrapping in a one-key document, because TOML has no top-level bare value.
+                // and is not one, which is the deployment this form exists to name. Parsed as a
+                // bare value: `toml`'s `FromStr` reads one directly, so nothing here has to invent
+                // a surrounding document for it to sit in.
                 if !is_toml_literal(trimmed) {
                     return None;
                 }
-                let document: toml::Value = format!("value = {trimmed}").parse().ok()?;
-                serde_json::to_value(document.get("value")?).ok()
+                let value: toml::Value = trimmed.parse().ok()?;
+                serde_json::to_value(&value).ok()
             }
             // A string is already its own value, and `unknown` never reaches here — `range` skips
             // it, because "nothing could be determined" is a gap rather than an answer.
