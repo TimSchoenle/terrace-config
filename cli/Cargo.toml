@@ -94,7 +94,7 @@ saphyr-parser = { version = "0.0.12", optional = true }
 # because a `structured` value is a TOML literal that the loader's own read parses. Pinned exactly,
 # as `main` pinned it: the version suffix names the TOML specification it implements, and a document
 # gate that silently moved between specifications would change what it accepts.
-toml = "=0.9.12+spec-1.1.0"
+toml = "=1.1.5"
 # Refreshing a vendored contract, and nothing else. The blob a registry hands back is checked
 # against the digest its descriptor claims, and the embedded carrier is a file inside a layer — so
 # a hash and an archive reader are what reading one honestly costs.
