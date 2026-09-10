@@ -220,6 +220,12 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+      # `cli/` is a second workspace and a second dependency tree — an archive reader, a hash, a
+      # YAML reader, a schema validator — none of which this action would see from the root.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          manifest-path: cli/Cargo.toml
 
   msrv:
     name: msrv
@@ -243,6 +249,10 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
       - run: cargo check --workspace --all-features --all-targets
+      # Declared in `cli/Cargo.toml` as well, and checked by nothing until now: it is the version
+      # a consuming repository has to be able to build the toolchain with.
+      - run: cargo check --workspace --all-features --all-targets
+        working-directory: cli
 
   # The shared toolchain, which is a separate workspace and so is invisible to every job above:
   # `cargo fmt --all`, `--workspace` and `cargo deny` all stop at the root manifest's members.
@@ -285,9 +295,33 @@ jobs:
       - name: clippy (no default features)
         run: cargo clippy --all-targets --no-default-features
         working-directory: cli
+      # The stack is `cli` -> `helm` -> `k8s` -> the core, with `oci` beside `helm`. The two ends
+      # above compile every module and none of the middle combinations, so a `helm`-only build
+      # referring to an `oci`-only item — which is the whole reason the registry half is split out
+      # — would reach a consumer that took the gates without the archive reader.
+      - name: clippy (each rung of the stack)
+        working-directory: cli
+        run: |
+          for features in k8s helm oci; do
+            echo "::group::--features $features"
+            cargo clippy --all-targets --no-default-features --features "$features"
+            echo "::endgroup::"
+          done
       - name: test
         run: cargo test
         working-directory: cli
+      # `cli/` is a workspace of its own, so the `doc`, `deny` and `msrv` jobs above run at the
+      # repository root and never reach it. Without these three steps its `[lints.rustdoc]` table
+      # is enforced by nothing, its dependencies are licence- and advisory-checked by nothing, and
+      # its own `rust-version` is checked by nothing — the same gap the fuzz job records for
+      # `fuzz/`, one workspace over.
+      - name: doc
+        working-directory: cli
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: |
+          cargo doc --all-features --no-deps
+          cargo doc --no-default-features --no-deps
       # The fuzz crate is a third workspace, and its oracles are the only thing checking that a
       # rendering keeps its own promise on documents nobody wrote: that the TOML file parses, that
       # a Markdown row has its header's column count, that a placeholder's shape comes from

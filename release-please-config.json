@@ -11,6 +11,16 @@
       "draft": false,
       "prerelease": false,
       "bump-minor-pre-major": true
+    },
+    "cli": {
+      "release-type": "rust",
+      "package-name": "terrace-contract",
+      "changelog-path": "CHANGELOG.md",
+      "draft": false,
+      "prerelease": false,
+      "bump-minor-pre-major": true,
+      "component": "terrace-contract",
+      "include-component-in-tag": true
     }
   },
   "changelog-sections": [

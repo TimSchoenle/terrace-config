@@ -1,0 +1,358 @@
+name: release-cli
+
+# Publishing `terrace-contract`: §9 of `docs/contract-cli-plan.md`, as a pipeline.
+#
+# The crate is `publish = false` and stays so. What a consuming build actually wants is a binary or
+# an image — no toolchain, no compile, no platform detection — so the artefacts are the release, and
+# crates.io would only be a third name for the same thing.
+#
+# Two channels, from one set of bytes:
+#
+#   9.2  four cross-compiled binaries, `SHA256SUMS` beside them, every file signed keylessly
+#   9.1  a multi-architecture image at `ghcr.io/<owner>/terrace-contract`, signed the same way
+#
+# The image is built *from the binaries this workflow already produced* rather than compiled again
+# inside it. A `cargo build` per architecture under emulation costs an hour where a `COPY` costs a
+# second — and, more importantly, the bytes in the image are then the same bytes the release
+# attached and cosign signed, where a second build would produce a second artefact nobody verified
+# against the first.
+#
+# **Signing matters more than usual here.** The consuming repository already refuses a *contract*
+# whose signer identity does not match the one it pins; a tool that validates signed documents,
+# arriving unsigned, is a hole in the same argument.
+#
+# Called by `release-please.yaml` once it has cut the `cli` package's tag, and callable by hand
+# against a tag that already exists. It publishes what that tag names and never decides what to
+# release — the version, the changelog and the tag are release-please's, and a publisher that also
+# chose a version would be a second place the version lives.
+
+on:
+  # Called by `release-please.yaml` in the same run that cut the tag, rather than triggered by the
+  # tag landing. The two differ in one way that matters: a called workflow is part of the release
+  # run, so the release either happened or it did not — where a separate tag-triggered run can
+  # succeed at tagging and fail at publishing, leaving a tag nobody can install.
+  workflow_call:
+    inputs:
+      tag:
+        description: The tag to publish, e.g. terrace-contract-v0.1.0
+        required: true
+        type: string
+
+  # And by hand, against a tag that already exists: a publish that failed halfway — a registry
+  # outage, an expired token — is re-run rather than re-tagged.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to publish, e.g. terrace-contract-v0.1.0
+        required: true
+        type: string
+
+# A release must never be cancelled halfway: the assets, the image and the two signatures are
+# separate API calls, and a cancellation between them leaves a state no rerun can infer. Named for
+# this workflow rather than `github.workflow`, which for a called workflow is the *caller's* name —
+# so the group would otherwise be the release run's own, and a publish would cancel nothing but
+# would sit behind it.
+concurrency:
+  group: release-cli-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  # `terrace-contract-v0.1.0` is the tag; `0.1.0` is what the image is tagged with and what a
+  # consumer pins. Derived once here rather than in four places that could disagree.
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  # ----------------------------------------------------------------------------------------------
+  # 9.2 — the binaries
+  # ----------------------------------------------------------------------------------------------
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Runners, and the image's first architecture. musl so there is no glibc floor: the
+          # binary has to run in a `scratch` image and on whatever a consuming repository's runner
+          # happens to be.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            arch: amd64
+          # ARM runners, and the image's second architecture.
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            arch: arm64
+          # The development shell this repository is written from.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # Local.
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      # No cache. Everything below is signed and published under a version number a consumer
+      # pins, so it is built from source every time: a cache is state another workflow can write,
+      # and "the bytes came from a cache somebody else filled" is not something a signature should
+      # ever be asserting.
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          target: ${{ matrix.target }}
+          cache: false
+
+      - name: Install cross
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2.87.7
+        with:
+          tool: cross
+
+      - name: Install the musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y musl-tools
+
+      - name: Build
+        working-directory: cli
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          # `cross` only for the one target the host cannot reach directly; everywhere else it
+          # would spend a container start to do what `cargo` already does.
+          if [ "$TARGET" = "aarch64-unknown-linux-musl" ]; then
+            cross build --release --locked --target "$TARGET"
+          else
+            cargo build --release --locked --target "$TARGET"
+          fi
+
+      # Named for the target, so a consumer's download URL is derivable from `uname` alone.
+      # `.tar.gz` everywhere but Windows, which has no `tar` in every shell a recipe might run
+      # under. Paths are resolved with `pwd` rather than `$GITHUB_WORKSPACE`: on the Windows runner
+      # that variable is a backslash path, and a backslash inside a bash string is an escape.
+      - name: Package
+        id: package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          version="${TAG#terrace-contract-v}"
+          stem="terrace-contract-${version}-${TARGET}"
+          mkdir -p dist
+          out="$(cd dist && pwd)"
+          release="cli/target/${TARGET}/release"
+          if [ "$TARGET" = "x86_64-pc-windows-msvc" ]; then
+            (cd "$release" && 7z a -tzip "${out}/${stem}.zip" terrace-contract.exe)
+            echo "asset=${stem}.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -czf "${out}/${stem}.tar.gz" -C "$release" terrace-contract
+            echo "asset=${stem}.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The bare binary as well, for the two architectures the image is built from — kept separate
+      # from the archive so the image build is a `COPY` rather than an unpack.
+      - name: Stage the image binary
+        if: matrix.arch != ''
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "image/${ARCH}"
+          cp "cli/target/${TARGET}/release/terrace-contract" "image/${ARCH}/"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: asset-${{ matrix.target }}
+          path: dist/${{ steps.package.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 1
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: matrix.arch != ''
+        with:
+          name: image-${{ matrix.arch }}
+          path: image/${{ matrix.arch }}/terrace-contract
+          if-no-files-found: error
+          retention-days: 1
+
+  # ----------------------------------------------------------------------------------------------
+  # 9.2 — the release, its checksums and their signatures
+  # ----------------------------------------------------------------------------------------------
+  release:
+    name: release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: release
+      deployment: false
+    permissions:
+      contents: write # to attach the assets to the release
+      id-token: write # for keyless signing
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: asset-*
+          merge-multiple: true
+          path: dist
+
+      # One file over all of them, rather than one `.sha256` each. It is what a consumer checks in
+      # one command, and it is the file the signature is over — so a tampered archive fails the
+      # checksum and a tampered checksum file fails the signature.
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS
+
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
+      # Keyless: the certificate records which workflow, in which repository, at which ref produced
+      # these bytes, and a verifier pins that identity rather than a key somebody has to hold.
+      - name: Sign
+        working-directory: dist
+        env:
+          COSIGN_YES: "true"
+        run: |
+          # `SHA256SUMS` alone, and that is the whole chain: a tampered archive fails the
+          # checksum, and a tampered checksum file fails this signature. Signing each archive
+          # as well would be four more files saying what one already says.
+          cosign sign-blob SHA256SUMS \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem
+
+      - name: Attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh release upload "$TAG" dist/* --clobber --repo "$REPOSITORY"
+
+      # §9.3's composite action lives in another repository, and a consumer of it pins a version
+      # there rather than here. What this owes it is a release whose asset names are derivable —
+      # `terrace-contract-<version>-<target>.<ext>` beside one `SHA256SUMS` and its signature —
+      # which is what the step above just attached, and what the summary below states so that a
+      # person writing an installer does not have to open the release page to learn the shape.
+      - name: Say what a consumer can now pin
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          version="${TAG#terrace-contract-v}"
+          {
+            echo "### terrace-contract ${version}"
+            echo
+            echo '| asset | verify |'
+            echo '|---|---|'
+            for file in dist/*; do
+              case "$file" in *.sig|*.pem) continue;; esac
+              echo "| \`$(basename "$file")\` | \`sha256sum -c SHA256SUMS\` |"
+            done
+            echo
+            echo 'The checksum file is signed keylessly:'
+            echo
+            echo '```'
+            echo "cosign verify-blob SHA256SUMS \\"
+            echo "  --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \\"
+            echo "  --certificate-identity-regexp '^https://github.com/${REPOSITORY}/' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ----------------------------------------------------------------------------------------------
+  # 9.1 — the container image
+  # ----------------------------------------------------------------------------------------------
+  image:
+    name: image
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: release
+      deployment: false
+    permissions:
+      contents: read
+      packages: write # to push to the registry
+      id-token: write # for keyless signing
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      # Under `cli/dist/<arch>/`, which is where the Dockerfile's `COPY` looks. The path carries
+      # buildx's own `TARGETARCH`, so one `COPY` line serves both architectures.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: image-*
+          path: cli/staged
+
+      - name: Lay the binaries out the way the Dockerfile reads them
+        run: |
+          for arch in amd64 arm64; do
+            mkdir -p "cli/dist/${arch}"
+            mv "cli/staged/image-${arch}/terrace-contract" "cli/dist/${arch}/"
+            chmod +x "cli/dist/${arch}/terrace-contract"
+          done
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # `1`, `0.1` and `0.1.0`: a consumer pins the precision it wants, and a Dockerfile pinning
+      # the major gets every fix without an edit. That is the whole point of the image channel.
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/terrace-contract
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
+            type=semver,pattern={{major}},value=${{ env.TAG }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: cli
+          file: cli/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
+      # The digest, not a tag: a tag moves and a signature over one says nothing about the bytes a
+      # consumer pulled. This is the same argument the contract refresh makes about vendoring.
+      - name: Sign
+        env:
+          COSIGN_YES: "true"
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/terrace-contract
+        run: cosign sign "${IMAGE}@${DIGEST}"

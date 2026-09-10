@@ -80,7 +80,8 @@ do not treat failing to as a defect.
 ```
 spec/v1/conformance/<case>/
   README.md        what the case pins, and the source that produces it in each language
-  contract.json    the document the reference implementation renders
+  contract.json    the document
+  rendered/        what the shared toolchain renders from it — producer cases only
 ```
 
 Each case is a complete, real document — not a fragment and not a hand-edited one. That is
@@ -92,13 +93,35 @@ It moves on every release and says nothing about the rendering, so leaving it re
 release a corpus-wide diff hiding the one line that mattered. Nothing else is normalised: field
 order, escaping and whitespace are what the producer actually emits.
 
-### Cases
+### Producer cases
+
+Documents the reference implementation emits, from types it derived them from. Each carries a
+`rendered/` directory of goldens with exactly one author: that implementation's `TERRACE_SPEC_BLESS`
+run. Everything else that renders is checked against those bytes, and never blesses them — two
+renderers that can each rewrite the expectation agree by construction and prove nothing.
 
 | Case | What it pins |
 |---|---|
 | [`minimal`](conformance/minimal/) | The smallest document that is still a contract: one key, no annotations, no external surface. |
 | [`full-surface`](conformance/full-surface/) | Every key field a producer can be asked to fill — secret, note, alias, choice, bounded number, container-of-choice, nested struct, required key, reserved loader variable, declared and ignored externals. |
 | [`unnameable-key`](conformance/unnameable-key/) | A key no variable can name, and the `unreachable` reason that says which kind. |
+
+### Consumer cases
+
+The other half, and the half a producer-only corpus cannot hold: documents a **consumer** has to
+survive. No producer in this repository can emit any of them — that is what they are for — so they
+are hand-written, carry no `rendered/`, and are held by assertions about what a reader must do
+rather than by goldens.
+
+They are the cheapest tests here and the ones that catch a second implementation's integration
+breaking months before there is a second implementation's document to vendor.
+
+| Case | What it pins |
+|---|---|
+| [`foreign-loader`](conformance/foreign-loader/) | A `producer.loader` with no measured read table: step 2 skipped and reported, never silently performed. |
+| [`schema-version-1`](conformance/schema-version-1/) | A `schema_version` below the current one: a reader degrades to "no element schema published", and a generator narrows rather than refusing. |
+| [`tier-1-spellings`](conformance/tier-1-spellings/) | Spellings that do not follow from the dialect: no rule re-derives a name the document states. |
+| [`foreign-ty`](conformance/foreign-ty/) | A type vocabulary from another language: `ty` is printed and never matched on, so removing it changes no finding. |
 
 ### Running it
 

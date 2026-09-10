@@ -35,10 +35,22 @@ publish = false
 
 [features]
 default = ["cli"]
-# The producer-side half is what is left with `--no-default-features`, and keeping it compiling is
-# the mechanical check that no consumer-side concept — a chart, a manifest, a Helm marker — has
-# leaked down into the document model or the renderers. A language's build links this half.
-cli = ["dep:clap"]
+# The features stack, and the arrow points one way: `cli` -> `helm` -> `k8s` -> the core. The
+# producer-side half is what is left with `--no-default-features`, and keeping it compiling is the
+# mechanical check that no consumer-side concept — a chart, a manifest, a Helm marker — has leaked
+# down into the document model, the renderers or the value checks. A language's build links that
+# half and nothing above it.
+cli = ["dep:clap", "helm", "oci"]
+# A chart repository's own conventions: `config-contract.yaml`, the vendored contracts, the values
+# tree. They arrive in a repository that publishes a language-neutral format, and this is what keeps
+# that from being a mistake — every one of them sits above `k8s`, so nothing below can read them.
+helm = ["k8s", "dep:saphyr-parser"]
+# Rendered Kubernetes manifests. Knows what a workload is and not what a chart is.
+k8s = ["dep:serde_norway"]
+# Talking to a container registry, which exactly one subcommand does. Split out rather than folded
+# into `helm` because it is the only thing here that carries an archive reader and a hash
+# implementation, and a library consumer taking the gates should not link either.
+oci = ["helm", "dep:sha2", "dep:flate2", "dep:tar"]
 
 [[bin]]
 name = "terrace-contract"
@@ -59,13 +71,42 @@ thiserror = "2"
 # `reqwest` and a TLS stack out of a validator whose job includes *refusing* a remote `$ref`
 # rather than fetching one.
 jsonschema = { version = "=0.55.0", default-features = false }
-clap = { version = "4", features = ["derive"], optional = true }
+clap = { version = "4", features = ["derive", "env"], optional = true }
+# Ignore patterns are a trailing `*` and nothing more, but a `constraint`'s `pattern` is whatever
+# JSON Schema keyword the producer published, so one real engine is needed for the value checks.
+regex = "1"
+# The typed half of the YAML question. `serde_yaml` is unmaintained and `deny.toml` would say so;
+# this is the maintained fork with the same `serde` surface, and it reads a multi-document rendered
+# file, a chart's values and a declaration. The *other* half — a scanner with line and column, for
+# the `@config` markers that live inside comments — is a separate decision and a later phase, because
+# no crate here preserves a comment and the marker language is the only thing that needs one.
+serde_norway = { version = "0.9", optional = true }
+# The marker half of the YAML question, and not the half it was posed as. No Rust crate preserves
+# comments — `saphyr`, `yaml-rust2` and `marked-yaml` all discard them — and a `@config` marker *is*
+# a comment, so the comment scan is line-keyed whatever is linked. What this earns is the other
+# half: every event carries a span, so a value's dotted path comes from the document's own
+# structure rather than from indentation. That removes both exceptions a line reader needs, since a
+# `port: 1` inside a block scalar is one scalar event and not a mapping key.
+saphyr-parser = { version = "0.0.12", optional = true }
+# A real dependency now rather than only a dev one. It was here so that the TOML rendering's claim —
+# that the file it writes *loads* — was held by something that actually parses it; it is here as
+# well because a rendered configuration document is usually TOML and gate 1 has to read one, and
+# because a `structured` value is a TOML literal that the loader's own read parses. Pinned exactly,
+# as `main` pinned it: the version suffix names the TOML specification it implements, and a document
+# gate that silently moved between specifications would change what it accepts.
+toml = "=0.9.12+spec-1.1.0"
+# Refreshing a vendored contract, and nothing else. The blob a registry hands back is checked
+# against the digest its descriptor claims, and the embedded carrier is a file inside a layer — so
+# a hash and an archive reader are what reading one honestly costs.
+sha2 = { version = "0.10", optional = true }
+flate2 = { version = "1", optional = true }
+tar = { version = "0.4", optional = true }
 
 [dev-dependencies]
-# The TOML rendering's own claim is that the file it writes *loads*. A renderer that emits an
-# example an operator copies into a deployment has to be held to that by something that actually
-# parses it, not by a golden file that would happily pin a broken one.
-toml = "=0.9.12+spec-1.1.0"
+# The parity harness writes a mutant of a rendered tree back out as YAML, so that both
+# implementations read the same broken bytes rather than each mutating its own copy. Only the test
+# target needs to *write* YAML; the crate itself only ever reads it.
+serde_norway = "0.9"
 
 
 [lints]
