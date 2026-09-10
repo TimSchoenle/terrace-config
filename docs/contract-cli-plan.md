@@ -50,8 +50,37 @@ Phase 0 and most of phase 1 are built, in `cli/`. What exists and is under test:
 implementation's own `TERRACE_SPEC_BLESS` run, which is §5 arriving with phase 1 rather than after
 it.
 
-Still to come, in the order §11 gives: the Java cutover (phase 2), then the chart half — `k8s`,
-the gates, the marker language, the derived documents and the writers.
+### The consumer half
+
+Phases 3, 4 and 5 are built and the Python they replaced is deleted in `helm-charts`. Phase 6 has
+its network half.
+
+| | ships | verified by |
+|---|---|---|
+| phase 3 | `check` | 444 findings agreeing over a mutant of the rendered tree |
+| phase 4 | `bindings`, `shapes`, `coverage` | 232 markers read identically; every derived `@schema` block reproduced byte for byte |
+| phase 5 | `diff`, `secrets`, `readme`, `tests`, `explain` | four revisions byte-identical; 151 unclaimed and 24 over-projected mounts agreeing over a mutant render; 7 credential references and 15 generated suites reproduced byte for byte; 28 explanations agreeing field for field |
+| phase 6 | `pull` | 25 cases against a recorded registry, behind the `Registry` seam |
+
+Still to come: phase 2's Java cutover, and phase 6's writers — `scaffold`, the adopt path and the
+`sync` that composes them. Those are last for the reason §11 gives, and the reason has not changed:
+a generator that is wrong writes its mistake into the tree, where a parity harness cannot see it as
+a diff. `config_scaffold.py` and `adopt-config.py` stay in `helm-charts` until they are ported, and
+`config_testgen.py` keeps `satisfying` and `VALUES_ROOT` for the first of them to read.
+
+### What the port found
+
+- **`producer` had to be optional in the reader.** §7.1's registry needs `producer.loader`, and
+  every contract vendored in the corpus predates the field — so a reader as strict as the writer
+  would refuse legal `terrace_contract: 1` bytes. It is optional here and required by the schema,
+  and the asymmetry is deliberate.
+- **A ported test caught a real defect in the port.** The range check returned early for a
+  `structured` value, so a structured key was never held to its `constraint` at all. Fixing it
+  widened the check, and the parity harness proved the widening changed no finding on the corpus.
+- **A clean corpus is a weak oracle**, so four of the comparisons run over a deliberately broken
+  tree — an unknown key in every document, an unaccounted variable on every container, a renamed
+  marker target per chart, every Secret mounted a second time at a path nothing resolved. Every
+  one of those found rules the clean tree never reached.
 
 Two things found while building, both now fixed in the plan's own terms rather than only in code:
 
