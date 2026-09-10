@@ -8,6 +8,9 @@
 #     RUN terrace-contract conform --tier 2 /in/contract.json \
 #      && terrace-contract render --format labels /in/contract.json > /out/labels
 #
+# Every release publishes three tag precisions — `1`, `0.2` and `0.2.2` — and a Dockerfile pins
+# the one it wants: the major to take every fix without an edit, the exact version to take none.
+#
 # Built from binaries the release workflow already cross-compiled and signed, rather than compiling
 # inside the image. Two reasons, and the second is the load-bearing one: a `cargo build` per
 # architecture under emulation costs an hour where a `COPY` costs a second, and the bytes in the
