@@ -319,6 +319,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      # `metadata-action`'s `semver` type parses the value it is handed, and the tag is not one:
+      # `terrace-contract-v0.2.1` carries the component prefix release-please puts in front of
+      # every tag in this repository, so the parse fails, all three patterns below yield nothing,
+      # and the push fails on an image with no tag at all. The version is what the image is tagged
+      # with in any case, so the version is what the action is handed.
+      - name: Version
+        id: version
+        run: echo "version=${TAG#terrace-contract-v}" >> "$GITHUB_OUTPUT"
+
       # `1`, `0.1` and `0.1.0`: a consumer pins the precision it wants, and a Dockerfile pinning
       # the major gets every fix without an edit. That is the whole point of the image channel.
       - name: Tags
@@ -327,9 +336,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/terrace-contract
           tags: |
-            type=semver,pattern={{version}},value=${{ env.TAG }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
-            type=semver,pattern={{major}},value=${{ env.TAG }}
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.version }}
 
       - name: Build and push
         id: push
