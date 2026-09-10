@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
 use terrace_contract::gate::{Relaxed, check_container};
+use terrace_contract::k8s::{projected_file_names, secret_file_names};
 use terrace_contract::union::{Union, union_contracts};
 use terrace_contract::value::{Range, form, range, reads_for};
 use terrace_contract::{Contract, Tier, conform, validate};
@@ -358,6 +359,104 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
          other rule must read the spellings the document published: a producer that hands naming \
          to a binder with its own relaxed-binding rules does not reach tier 2, and a rule that \
          assumes it silently is wrong about that producer."
+    );
+}
+
+/// A value no rule has any business printing, distinctive enough to find anywhere.
+const SENTINEL: &str = "sentinel-credential-value-8f31c0";
+
+#[test]
+fn a_secrets_own_values_never_leave_the_reader() {
+    // The property behind every "cleartext logging" question anyone will ever ask of this half:
+    // it reports which credentials exist and what to call them, and it never reads what one *is*.
+    // A `Secret` is read for its key names — the file names a loader parses — and for nothing
+    // else, so there is no cleartext here to log in the first place.
+    //
+    // Asserted end to end rather than by reading the code, because the code is the easy half: a
+    // future edit that reached for `.values()` instead of `.keys()` would compile, would pass
+    // every other test in this suite, and would be exactly the defect this names.
+    let spec = json!({
+        "volumes": [
+            {"name": "creds", "secret": {"secretName": "rendered"}},
+            {"name": "projected", "projected": {"sources": [
+                {"secret": {"name": "rendered"}},
+                {"configMap": {"name": "settings"}},
+            ]}},
+        ]
+    });
+    let manifests = [
+        json!({
+            "kind": "Secret",
+            "metadata": {"name": "rendered"},
+            "data": {"database__url": SENTINEL, "auth__token": SENTINEL},
+            "stringData": {"telemetry__sentry__dsn": SENTINEL},
+        }),
+        json!({
+            "kind": "ConfigMap",
+            "metadata": {"name": "settings"},
+            "data": {"config.toml": SENTINEL},
+        }),
+    ];
+
+    for volume in ["creds", "projected"] {
+        for found in [
+            secret_file_names(&manifests, &spec, volume),
+            projected_file_names(&manifests, &spec, volume),
+        ] {
+            assert!(
+                !found.is_empty(),
+                "{volume}: the reader found no names at all, so this proves nothing"
+            );
+            assert!(
+                found.iter().all(|name| !name.contains(SENTINEL)),
+                "{volume}: a value reached a caller: {found:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn only_the_volume_reader_looks_inside_a_secret_at_all() {
+    // The mechanical half, and the reason it is a test rather than a convention: the sentinel
+    // above proves the two readers behave, and this proves nothing else has grown a third one.
+    // A `Secret`'s `data` is the only place in a rendered tree where a credential's *value* sits,
+    // so the set of files that mention those two fields is a property worth pinning.
+    const ALLOWED: &[&str] = &[
+        // Reads the key names one volume presents, which is what a file name in a secrets
+        // directory is. Takes `.keys()`, never `.values()`, and the test above holds it to that.
+        "k8s.rs",
+        // Reads the *ConfigMap* holding the rendered configuration document, which is the plain
+        // text a chart chose to render and the one thing a credential is never allowed to be.
+        // Named here because the field spelling is the same, not because a Secret is opened.
+        "document.rs",
+        "secrets.rs",
+    ];
+
+    let mut found: Vec<String> = Vec::new();
+    walk(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut |path, body| {
+            let rules = body.split("#[cfg(test)]").next().unwrap_or(body);
+            if rules.contains("\"stringData\"") || rules.contains("\"data\"") {
+                found.push(
+                    path.file_name()
+                        .expect("a named file")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        },
+    );
+    found.sort();
+    found.dedup();
+
+    let mut allowed: Vec<String> = ALLOWED.iter().map(|name| (*name).to_owned()).collect();
+    allowed.sort();
+    assert_eq!(
+        found, allowed,
+        "a rule outside the three that admit to it reads a rendered object's `data`. A Secret's \
+         values are the one thing in a rendered tree this half must never carry, so a new reader \
+         of that field belongs here with the reason it is safe."
     );
 }
 
