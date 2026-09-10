@@ -106,7 +106,7 @@ tar = { version = "0.4", optional = true }
 # The parity harness writes a mutant of a rendered tree back out as YAML, so that both
 # implementations read the same broken bytes rather than each mutating its own copy. Only the test
 # target needs to *write* YAML; the crate itself only ever reads it.
-serde_norway = "0.9"
+serde_norway = "=0.9.42"
 
 
 [lints]
