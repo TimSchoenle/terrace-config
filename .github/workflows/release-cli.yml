@@ -8,7 +8,7 @@ name: release-cli
 #
 # Two channels, from one set of bytes:
 #
-#   9.2  four cross-compiled binaries, `SHA256SUMS` beside them, every file signed keylessly
+#   9.2  four binaries, `SHA256SUMS` beside them, every file signed keylessly
 #   9.1  a multi-architecture image at `ghcr.io/<owner>/terrace-contract`, signed the same way
 #
 # The image is built *from the binaries this workflow already produced* rather than compiled again
@@ -83,9 +83,16 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             arch: amd64
-          # ARM runners, and the image's second architecture.
+          # ARM runners, and the image's second architecture. Built *natively*, on an ARM
+          # runner, rather than cross-compiled from the amd64 one — and that is not a preference.
+          # `cross` runs the compiler inside a container that mounts the crate's workspace root,
+          # which here is `cli/`; `validate.rs` embeds `spec/v1/contract.schema.json` from the
+          # repository root, a directory that is then not in the container at all, and the build
+          # fails at `include_str!`. Mounting the parent as well would make the publish depend on
+          # `cross`'s mount layout for the one target nothing else needs a container for, where a
+          # runner of the right architecture makes both Linux legs the same three steps.
           - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             arch: arm64
           # The development shell this repository is written from.
           - target: x86_64-pc-windows-msvc
@@ -113,29 +120,20 @@ jobs:
           target: ${{ matrix.target }}
           cache: false
 
-      - name: Install cross
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2.87.7
-        with:
-          tool: cross
-
+      # Both Linux legs, each for its own architecture: the two musl targets are the only ones
+      # here, so the condition is the platform rather than a list of targets to keep in step.
       - name: Install the musl toolchain
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y musl-tools
 
+      # Every target is the host's own architecture now, so there is one command and no host that
+      # has to reach another. `--locked` because the lock file is part of what the tag names.
       - name: Build
         working-directory: cli
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: |
-          # `cross` only for the one target the host cannot reach directly; everywhere else it
-          # would spend a container start to do what `cargo` already does.
-          if [ "$TARGET" = "aarch64-unknown-linux-musl" ]; then
-            cross build --release --locked --target "$TARGET"
-          else
-            cargo build --release --locked --target "$TARGET"
-          fi
+        run: cargo build --release --locked --target "$TARGET"
 
       # Named for the target, so a consumer's download URL is derivable from `uname` alone.
       # `.tar.gz` everywhere but Windows, which has no `tar` in every shell a recipe might run
