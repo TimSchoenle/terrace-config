@@ -56,7 +56,7 @@ use crate::error::Error;
 use crate::union::union_contracts;
 
 use super::bindings::has_path;
-use super::declaration::{Declaration, Document, read_yaml, vendored_for};
+use super::declaration::{Declaration, Document, vendored_for};
 use super::secrets::{Credential, contracted_charts, credentials, declared_secrets};
 
 /// The two comments the generated block sits between.
@@ -138,7 +138,7 @@ fn one_chart(
         return Ok(());
     }
 
-    let values = read_file(&chart_dir.join("values.yaml"))?;
+    let values = super::read_file(&chart_dir.join("values.yaml"))?;
     let block = match block_for(chart_dir, declaration, &rows, &values) {
         Ok(block) => block,
         Err(problem) => {
@@ -424,15 +424,6 @@ fn difference(before: &str, after: &str, at: &str) -> String {
         let _ = writeln!(out, "+{line}");
     }
     out
-}
-
-/// One YAML file as JSON, empty when the file is not there.
-fn read_file(path: &Path) -> Result<Json, Error> {
-    if !path.is_file() {
-        return Ok(Json::Object(serde_json::Map::new()));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| Error::io(path.display(), e))?;
-    read_yaml(&text, path)
 }
 
 #[cfg(test)]

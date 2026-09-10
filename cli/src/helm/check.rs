@@ -21,7 +21,7 @@ use crate::report::{Report, warning};
 use crate::union::Union;
 use crate::value::reads_for;
 
-use super::declaration::{Binding, Consumer, Declaration, Document, bind, declared, read_yaml};
+use super::declaration::{Binding, Consumer, Declaration, Document, bind, declared};
 use super::{DECLARATION, dig};
 
 /// What a run of [`check`] found, and how much of the tree it looked at.
@@ -63,8 +63,8 @@ fn check_chart(
     rendered: &Path,
     report: &mut Report,
 ) -> Result<(), Error> {
-    let values = read_file(&chart_dir.join("values.yaml"))?;
-    let chart_yaml = read_file(&chart_dir.join("Chart.yaml"))?;
+    let values = super::read_file(&chart_dir.join("values.yaml"))?;
+    let chart_yaml = super::read_file(&chart_dir.join("Chart.yaml"))?;
     let app_version = chart_yaml.get("appVersion").and_then(Json::as_str);
 
     for document in &declaration.documents {
@@ -344,15 +344,6 @@ fn file_name(path: &Path) -> &str {
     path.file_name()
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("")
-}
-
-/// One YAML file as JSON, empty when the file is not there.
-fn read_file(path: &Path) -> Result<Json, Error> {
-    if !path.is_file() {
-        return Ok(Json::Object(serde_json::Map::new()));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| Error::io(path.display(), e))?;
-    read_yaml(&text, path)
 }
 
 /// A selector as a message shows it, in the order the declaration wrote it.

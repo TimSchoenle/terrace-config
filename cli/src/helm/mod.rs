@@ -67,6 +67,22 @@ pub(crate) fn shown(value: Option<&Json>) -> String {
     }
 }
 
+/// One of a chart's own YAML files as JSON, empty when the file is not there.
+///
+/// Absence reads as an empty mapping rather than as an error: every caller is asking what a chart
+/// happens to declare, and a chart with no values file declares nothing rather than being broken.
+///
+/// # Errors
+/// [`Error::Io`] when the file is there and cannot be read, [`Error::Invalid`] when it is not YAML.
+pub(crate) fn read_file(path: &std::path::Path) -> Result<Json, crate::error::Error> {
+    if !path.is_file() {
+        return Ok(Json::Object(serde_json::Map::new()));
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|failure| crate::error::Error::io(path.display(), failure))?;
+    declaration::read_yaml(&text, path)
+}
+
 /// Follow a dotted values path, returning [`None`] at the first missing step.
 ///
 /// Absence is an ordinary answer rather than an error: every caller is asking whether a chart

@@ -76,7 +76,7 @@ use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec, secret_file
 use crate::report::{Report, error, warning};
 use crate::union::{Merged, Union};
 
-use super::declaration::{Binding, Declaration, Document, bind, declared, read_yaml, vendored_for};
+use super::declaration::{Binding, Declaration, Document, bind, declared, vendored_for};
 
 /// The four ways a value can reach the loader, named as the report prints them.
 ///
@@ -421,8 +421,8 @@ fn reconcile_chart(
     rendered: &Path,
     surface: &mut Surface,
 ) -> Result<(), Error> {
-    let values = read_file(&chart_dir.join("values.yaml"))?;
-    let chart_yaml = read_file(&chart_dir.join("Chart.yaml"))?;
+    let values = super::read_file(&chart_dir.join("values.yaml"))?;
+    let chart_yaml = super::read_file(&chart_dir.join("Chart.yaml"))?;
     let app_version = chart_yaml.get("appVersion").and_then(Json::as_str);
 
     let mut bindings: BTreeMap<String, Binding> = BTreeMap::new();
@@ -1166,15 +1166,6 @@ fn short(label: &str) -> String {
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or(label)
         .to_owned()
-}
-
-/// One YAML file as JSON, empty when the file is not there.
-fn read_file(path: &Path) -> Result<Json, Error> {
-    if !path.is_file() {
-        return Ok(Json::Object(serde_json::Map::new()));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| Error::io(path.display(), e))?;
-    read_yaml(&text, path)
 }
 
 /// Every key one contract declares.

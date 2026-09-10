@@ -978,12 +978,14 @@ fn type_line(value: &Json) -> String {
     }
 }
 
-/// One keyword's value, as the YAML an `@schema` comment carries.
+/// One value, as the YAML a values file or an `@schema` comment carries.
 ///
-/// `null` inside an `enum` is the null value and is written bare, which is the spelling a
-/// hand-written block already uses; the `type` keyword is where it has to be quoted, and that is
-/// [`type_line`]'s business.
-fn scalar(value: &Json) -> String {
+/// `null` is written bare, which is the spelling a hand-written block already uses; the `type`
+/// keyword is where it has to be quoted, and that is [`type_line`]'s business.
+///
+/// Shared with the scaffold rather than written twice: both spell a scalar into the same file under
+/// the same rules, and two copies would be two chances to disagree about how a string is escaped.
+pub(super) fn scalar(value: &Json) -> String {
     match value {
         Json::Bool(true) => "true".to_owned(),
         Json::Bool(false) => "false".to_owned(),
@@ -999,7 +1001,7 @@ fn scalar(value: &Json) -> String {
 }
 
 /// A YAML double-quoted scalar. Used wherever a value could be read as something else.
-fn quoted(text: &str) -> String {
+pub(super) fn quoted(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 

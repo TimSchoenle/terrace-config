@@ -48,7 +48,7 @@ use crate::report::{Report, warning};
 use crate::union::UNKNOWN_POLICIES;
 use crate::value::Entry;
 
-use super::declaration::{Declaration, bind, load_vendored, read_yaml};
+use super::declaration::{Declaration, bind, load_vendored};
 
 /// Width the prose is re-wrapped to.
 ///
@@ -296,8 +296,8 @@ pub fn collect(
     declaration: &Declaration,
     report: &mut Report,
 ) -> Result<Option<Surface>, Error> {
-    let values = read_file(&chart_dir.join("values.yaml"))?;
-    let chart_yaml = read_file(&chart_dir.join("Chart.yaml"))?;
+    let values = super::read_file(&chart_dir.join("values.yaml"))?;
+    let chart_yaml = super::read_file(&chart_dir.join("Chart.yaml"))?;
     let app_version = chart_yaml.get("appVersion").and_then(Json::as_str);
 
     let mut surface = Surface {
@@ -611,15 +611,6 @@ fn is_empty(value: &Json) -> bool {
         Json::Object(fields) => fields.is_empty(),
         _ => false,
     }
-}
-
-/// One YAML file as JSON, empty when the file is not there.
-fn read_file(path: &Path) -> Result<Json, Error> {
-    if !path.is_file() {
-        return Ok(Json::Object(Map::new()));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| Error::io(path.display(), e))?;
-    read_yaml(&text, path)
 }
 
 // ------------------------------------------------------------------------------------------------

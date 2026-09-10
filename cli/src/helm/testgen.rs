@@ -1276,6 +1276,12 @@ fn skipped_note(skipped: &[Skipped]) -> Vec<String> {
 ///
 /// Hand-rolled because these reasons quote JSON and constraint spellings that a general wrapper
 /// would break on punctuation this keeps together.
+///
+/// Deliberately not shared with [`super::scaffold::wrap`] or [`super::explain::wrap`]. The three
+/// look alike and are pinned to three different generators byte for byte — this one floors the
+/// width and always emits a line, the scaffold's carries a prefix and emits none for empty text,
+/// and the explainer's must not collapse the run of spaces inside `PathBuf  (read as text)`.
+/// Merging them would silently rewrite a committed file to prove a point about tidiness.
 fn wrap(text: &str, width: usize) -> Vec<String> {
     let limit = width.max(32);
     let mut lines: Vec<String> = Vec::new();
