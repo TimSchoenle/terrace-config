@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.1...terrace-contract-v0.2.2) (2026-09-10)
+
+
+### Miscellaneous
+
+* **cli:** re-release as 0.2.2 to publish the image 0.2.1 never got ([#119](https://github.com/TimSchoenle/terrace-config/issues/119)) ([87b2ce8](https://github.com/TimSchoenle/terrace-config/commit/87b2ce84717ca3bb1930b2308c7cd630dce89607))
+
 ## [0.2.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.0...terrace-contract-v0.2.1) (2026-09-10)
 
 
