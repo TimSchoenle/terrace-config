@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.0...terrace-contract-v0.2.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate sha2 to 0.11 ([#112](https://github.com/TimSchoenle/terrace-config/issues/112)) ([6131467](https://github.com/TimSchoenle/terrace-config/commit/61314675a6d6b54a6ee96ff8290afcb8992f3c29))
+* **deps:** update rust crate toml to v1 ([#101](https://github.com/TimSchoenle/terrace-config/issues/101)) ([78bd77f](https://github.com/TimSchoenle/terrace-config/commit/78bd77f872470d20b77f4f00b540f7f449e69e59))
+
 ## [0.2.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.1.0...terrace-contract-v0.2.0) (2026-09-10)
 
 

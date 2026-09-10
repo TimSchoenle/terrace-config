@@ -19,7 +19,7 @@ members = []
 
 [package]
 name = "terrace-contract"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["Tim Schönle"]
 license = "MIT"
