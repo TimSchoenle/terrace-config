@@ -20,6 +20,11 @@ allow = [
     "CC0-1.0",
     "Unicode-3.0",
     "Zlib",
+    # MIT with the attribution clause removed, so strictly more permissive than the `MIT` above.
+    # Reached through `jsonschema` -> `referencing` -> `fluent-uri` -> `borrow-or-share`, which is
+    # the URI parser the validator resolves a `$ref` with. Listed rather than left to be discovered
+    # by whoever next adds a dependency that happens to pull it in.
+    "MIT-0",
 ]
 confidence-threshold = 0.93
 
