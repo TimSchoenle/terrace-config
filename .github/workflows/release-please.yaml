@@ -4,10 +4,17 @@ name: release-please
 # accumulating every conventional commit since the last tag; merging it writes `CHANGELOG.md`,
 # bumps `Cargo.toml`/`Cargo.lock`, tags the repository and publishes the GitHub release.
 #
-# Nothing is uploaded and nothing is published to crates.io: `Cargo.toml` sets `publish = false`
-# and the crate is consumed as a tagged git dependency, so the tag *is* the artefact. Turning
-# that on later is a `publish = true` plus one `cargo publish` job gated on `release_created` —
-# no other part of this file changes.
+# Two packages, and they are released differently on purpose.
+#
+# `terrace-config` — the root — publishes nothing: it sets `publish = false` and is consumed as a
+# tagged git dependency, so the tag *is* the artefact. Its tags are `v<version>`, unchanged.
+#
+# `terrace-contract` — `cli/` — is a tool rather than a library, and what a consuming build wants
+# is a binary or an image: no toolchain, no compile, no platform detection. Its tags carry the
+# component (`terrace-contract-v<version>`) so the two packages cannot collide, and that tag is
+# what `release-cli.yml` is keyed on — it cross-compiles the four targets §9.2 names, signs them
+# and their checksums keylessly, and builds the multi-architecture image from those same bytes.
+# Nothing goes to crates.io from either.
 #
 # The version the README advertises is not maintained here. `docs.yml` re-renders
 # `.github/templates/README.md.hbs` on every pull request from the version in `Cargo.toml`, so
@@ -39,9 +46,16 @@ jobs:
       contents: write # to create the release commit, the tag and the GitHub release
       issues: write # to comment on the issues a release closes
       pull-requests: write # to open and maintain the release pull request
+    # Per package, because `release-please` namespaces its outputs by path once a manifest names
+    # more than one. Nothing in this workflow consumes them today — `release-cli.yml` keys on the
+    # tag rather than on a `workflow_run`, so it can be re-run against a tag that already exists —
+    # and they are declared so that a job which needs them later does not have to guess the
+    # spelling.
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      root_released: ${{ steps.release.outputs['.--release_created'] }}
+      root_tag: ${{ steps.release.outputs['.--tag_name'] }}
+      cli_released: ${{ steps.release.outputs['cli--release_created'] }}
+      cli_tag: ${{ steps.release.outputs['cli--tag_name'] }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
