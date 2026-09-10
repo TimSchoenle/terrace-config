@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.12.0](https://github.com/TimSchoenle/terrace-config/compare/v0.11.0...v0.12.0) (2026-09-10)
+
+
+### Features
+
+* **cli:** the consumer half — the gates, the markers, the derived documents and the network ([#104](https://github.com/TimSchoenle/terrace-config/issues/104)) ([a6ce4e5](https://github.com/TimSchoenle/terrace-config/commit/a6ce4e5e05d76c5ef190c11b1d45ba5f451e9153))
+* one contract toolchain for every implementation ([#96](https://github.com/TimSchoenle/terrace-config/issues/96)) ([59ee6a6](https://github.com/TimSchoenle/terrace-config/commit/59ee6a6c9e49e88bbcc0a37a4d6821652b388bf7))
+* **schema:** publish the contract format as a versioned spec ([#94](https://github.com/TimSchoenle/terrace-config/issues/94)) ([d298dd1](https://github.com/TimSchoenle/terrace-config/commit/d298dd1efaa74055ac87f9a5e391b2f0ffdd8723))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate toml to 0.9 ([#100](https://github.com/TimSchoenle/terrace-config/issues/100)) ([0cf063c](https://github.com/TimSchoenle/terrace-config/commit/0cf063c36897a9f15c7843690f579f06ba0c9224))
+
+
+### Miscellaneous
+
+* add .gitattributes ([ffcc8ab](https://github.com/TimSchoenle/terrace-config/commit/ffcc8abc7f1b86b6412e0242a0389084a0df7aff))
+* **deps:** pin rust crate toml to =0.8.23 ([#99](https://github.com/TimSchoenle/terrace-config/issues/99)) ([2f1049e](https://github.com/TimSchoenle/terrace-config/commit/2f1049ef28a888c8a09712f9765d7450f78261d8))
+* **deps:** update taiki-e/install-action action to v2.87.5 ([#93](https://github.com/TimSchoenle/terrace-config/issues/93)) ([893f992](https://github.com/TimSchoenle/terrace-config/commit/893f9923d4fe67886bc01992873a276f9a37cd5f))
+* **deps:** update taiki-e/install-action action to v2.87.6 ([#97](https://github.com/TimSchoenle/terrace-config/issues/97)) ([95483eb](https://github.com/TimSchoenle/terrace-config/commit/95483ebbd5261a98ebd55de3f48c46e37ceacd2d))
+* **deps:** update taiki-e/install-action action to v2.87.7 ([#102](https://github.com/TimSchoenle/terrace-config/issues/102)) ([a9a28fa](https://github.com/TimSchoenle/terrace-config/commit/a9a28faee4592d15cce1b764718ca1db2af22605))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-auto-approve-renovate.yaml to vworkflows-maintenance-auto-approve-renovate-v1.4.23 ([#86](https://github.com/TimSchoenle/terrace-config/issues/86)) ([4e10f63](https://github.com/TimSchoenle/terrace-config/commit/4e10f632cdee5222c19c1fdf52d352ce2af4c4c9))
+* **deps:** update timschoenle/actions/.github/workflows/maintenance-timed-auto-pr-approve.yaml to vworkflows-maintenance-timed-auto-pr-approve-v1.2.35 ([#87](https://github.com/TimSchoenle/terrace-config/issues/87)) ([d15f23e](https://github.com/TimSchoenle/terrace-config/commit/d15f23e8d0eb1ee33905aa90d764f51a0ef0746d))
+* **deps:** update timschoenle/actions/actions/common/commit-changes to vactions-common-commit-changes-v1.5.0 ([#90](https://github.com/TimSchoenle/terrace-config/issues/90)) ([2685dec](https://github.com/TimSchoenle/terrace-config/commit/2685dec61c4d85257ca4032428f6f55079217c9e))
+* **deps:** update timschoenle/actions/actions/common/commit-changes to vactions-common-commit-changes-v1.5.1 ([#103](https://github.com/TimSchoenle/terrace-config/issues/103)) ([4cb7c00](https://github.com/TimSchoenle/terrace-config/commit/4cb7c00b17b574fa405175a3f002f2f45fa11101))
+* **deps:** update timschoenle/actions/actions/common/readme-variables to vactions-common-readme-variables-v1.2.0 ([#91](https://github.com/TimSchoenle/terrace-config/issues/91)) ([1218362](https://github.com/TimSchoenle/terrace-config/commit/1218362a7c016da215ddedc1afe9b9d51b3a6224))
+* **deps:** update timschoenle/actions/actions/common/render-template to vactions-common-render-template-v1.2.0 ([#92](https://github.com/TimSchoenle/terrace-config/issues/92)) ([4fea88b](https://github.com/TimSchoenle/terrace-config/commit/4fea88b338e5c16e8b5ef3cc51e02956db6094f8))
+* **deps:** update timschoenle/actions/actions/common/render-template to vactions-common-render-template-v1.2.1 ([#106](https://github.com/TimSchoenle/terrace-config/issues/106)) ([260db22](https://github.com/TimSchoenle/terrace-config/commit/260db2240aeef093045c8aeb7a8eae88b90f0923))
+* **deps:** update timschoenle/actions/actions/common/render-template-and-commit to vactions-common-render-template-and-commit-v1.1.6 ([#89](https://github.com/TimSchoenle/terrace-config/issues/89)) ([825ae02](https://github.com/TimSchoenle/terrace-config/commit/825ae02734d526cca4b24faa0f37cdc56e760bb7))
+* **deps:** update timschoenle/actions/actions/common/render-template-and-commit to vactions-common-render-template-and-commit-v1.1.7 ([#107](https://github.com/TimSchoenle/terrace-config/issues/107)) ([63b2fbc](https://github.com/TimSchoenle/terrace-config/commit/63b2fbc163c065f250df94d53d1ff66afb413fbc))
+
 ## [0.11.0](https://github.com/TimSchoenle/terrace-config/compare/v0.10.0...v0.11.0) (2026-09-06)
 
 
