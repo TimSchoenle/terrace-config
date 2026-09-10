@@ -367,6 +367,39 @@ enum Command {
         json: bool,
     },
 
+    /// Refresh every vendored contract from the image its chart pins.
+    ///
+    /// The one subcommand that talks to a container registry. Everything else reads the committed
+    /// file, so a registry outage cannot fail a pull request that changes no image, a re-run on an
+    /// old commit validates against what was true then, and the contract diff lands in the same
+    /// pull request as the digest bump — which is the whole point.
+    ///
+    /// There is deliberately no path to fetching one unverified. A contract that cannot be proven
+    /// to belong to the pinned digest is worse than none, because every gate downstream trusts it.
+    Pull {
+        /// One chart, or every chart that declares a contract.
+        #[arg(value_name = "CHART")]
+        chart: Option<String>,
+
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// The signing identity a contract must carry, as a regular expression.
+        ///
+        /// Required, and required to be given rather than defaulted: without it the verification
+        /// would accept any signature at all, which is the same as accepting none.
+        #[arg(long, value_name = "IDENTITY", env = "CONTRACT_SIGNER")]
+        signer: String,
+
+        /// Report what would be written, and write nothing.
+        ///
+        /// Still fetches, still verifies: the question it answers is whether the committed copy is
+        /// the one the pinned digest publishes, and only the registry knows that.
+        #[arg(long)]
+        check: bool,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -547,6 +580,13 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             full,
             json,
         } => explain_command(&charts, chart.as_deref(), pattern.as_deref(), full, json),
+
+        Command::Pull {
+            chart,
+            charts,
+            signer,
+            check,
+        } => pull_command(&charts, chart.as_deref(), &signer, check),
 
         Command::Coverage {
             charts,
@@ -1429,6 +1469,64 @@ fn setting_json(setting: &helm::explain::Setting, derive: bool) -> serde_json::V
         );
     }
     serde_json::Value::Object(held)
+}
+
+/// Refresh the vendored contracts, or say which of them are behind their image.
+fn pull_command(
+    charts: &Path,
+    chart: Option<&str>,
+    signer: &str,
+    check: bool,
+) -> Result<ExitCode, Error> {
+    let tools = helm::pull::Tools::found()?;
+    let refreshed = if check {
+        // Written into a scratch tree rather than over the chart's own: `--check` answers whether
+        // the committed bytes are current, and answering it by writing them would make the answer
+        // true by construction.
+        let scratch = helm::pull::Scratch::of(charts)?;
+        helm::pull::refresh(scratch.path(), chart, &tools, signer, &helm::pull::now())?
+    } else {
+        helm::pull::refresh(charts, chart, &tools, signer, &helm::pull::now())?
+    };
+
+    for path in &refreshed.changed {
+        if check {
+            println!("{}: is behind the image its chart pins", path.display());
+        } else {
+            println!("==> updated {}", path.display());
+        }
+    }
+    for path in &refreshed.unchanged {
+        if !check {
+            println!("==> unchanged {}", path.display());
+        }
+    }
+    for problem in &refreshed.problems {
+        eprintln!("{problem}");
+    }
+
+    if !refreshed.problems.is_empty() {
+        eprintln!(
+            "\nerror: {} chart(s) could not be refreshed",
+            refreshed.problems.len()
+        );
+        return Ok(ExitCode::from(1));
+    }
+    if check {
+        if refreshed.changed.is_empty() {
+            println!(
+                "==> {} vendored contract(s) are the ones their images publish",
+                refreshed.unchanged.len()
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
+        eprintln!(
+            "\nerror: {} vendored contract(s) are behind; refresh them",
+            refreshed.changed.len()
+        );
+        return Ok(ExitCode::from(1));
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// Print a list of findings, or say nothing and succeed.

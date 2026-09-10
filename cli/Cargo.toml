@@ -40,13 +40,17 @@ default = ["cli"]
 # mechanical check that no consumer-side concept — a chart, a manifest, a Helm marker — has leaked
 # down into the document model, the renderers or the value checks. A language's build links that
 # half and nothing above it.
-cli = ["dep:clap", "helm"]
+cli = ["dep:clap", "helm", "oci"]
 # A chart repository's own conventions: `config-contract.yaml`, the vendored contracts, the values
 # tree. They arrive in a repository that publishes a language-neutral format, and this is what keeps
 # that from being a mistake — every one of them sits above `k8s`, so nothing below can read them.
 helm = ["k8s", "dep:saphyr-parser"]
 # Rendered Kubernetes manifests. Knows what a workload is and not what a chart is.
 k8s = ["dep:serde_norway"]
+# Talking to a container registry, which exactly one subcommand does. Split out rather than folded
+# into `helm` because it is the only thing here that carries an archive reader and a hash
+# implementation, and a library consumer taking the gates should not link either.
+oci = ["helm", "dep:sha2", "dep:flate2", "dep:tar"]
 
 [[bin]]
 name = "terrace-contract"
@@ -67,7 +71,7 @@ thiserror = "2"
 # `reqwest` and a TLS stack out of a validator whose job includes *refusing* a remote `$ref`
 # rather than fetching one.
 jsonschema = { version = "=0.55.0", default-features = false }
-clap = { version = "4", features = ["derive"], optional = true }
+clap = { version = "4", features = ["derive", "env"], optional = true }
 # Ignore patterns are a trailing `*` and nothing more, but a `constraint`'s `pattern` is whatever
 # JSON Schema keyword the producer published, so one real engine is needed for the value checks.
 regex = "1"
@@ -91,6 +95,12 @@ saphyr-parser = { version = "0.0.12", optional = true }
 # as `main` pinned it: the version suffix names the TOML specification it implements, and a document
 # gate that silently moved between specifications would change what it accepts.
 toml = "=0.9.12+spec-1.1.0"
+# Refreshing a vendored contract, and nothing else. The blob a registry hands back is checked
+# against the digest its descriptor claims, and the embedded carrier is a file inside a layer — so
+# a hash and an archive reader are what reading one honestly costs.
+sha2 = { version = "0.10", optional = true }
+flate2 = { version = "1", optional = true }
+tar = { version = "0.4", optional = true }
 
 [dev-dependencies]
 # The parity harness writes a mutant of a rendered tree back out as YAML, so that both

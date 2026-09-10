@@ -20,6 +20,8 @@ pub mod declaration;
 pub mod diff;
 pub mod explain;
 pub mod markers;
+#[cfg(feature = "oci")]
+pub mod pull;
 pub mod readme;
 pub mod secrets;
 pub mod shapes;
