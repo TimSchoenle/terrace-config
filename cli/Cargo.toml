@@ -98,7 +98,7 @@ toml = "=0.9.12+spec-1.1.0"
 # Refreshing a vendored contract, and nothing else. The blob a registry hands back is checked
 # against the digest its descriptor claims, and the embedded carrier is a file inside a layer — so
 # a hash and an archive reader are what reading one honestly costs.
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
 
