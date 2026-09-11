@@ -4,6 +4,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * One key, and every layer that supplied it.
  *
@@ -11,27 +16,16 @@ import java.util.List;
  * crate's {@code Origin} keeps by construction: a key is here <i>because</i> some layer supplied
  * it, so there is always exactly one {@link #effective()} layer.
  */
+@Getter
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Origin {
 
-    private final String key;
-    private final Layer effective;
-    private final List<Layer> shadowed;
-
-    private Origin(String key, Layer effective, List<Layer> shadowed) {
-        this.key = key;
-        this.effective = effective;
-        this.shadowed = shadowed;
-    }
-
     /** The key path, e.g. {@code auth.jwt_secret}. */
-    public String key() {
-        return key;
-    }
+    private final String key;
 
     /** The layer whose value is in effect: the last one merged. */
-    public Layer effective() {
-        return effective;
-    }
+    private final Layer effective;
 
     /**
      * The layers that also supplied this key and lost, lowest precedence first.
@@ -40,9 +34,7 @@ public final class Origin {
      * secret not being picked up" — the mount is right there in the list, underneath whatever
      * beat it.
      */
-    public List<Layer> shadowed() {
-        return shadowed;
-    }
+    private final List<Layer> shadowed;
 
     /** Every layer that supplied this key, lowest precedence first, ending with {@link #effective()}. */
     public List<Layer> sources() {

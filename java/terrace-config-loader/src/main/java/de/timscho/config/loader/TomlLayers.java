@@ -11,6 +11,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -19,18 +24,18 @@ import org.tomlj.TomlTable;
 /**
  * The TOML layer: one file, or every {@code *.toml} in a directory.
  */
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 final class TomlLayers {
 
     /** How deep a TOML fragment is walked by {@link #fragmentKeys} before the rest of a branch is reported as one path. */
     private static final int MAX_DEPTH = 32;
 
     private final Path root;
-    private final List<Path> files;
 
-    private TomlLayers(Path root, List<Path> files) {
-        this.root = root;
-        this.files = files;
-    }
+    /** The files, in merge order. */
+    @Getter(AccessLevel.PACKAGE)
+    private final List<Path> files;
 
     /**
      * Expand {@code path} into the TOML files it denotes.
@@ -74,11 +79,6 @@ final class TomlLayers {
     private static String extensionOf(String name) {
         int dot = name.lastIndexOf('.');
         return dot < 0 ? "" : name.substring(dot + 1);
-    }
-
-    /** The files, in merge order. */
-    List<Path> files() {
-        return files;
     }
 
     /**

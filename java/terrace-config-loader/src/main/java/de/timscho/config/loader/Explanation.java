@@ -9,6 +9,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * Where every value {@link TerraceLoader} can see would come from — the Java equivalent of the
  * Rust crate's {@code explain::Explanation}, built by {@link TerraceLoader#explain()}.
@@ -38,41 +43,41 @@ import java.util.TreeMap;
  * {@link TerraceLoader#load(Class, Map)} fails with the parser's own message, which is where the
  * detail belongs.
  */
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Explanation {
 
     /** The longest key a rendered line pads to, so one absurd path does not indent every other. */
     private static final int MAX_KEY_WIDTH = 44;
 
+    /** The prefix every variable in this report derives from. */
+    @Getter
     private final String prefix;
+
     private final String indirectionSuffix;
     private final String configVar;
     private final Path configPath;
     private final boolean configFromEnv;
+
+    /** Every file the TOML layer expanded to, in merge order, and what became of it. */
+    @Getter
     private final List<Map.Entry<Path, Fragment>> fragments;
+
     private final String secretsVar;
     private final Path secretsDir;
     private final int envKeys;
     private final int secretsKeys;
     private final int indirectionKeys;
-    private final List<Origin> origins;
 
-    private Explanation(
-            String prefix, String indirectionSuffix, String configVar, Path configPath, boolean configFromEnv,
-            List<Map.Entry<Path, Fragment>> fragments, String secretsVar, Path secretsDir, int envKeys,
-            int secretsKeys, int indirectionKeys, List<Origin> origins) {
-        this.prefix = prefix;
-        this.indirectionSuffix = indirectionSuffix;
-        this.configVar = configVar;
-        this.configPath = configPath;
-        this.configFromEnv = configFromEnv;
-        this.fragments = fragments;
-        this.secretsVar = secretsVar;
-        this.secretsDir = secretsDir;
-        this.envKeys = envKeys;
-        this.secretsKeys = secretsKeys;
-        this.indirectionKeys = indirectionKeys;
-        this.origins = origins;
-    }
+    /**
+     * Every key some layer supplied, in key-path order.
+     *
+     * <p>Keys nothing supplied are absent: this reports what the <i>environment</i> did, not what
+     * the configuration type can carry. {@link TerraceLoader#schema} answers the other half, and
+     * answers it without reading anything.
+     */
+    @Getter
+    private final List<Origin> origins;
 
     /**
      * Report on already-collected layers.
@@ -148,17 +153,6 @@ public final class Explanation {
                 layers.secretsDir().orElse(null), envKeys, secretsKeys, indirectionKeys, origins);
     }
 
-    /**
-     * Every key some layer supplied, in key-path order.
-     *
-     * <p>Keys nothing supplied are absent: this reports what the <i>environment</i> did, not what
-     * the configuration type can carry. {@link TerraceLoader#schema} answers the other half, and
-     * answers it without reading anything.
-     */
-    public List<Origin> origins() {
-        return origins;
-    }
-
     /** One key's origin, by key path ({@code auth.jwt_secret}). */
     public Optional<Origin> origin(String key) {
         for (Origin origin : origins) {
@@ -180,19 +174,9 @@ public final class Explanation {
         return contested;
     }
 
-    /** Every file the TOML layer expanded to, in merge order, and what became of it. */
-    public List<Map.Entry<Path, Fragment>> fragments() {
-        return fragments;
-    }
-
     /** The secrets directory in use, if one was configured. */
     public Optional<Path> secretsDir() {
         return Optional.ofNullable(secretsDir);
-    }
-
-    /** The prefix every variable in this report derives from. */
-    public String prefix() {
-        return prefix;
     }
 
     /**

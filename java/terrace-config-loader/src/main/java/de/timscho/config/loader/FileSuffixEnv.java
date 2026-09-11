@@ -7,19 +7,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * Per-key file indirection: {@code MYAPP_<KEY>_FILE=/path}, which is what Docker Compose
  * {@code secrets:} and a number of official images look like.
  */
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 final class FileSuffixEnv {
 
+    /** The values this layer supplies, keyed by key path (e.g. {@code auth.jwt_secret}). */
+    @Getter(AccessLevel.PACKAGE)
     private final Map<String, FileValue> values;
-    private final Map<String, String> origins;
 
-    private FileSuffixEnv(Map<String, FileValue> values, Map<String, String> origins) {
-        this.values = values;
-        this.origins = origins;
-    }
+    private final Map<String, String> origins;
 
     /**
      * Read every indirection variable {@code dialect} recognises out of {@code environment}.
@@ -60,11 +65,6 @@ final class FileSuffixEnv {
         }
 
         return new FileSuffixEnv(values, origins);
-    }
-
-    /** The values this layer supplies, keyed by key path (e.g. {@code auth.jwt_secret}). */
-    Map<String, FileValue> values() {
-        return values;
     }
 
     /** The variable that named the file supplying {@code key}, in the spelling it was set in. */

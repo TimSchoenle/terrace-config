@@ -9,6 +9,8 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * The {@code config.example.toml} rendering: the file an operator edits, generated rather than
  * kept — a port of the Rust crate's {@code schema::toml_example} module.
@@ -21,15 +23,13 @@ import de.timscho.config.core.model.Schema;
  * <p>Everything with a default is commented out, so the generated file and an empty file mean
  * the same thing to the loader. What is left uncommented is exactly what has to be filled in.
  */
-public final class TomlExampleRenderer {
+@UtilityClass
+public class TomlExampleRenderer {
 
     /** The column the comments this class writes wrap at. */
     private static final int WIDTH = 96;
 
     private static final int MAX_DEPTH = 32;
-
-    private TomlExampleRenderer() {
-    }
 
     /** The schema as a commented {@code config.toml}, ready to be copied and edited. */
     public static String toTomlExample(Schema schema) {

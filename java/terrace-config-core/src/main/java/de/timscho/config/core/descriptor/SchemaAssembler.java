@@ -13,6 +13,9 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.UnreachableReason;
 
+import lombok.AllArgsConstructor;
+import lombok.experimental.UtilityClass;
+
 /**
  * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link
  * Schema} — the Java equivalent of the Rust crate's {@code Schema::describe_at}. {@code
@@ -29,13 +32,11 @@ import de.timscho.config.core.model.UnreachableReason;
  * true} unless its field is {@code Optional}, an approximation until that step exists. See
  * {@code docs/migration-progress.md} for the open item.
  */
-public final class SchemaAssembler {
+@UtilityClass
+public class SchemaAssembler {
 
     /** The version of this document's shape. Matches the Rust crate's {@code SCHEMA_VERSION}. */
     public static final int SCHEMA_VERSION = 2;
-
-    private SchemaAssembler() {
-    }
 
     /** The keys of {@code descriptor}, spelled according to {@code dialect}. */
     public static Schema assemble(TypeDescriptor descriptor, Dialect dialect, Set<String> reservedEnvNames) {
@@ -284,20 +285,17 @@ public final class SchemaAssembler {
         return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('/') < 0 && name.indexOf('\\') < 0;
     }
 
+    @AllArgsConstructor
     private static final class Spelling {
         final String env;
         final UnreachableReason unreachable;
-
-        Spelling(String env, UnreachableReason unreachable) {
-            this.env = env;
-            this.unreachable = unreachable;
-        }
     }
 
     /** The leaf shapes {@link Key#getTextForm()} distinguishes, plus a {@code NUMBER} form this
      * assembler uses internally for a floating-point range before folding it into the model's
      * {@link de.timscho.config.core.model.TextForm#UNKNOWN} — a float's own value is still
      * {@code Unknown} in the published document, matching the Rust crate. */
+    @AllArgsConstructor
     private enum TextForm {
         TEXT(de.timscho.config.core.model.TextForm.TEXT),
         INTEGER(de.timscho.config.core.model.TextForm.INTEGER),
@@ -308,10 +306,6 @@ public final class SchemaAssembler {
         UNKNOWN(de.timscho.config.core.model.TextForm.UNKNOWN);
 
         final de.timscho.config.core.model.TextForm model;
-
-        TextForm(de.timscho.config.core.model.TextForm model) {
-            this.model = model;
-        }
 
         static TextForm of(String typeName) {
             switch (typeName) {

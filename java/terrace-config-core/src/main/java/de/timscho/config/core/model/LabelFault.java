@@ -1,22 +1,20 @@
 package de.timscho.config.core.model;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
 /**
  * One image label {@link Contract#checkLabels} finds wrong — either missing entirely, or present
  * with a different value than the contract expects.
  */
+@Getter
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public abstract sealed class LabelFault {
-
-    private final String name;
-
-    private LabelFault(String name) {
-        this.name = name;
-    }
 
     /** The label the contract expected, one of {@link Contract#LABEL_VERSION}, {@link Contract#LABEL_PATH}
      * or {@link Contract#LABEL_PREFIX}. */
-    public String getName() {
-        return name;
-    }
+    private final String name;
 
     public static LabelFault missing(String name) {
         return new Missing(name);
@@ -40,24 +38,18 @@ public abstract sealed class LabelFault {
     }
 
     /** The image carries the label with a different value. */
+    @Getter
     public static final class Mismatch extends LabelFault {
+        /** What the image carries. */
         private final String found;
+
+        /** What this contract says it should carry. */
         private final String expected;
 
         private Mismatch(String name, String found, String expected) {
             super(name);
             this.found = found;
             this.expected = expected;
-        }
-
-        /** What the image carries. */
-        public String getFound() {
-            return found;
-        }
-
-        /** What this contract says it should carry. */
-        public String getExpected() {
-            return expected;
         }
 
         @Override

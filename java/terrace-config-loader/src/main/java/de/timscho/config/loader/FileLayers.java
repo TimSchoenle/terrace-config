@@ -7,18 +7,23 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * The file-backed layers, collected together so the shadowing check can see all of them at once.
  */
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 final class FileLayers {
 
+    /** The secrets-directory layer, or {@code null} if none was configured — {@link Explanation}'s own use. */
+    @Getter(AccessLevel.PACKAGE)
     private final SecretsDir secrets;
-    private final FileSuffixEnv files;
 
-    private FileLayers(SecretsDir secrets, FileSuffixEnv files) {
-        this.secrets = secrets;
-        this.files = files;
-    }
+    private final FileSuffixEnv files;
 
     /**
      * Read every file-backed layer the environment points at, and apply {@code policy}.
@@ -88,11 +93,6 @@ final class FileLayers {
                 "`" + key + "` is supplied twice — by " + source + " and by " + other
                         + ". Remove one: a stale environment variable shadowing a rotated secret "
                         + "keeps the service running on the old credential.");
-    }
-
-    /** The secrets-directory layer, or {@code null} if none was configured — {@link Explanation}'s own use. */
-    SecretsDir secrets() {
-        return secrets;
     }
 
     /** The indirection layer — {@link Explanation}'s own use. */

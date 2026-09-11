@@ -16,6 +16,8 @@ import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.refusal.ContractValidator;
 import de.timscho.config.core.schema.JsonSchemaOptions;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * Combines a built {@link Schema} with an {@link App} and a {@link Producer} into a full
  * {@link Contract} — the Java equivalent of the Rust crate's {@code Schema::into_contract}
@@ -26,10 +28,8 @@ import de.timscho.config.core.schema.JsonSchemaOptions;
  * the same {@link Contract} shape, so assembling and refusing it is written once here rather
  * than twice downstream.
  */
-public final class ContractAssembler {
-
-    private ContractAssembler() {
-    }
+@UtilityClass
+public class ContractAssembler {
 
     /** {@link #assemble(Schema, App, Producer, External)} with nothing declared external. */
     public static Contract assemble(Schema schema, App app, Producer producer) {

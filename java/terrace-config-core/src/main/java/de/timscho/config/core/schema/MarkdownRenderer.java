@@ -6,6 +6,8 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * The Markdown rendering: GitHub-flavoured tables, ready to paste into a README — a port of the
  * Rust crate's {@code schema::markdown} module.
@@ -19,10 +21,8 @@ import de.timscho.config.core.model.Schema;
  * <p>Nothing here interprets a value: {@code 12} prints as {@code 12} and {@code public} prints
  * as {@code public}, quotes and all left off, because that is what reads well in a table.
  */
-public final class MarkdownRenderer {
-
-    private MarkdownRenderer() {
-    }
+@UtilityClass
+public class MarkdownRenderer {
 
     /**
      * Both tables: the variables the loader reads, then the configuration keys under

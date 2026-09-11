@@ -7,6 +7,11 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * A directory of key-named files, which is what a Kubernetes {@code Secret} volume looks like.
  *
@@ -15,15 +20,16 @@ import java.util.Map;
  * with no {@code NOFOLLOW_LINKS} option, so that a projected {@code Secret} volume's per-key
  * symlinks are followed rather than classified as "not a file".
  */
+@Getter(AccessLevel.PACKAGE)
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 final class SecretsDir {
 
+    /** The directory this layer was read from. */
     private final Path dir;
-    private final Map<String, FileValue> values;
 
-    private SecretsDir(Path dir, Map<String, FileValue> values) {
-        this.dir = dir;
-        this.values = values;
-    }
+    /** The values this layer supplies, keyed by key path (e.g. {@code auth.jwt_secret}). */
+    private final Map<String, FileValue> values;
 
     /**
      * Read every key-named file directly inside {@code dir}.
@@ -67,16 +73,6 @@ final class SecretsDir {
                             + "before the layered config is built, so a file cannot supply it.");
         }
         return dialect.keyPath(name);
-    }
-
-    /** The directory this layer was read from. */
-    Path dir() {
-        return dir;
-    }
-
-    /** The values this layer supplies, keyed by key path (e.g. {@code auth.jwt_secret}). */
-    Map<String, FileValue> values() {
-        return values;
     }
 
     /** Whether the directory held no usable keys. */

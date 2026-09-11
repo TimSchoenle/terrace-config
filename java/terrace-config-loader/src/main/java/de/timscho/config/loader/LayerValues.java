@@ -9,14 +9,14 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * Shared plumbing between the three file/environment-backed layers: reading a value file, and
  * inserting a value at a dot-separated key path in a nested {@link Map}.
  */
-final class LayerValues {
-
-    private LayerValues() {
-    }
+@UtilityClass
+class LayerValues {
 
     /**
      * The contents of one value file, minus trailing line terminators.

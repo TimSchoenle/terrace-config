@@ -3,6 +3,12 @@ package de.timscho.config.spring;
 import java.util.Locale;
 import java.util.Optional;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.With;
+import lombok.experimental.Accessors;
+
 /**
  * How a name in the system environment maps onto a Spring configuration property, for the one
  * feature this module adds that Spring's own relaxed binding does not already give it: {@code
@@ -23,18 +29,20 @@ import java.util.Optional;
  *
  * <p>Immutable; {@code with}-style methods return a new instance.
  */
+@Getter
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class SpringDialect {
 
     private static final String DEFAULT_SEPARATOR = "_";
     private static final String DEFAULT_INDIRECTION_SUFFIX = "_FILE";
 
+    /** What separates nesting levels in an environment variable name. */
     private final String separator;
-    private final String indirectionSuffix;
 
-    private SpringDialect(String separator, String indirectionSuffix) {
-        this.separator = separator;
-        this.indirectionSuffix = indirectionSuffix;
-    }
+    /** What marks a variable as naming a file rather than holding a value directly. */
+    @With
+    private final String indirectionSuffix;
 
     /** Spring's own relaxed-binding dialect: {@code _} nesting, {@code _FILE} indirection. */
     public static SpringDialect standard() {
@@ -44,21 +52,6 @@ public final class SpringDialect {
     /** Replace the nesting separator. Defaults to {@code _}, matching Spring's own binder. */
     public SpringDialect withNestingSeparator(String separator) {
         return new SpringDialect(separator, indirectionSuffix);
-    }
-
-    /** Replace the file-indirection suffix. Defaults to {@code _FILE}. */
-    public SpringDialect withIndirectionSuffix(String indirectionSuffix) {
-        return new SpringDialect(separator, indirectionSuffix);
-    }
-
-    /** What separates nesting levels in an environment variable name. */
-    public String separator() {
-        return separator;
-    }
-
-    /** What marks a variable as naming a file rather than holding a value directly. */
-    public String indirectionSuffix() {
-        return indirectionSuffix;
     }
 
     /** Whether {@code envName} is a {@code _FILE}-suffixed indirection, with a non-empty target. */
