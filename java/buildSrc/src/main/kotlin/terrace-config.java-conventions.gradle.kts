@@ -1,6 +1,6 @@
 // Applied by every module under java/ (directly, or transitively through
 // terrace-config.lombok-conventions). Replaces what used to be the root java/build.gradle.kts's
-// `subprojects { ... }` block: same Java 21 toolchain, UTF-8 encoding, and JUnit 5 + AssertJ test
+// `subprojects { ... }` block: same Java 25 toolchain, UTF-8 encoding, and JUnit 5 + AssertJ test
 // dependencies for every module, just expressed once here instead of via cross-project
 // configuration. See java/README.md's "buildSrc" section.
 import org.gradle.api.artifacts.VersionCatalogsExtension
@@ -20,7 +20,7 @@ repositories {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion.set(JavaLanguageVersion.of(25))
     }
 }
 
