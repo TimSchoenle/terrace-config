@@ -28,7 +28,7 @@ cd java
 ```
 
 The wrapper (`gradlew`/`gradlew.bat`) is committed, so no local Gradle install is needed — it
-pulls the pinned version (9.1.0, the first release supporting Java 25) on first run. Module
+pulls the pinned version (9.7.1, which supports Java 25) on first run. Module
 versions live in one place, `gradle/libs.versions.toml`, the same role `<dependencyManagement>`
 played before. Shared build logic (the Java toolchain, test dependencies, Lombok wiring) lives in
 `buildSrc`'s convention plugins rather than being repeated per module — see "buildSrc" below.
@@ -182,7 +182,7 @@ by hand) that compiles two *convention plugins* under
 `buildSrc/src/main/kotlin/terrace-config.*-conventions.gradle.kts` and makes them available, by
 ID, to every module below it:
 
-- **`terrace-config.java-conventions`** — the Java 21 toolchain, UTF-8 source/Javadoc encoding,
+- **`terrace-config.java-conventions`** — the Java 25 toolchain, UTF-8 source/Javadoc encoding,
   and the JUnit 5 + AssertJ test dependencies every module gets. Applied by all six modules,
   either directly (`terrace-config-annotations`, `terrace-config-spec-tck`) or transitively
   through the plugin below.

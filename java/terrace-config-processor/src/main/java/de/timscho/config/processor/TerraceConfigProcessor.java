@@ -34,7 +34,7 @@ import de.timscho.config.annotations.TerraceConfig;
  * producer combines one with its own dialect to build the actual {@code Key} model.
  */
 @SupportedAnnotationTypes("de.timscho.config.annotations.TerraceConfig")
-@SupportedSourceVersion(SourceVersion.RELEASE_21)
+@SupportedSourceVersion(SourceVersion.RELEASE_25)
 public final class TerraceConfigProcessor extends AbstractProcessor {
 
     private Messager messager;

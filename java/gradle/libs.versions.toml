@@ -24,7 +24,7 @@ lombok = "1.18.46"
 # applies it; kept in this same catalog so there's still exactly one file to bump either version.
 lombok-plugin = "9.1.0"
 json-schema-validator = "1.5.5"
-spring-boot = "3.4.2"
+spring-boot = "3.5.16"
 compile-testing = "0.21.0"
 # TOML parsing for `terrace-config-loader`'s file layer. Returns nested `Map`/`List`/scalar Java
 # types directly (`TomlParseResult.toMap()`), which is exactly the shape the loader's other
