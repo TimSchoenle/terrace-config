@@ -8,6 +8,12 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.With;
+import lombok.experimental.Accessors;
+
 /**
  * How a deployment spells its configuration keys in its environment.
  *
@@ -22,22 +28,25 @@ import java.util.TreeSet;
  * assert dialect.envSpelling("auth.jwt_secret").equals("MYAPP_AUTH__JWT_SECRET");
  * }</pre>
  */
+@Getter
+@Accessors(fluent = true)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Dialect {
 
     private static final String DEFAULT_SEPARATOR = "__";
     private static final String DEFAULT_FILE_SUFFIX = "_FILE";
 
+    /** The prefix every configuration variable carries. */
     private final String prefix;
-    private final String separator;
-    private final String fileSuffix;
-    private final Set<String> reserved;
 
-    private Dialect(String prefix, String separator, String fileSuffix, Set<String> reserved) {
-        this.prefix = prefix;
-        this.separator = separator;
-        this.fileSuffix = fileSuffix;
-        this.reserved = reserved;
-    }
+    /** What separates nesting levels in an environment key. */
+    private final String separator;
+
+    /** What marks a variable holding a path rather than a value. */
+    @With
+    private final String fileSuffix;
+
+    private final Set<String> reserved;
 
     /** A dialect over {@code prefix}, with {@code __} nesting and the {@code _FILE} suffix. */
     public static Dialect of(String prefix) {
@@ -46,11 +55,6 @@ public final class Dialect {
 
     /** Replace the nesting separator. Defaults to {@code __}. */
     public Dialect withNestingSeparator(String separator) {
-        return new Dialect(prefix, separator, fileSuffix, reserved);
-    }
-
-    /** Replace the file-indirection suffix. Defaults to {@code _FILE}. */
-    public Dialect withFileSuffix(String fileSuffix) {
         return new Dialect(prefix, separator, fileSuffix, reserved);
     }
 
@@ -65,16 +69,6 @@ public final class Dialect {
         Set<String> next = new LinkedHashSet<>(reserved);
         next.add(key.toUpperCase(Locale.ROOT));
         return new Dialect(prefix, separator, fileSuffix, Collections.unmodifiableSet(next));
-    }
-
-    /** The prefix every configuration variable carries. */
-    public String prefix() {
-        return prefix;
-    }
-
-    /** What separates nesting levels in an environment key. */
-    public String separator() {
-        return separator;
     }
 
     /** What marks a variable holding a path rather than a value. */

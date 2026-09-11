@@ -7,6 +7,8 @@ import java.util.Map;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * Fills in each key's observed default from an already-assembled value — a port of the Rust
  * crate's {@code Schema::with_defaults_from_value}, wired onto {@link Schema#withDefaultsFromValue}.
@@ -18,13 +20,11 @@ import de.timscho.config.core.model.Schema;
  * a value it cannot {@code Serialize}. A caller with an {@code ObjectMapper} on its own classpath
  * gets the same result from {@code mapper.convertValue(instance, Map.class)}.
  */
-public final class Defaults {
+@UtilityClass
+public class Defaults {
 
     /** The same bound {@link Node} enforces, for the same reason: a value this deep is a stack overflow risk. */
     private static final int MAX_DEPTH = 32;
-
-    private Defaults() {
-    }
 
     public static Schema withDefaultsFromValue(Schema schema, Map<String, Object> root) {
         List<Key> keys = new ArrayList<>(schema.getKeys().size());

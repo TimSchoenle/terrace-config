@@ -4,6 +4,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+
 /**
  * The filesystem inputs a config was assembled from, and a fingerprint of the result — the Java
  * equivalent of the Rust crate's {@code loaded::Sources}, built by {@link TerraceLoader#loadWatched}.
@@ -18,15 +21,11 @@ import java.util.Map;
  * {@link #toString()} is written by hand and redacts it. Printing a {@link Sources} must never
  * be a way to print a credential.
  */
+@AllArgsConstructor(access = AccessLevel.PACKAGE)
 public final class Sources {
 
     private final List<Path> watch;
     private final Map<String, Object> fingerprint;
-
-    Sources(List<Path> watch, Map<String, Object> fingerprint) {
-        this.watch = watch;
-        this.fingerprint = fingerprint;
-    }
 
     /**
      * Directories to watch for changes.

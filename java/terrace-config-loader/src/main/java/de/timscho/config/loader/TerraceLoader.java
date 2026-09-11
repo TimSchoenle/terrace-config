@@ -11,6 +11,11 @@ import java.util.Set;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.Accessors;
+
 import de.timscho.config.core.descriptor.SchemaAssembler;
 import de.timscho.config.core.descriptor.TypeDescriptor;
 import de.timscho.config.core.model.LoaderRole;
@@ -37,22 +42,33 @@ import de.timscho.config.core.model.Schema;
  * Config config = TerraceLoader.of("MYAPP_").reserve("MYAPP_PROFILE").load(Config.class);
  * }</pre>
  */
+@Setter
+@Accessors(fluent = true, chain = true)
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TerraceLoader {
 
     private static final String DEFAULT_CONFIG_PATH = "config.toml";
 
     private final String prefix;
+
+    /** Override the variable naming the TOML layer. Defaults to {@code <PREFIX>CONFIG}. */
     private String configVar;
+
+    /** Override the variable naming the secrets directory. Defaults to {@code <PREFIX>SECRETS_DIR}. */
     private String secretsDirVar;
+
+    /** Where the TOML layer looks when the configuration variable is unset. Defaults to {@code config.toml}. */
     private Path defaultConfigPath = Path.of(DEFAULT_CONFIG_PATH);
+
+    /** Override the indirection suffix. Defaults to {@code _FILE}. */
     private String fileSuffix = "_FILE";
+
+    @Setter(AccessLevel.NONE)
     private String separator = "__";
     private final List<String> reserved = new ArrayList<>();
-    private ShadowPolicy shadowPolicy = ShadowPolicy.REJECT;
 
-    private TerraceLoader(String prefix) {
-        this.prefix = prefix;
-    }
+    /** What to do when one key is supplied by two mechanisms. Defaults to {@link ShadowPolicy#REJECT}. */
+    private ShadowPolicy shadowPolicy = ShadowPolicy.REJECT;
 
     /**
      * A loader over {@code prefix}.
@@ -63,30 +79,6 @@ public final class TerraceLoader {
      */
     public static TerraceLoader of(String prefix) {
         return new TerraceLoader(prefix);
-    }
-
-    /** Override the variable naming the TOML layer. Defaults to {@code <PREFIX>CONFIG}. */
-    public TerraceLoader configVar(String name) {
-        this.configVar = name;
-        return this;
-    }
-
-    /** Override the variable naming the secrets directory. Defaults to {@code <PREFIX>SECRETS_DIR}. */
-    public TerraceLoader secretsDirVar(String name) {
-        this.secretsDirVar = name;
-        return this;
-    }
-
-    /** Where the TOML layer looks when the configuration variable is unset. Defaults to {@code config.toml}. */
-    public TerraceLoader defaultConfigPath(Path path) {
-        this.defaultConfigPath = path;
-        return this;
-    }
-
-    /** Override the indirection suffix. Defaults to {@code _FILE}. */
-    public TerraceLoader fileSuffix(String suffix) {
-        this.fileSuffix = suffix;
-        return this;
     }
 
     /** Override the nesting separator. Defaults to {@code __}. */
@@ -102,12 +94,6 @@ public final class TerraceLoader {
      */
     public TerraceLoader reserve(String key) {
         this.reserved.add(key);
-        return this;
-    }
-
-    /** What to do when one key is supplied by two mechanisms. Defaults to {@link ShadowPolicy#REJECT}. */
-    public TerraceLoader shadowPolicy(ShadowPolicy policy) {
-        this.shadowPolicy = policy;
         return this;
     }
 

@@ -10,6 +10,8 @@ import java.util.TreeMap;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * The JSON Schema rendering: what an editor or a Helm chart validates a rendered document
  * against — ported from the Rust crate's {@code schema::json_schema} module.
@@ -23,10 +25,8 @@ import de.timscho.config.core.model.Schema;
  * emits; this port carries the same restraint: a keyword is only emitted where it is certainly
  * true of every value the loader would accept.
  */
-public final class JsonSchemaRenderer {
-
-    private JsonSchemaRenderer() {
-    }
+@UtilityClass
+public class JsonSchemaRenderer {
 
     /** The schema as a JSON Schema document, nested {@code properties} object per path level. */
     public static Map<String, Object> document(Schema schema, JsonSchemaOptions options) {

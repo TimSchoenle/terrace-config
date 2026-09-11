@@ -2,6 +2,9 @@ package de.timscho.config.spring;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import lombok.Getter;
+import lombok.Setter;
+
 /**
  * The handful of things only a service itself knows, and {@link TerraceContractAutoConfiguration}
  * cannot invent: which {@code @TerraceConfig}-annotated type describes its configuration, and the
@@ -20,6 +23,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * service still states its own type and prefix, only no longer writes the {@code
  * @Configuration} class that calls {@link SpringContractProducer#produce} by hand.
  */
+@Getter
+@Setter
 @ConfigurationProperties(prefix = "terrace.contract")
 public class TerraceContractProperties {
 
@@ -38,36 +43,4 @@ public class TerraceContractProperties {
 
     /** {@link de.timscho.config.core.model.App#getVersion()}. Omitted when unset. */
     private String appVersion;
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getEnvPrefix() {
-        return envPrefix;
-    }
-
-    public void setEnvPrefix(String envPrefix) {
-        this.envPrefix = envPrefix;
-    }
-
-    public String getAppName() {
-        return appName;
-    }
-
-    public void setAppName(String appName) {
-        this.appName = appName;
-    }
-
-    public String getAppVersion() {
-        return appVersion;
-    }
-
-    public void setAppVersion(String appVersion) {
-        this.appVersion = appVersion;
-    }
 }

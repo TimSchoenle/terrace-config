@@ -2,6 +2,8 @@ package de.timscho.config.core.contract;
 
 import de.timscho.config.core.model.Producer;
 
+import lombok.experimental.UtilityClass;
+
 /**
  * What this module writes into every {@link Producer} it builds — the Java equivalent of the
  * Rust crate's {@code Producer::current}.
@@ -10,13 +12,11 @@ import de.timscho.config.core.model.Producer;
  * else could publish a document whose reading rules are another implementation's, which is the
  * single claim in a contract's envelope a consumer cannot check for itself.
  */
-public final class ProducerIdentity {
+@UtilityClass
+public class ProducerIdentity {
 
     /** The implementation name this module writes as {@link Producer#getName()}. */
     public static final String NAME = "terrace-config-java";
-
-    private ProducerIdentity() {
-    }
 
     /**
      * This module's own version, read from the package's implementation version (set from the
