@@ -23,6 +23,16 @@ lombok = "1.18.46"
 # version. Consumed by buildSrc/build.gradle.kts to build the shared convention plugin that
 # applies it; kept in this same catalog so there's still exactly one file to bump either version.
 lombok-plugin = "9.1.0"
+# The com.diffplug.spotless Gradle plugin. Consumed by buildSrc/build.gradle.kts the same way
+# lombok-plugin above is — added to buildSrc's own build classpath so
+# terrace-config.java-conventions can `id("com.diffplug.spotless")` with no version, one place to
+# bump. See java/README.md's "buildSrc" section.
+spotless-plugin = "8.10.2"
+# The formatter spotless's `palantirJavaFormat(...)` step runs — a separate artefact from the
+# plugin above, resolved by spotless itself at format time rather than put on any build classpath.
+# 4-space indentation, 120-column width, matches this codebase's existing style (and the disabled
+# `.idea/palantir-java-format.xml` IDE plugin config already checked in, waiting on this).
+palantir-java-format = "2.98.0"
 json-schema-validator = "1.5.5"
 spring-boot = "3.5.16"
 compile-testing = "0.21.0"

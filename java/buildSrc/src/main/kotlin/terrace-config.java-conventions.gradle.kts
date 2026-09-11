@@ -7,6 +7,7 @@ import org.gradle.api.artifacts.VersionCatalogsExtension
 
 plugins {
     java
+    id("com.diffplug.spotless")
 }
 
 // Precompiled script plugins can't use the type-safe `libs.xxx` accessors (Gradle has to assume
@@ -53,4 +54,15 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+spotless {
+    java {
+        palantirJavaFormat(libs.findVersion("palantir-java-format").get().requiredVersion)
+        formatAnnotations()
+        importOrder("java", "javax", "", "de.timscho")
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
 }
