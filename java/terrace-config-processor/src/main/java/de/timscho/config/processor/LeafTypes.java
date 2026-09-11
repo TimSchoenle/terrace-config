@@ -21,22 +21,12 @@ final class LeafTypes {
             return false;
         }
         String name = type.toString();
-        switch (name) {
-            case "java.lang.String":
-            case "java.lang.Boolean":
-            case "java.lang.Byte":
-            case "java.lang.Short":
-            case "java.lang.Integer":
-            case "java.lang.Long":
-            case "java.lang.Float":
-            case "java.lang.Double":
-            case "java.lang.Character":
-            case "java.math.BigInteger":
-            case "java.math.BigDecimal":
-                return true;
-            default:
-                return false;
-        }
+        return switch (name) {
+            case "java.lang.String", "java.lang.Boolean", "java.lang.Byte", "java.lang.Short", "java.lang.Integer",
+                 "java.lang.Long", "java.lang.Float", "java.lang.Double", "java.lang.Character", "java.math.BigInteger",
+                 "java.math.BigDecimal" -> true;
+            default -> false;
+        };
     }
 
     /** Whether a type is one {@code @Range} can bound — every leaf except {@code String}/{@code Character}/booleans. */
@@ -45,36 +35,23 @@ final class LeafTypes {
             return false;
         }
         String name = type.getKind().isPrimitive() ? boxedName(type) : type.toString();
-        switch (name) {
-            case "java.lang.String":
-            case "java.lang.Boolean":
-            case "java.lang.Character":
-                return false;
-            default:
-                return true;
-        }
+        return switch (name) {
+            case "java.lang.String", "java.lang.Boolean", "java.lang.Character" -> false;
+            default -> true;
+        };
     }
 
     private static String boxedName(TypeMirror type) {
-        switch (type.getKind()) {
-            case BOOLEAN:
-                return "java.lang.Boolean";
-            case BYTE:
-                return "java.lang.Byte";
-            case SHORT:
-                return "java.lang.Short";
-            case INT:
-                return "java.lang.Integer";
-            case LONG:
-                return "java.lang.Long";
-            case CHAR:
-                return "java.lang.Character";
-            case FLOAT:
-                return "java.lang.Float";
-            case DOUBLE:
-                return "java.lang.Double";
-            default:
-                return type.toString();
-        }
+        return switch (type.getKind()) {
+            case BOOLEAN -> "java.lang.Boolean";
+            case BYTE -> "java.lang.Byte";
+            case SHORT -> "java.lang.Short";
+            case INT -> "java.lang.Integer";
+            case LONG -> "java.lang.Long";
+            case CHAR -> "java.lang.Character";
+            case FLOAT -> "java.lang.Float";
+            case DOUBLE -> "java.lang.Double";
+            default -> type.toString();
+        };
     }
 }

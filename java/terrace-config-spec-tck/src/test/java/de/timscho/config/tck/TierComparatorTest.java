@@ -43,7 +43,7 @@ class TierComparatorTest {
         List<String> diffs = TierComparator.compare(Tier.TIER_3, produced, expected);
 
         assertThat(diffs).hasSize(1);
-        assertThat(diffs.get(0)).contains("default").contains("changed").contains("public");
+        assertThat(diffs.getFirst()).contains("default").contains("changed").contains("public");
     }
 
     @Test

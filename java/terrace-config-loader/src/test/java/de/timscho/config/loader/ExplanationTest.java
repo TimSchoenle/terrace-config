@@ -106,7 +106,7 @@ class ExplanationTest {
                 .explain(Map.of());
 
         assertThat(explanation.fragments()).hasSize(1);
-        assertThat(explanation.fragments().get(0).getValue()).isEqualTo(new Fragment.Missing());
+        assertThat(explanation.fragments().getFirst().getValue()).isEqualTo(new Fragment.Missing());
     }
 
     @Test
@@ -119,7 +119,7 @@ class ExplanationTest {
                 .explain(Map.of());
 
         assertThat(explanation.fragments()).hasSize(1);
-        assertThat(explanation.fragments().get(0).getValue()).isEqualTo(new Fragment.Unreadable());
+        assertThat(explanation.fragments().getFirst().getValue()).isEqualTo(new Fragment.Unreadable());
         assertThat(explanation.toString()).contains("not valid TOML").doesNotContain("this is not");
     }
 

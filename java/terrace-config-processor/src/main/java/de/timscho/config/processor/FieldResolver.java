@@ -97,7 +97,7 @@ final class FieldResolver {
             return shape;
         }
         if (values != null) {
-            shape.values = resolveValues(field, declaredType, () -> values.from(), values.value(), "@Values");
+            shape.values = resolveValues(field, declaredType, values::from, values.value(), "@Values");
             return shape;
         }
         if (range != null) {
@@ -138,7 +138,7 @@ final class FieldResolver {
             return result;
         }
         if (elementValues != null) {
-            String valuesExpr = resolveValues(field, elementType, () -> elementValues.from(), elementValues.value(), "@ElementValues");
+            String valuesExpr = resolveValues(field, elementType, elementValues::from, elementValues.value(), "@ElementValues");
             result.element = "new de.timscho.config.core.descriptor.ElementDescriptor("
                     + CodeGen.stringLiteral(TypeNames.simplify(elementType.toString())) + ", "
                     + valuesExpr + ", null, java.util.List.of())";

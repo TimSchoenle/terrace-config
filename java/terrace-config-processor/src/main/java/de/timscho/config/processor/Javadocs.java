@@ -20,7 +20,7 @@ final class Javadocs {
             if (trimmed.isEmpty()) {
                 break;
             }
-            if (summary.length() > 0) {
+            if (!summary.isEmpty()) {
                 summary.append(' ');
             }
             summary.append(trimmed);

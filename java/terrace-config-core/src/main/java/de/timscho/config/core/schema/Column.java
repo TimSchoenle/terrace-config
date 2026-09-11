@@ -72,7 +72,7 @@ public enum Column {
             case SECRETS_FILE -> optionalCode(key.getSecretsFile());
             case DEFAULT -> renderDefault(key, true);
             case DEFAULT_VALUE -> renderDefault(key, false);
-            case NOTE -> key.getNote() == null ? "\u2014" : cell(key.getNote());
+            case NOTE -> key.getNote() == null ? "—" : cell(key.getNote());
             case FLAGS -> renderFlags(key);
             case REQUIRED -> yesOrDash(key.isRequired());
             case SECRET -> yesOrDash(key.isSecret());
@@ -87,7 +87,7 @@ public enum Column {
         }
         StringBuilder choices = new StringBuilder();
         for (String value : values) {
-            if (choices.length() > 0) {
+            if (!choices.isEmpty()) {
                 choices.append(" \\| ");
             }
             choices.append('`').append(escape(value)).append('`');
@@ -98,11 +98,11 @@ public enum Column {
     private static String renderAliases(Key key) {
         List<String> aliases = key.getAliases();
         if (aliases.isEmpty()) {
-            return "\u2014";
+            return "—";
         }
         StringBuilder out = new StringBuilder();
         for (String alias : aliases) {
-            if (out.length() > 0) {
+            if (!out.isEmpty()) {
                 out.append(", ");
             }
             out.append('`').append(escape(alias)).append('`');
@@ -115,7 +115,7 @@ public enum Column {
         if (key.getDefaultText() != null) {
             value = "`" + escape(key.getDefaultText()) + "`";
         } else if (key.isRequired()) {
-            value = "\u2014";
+            value = "—";
         } else {
             value = "unset";
         }
@@ -136,22 +136,22 @@ public enum Column {
         if (key.isReserved()) {
             notes.add("reserved");
         }
-        return notes.isEmpty() ? "\u2014" : String.join(", ", notes);
+        return notes.isEmpty() ? "—" : String.join(", ", notes);
     }
 
     private static String yesOrDash(boolean flag) {
-        return flag ? "yes" : "\u2014";
+        return flag ? "yes" : "—";
     }
 
     /** A spelling as inline code, or an em dash when there is none. */
     private static String optionalCode(String value) {
-        return value == null ? "\u2014" : "`" + escape(value) + "`";
+        return value == null ? "—" : "`" + escape(value) + "`";
     }
 
     /** Prose in a table cell: newlines become breaks, and {@code |} stops ending the cell early. */
     private static String cell(String text) {
         if (text.isEmpty()) {
-            return "\u2014";
+            return "—";
         }
         return escape(text).replace("\n", "<br>");
     }
@@ -159,7 +159,7 @@ public enum Column {
     /** A doc comment in a table cell: its summary, on one line. */
     private static String summaryCell(String text) {
         String summary = Docs.SUMMARY.of(text);
-        return summary == null ? "\u2014" : escape(summary);
+        return summary == null ? "—" : escape(summary);
     }
 
     /** The characters that would otherwise be read as table structure. */

@@ -33,7 +33,7 @@ final class DescriptorNaming {
         }
         StringBuilder out = new StringBuilder();
         for (String segment : segments) {
-            if (out.length() > 0) {
+            if (!out.isEmpty()) {
                 out.append('$');
             }
             out.append(segment);

@@ -57,8 +57,8 @@ public final class Origin {
         if (sources.isEmpty()) {
             return null;
         }
-        List<Layer> shadowed = Collections.unmodifiableList(new ArrayList<>(sources.subList(0, sources.size() - 1)));
-        Layer effective = sources.get(sources.size() - 1);
+        List<Layer> shadowed = List.copyOf(sources.subList(0, sources.size() - 1));
+        Layer effective = sources.getLast();
         return new Origin(key, effective, shadowed);
     }
 }
