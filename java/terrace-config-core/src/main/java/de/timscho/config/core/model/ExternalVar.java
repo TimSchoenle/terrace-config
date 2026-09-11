@@ -21,8 +21,17 @@ import org.jspecify.annotations.Nullable;
 @Builder(toBuilder = true)
 @Jacksonized
 @JsonPropertyOrder({
-        "name", "owner", "docs", "ty", "values", "constraint", "text_constraint",
-        "text_form", "default", "required", "secret"
+    "name",
+    "owner",
+    "docs",
+    "ty",
+    "values",
+    "constraint",
+    "text_constraint",
+    "text_form",
+    "default",
+    "required",
+    "secret"
 })
 public class ExternalVar {
 

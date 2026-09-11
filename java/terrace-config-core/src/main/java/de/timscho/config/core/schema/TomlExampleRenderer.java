@@ -5,12 +5,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
+
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
-
-import lombok.experimental.UtilityClass;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code config.example.toml} rendering: the file an operator edits, generated rather than
@@ -56,14 +56,16 @@ public class TomlExampleRenderer {
 
         paragraph(out, "Configuration for a service reading " + prefix + "-prefixed keys.");
         comment(out, "");
-        paragraph(out,
+        paragraph(
+                out,
                 "Generated from the configuration type, so it lists every key that type can carry "
                         + "and nothing else. Each key shows the value it already has, commented out: a "
                         + "commented key and a deleted key mean the same thing to the loader, so uncomment one "
                         + "only to change it. A key that is not commented out has no default, and nothing "
                         + "loads until something supplies it.");
         comment(out, "");
-        paragraph(out,
+        paragraph(
+                out,
                 "Three layers can supply any key below, and all three win over this file: the "
                         + "environment variable named above the key, a file named by that variable plus `"
                         + suffix + "`, and a key-named file in the secrets directory. A secret belongs in "
@@ -75,9 +77,7 @@ public class TomlExampleRenderer {
             comment(out, "Read before this file exists:");
             for (LoaderVar var : loader) {
                 comment(out, "");
-                String defaultSuffix = var.getDefaultValue() != null
-                        ? ", default `" + var.getDefaultValue() + "`"
-                        : "";
+                String defaultSuffix = var.getDefaultValue() != null ? ", default `" + var.getDefaultValue() + "`" : "";
                 comment(out, "  " + var.getEnv() + " -- " + var.getRole().label() + defaultSuffix);
                 String summary = Docs.SUMMARY.of(var.getDocs());
                 flowed(out, "    ", "    ", summary == null ? "" : summary);
@@ -178,8 +178,7 @@ public class TomlExampleRenderer {
             ways.add(key.getSecretsFile() + " in the secrets directory");
         }
         if (ways.isEmpty()) {
-            return "Only this file supplies this key: no environment or secrets-directory spelling "
-                    + "reaches it.";
+            return "Only this file supplies this key: no environment or secrets-directory spelling " + "reaches it.";
         }
         return "Also from: " + String.join(", ", ways);
     }
@@ -231,8 +230,11 @@ public class TomlExampleRenderer {
         if (value instanceof Boolean bool) {
             return bool.toString();
         }
-        if (value instanceof BigInteger || value instanceof Long || value instanceof Integer
-                || value instanceof Short || value instanceof Byte) {
+        if (value instanceof BigInteger
+                || value instanceof Long
+                || value instanceof Integer
+                || value instanceof Short
+                || value instanceof Byte) {
             return tomlInteger(((Number) value));
         }
         if (value instanceof Double || value instanceof Float) {

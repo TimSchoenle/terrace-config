@@ -10,10 +10,9 @@ import java.nio.file.Path;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.jetbrains.annotations.Blocking;
 
 import de.timscho.config.core.model.Contract;
-
-import org.jetbrains.annotations.Blocking;
 
 /**
  * Reads and writes a {@link Contract} as the {@code json} rendering — {@code
@@ -28,8 +27,7 @@ public final class ContractCodec {
 
     private static final ObjectMapper MAPPER = newMapper();
 
-    private ContractCodec() {
-    }
+    private ContractCodec() {}
 
     private static ObjectMapper newMapper() {
         ObjectMapper mapper = new ObjectMapper();

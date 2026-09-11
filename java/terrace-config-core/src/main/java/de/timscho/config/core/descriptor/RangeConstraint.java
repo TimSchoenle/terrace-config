@@ -8,5 +8,7 @@ import org.jspecify.annotations.Nullable;
  * the processor rather than generated.
  */
 public record RangeConstraint(
-        @Nullable Double min, @Nullable Double max, @Nullable Double exclusiveMin, @Nullable Double exclusiveMax) {
-}
+        @Nullable Double min,
+        @Nullable Double max,
+        @Nullable Double exclusiveMin,
+        @Nullable Double exclusiveMax) {}

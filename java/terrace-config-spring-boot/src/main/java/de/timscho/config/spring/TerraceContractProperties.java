@@ -1,10 +1,9 @@
 package de.timscho.config.spring;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import lombok.Getter;
 import lombok.Setter;
 import org.jspecify.annotations.Nullable;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * The handful of things only a service itself knows, and {@link TerraceContractAutoConfiguration}

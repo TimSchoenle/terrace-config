@@ -17,14 +17,11 @@ import java.util.List;
  *                      @JsonIgnoreProperties(ignoreUnknown = false)}); meaningless for an enum
  */
 public record TypeDescriptor(
-        String qualifiedName,
-        Kind kind,
-        List<KeyDescriptor> keys,
-        List<String> values,
-        boolean closed) {
+        String qualifiedName, Kind kind, List<KeyDescriptor> keys, List<String> values, boolean closed) {
 
     /** Whether a described type is a struct (keys of its own) or an enum (values one key accepts). */
     public enum Kind {
-        STRUCT, ENUM
+        STRUCT,
+        ENUM
     }
 }

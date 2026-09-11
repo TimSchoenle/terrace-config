@@ -9,5 +9,4 @@ import lombok.experimental.StandardException;
  * operator, naming the variable at fault, never the value it would have supplied.
  */
 @StandardException
-public final class FileIndirectionException extends RuntimeException {
-}
+public final class FileIndirectionException extends RuntimeException {}

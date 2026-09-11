@@ -11,7 +11,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * producer refuses to publish (see {@link de.timscho.config.core.refusal.IndirectionCollisionException}).
  */
 public enum UnreachableReason {
-
     @JsonProperty("unnameable")
     UNNAMEABLE,
 

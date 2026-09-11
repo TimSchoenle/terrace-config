@@ -46,10 +46,9 @@ final class FileSuffixEnv {
 
             String spelled = prefix + key;
             if (dialect.isReserved(spelled)) {
-                throw new LoaderException(
-                        name + " is set, but " + spelled + " is read directly from the "
-                                + "environment before the layered config is built, so a file "
-                                + "cannot supply it. Set " + spelled + " itself.");
+                throw new LoaderException(name + " is set, but " + spelled + " is read directly from the "
+                        + "environment before the layered config is built, so a file "
+                        + "cannot supply it. Set " + spelled + " itself.");
             }
 
             Path path = Path.of(entry.getValue());

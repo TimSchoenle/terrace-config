@@ -10,8 +10,7 @@ import javax.lang.model.type.TypeMirror;
  */
 final class LeafTypes {
 
-    private LeafTypes() {
-    }
+    private LeafTypes() {}
 
     static boolean isLeaf(TypeMirror type) {
         if (type.getKind().isPrimitive()) {
@@ -22,9 +21,17 @@ final class LeafTypes {
         }
         String name = type.toString();
         return switch (name) {
-            case "java.lang.String", "java.lang.Boolean", "java.lang.Byte", "java.lang.Short", "java.lang.Integer",
-                 "java.lang.Long", "java.lang.Float", "java.lang.Double", "java.lang.Character", "java.math.BigInteger",
-                 "java.math.BigDecimal" -> true;
+            case "java.lang.String",
+                    "java.lang.Boolean",
+                    "java.lang.Byte",
+                    "java.lang.Short",
+                    "java.lang.Integer",
+                    "java.lang.Long",
+                    "java.lang.Float",
+                    "java.lang.Double",
+                    "java.lang.Character",
+                    "java.math.BigInteger",
+                    "java.math.BigDecimal" -> true;
             default -> false;
         };
     }

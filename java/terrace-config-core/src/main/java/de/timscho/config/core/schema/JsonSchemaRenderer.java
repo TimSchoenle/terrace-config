@@ -7,11 +7,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.Schema;
-
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
+
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.Schema;
 
 /**
  * The JSON Schema rendering: what an editor or a Helm chart validates a rendered document

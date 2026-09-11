@@ -36,8 +36,7 @@ import de.timscho.config.core.model.Schema;
  */
 public final class SpringContractProducer {
 
-    private SpringContractProducer() {
-    }
+    private SpringContractProducer() {}
 
     /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External)} using {@link SpringDialect#standard()}
      * and no declared external surface. */
@@ -55,8 +54,8 @@ public final class SpringContractProducer {
      *                                                                  refusals this contract
      *                                                                  would violate
      */
-    public static Contract produce(TypeDescriptor descriptor, String prefix, SpringDialect springDialect,
-                                    App app, External external) {
+    public static Contract produce(
+            TypeDescriptor descriptor, String prefix, SpringDialect springDialect, App app, External external) {
         Dialect dialect = Dialect.builder()
                 .prefix(prefix)
                 .nestingSeparator(springDialect.separator())

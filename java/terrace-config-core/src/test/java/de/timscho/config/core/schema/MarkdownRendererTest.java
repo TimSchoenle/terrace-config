@@ -16,14 +16,15 @@ import de.timscho.config.core.model.TextForm;
 class MarkdownRendererTest {
 
     private static Dialect dialect() {
-        return Dialect.builder().prefix("TEST_").nestingSeparator("__").indirectionSuffix("_FILE").build();
+        return Dialect.builder()
+                .prefix("TEST_")
+                .nestingSeparator("__")
+                .indirectionSuffix("_FILE")
+                .build();
     }
 
     private static Key.KeyBuilder baseKey(String path) {
-        return Key.builder()
-                .path(path)
-                .docs("")
-                .textForm(TextForm.TEXT);
+        return Key.builder().path(path).docs("").textForm(TextForm.TEXT);
     }
 
     @Test
@@ -94,7 +95,10 @@ class MarkdownRendererTest {
         Schema schema = Schema.builder()
                 .schemaVersion(2)
                 .dialect(dialect())
-                .keys(List.of(baseKey("level").ty("LogLevel").values(List.of("trace", "debug", "info")).build()))
+                .keys(List.of(baseKey("level")
+                        .ty("LogLevel")
+                        .values(List.of("trace", "debug", "info"))
+                        .build()))
                 .build();
 
         String markdown = schema.toMarkdownKeys(List.of(Column.TYPE));

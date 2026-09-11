@@ -1,5 +1,7 @@
 package de.timscho.config.loader;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.Test;
 
 import de.timscho.config.core.model.Key;
@@ -8,8 +10,6 @@ import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
 import de.timscho.config.core.model.UnreachableReason;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves {@link TerraceLoader#schema} against a real generated descriptor
@@ -25,8 +25,7 @@ class TerraceLoaderSchemaTest {
 
         assertThat(schema.getKeys())
                 .extracting(Key::getPath)
-                .containsExactlyInAnyOrder(
-                        "database.url", "database.port", "level", "token", "retries", "retryCount");
+                .containsExactlyInAnyOrder("database.url", "database.port", "level", "token", "retries", "retryCount");
 
         Key url = keyAt(schema, "database.url");
         assertThat(url.getEnv()).isEqualTo("TEST_DATABASE__URL");
@@ -69,9 +68,7 @@ class TerraceLoaderSchemaTest {
 
     @Test
     void a_reserved_key_has_no_file_backed_spelling() {
-        Schema schema = TerraceLoader.of("TEST_")
-                .reserve("TEST_TOKEN")
-                .schema(AppConfigDescriptor.DESCRIPTOR);
+        Schema schema = TerraceLoader.of("TEST_").reserve("TEST_TOKEN").schema(AppConfigDescriptor.DESCRIPTOR);
 
         Key token = keyAt(schema, "token");
         assertThat(token.isReserved()).isTrue();
@@ -87,9 +84,7 @@ class TerraceLoaderSchemaTest {
     void schema_at_nests_the_type_under_the_given_root() {
         Schema schema = TerraceLoader.of("TEST_").schemaAt(AppConfigDescriptor.DESCRIPTOR, "app");
 
-        assertThat(schema.getKeys())
-                .extracting(Key::getPath)
-                .contains("app.database.url", "app.level");
+        assertThat(schema.getKeys()).extracting(Key::getPath).contains("app.database.url", "app.level");
         assertThat(keyAt(schema, "app.level").getEnv()).isEqualTo("TEST_APP__LEVEL");
     }
 

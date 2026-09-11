@@ -26,10 +26,27 @@ import org.jspecify.annotations.Nullable;
 @Builder(toBuilder = true)
 @Jacksonized
 @JsonPropertyOrder({
-        "path", "env", "env_file", "secrets_file", "docs", "ty", "values",
-        "constraint", "text_constraint", "text_form",
-        "aliases", "env_aliases", "env_file_aliases", "secrets_file_aliases",
-        "unreachable", "default", "default_value", "note", "required", "secret", "reserved"
+    "path",
+    "env",
+    "env_file",
+    "secrets_file",
+    "docs",
+    "ty",
+    "values",
+    "constraint",
+    "text_constraint",
+    "text_form",
+    "aliases",
+    "env_aliases",
+    "env_file_aliases",
+    "secrets_file_aliases",
+    "unreachable",
+    "default",
+    "default_value",
+    "note",
+    "required",
+    "secret",
+    "reserved"
 })
 public class Key {
 

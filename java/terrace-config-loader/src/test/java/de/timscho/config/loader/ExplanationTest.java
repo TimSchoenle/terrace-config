@@ -25,9 +25,8 @@ class ExplanationTest {
                 port = 5432
                 """);
 
-        Explanation explanation = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .explain(Map.of());
+        Explanation explanation =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).explain(Map.of());
 
         Origin url = explanation.origin("database.url").orElseThrow();
         assertThat(url.effective()).isEqualTo(new Layer.Toml(config));
@@ -47,9 +46,8 @@ class ExplanationTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_DATABASE__PORT", "6543");
 
-        Explanation explanation = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .explain(env);
+        Explanation explanation =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).explain(env);
 
         Origin port = explanation.origin("database.port").orElseThrow();
         assertThat(port.effective()).isEqualTo(new Layer.Env("TEST_DATABASE__PORT"));
@@ -71,9 +69,8 @@ class ExplanationTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_SECRETS_DIR", secretsDir.toString());
 
-        Explanation explanation = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .explain(env);
+        Explanation explanation =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).explain(env);
 
         Origin secret = explanation.origin("secret").orElseThrow();
         assertThat(secret.effective()).isEqualTo(new Layer.SecretsFile(secretFile));
@@ -91,9 +88,8 @@ class ExplanationTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_SECRET_FILE", secretFile.toString());
 
-        Explanation explanation = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .explain(env);
+        Explanation explanation =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).explain(env);
 
         Origin secret = explanation.origin("secret").orElseThrow();
         assertThat(secret.effective()).isEqualTo(new Layer.Indirection("TEST_SECRET_FILE", secretFile));
@@ -114,9 +110,8 @@ class ExplanationTest {
         Path config = tmp.resolve("config.toml");
         Files.writeString(config, "this is not [ valid toml");
 
-        Explanation explanation = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .explain(Map.of());
+        Explanation explanation =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).explain(Map.of());
 
         assertThat(explanation.fragments()).hasSize(1);
         assertThat(explanation.fragments().getFirst().getValue()).isEqualTo(new Fragment.Unreadable());
@@ -131,9 +126,8 @@ class ExplanationTest {
                 url = "postgres://localhost/app"
                 """);
 
-        Explanation explanation = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .explain(Map.of());
+        Explanation explanation =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).explain(Map.of());
 
         String report = explanation.toString();
         assertThat(report)

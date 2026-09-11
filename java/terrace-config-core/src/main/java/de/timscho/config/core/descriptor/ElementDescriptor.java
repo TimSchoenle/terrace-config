@@ -17,8 +17,4 @@ import org.jspecify.annotations.Nullable;
  *                   struct; empty if the element is not itself a nested struct
  */
 public record ElementDescriptor(
-        String typeName,
-        List<String> values,
-        @Nullable RangeConstraint range,
-        List<KeyDescriptor> nestedKeys) {
-}
+        String typeName, List<String> values, @Nullable RangeConstraint range, List<KeyDescriptor> nestedKeys) {}

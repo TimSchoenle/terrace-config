@@ -61,14 +61,14 @@ public class TerraceContractAutoConfiguration {
         String appName = configuredAppName != null
                 ? configuredAppName
                 : environment.getProperty("spring.application.name", "application");
-        App app = App.builder().name(appName).version(properties.getAppVersion()).build();
+        App app =
+                App.builder().name(appName).version(properties.getAppVersion()).build();
 
         String prefix = properties.getEnvPrefix();
         if (prefix == null || prefix.isEmpty()) {
-            throw new IllegalStateException(
-                    "terrace.contract.type is set to " + type
-                            + ", but terrace.contract.env-prefix is not; a contract needs an "
-                            + "environment namespace to describe.");
+            throw new IllegalStateException("terrace.contract.type is set to " + type
+                    + ", but terrace.contract.env-prefix is not; a contract needs an "
+                    + "environment namespace to describe.");
         }
 
         return SpringContractProducer.produce(descriptor, prefix, app);
@@ -83,7 +83,8 @@ public class TerraceContractAutoConfiguration {
             throw new IllegalStateException(
                     "terrace.contract.type names " + typeName + ", but " + descriptorName
                             + " was not found on the classpath. Is the type annotated with "
-                            + "@TerraceConfig, and did the annotation processor run?", e);
+                            + "@TerraceConfig, and did the annotation processor run?",
+                    e);
         }
         try {
             Field field = descriptorClass.getField("DESCRIPTOR");
@@ -91,8 +92,8 @@ public class TerraceContractAutoConfiguration {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(
                     descriptorName + " carries no accessible `public static final TypeDescriptor "
-                            + "DESCRIPTOR` field.", e);
+                            + "DESCRIPTOR` field.",
+                    e);
         }
     }
-
 }

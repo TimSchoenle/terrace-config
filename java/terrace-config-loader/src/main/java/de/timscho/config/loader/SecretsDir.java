@@ -59,18 +59,16 @@ final class SecretsDir {
     /** The figment key a secrets-directory file name denotes. */
     private static String keyFromName(String name, Path path, Dialect dialect) {
         if (name.contains(".")) {
-            throw new LoaderException(
-                    path + " is not a usable key: `.` is not the nesting separator, `"
-                            + dialect.separator() + "` is (`auth" + dialect.separator()
-                            + "jwt_secret` for `auth.jwt_secret`). Rename the entry, or move the "
-                            + "file out of the secrets directory.");
+            throw new LoaderException(path + " is not a usable key: `.` is not the nesting separator, `"
+                    + dialect.separator() + "` is (`auth" + dialect.separator()
+                    + "jwt_secret` for `auth.jwt_secret`). Rename the entry, or move the "
+                    + "file out of the secrets directory.");
         }
 
         String spelled = dialect.envSpellingOfName(name);
         if (dialect.isReserved(spelled)) {
-            throw new LoaderException(
-                    path + " names " + spelled + ", which is read directly from the environment "
-                            + "before the layered config is built, so a file cannot supply it.");
+            throw new LoaderException(path + " names " + spelled + ", which is read directly from the environment "
+                    + "before the layered config is built, so a file cannot supply it.");
         }
         return dialect.keyPath(name);
     }

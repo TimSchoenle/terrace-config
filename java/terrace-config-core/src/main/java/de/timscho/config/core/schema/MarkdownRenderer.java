@@ -2,12 +2,12 @@ package de.timscho.config.core.schema;
 
 import java.util.List;
 
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
+
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
-
-import lombok.experimental.UtilityClass;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The Markdown rendering: GitHub-flavoured tables, ready to paste into a README — a port of the
@@ -62,10 +62,15 @@ public class MarkdownRenderer {
         out.append("| Variable | Role | Default | Purpose |\n");
         out.append("|---|---|---|---|\n");
         for (LoaderVar var : loader) {
-            out.append("| `").append(escape(var.getEnv())).append("` | ")
-                    .append(var.getRole().label()).append(" | ")
-                    .append(optionalCode(var.getDefaultValue())).append(" | ")
-                    .append(cell(var.getDocs())).append(" |\n");
+            out.append("| `")
+                    .append(escape(var.getEnv()))
+                    .append("` | ")
+                    .append(var.getRole().label())
+                    .append(" | ")
+                    .append(optionalCode(var.getDefaultValue()))
+                    .append(" | ")
+                    .append(cell(var.getDocs()))
+                    .append(" |\n");
         }
         return out.toString();
     }

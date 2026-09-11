@@ -10,7 +10,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * it should say it skipped the variable rather than treat it as checked.
  */
 public enum LoaderRole {
-
     @JsonProperty("config")
     CONFIG,
 

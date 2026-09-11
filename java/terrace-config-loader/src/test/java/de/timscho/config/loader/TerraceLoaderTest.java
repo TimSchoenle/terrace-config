@@ -14,11 +14,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 class TerraceLoaderTest {
 
-    record Database(String url, int port) {
-    }
+    record Database(String url, int port) {}
 
-    record Config(Database database, String secret) {
-    }
+    record Config(Database database, String secret) {}
 
     @TempDir
     Path tmp;
@@ -34,9 +32,7 @@ class TerraceLoaderTest {
                 port = 5432
                 """);
 
-        Config loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .load(Config.class, Map.of());
+        Config loaded = TerraceLoader.of("TEST_").defaultConfigPath(config).load(Config.class, Map.of());
 
         assertThat(loaded.secret()).isEqualTo("compiled-in");
         assertThat(loaded.database().url()).isEqualTo("postgres://localhost/app");
@@ -57,9 +53,7 @@ class TerraceLoaderTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_DATABASE__PORT", "6543");
 
-        Config loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .load(Config.class, env);
+        Config loaded = TerraceLoader.of("TEST_").defaultConfigPath(config).load(Config.class, env);
 
         assertThat(loaded.database().port()).isEqualTo(6543);
         assertThat(loaded.database().url()).isEqualTo("postgres://localhost/app");
@@ -81,9 +75,7 @@ class TerraceLoaderTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_SECRETS_DIR", secretsDir.toString());
 
-        Config loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .load(Config.class, env);
+        Config loaded = TerraceLoader.of("TEST_").defaultConfigPath(config).load(Config.class, env);
 
         assertThat(loaded.secret()).isEqualTo("from-secrets-dir");
     }
@@ -103,9 +95,7 @@ class TerraceLoaderTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_SECRET_FILE", secretFile.toString());
 
-        Config loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .load(Config.class, env);
+        Config loaded = TerraceLoader.of("TEST_").defaultConfigPath(config).load(Config.class, env);
 
         assertThat(loaded.secret()).isEqualTo("from-file-indirection");
     }
@@ -127,9 +117,8 @@ class TerraceLoaderTest {
         env.put("TEST_SECRETS_DIR", secretsDir.toString());
         env.put("TEST_SECRET", "from-env");
 
-        assertThatThrownBy(() -> TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .load(Config.class, env))
+        assertThatThrownBy(() ->
+                        TerraceLoader.of("TEST_").defaultConfigPath(config).load(Config.class, env))
                 .isInstanceOf(LoaderException.class)
                 .hasMessageContaining("supplied twice");
     }
@@ -179,9 +168,9 @@ class TerraceLoaderTest {
         env.put("TEST_SECRETS_DIR", secretsDir.toString());
 
         assertThatThrownBy(() -> TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .reserve("TEST_PROFILE")
-                .load(Config.class, env))
+                        .defaultConfigPath(config)
+                        .reserve("TEST_PROFILE")
+                        .load(Config.class, env))
                 .isInstanceOf(LoaderException.class)
                 .hasMessageContaining("TEST_PROFILE");
     }

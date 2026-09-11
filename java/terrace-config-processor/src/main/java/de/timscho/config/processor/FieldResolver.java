@@ -11,6 +11,8 @@ import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 
+import org.jspecify.annotations.Nullable;
+
 import de.timscho.config.annotations.ElementValues;
 import de.timscho.config.annotations.Nested;
 import de.timscho.config.annotations.Note;
@@ -19,8 +21,6 @@ import de.timscho.config.annotations.Secret;
 import de.timscho.config.annotations.TerraceConfig;
 import de.timscho.config.annotations.Values;
 import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
-
-import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves one field of a {@code @TerraceConfig} struct to the Java source of a {@code new
@@ -133,7 +133,8 @@ final class FieldResolver {
 
         int annotationCount = (elementAnn != null ? 1 : 0) + (elementValues != null ? 1 : 0) + (range != null ? 1 : 0);
         if (annotationCount > 1) {
-            throw error(field, "carries more than one of @Element/@ElementValues/@Range; exactly one describes an element");
+            throw error(
+                    field, "carries more than one of @Element/@ElementValues/@Range; exactly one describes an element");
         }
 
         if (elementAnn != null) {
@@ -145,7 +146,8 @@ final class FieldResolver {
             return result;
         }
         if (elementValues != null) {
-            String valuesExpr = resolveValues(field, elementType, elementValues::from, elementValues.value(), "@ElementValues");
+            String valuesExpr =
+                    resolveValues(field, elementType, elementValues::from, elementValues.value(), "@ElementValues");
             result.element = "new de.timscho.config.core.descriptor.ElementDescriptor("
                     + CodeGen.stringLiteral(TypeNames.simplify(elementType.toString())) + ", "
                     + valuesExpr + ", null, java.util.List.of())";
@@ -161,12 +163,18 @@ final class FieldResolver {
         if (LeafTypes.isLeaf(elementType)) {
             return result;
         }
-        throw error(field, "is a container whose element type " + elementType
-                + " publishes no shape; annotate it with @Element, @ElementValues, @Range, or @Skip the field");
+        throw error(
+                field,
+                "is a container whose element type " + elementType
+                        + " publishes no shape; annotate it with @Element, @ElementValues, @Range, or @Skip the field");
     }
 
-    private String resolveValues(Element site, TypeMirror ownType, java.util.function.Supplier<Class<?>> fromAccessor,
-            String[] literal, String attribute) {
+    private String resolveValues(
+            Element site,
+            TypeMirror ownType,
+            java.util.function.Supplier<Class<?>> fromAccessor,
+            String[] literal,
+            String attribute) {
         TypeMirror fromMirror = mirrorOf(fromAccessor);
         boolean fromSet = fromMirror != null && !fromMirror.toString().equals("java.lang.Void");
         boolean literalSet = literal.length > 0;
@@ -200,16 +208,19 @@ final class FieldResolver {
 
     private TypeElement requireTerraceConfigStruct(Element site, TypeMirror type, String attribute) {
         TypeElement element = asDeclaredElement(type);
-        if (element == null || element.getAnnotation(TerraceConfig.class) == null
+        if (element == null
+                || element.getAnnotation(TerraceConfig.class) == null
                 || element.getKind() == javax.lang.model.element.ElementKind.ENUM) {
-            throw error(site, attribute + " needs a type annotated @TerraceConfig as a struct; " + type + " is not one");
+            throw error(
+                    site, attribute + " needs a type annotated @TerraceConfig as a struct; " + type + " is not one");
         }
         return element;
     }
 
     private TypeElement requireTerraceConfigEnum(Element site, TypeMirror type, String attribute) {
         TypeElement element = asDeclaredElement(type);
-        if (element == null || element.getAnnotation(TerraceConfig.class) == null
+        if (element == null
+                || element.getAnnotation(TerraceConfig.class) == null
                 || element.getKind() != javax.lang.model.element.ElementKind.ENUM) {
             throw error(site, attribute + " needs an enum annotated @TerraceConfig; " + type + " is not one");
         }
@@ -235,8 +246,10 @@ final class FieldResolver {
     }
 
     private DescriptorException mustSayNothingError(Element field, TypeMirror type) {
-        return error(field, "publishes no shape at all; its type " + type
-                + " is not a recognised leaf. Resolve it with @Values, @Nested, @Range, or @Skip the field");
+        return error(
+                field,
+                "publishes no shape at all; its type " + type
+                        + " is not a recognised leaf. Resolve it with @Values, @Nested, @Range, or @Skip the field");
     }
 
     private DescriptorException error(Element site, String message) {

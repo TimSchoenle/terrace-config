@@ -1,12 +1,13 @@
 package de.timscho.config.processor;
 
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeMirror;
 import java.util.List;
 
-import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeMirror;
 
 import org.jspecify.annotations.Nullable;
+
+import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 
 /**
  * The result of asking whether a field's declared type is one of the containers this processor
@@ -43,14 +44,14 @@ final class ContainerShape {
         List<? extends TypeMirror> args = declared.getTypeArguments();
         return switch (erasedName) {
             case "java.util.Optional" ->
-                    args.size() == 1 ? new ContainerShape(ContainerKind.OPTIONAL, args.get(0)) : NONE;
+                args.size() == 1 ? new ContainerShape(ContainerKind.OPTIONAL, args.get(0)) : NONE;
             case "java.util.List", "java.util.ArrayList" ->
-                    args.size() == 1 ? new ContainerShape(ContainerKind.LIST, args.get(0)) : NONE;
+                args.size() == 1 ? new ContainerShape(ContainerKind.LIST, args.get(0)) : NONE;
             case "java.util.Set", "java.util.HashSet", "java.util.SortedSet" ->
-                    args.size() == 1 ? new ContainerShape(ContainerKind.SET, args.get(0)) : NONE;
+                args.size() == 1 ? new ContainerShape(ContainerKind.SET, args.get(0)) : NONE;
             case "java.util.Map", "java.util.HashMap", "java.util.SortedMap" ->
                 // The value, not the key — see class Javadoc.
-                    args.size() == 2 ? new ContainerShape(ContainerKind.MAP, args.get(1)) : NONE;
+                args.size() == 2 ? new ContainerShape(ContainerKind.MAP, args.get(1)) : NONE;
             default -> NONE;
         };
     }

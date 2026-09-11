@@ -21,8 +21,7 @@ import javax.lang.model.util.Elements;
  */
 final class DescriptorNaming {
 
-    private DescriptorNaming() {
-    }
+    private DescriptorNaming() {}
 
     static String simpleName(TypeElement type) {
         Deque<String> segments = new ArrayDeque<>();

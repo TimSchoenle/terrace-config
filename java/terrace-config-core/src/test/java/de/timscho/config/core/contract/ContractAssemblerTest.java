@@ -1,5 +1,8 @@
 package de.timscho.config.core.contract;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import java.util.List;
 import java.util.Map;
 
@@ -21,9 +24,6 @@ import de.timscho.config.core.model.TextForm;
 import de.timscho.config.core.refusal.EmptyPrefixException;
 import de.timscho.config.core.refusal.ExternalVariableInPrefixException;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 /** Assembling a full {@link Contract} from a built {@link Schema}, an {@link App} and a {@link Producer}. */
 class ContractAssemblerTest {
 
@@ -33,7 +33,8 @@ class ContractAssemblerTest {
             .indirectionSuffix("_FILE")
             .build();
 
-    private static final App APP = App.builder().name("portfolio").version("v2.5.0").build();
+    private static final App APP =
+            App.builder().name("portfolio").version("v2.5.0").build();
 
     private static Schema schema() {
         return Schema.builder()
@@ -60,8 +61,7 @@ class ContractAssemblerTest {
         assertThat(contract.getProducer().getName()).isEqualTo(ProducerIdentity.NAME);
         assertThat(contract.getApp()).isEqualTo(APP);
         assertThat(contract.getSchema()).isEqualTo(schema());
-        assertThat(contract.getJsonSchema().schemaDialect())
-                .isEqualTo("http://json-schema.org/draft-07/schema#");
+        assertThat(contract.getJsonSchema().schemaDialect()).isEqualTo("http://json-schema.org/draft-07/schema#");
         assertThat(contract.getExternal().getUnknown()).isEqualTo(ExternalUnknownPolicy.REJECT);
     }
 
@@ -83,12 +83,11 @@ class ContractAssemblerTest {
                 .unknown(ExternalUnknownPolicy.REJECT)
                 .build();
 
-        Contract contract = ContractAssembler.assemble(
-                schema(), APP, ProducerIdentity.forLoader("terrace-java"), external);
+        Contract contract =
+                ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"), external);
 
         assertThat(contract.getExternal().getEnv()).hasSize(1);
-        assertThat(contract.getExternal().getEnv().get(0).getConstraint())
-                .containsEntry("type", "integer");
+        assertThat(contract.getExternal().getEnv().get(0).getConstraint()).containsEntry("type", "integer");
     }
 
     @Test
@@ -103,8 +102,8 @@ class ContractAssemblerTest {
                 .unknown(ExternalUnknownPolicy.REJECT)
                 .build();
 
-        Contract contract = ContractAssembler.assemble(
-                schema(), APP, ProducerIdentity.forLoader("terrace-java"), external);
+        Contract contract =
+                ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"), external);
 
         assertThat(contract.getExternal().getEnv().get(0).getConstraint()).isEqualTo(handWritten);
     }
@@ -112,12 +111,15 @@ class ContractAssemblerTest {
     @Test
     void refusesAnExternalVariableCarryingThePrefix() {
         External external = External.builder()
-                .env(List.of(ExternalVar.builder().name("PORTFOLIO_SECRET").textForm(TextForm.TEXT).build()))
+                .env(List.of(ExternalVar.builder()
+                        .name("PORTFOLIO_SECRET")
+                        .textForm(TextForm.TEXT)
+                        .build()))
                 .unknown(ExternalUnknownPolicy.REJECT)
                 .build();
 
-        assertThatThrownBy(() -> ContractAssembler.assemble(
-                schema(), APP, ProducerIdentity.forLoader("terrace-java"), external))
+        assertThatThrownBy(() ->
+                        ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"), external))
                 .isInstanceOf(ExternalVariableInPrefixException.class);
     }
 
@@ -127,8 +129,8 @@ class ContractAssemblerTest {
                 .dialect(DIALECT.toBuilder().prefix("").build())
                 .build();
 
-        assertThatThrownBy(() -> ContractAssembler.assemble(
-                emptyPrefix, APP, ProducerIdentity.forLoader("terrace-java")))
+        assertThatThrownBy(
+                        () -> ContractAssembler.assemble(emptyPrefix, APP, ProducerIdentity.forLoader("terrace-java")))
                 .isInstanceOf(EmptyPrefixException.class);
     }
 
@@ -136,10 +138,11 @@ class ContractAssemblerTest {
     void labelsNameTheVersionPathAndPrefix() {
         Contract contract = ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"));
 
-        assertThat(contract.labels("/config/contract.json")).containsExactly(
-                Map.entry(Contract.LABEL_VERSION, "1"),
-                Map.entry(Contract.LABEL_PATH, "/config/contract.json"),
-                Map.entry(Contract.LABEL_PREFIX, "PORTFOLIO_"));
+        assertThat(contract.labels("/config/contract.json"))
+                .containsExactly(
+                        Map.entry(Contract.LABEL_VERSION, "1"),
+                        Map.entry(Contract.LABEL_PATH, "/config/contract.json"),
+                        Map.entry(Contract.LABEL_PREFIX, "PORTFOLIO_"));
     }
 
     @Test
@@ -164,7 +167,8 @@ class ContractAssemblerTest {
         assertThatThrownBy(() -> contract.verifyLabels("/config/contract.json", Map.of()))
                 .isInstanceOf(de.timscho.config.core.model.ContractLabelException.class)
                 .satisfies(exception -> assertThat(
-                        ((de.timscho.config.core.model.ContractLabelException) exception).getFaults()).hasSize(3));
+                                ((de.timscho.config.core.model.ContractLabelException) exception).getFaults())
+                        .hasSize(3));
     }
 
     @Test

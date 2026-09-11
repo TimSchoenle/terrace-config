@@ -16,7 +16,11 @@ import de.timscho.config.core.model.TextForm;
 class DefaultsTest {
 
     private static Dialect dialect() {
-        return Dialect.builder().prefix("TEST_").nestingSeparator("__").indirectionSuffix("_FILE").build();
+        return Dialect.builder()
+                .prefix("TEST_")
+                .nestingSeparator("__")
+                .indirectionSuffix("_FILE")
+                .build();
     }
 
     private static Key.KeyBuilder baseKey(String path) {

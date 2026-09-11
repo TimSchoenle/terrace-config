@@ -2,8 +2,9 @@ package de.timscho.config.core.schema;
 
 import java.util.List;
 
-import de.timscho.config.core.model.Key;
 import org.jspecify.annotations.Nullable;
+
+import de.timscho.config.core.model.Key;
 
 /**
  * One column of the Markdown key table — ported from the Rust crate's {@code schema::markdown::Column}.

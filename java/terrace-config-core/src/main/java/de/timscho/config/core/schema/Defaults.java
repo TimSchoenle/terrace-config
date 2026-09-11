@@ -4,11 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.Schema;
-
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
+
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.Schema;
 
 /**
  * Fills in each key's observed default from an already-assembled value — a port of the Rust
@@ -57,7 +57,8 @@ public class Defaults {
                 keys.add(key.toBuilder().defaultText("<redacted>").build());
                 continue;
             }
-            keys.add(key.toBuilder().defaultText(rendered).defaultValue(observed).build());
+            keys.add(
+                    key.toBuilder().defaultText(rendered).defaultValue(observed).build());
         }
         return schema.toBuilder().keys(keys).build();
     }

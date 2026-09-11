@@ -7,14 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import org.jetbrains.annotations.Blocking;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 import de.timscho.config.core.model.Contract;
-
-import org.jetbrains.annotations.Blocking;
 
 /**
  * Reads and writes a {@link Contract} as the {@code json} rendering — {@code
@@ -30,8 +29,7 @@ public final class ContractCodec {
 
     private static final ObjectMapper MAPPER = newMapper();
 
-    private ContractCodec() {
-    }
+    private ContractCodec() {}
 
     private static ObjectMapper newMapper() {
         return JsonMapper.builder()

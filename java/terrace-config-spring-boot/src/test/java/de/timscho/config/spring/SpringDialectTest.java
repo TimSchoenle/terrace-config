@@ -1,10 +1,10 @@
 package de.timscho.config.spring;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class SpringDialectTest {
 
@@ -12,8 +12,7 @@ class SpringDialectTest {
 
     @Test
     void a_file_suffixed_name_names_its_own_target() {
-        assertThat(dialect.indirectionTarget("MYAPP_GITHUB_TOKEN_FILE"))
-                .contains("MYAPP_GITHUB_TOKEN");
+        assertThat(dialect.indirectionTarget("MYAPP_GITHUB_TOKEN_FILE")).contains("MYAPP_GITHUB_TOKEN");
         assertThat(dialect.isIndirection("MYAPP_GITHUB_TOKEN_FILE")).isTrue();
     }
 
@@ -57,8 +56,7 @@ class SpringDialectTest {
         SpringDialect custom = dialect.withNestingSeparator("__").withIndirectionSuffix("_PATH");
         assertThat(custom.separator()).isEqualTo("__");
         assertThat(custom.indirectionSuffix()).isEqualTo("_PATH");
-        assertThat(custom.indirectionTarget("MYAPP__GITHUB__TOKEN_PATH"))
-                .contains("MYAPP__GITHUB__TOKEN");
+        assertThat(custom.indirectionTarget("MYAPP__GITHUB__TOKEN_PATH")).contains("MYAPP__GITHUB__TOKEN");
         assertThat(custom.propertyName("MYAPP__GITHUB__TOKEN")).isEqualTo("myapp.github.token");
     }
 }

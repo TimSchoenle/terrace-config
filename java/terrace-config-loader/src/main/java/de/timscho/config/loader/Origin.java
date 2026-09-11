@@ -1,7 +1,6 @@
 package de.timscho.config.loader;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import lombok.AccessLevel;

@@ -13,11 +13,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 class LoadWatchedTest {
 
-    record Database(String url, int port) {
-    }
+    record Database(String url, int port) {}
 
-    record Config(Database database, String secret) {
-    }
+    record Config(Database database, String secret) {}
 
     @TempDir
     Path tmp;
@@ -33,12 +31,12 @@ class LoadWatchedTest {
                 port = 5432
                 """);
 
-        Loaded<Config> loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .loadWatched(Config.class, Map.of());
+        Loaded<Config> loaded =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).loadWatched(Config.class, Map.of());
 
         assertThat(loaded.value().secret()).isEqualTo("compiled-in");
-        assertThat(loaded.sources().watchPaths()).contains(config.toAbsolutePath().getParent());
+        assertThat(loaded.sources().watchPaths())
+                .contains(config.toAbsolutePath().getParent());
     }
 
     @Test
@@ -57,9 +55,8 @@ class LoadWatchedTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_SECRETS_DIR", secretsDir.toString());
 
-        Loaded<Config> loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .loadWatched(Config.class, env);
+        Loaded<Config> loaded =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).loadWatched(Config.class, env);
 
         assertThat(loaded.sources().watchPaths()).contains(secretsDir.toAbsolutePath());
     }
@@ -79,11 +76,11 @@ class LoadWatchedTest {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TEST_SECRET_FILE", secretFile.toString());
 
-        Loaded<Config> loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .loadWatched(Config.class, env);
+        Loaded<Config> loaded =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).loadWatched(Config.class, env);
 
-        assertThat(loaded.sources().watchPaths()).contains(secretFile.toAbsolutePath().getParent());
+        assertThat(loaded.sources().watchPaths())
+                .contains(secretFile.toAbsolutePath().getParent());
     }
 
     @Test
@@ -142,10 +139,8 @@ class LoadWatchedTest {
                 timeout = nan
                 """);
 
-        record DatabaseWithTimeout(String url, int port, double timeout) {
-        }
-        record ConfigWithTimeout(DatabaseWithTimeout database, String secret) {
-        }
+        record DatabaseWithTimeout(String url, int port, double timeout) {}
+        record ConfigWithTimeout(DatabaseWithTimeout database, String secret) {}
 
         TerraceLoader loader = TerraceLoader.of("TEST_").defaultConfigPath(config);
         Loaded<ConfigWithTimeout> first = loader.loadWatched(ConfigWithTimeout.class, Map.of());
@@ -166,9 +161,8 @@ class LoadWatchedTest {
                 port = 5432
                 """);
 
-        Loaded<Config> loaded = TerraceLoader.of("TEST_")
-                .defaultConfigPath(config)
-                .loadWatched(Config.class, Map.of());
+        Loaded<Config> loaded =
+                TerraceLoader.of("TEST_").defaultConfigPath(config).loadWatched(Config.class, Map.of());
 
         assertThat(loaded.sources().toString()).doesNotContain("top-secret-value");
     }

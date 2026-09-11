@@ -6,7 +6,6 @@ import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,13 +20,12 @@ public final class TierComparator {
 
     /** The tier-2 fields compared field-for-field, for every key, in the order they are checked. */
     private static final String[] TIER_2_FIELDS = {
-            "env", "env_file", "secrets_file",
-            "env_aliases", "env_file_aliases", "secrets_file_aliases",
-            "unreachable"
+        "env", "env_file", "secrets_file",
+        "env_aliases", "env_file_aliases", "secrets_file_aliases",
+        "unreachable"
     };
 
-    private TierComparator() {
-    }
+    private TierComparator() {}
 
     /**
      * Every disagreement between {@code produced} and {@code expected} that the given tier cares
@@ -72,8 +70,8 @@ public final class TierComparator {
                 JsonNode expectedValue = expectedKey.path(field);
                 JsonNode producedValue = producedKey.path(field);
                 if (!expectedValue.equals(producedValue)) {
-                    diffs.add("tier 2: key `" + path + "`, field `" + field + "`: expected "
-                            + expectedValue + ", produced " + producedValue);
+                    diffs.add("tier 2: key `" + path + "`, field `" + field + "`: expected " + expectedValue
+                            + ", produced " + producedValue);
                 }
             }
         }

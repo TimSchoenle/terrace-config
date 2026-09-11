@@ -9,14 +9,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 
+import lombok.AllArgsConstructor;
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
+
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.UnreachableReason;
-
-import lombok.AllArgsConstructor;
-import lombok.experimental.UtilityClass;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link
@@ -55,7 +55,8 @@ public class SchemaAssembler {
      *                         the loader itself reads before the layers exist; matched
      *                         case-insensitively, mirroring {@code Dialect::is_reserved}
      */
-    public static Schema assemble(TypeDescriptor descriptor, Dialect dialect, Set<String> reservedEnvNames, String root) {
+    public static Schema assemble(
+            TypeDescriptor descriptor, Dialect dialect, Set<String> reservedEnvNames, String root) {
         Set<String> reservedUpper = new HashSet<>();
         for (String reserved : reservedEnvNames) {
             reservedUpper.add(reserved.toUpperCase(Locale.ROOT));
@@ -72,12 +73,13 @@ public class SchemaAssembler {
     }
 
     /** Walks {@code fields}, appending one {@link Key} per leaf/container field to {@code out}. */
-    private static void walk(List<KeyDescriptor> fields, String prefix, List<Key> out, Dialect dialect, Set<String> reservedUpper) {
+    private static void walk(
+            List<KeyDescriptor> fields, String prefix, List<Key> out, Dialect dialect, Set<String> reservedUpper) {
         for (KeyDescriptor field : fields) {
             String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
             boolean isNestedStruct = !field.nestedKeys().isEmpty()
                     && (field.container() == KeyDescriptor.ContainerKind.NONE
-                    || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
+                            || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
             if (isNestedStruct) {
                 // `#[config(nested)]`: the field opens a level rather than becoming a key of its
                 // own, bare or behind an `Optional` — neither carries a key of its own in Rust
@@ -94,7 +96,8 @@ public class SchemaAssembler {
         boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
                 && field.container() != KeyDescriptor.ContainerKind.OPTIONAL;
 
-        List<String> values = !field.values().isEmpty() ? field.values()
+        List<String> values = !field.values().isEmpty()
+                ? field.values()
                 : field.element() != null ? field.element().values() : List.of();
         TextForm textForm = textForm(field, container, values);
 
@@ -259,7 +262,8 @@ public class SchemaAssembler {
         if (!rest.endsWith(dialect.getIndirectionSuffix())) {
             return null;
         }
-        String key = rest.substring(0, rest.length() - dialect.getIndirectionSuffix().length());
+        String key =
+                rest.substring(0, rest.length() - dialect.getIndirectionSuffix().length());
         return key.isEmpty() ? null : key;
     }
 
@@ -274,7 +278,11 @@ public class SchemaAssembler {
         if (name.contains(".") || !isNameableFile(name)) {
             return null;
         }
-        String[] parts = name.toLowerCase(Locale.ROOT).split(java.util.regex.Pattern.quote(dialect.getNestingSeparator().toLowerCase(Locale.ROOT)), -1);
+        String[] parts = name.toLowerCase(Locale.ROOT)
+                .split(
+                        java.util.regex.Pattern.quote(
+                                dialect.getNestingSeparator().toLowerCase(Locale.ROOT)),
+                        -1);
         return String.join(".", parts).equals(path) ? name : null;
     }
 
@@ -316,7 +324,7 @@ public class SchemaAssembler {
                 case "float", "double", "Float", "Double", "BigDecimal" ->
                     // A float is not certain enough to check — matches the Rust crate's own
                     // `TextForm::Unknown` for this case.
-                        NUMBER;
+                    NUMBER;
                 default -> UNKNOWN;
             };
         }

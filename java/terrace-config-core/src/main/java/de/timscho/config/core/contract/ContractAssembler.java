@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
+
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.External;
@@ -15,9 +18,6 @@ import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.refusal.ContractValidator;
 import de.timscho.config.core.schema.JsonSchemaOptions;
-
-import lombok.experimental.UtilityClass;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Combines a built {@link Schema} with an {@link App} and a {@link Producer} into a full
@@ -81,7 +81,10 @@ public class ContractAssembler {
         for (ExternalVar var : external.getEnv()) {
             if (var.getConstraint() == null) {
                 Map<String, Object> constraint = deriveConstraint(var.getTy(), var.getValues());
-                derived.add(constraint == null ? var : var.toBuilder().constraint(constraint).build());
+                derived.add(
+                        constraint == null
+                                ? var
+                                : var.toBuilder().constraint(constraint).build());
             } else {
                 derived.add(var);
             }
@@ -107,13 +110,14 @@ public class ContractAssembler {
         if (ty == null) {
             return null;
         }
-        String type = switch (ty) {
-            case "String", "CharSequence", "char", "Character" -> "string";
-            case "boolean", "Boolean" -> "boolean";
-            case "byte", "short", "int", "long", "Byte", "Short", "Integer", "Long", "BigInteger" -> "integer";
-            case "float", "double", "Float", "Double", "BigDecimal" -> "number";
-            default -> null;
-        };
+        String type =
+                switch (ty) {
+                    case "String", "CharSequence", "char", "Character" -> "string";
+                    case "boolean", "Boolean" -> "boolean";
+                    case "byte", "short", "int", "long", "Byte", "Short", "Integer", "Long", "BigInteger" -> "integer";
+                    case "float", "double", "Float", "Double", "BigDecimal" -> "number";
+                    default -> null;
+                };
         if (type == null) {
             return null;
         }
