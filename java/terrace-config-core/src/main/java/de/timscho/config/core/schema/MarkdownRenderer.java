@@ -81,7 +81,7 @@ public class MarkdownRenderer {
             headers.add(column.heading());
         }
         out.append("| ").append(String.join(" | ", headers)).append(" |\n");
-        out.append("|").append("---|".repeat(columns.size())).append("\n");
+        out.append("|").repeat("---|", columns.size()).append("\n");
         for (Key key : schema.getKeys()) {
             List<String> cells = new java.util.ArrayList<>();
             for (Column column : columns) {
@@ -93,12 +93,12 @@ public class MarkdownRenderer {
     }
 
     private static String optionalCode(String value) {
-        return value == null ? "\u2014" : "`" + escape(value) + "`";
+        return value == null ? "—" : "`" + escape(value) + "`";
     }
 
     private static String cell(String text) {
         if (text.isEmpty()) {
-            return "\u2014";
+            return "—";
         }
         return escape(text).replace("\n", "<br>");
     }

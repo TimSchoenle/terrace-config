@@ -34,29 +34,22 @@ final class ContainerShape {
     }
 
     static ContainerShape of(TypeMirror type) {
-        if (!(type instanceof DeclaredType)) {
+        if (!(type instanceof DeclaredType declared)) {
             return NONE;
         }
-        DeclaredType declared = (DeclaredType) type;
         String erasedName = declared.asElement().toString();
         List<? extends TypeMirror> args = declared.getTypeArguments();
-        switch (erasedName) {
-            case "java.util.Optional":
-                return args.size() == 1 ? new ContainerShape(ContainerKind.OPTIONAL, args.get(0)) : NONE;
-            case "java.util.List":
-            case "java.util.ArrayList":
-                return args.size() == 1 ? new ContainerShape(ContainerKind.LIST, args.get(0)) : NONE;
-            case "java.util.Set":
-            case "java.util.HashSet":
-            case "java.util.SortedSet":
-                return args.size() == 1 ? new ContainerShape(ContainerKind.SET, args.get(0)) : NONE;
-            case "java.util.Map":
-            case "java.util.HashMap":
-            case "java.util.SortedMap":
+        return switch (erasedName) {
+            case "java.util.Optional" ->
+                    args.size() == 1 ? new ContainerShape(ContainerKind.OPTIONAL, args.get(0)) : NONE;
+            case "java.util.List", "java.util.ArrayList" ->
+                    args.size() == 1 ? new ContainerShape(ContainerKind.LIST, args.get(0)) : NONE;
+            case "java.util.Set", "java.util.HashSet", "java.util.SortedSet" ->
+                    args.size() == 1 ? new ContainerShape(ContainerKind.SET, args.get(0)) : NONE;
+            case "java.util.Map", "java.util.HashMap", "java.util.SortedMap" ->
                 // The value, not the key — see class Javadoc.
-                return args.size() == 2 ? new ContainerShape(ContainerKind.MAP, args.get(1)) : NONE;
-            default:
-                return NONE;
-        }
+                    args.size() == 2 ? new ContainerShape(ContainerKind.MAP, args.get(1)) : NONE;
+            default -> NONE;
+        };
     }
 }

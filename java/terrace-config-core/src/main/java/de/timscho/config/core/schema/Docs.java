@@ -40,7 +40,7 @@ public enum Docs {
             if (line.trim().isEmpty()) {
                 break;
             }
-            if (summary.length() > 0) {
+            if (!summary.isEmpty()) {
                 summary.append(' ');
             }
             summary.append(line);

@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -140,17 +141,14 @@ public class SchemaAssembler {
     private static Map<String, Object> constraint(KeyDescriptor field, boolean container, TextForm textForm, List<String> values) {
         if (container) {
             Map<String, Object> schema = new TreeMap<>();
-            switch (field.container()) {
-                case MAP:
-                    schema.put("type", "object");
-                    break;
-                default:
-                    schema.put("type", "array");
-                    Map<String, Object> items = elementConstraint(field.element());
-                    if (items != null) {
-                        schema.put("items", items);
-                    }
-                    break;
+            if (Objects.requireNonNull(field.container()) == KeyDescriptor.ContainerKind.MAP) {
+                schema.put("type", "object");
+            } else {
+                schema.put("type", "array");
+                Map<String, Object> items = elementConstraint(field.element());
+                if (items != null) {
+                    schema.put("items", items);
+                }
             }
             return schema;
         }
@@ -308,36 +306,16 @@ public class SchemaAssembler {
         final de.timscho.config.core.model.TextForm model;
 
         static TextForm of(String typeName) {
-            switch (typeName) {
-                case "String":
-                case "CharSequence":
-                case "char":
-                case "Character":
-                    return TEXT;
-                case "boolean":
-                case "Boolean":
-                    return BOOLEAN;
-                case "byte":
-                case "short":
-                case "int":
-                case "long":
-                case "Byte":
-                case "Short":
-                case "Integer":
-                case "Long":
-                case "BigInteger":
-                    return INTEGER;
-                case "float":
-                case "double":
-                case "Float":
-                case "Double":
-                case "BigDecimal":
+            return switch (typeName) {
+                case "String", "CharSequence", "char", "Character" -> TEXT;
+                case "boolean", "Boolean" -> BOOLEAN;
+                case "byte", "short", "int", "long", "Byte", "Short", "Integer", "Long", "BigInteger" -> INTEGER;
+                case "float", "double", "Float", "Double", "BigDecimal" ->
                     // A float is not certain enough to check — matches the Rust crate's own
                     // `TextForm::Unknown` for this case.
-                    return NUMBER;
-                default:
-                    return UNKNOWN;
-            }
+                        NUMBER;
+                default -> UNKNOWN;
+            };
         }
     }
 }
