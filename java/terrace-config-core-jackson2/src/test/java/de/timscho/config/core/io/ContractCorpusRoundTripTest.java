@@ -1,5 +1,7 @@
 package de.timscho.config.core.io;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -14,8 +16,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import de.timscho.config.core.model.Contract;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * PR 4's corpus test, run before any Java producer exists: every stored {@code contract.json}
@@ -33,7 +33,10 @@ class ContractCorpusRoundTripTest {
      * as {@code java/terrace-config-spec-tck} — see that module's {@code SpecPaths}.
      */
     private static Path conformanceDir() {
-        return Paths.get("").toAbsolutePath().resolve("../../spec/v1/conformance").normalize();
+        return Paths.get("")
+                .toAbsolutePath()
+                .resolve("../../spec/v1/conformance")
+                .normalize();
     }
 
     static List<String> corpusCases() throws IOException {

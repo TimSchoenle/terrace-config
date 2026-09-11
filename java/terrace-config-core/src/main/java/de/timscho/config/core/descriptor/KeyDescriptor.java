@@ -48,6 +48,10 @@ public record KeyDescriptor(
 
     /** Which container, if any, wraps a field's declared type. */
     public enum ContainerKind {
-        NONE, OPTIONAL, LIST, SET, MAP
+        NONE,
+        OPTIONAL,
+        LIST,
+        SET,
+        MAP
     }
 }

@@ -1,5 +1,7 @@
 package de.timscho.config.core.io;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,8 +13,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.schema.JsonSchemaOptions;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves {@code Schema.toJsonSchemaWith} against the stored corpus: every {@code contract.json}
@@ -34,8 +34,8 @@ class JsonSchemaRendererCorpusTest {
         Path storedFile = conformanceDir().resolve(caseName).resolve("contract.json");
         Contract contract = ContractCodec.read(Files.readAllBytes(storedFile));
 
-        JsonSchemaOptions options = JsonSchemaOptions.forContract()
-                .orTitle(contract.getApp().getName() + " configuration");
+        JsonSchemaOptions options =
+                JsonSchemaOptions.forContract().orTitle(contract.getApp().getName() + " configuration");
         Map<String, Object> rendered = contract.getSchema().toJsonSchemaWith(options);
 
         assertThat(rendered)
@@ -44,6 +44,9 @@ class JsonSchemaRendererCorpusTest {
     }
 
     private static Path conformanceDir() {
-        return java.nio.file.Paths.get("").toAbsolutePath().resolve("../../spec/v1/conformance").normalize();
+        return java.nio.file.Paths.get("")
+                .toAbsolutePath()
+                .resolve("../../spec/v1/conformance")
+                .normalize();
     }
 }

@@ -3,8 +3,7 @@ package de.timscho.config.processor;
 /** Shortens a fully qualified type rendering to its simple-name form, for the descriptor's {@code typeName}. */
 final class TypeNames {
 
-    private TypeNames() {
-    }
+    private TypeNames() {}
 
     static String simplify(String qualified) {
         StringBuilder out = new StringBuilder();

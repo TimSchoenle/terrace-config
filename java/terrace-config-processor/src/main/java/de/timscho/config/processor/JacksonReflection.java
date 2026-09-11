@@ -1,10 +1,11 @@
 package de.timscho.config.processor;
 
+import java.util.Map;
+
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
-import java.util.Map;
 
 /**
  * Reads {@code com.fasterxml.jackson.annotation.*} annotations by qualified name off {@link
@@ -19,8 +20,7 @@ final class JacksonReflection {
     private static final String JSON_IGNORE_PROPERTIES = "com.fasterxml.jackson.annotation.JsonIgnoreProperties";
     private static final String JSON_PROPERTY = "com.fasterxml.jackson.annotation.JsonProperty";
 
-    private JacksonReflection() {
-    }
+    private JacksonReflection() {}
 
     /** Whether {@code @JsonIgnoreProperties(ignoreUnknown = false)} is present. */
     static boolean isClosed(Element element) {
@@ -28,8 +28,8 @@ final class JacksonReflection {
             if (!mirror.getAnnotationType().toString().equals(JSON_IGNORE_PROPERTIES)) {
                 continue;
             }
-            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
-                    : mirror.getElementValues().entrySet()) {
+            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+                    mirror.getElementValues().entrySet()) {
                 if (entry.getKey().getSimpleName().contentEquals("ignoreUnknown")) {
                     return Boolean.FALSE.equals(entry.getValue().getValue());
                 }
@@ -44,8 +44,8 @@ final class JacksonReflection {
             if (!mirror.getAnnotationType().toString().equals(JSON_PROPERTY)) {
                 continue;
             }
-            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
-                    : mirror.getElementValues().entrySet()) {
+            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+                    mirror.getElementValues().entrySet()) {
                 if (entry.getKey().getSimpleName().contentEquals("value")) {
                     return String.valueOf(entry.getValue().getValue());
                 }

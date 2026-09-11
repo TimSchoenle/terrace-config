@@ -8,5 +8,4 @@ package de.timscho.config.loader;
  * @param value the extracted config
  * @param sources where it came from
  */
-public record Loaded<T>(T value, Sources sources) {
-}
+public record Loaded<T>(T value, Sources sources) {}

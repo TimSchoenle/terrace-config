@@ -46,7 +46,8 @@ class TerraceContractAutoConfigurationTest {
                         "terrace.contract.env-prefix=PORTFOLIO_",
                         "terrace.contract.app-name=explicit-name",
                         "spring.application.name=portfolio")
-                .run(context -> assertThat(context.getBean(Contract.class).getApp().getName())
+                .run(context -> assertThat(
+                                context.getBean(Contract.class).getApp().getName())
                         .isEqualTo("explicit-name"));
     }
 

@@ -10,5 +10,4 @@ import lombok.experimental.StandardException;
  * path or variable at fault, never the value.
  */
 @StandardException
-public final class LoaderException extends RuntimeException {
-}
+public final class LoaderException extends RuntimeException {}

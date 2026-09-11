@@ -33,8 +33,7 @@ final class FileLayers {
      * whatever pointed at it.
      */
     static FileLayers collect(
-            Optional<Path> dir, String origin, Dialect dialect, ShadowPolicy policy,
-            Map<String, String> environment) {
+            Optional<Path> dir, String origin, Dialect dialect, ShadowPolicy policy, Map<String, String> environment) {
         SecretsDir secrets = dir.map(d -> SecretsDir.read(origin, d, dialect)).orElse(null);
         FileSuffixEnv files = FileSuffixEnv.read(dialect, environment);
         FileLayers layers = new FileLayers(secrets, files);
@@ -90,10 +89,9 @@ final class FileLayers {
     }
 
     private static LoaderException shadowed(String key, Object source, Object other) {
-        return new LoaderException(
-                "`" + key + "` is supplied twice — by " + source + " and by " + other
-                        + ". Remove one: a stale environment variable shadowing a rotated secret "
-                        + "keeps the service running on the old credential.");
+        return new LoaderException("`" + key + "` is supplied twice — by " + source + " and by " + other
+                + ". Remove one: a stale environment variable shadowing a rotated secret "
+                + "keeps the service running on the old credential.");
     }
 
     /** The indirection layer — {@link Explanation}'s own use. */

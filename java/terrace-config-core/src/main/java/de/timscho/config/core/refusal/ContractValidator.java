@@ -23,8 +23,7 @@ import de.timscho.config.core.model.Schema;
  */
 public final class ContractValidator {
 
-    private ContractValidator() {
-    }
+    private ContractValidator() {}
 
     /**
      * @throws ContractRefusalException the first refusal found, checked in the order

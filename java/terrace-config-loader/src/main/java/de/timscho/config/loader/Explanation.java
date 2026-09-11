@@ -134,8 +134,10 @@ public final class Explanation {
             // Recorded alongside the value, so this is the spelling the operator used. The
             // fallback reconstructs the documented one and cannot really be reached: it is the
             // last code that should throw to say so.
-            String var = indirections.origin(key)
-                    .orElseGet(() -> layers.dialect().envSpelling(key) + layers.dialect().indirectionSuffix());
+            String var = indirections
+                    .origin(key)
+                    .orElseGet(() ->
+                            layers.dialect().envSpelling(key) + layers.dialect().indirectionSuffix());
             sources.computeIfAbsent(key, k -> new ArrayList<>())
                     .add(new Layer.Indirection(var, entry.getValue().path()));
         }
@@ -149,9 +151,18 @@ public final class Explanation {
         }
 
         return new Explanation(
-                layers.dialect().prefix(), layers.dialect().indirectionSuffix(), layers.configVar(),
-                layers.configPath(), layers.configFromEnv(), fragments, layers.secretsVar(),
-                layers.secretsDir().orElse(null), envKeys, secretsKeys, indirectionKeys, origins);
+                layers.dialect().prefix(),
+                layers.dialect().indirectionSuffix(),
+                layers.configVar(),
+                layers.configPath(),
+                layers.configFromEnv(),
+                fragments,
+                layers.secretsVar(),
+                layers.secretsDir().orElse(null),
+                envKeys,
+                secretsKeys,
+                indirectionKeys,
+                origins);
     }
 
     /** One key's origin, by key path ({@code auth.jwt_secret}). */
@@ -204,26 +215,44 @@ public final class Explanation {
             out.append(configVar).append(" unset, default ").append(configPath);
         }
         for (Map.Entry<Path, Fragment> fragment : fragments) {
-            out.append("\n                  ").append(fragment.getKey()).append(" (").append(fragment.getValue())
+            out.append("\n                  ")
+                    .append(fragment.getKey())
+                    .append(" (")
+                    .append(fragment.getValue())
                     .append(')');
         }
 
-        out.append("\n  environment   ").append(prefix).append("* (").append(count(envKeys)).append(')');
+        out.append("\n  environment   ")
+                .append(prefix)
+                .append("* (")
+                .append(count(envKeys))
+                .append(')');
 
         out.append("\n  secrets dir   ");
         if (secretsDir != null) {
-            out.append(secretsVar).append('=').append(secretsDir).append(" (").append(count(secretsKeys)).append(')');
+            out.append(secretsVar)
+                    .append('=')
+                    .append(secretsDir)
+                    .append(" (")
+                    .append(count(secretsKeys))
+                    .append(')');
         } else {
             out.append(secretsVar).append(" unset");
         }
 
-        out.append("\n  indirection   ").append(prefix).append('*').append(indirectionSuffix).append(" (")
-                .append(count(indirectionKeys)).append(')');
+        out.append("\n  indirection   ")
+                .append(prefix)
+                .append('*')
+                .append(indirectionSuffix)
+                .append(" (")
+                .append(count(indirectionKeys))
+                .append(')');
 
         out.append("\nkeys:");
         if (origins.isEmpty()) {
             // An empty section reads as a rendering bug; this reads as the finding it is.
-            return out.append("\n  none — every value in this configuration is a default").toString();
+            return out.append("\n  none — every value in this configuration is a default")
+                    .toString();
         }
 
         int longest = 0;
@@ -235,7 +264,10 @@ public final class Explanation {
         for (Origin origin : origins) {
             out.append("\n  ").append(pad(origin.key(), width)).append("  <- ").append(origin.effective());
             for (Layer shadowed : origin.shadowed()) {
-                out.append("\n  ").append(pad("", width)).append("     shadowing ").append(shadowed);
+                out.append("\n  ")
+                        .append(pad("", width))
+                        .append("     shadowing ")
+                        .append(shadowed);
             }
         }
         return out.toString();

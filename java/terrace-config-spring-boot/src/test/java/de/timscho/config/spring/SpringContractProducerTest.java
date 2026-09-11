@@ -1,14 +1,14 @@
 package de.timscho.config.spring;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import org.junit.jupiter.api.Test;
 
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.refusal.EmptyPrefixException;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * {@link SpringContractProducer#produce} against a real generated descriptor
@@ -19,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class SpringContractProducerTest {
 
-    private static final App APP = App.builder().name("portfolio").version("v2.5.0").build();
+    private static final App APP =
+            App.builder().name("portfolio").version("v2.5.0").build();
 
     @Test
     void producesAValidatedContractFromAnAnnotatedType() {
@@ -41,8 +42,7 @@ class SpringContractProducerTest {
         assertThat(token.isSecret()).isTrue();
         assertThat(token.getEnv()).isEqualTo("PORTFOLIO_GITHUB_TOKEN");
 
-        assertThat(contract.getJsonSchema().schemaDialect())
-                .isEqualTo("http://json-schema.org/draft-07/schema#");
+        assertThat(contract.getJsonSchema().schemaDialect()).isEqualTo("http://json-schema.org/draft-07/schema#");
     }
 
     @Test

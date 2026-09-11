@@ -17,14 +17,15 @@ import de.timscho.config.core.model.TextForm;
 class TomlExampleRendererTest {
 
     private static Dialect dialect() {
-        return Dialect.builder().prefix("TEST_").nestingSeparator("__").indirectionSuffix("_FILE").build();
+        return Dialect.builder()
+                .prefix("TEST_")
+                .nestingSeparator("__")
+                .indirectionSuffix("_FILE")
+                .build();
     }
 
     private static Key.KeyBuilder baseKey(String path) {
-        return Key.builder()
-                .path(path)
-                .docs("")
-                .textForm(TextForm.TEXT);
+        return Key.builder().path(path).docs("").textForm(TextForm.TEXT);
     }
 
     @Test
@@ -145,8 +146,16 @@ class TomlExampleRendererTest {
                 .dialect(dialect())
                 .keys(List.of(
                         baseKey("database.url").ty("String").required(true).build(),
-                        baseKey("database.port").ty("u16").defaultValue(5432).defaultText("5432").build(),
-                        baseKey("name").ty("String").defaultValue("weird \"name\"").defaultText("weird \"name\"").build()))
+                        baseKey("database.port")
+                                .ty("u16")
+                                .defaultValue(5432)
+                                .defaultText("5432")
+                                .build(),
+                        baseKey("name")
+                                .ty("String")
+                                .defaultValue("weird \"name\"")
+                                .defaultText("weird \"name\"")
+                                .build()))
                 .build();
 
         String example = schema.toTomlExample();

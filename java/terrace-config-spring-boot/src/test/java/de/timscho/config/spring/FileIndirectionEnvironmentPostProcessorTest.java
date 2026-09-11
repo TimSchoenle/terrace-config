@@ -1,5 +1,8 @@
 package de.timscho.config.spring;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,16 +17,12 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.mock.env.MockEnvironment;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class FileIndirectionEnvironmentPostProcessorTest {
 
     @TempDir
     Path tempDir;
 
-    private final FileIndirectionEnvironmentPostProcessor postProcessor =
-            new FileIndirectionEnvironmentPostProcessor();
+    private final FileIndirectionEnvironmentPostProcessor postProcessor = new FileIndirectionEnvironmentPostProcessor();
     private final SpringApplication application = new SpringApplication();
 
     @Test
@@ -60,7 +59,8 @@ class FileIndirectionEnvironmentPostProcessorTest {
         // only reachable under its own exact name (relaxed binding is the `Binder`'s job, not
         // this post-processor's, and the test's own `MapPropertySource` stand-in for the real
         // `SystemEnvironmentPropertySource` does not apply it either).
-        assertThat(environment.getPropertySources().contains("terraceFileIndirection")).isFalse();
+        assertThat(environment.getPropertySources().contains("terraceFileIndirection"))
+                .isFalse();
         assertThat(environment.getProperty("MYAPP_GITHUB_TOKEN")).isEqualTo("plain-value");
     }
 
@@ -70,7 +70,8 @@ class FileIndirectionEnvironmentPostProcessorTest {
 
         postProcessor.postProcessEnvironment(environment, application);
 
-        assertThat(environment.getPropertySources().contains("terraceFileIndirection")).isFalse();
+        assertThat(environment.getPropertySources().contains("terraceFileIndirection"))
+                .isFalse();
     }
 
     @Test
@@ -101,9 +102,10 @@ class FileIndirectionEnvironmentPostProcessorTest {
         Files.writeString(secret, "from-file", StandardCharsets.UTF_8);
 
         MockEnvironment environment = systemEnvironment(Map.of("MYAPP_GITHUB_TOKEN_FILE", secret.toString()));
-        environment.getPropertySources()
-                .addLast(new MapPropertySource("application.properties",
-                        Map.of("myapp.github.token", "from-config-file")));
+        environment
+                .getPropertySources()
+                .addLast(new MapPropertySource(
+                        "application.properties", Map.of("myapp.github.token", "from-config-file")));
 
         postProcessor.postProcessEnvironment(environment, application);
 
@@ -114,9 +116,10 @@ class FileIndirectionEnvironmentPostProcessorTest {
     private static MockEnvironment systemEnvironment(Map<String, String> entries) {
         MockEnvironment environment = new MockEnvironment();
         Map<String, Object> asObjects = new LinkedHashMap<>(entries);
-        environment.getPropertySources()
-                .addFirst(new MapPropertySource(
-                        StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, asObjects));
+        environment
+                .getPropertySources()
+                .addFirst(
+                        new MapPropertySource(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, asObjects));
         return environment;
     }
 }

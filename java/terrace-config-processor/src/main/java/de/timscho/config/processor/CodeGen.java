@@ -7,8 +7,7 @@ import org.jspecify.annotations.Nullable;
 /** Small helpers for rendering Java source literals into the generated descriptor classes. */
 final class CodeGen {
 
-    private CodeGen() {
-    }
+    private CodeGen() {}
 
     static String stringLiteral(String value) {
         StringBuilder out = new StringBuilder("\"");

@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import org.jetbrains.annotations.Blocking;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
 import org.springframework.boot.env.EnvironmentPostProcessor;
@@ -20,8 +21,6 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
-
-import org.jetbrains.annotations.Blocking;
 
 /**
  * The one layer Spring's own binder does not already give it: {@code <NAME>_FILE=/path} naming a
@@ -62,8 +61,7 @@ public final class FileIndirectionEnvironmentPostProcessor implements Environmen
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         MutablePropertySources sources = environment.getPropertySources();
-        PropertySource<?> systemEnvironment =
-                sources.get(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        PropertySource<?> systemEnvironment = sources.get(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
         if (!(systemEnvironment instanceof EnumerablePropertySource<?> enumerable)) {
             return;
         }

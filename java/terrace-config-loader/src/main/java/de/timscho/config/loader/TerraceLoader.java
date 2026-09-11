@@ -10,7 +10,6 @@ import java.util.Optional;
 import java.util.Set;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -66,6 +65,7 @@ public final class TerraceLoader {
 
     @Setter(AccessLevel.NONE)
     private String separator = "__";
+
     private final List<String> reserved = new ArrayList<>();
 
     /** What to do when one key is supplied by two mechanisms. Defaults to {@link ShadowPolicy#REJECT}. */
@@ -162,13 +162,15 @@ public final class TerraceLoader {
         loaderVars.add(LoaderVar.builder()
                 .env(secretsDirVarName())
                 .role(LoaderRole.SECRETS_DIR)
-                .docs("Names a directory of key-named files -- a mounted Kubernetes Secret volume. Each file supplies the key its name spells.")
+                .docs(
+                        "Names a directory of key-named files -- a mounted Kubernetes Secret volume. Each file supplies the key its name spells.")
                 .build());
         for (String reservedKey : reserved) {
             loaderVars.add(LoaderVar.builder()
                     .env(reservedKey)
                     .role(LoaderRole.RESERVED)
-                    .docs("Read directly from the environment before the layered config exists, so no file may supply it.")
+                    .docs(
+                            "Read directly from the environment before the layered config exists, so no file may supply it.")
                     .build());
         }
         return schema.toBuilder().loader(loaderVars).build();
@@ -285,9 +287,14 @@ public final class TerraceLoader {
      * instead).
      */
     record Layers(
-            Dialect dialect, String configVar, Path configPath, boolean configFromEnv, TomlLayers toml,
-            String secretsVar, Optional<Path> secretsDir, FileLayers files) {
-    }
+            Dialect dialect,
+            String configVar,
+            Path configPath,
+            boolean configFromEnv,
+            TomlLayers toml,
+            String secretsVar,
+            Optional<Path> secretsDir,
+            FileLayers files) {}
 
     /**
      * The environment layer: the prefixed variables that are values, and no others.

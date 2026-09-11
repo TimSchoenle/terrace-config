@@ -13,6 +13,5 @@ public final class ConformanceVersion {
 
     public static final String VALUE = "0.0.0-conformance";
 
-    private ConformanceVersion() {
-    }
+    private ConformanceVersion() {}
 }

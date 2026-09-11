@@ -11,7 +11,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * read each form names belongs to {@code producer.loader}, not to the document.
  */
 public enum TextForm {
-
     @JsonProperty("text")
     TEXT,
 

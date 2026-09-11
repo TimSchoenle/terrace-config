@@ -13,8 +13,7 @@ import java.nio.file.Paths;
  */
 final class SpecPaths {
 
-    private SpecPaths() {
-    }
+    private SpecPaths() {}
 
     static Path specV1Dir() {
         return Paths.get("").toAbsolutePath().resolve("../../spec/v1").normalize();

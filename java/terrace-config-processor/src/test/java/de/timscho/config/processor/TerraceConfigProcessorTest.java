@@ -1,12 +1,11 @@
 package de.timscho.config.processor;
 
-import org.junit.jupiter.api.Test;
+import static com.google.testing.compile.CompilationSubject.assertThat;
 
 import com.google.testing.compile.Compilation;
 import com.google.testing.compile.Compiler;
 import com.google.testing.compile.JavaFileObjects;
-
-import static com.google.testing.compile.CompilationSubject.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * One test per resolvable annotation and one per refusal, mirroring {@code SCHEMA.md}'s own
@@ -25,7 +24,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void plainLeafFieldsNeedNoAnnotation() {
-        Compilation compilation = compile("test.Config",
+        Compilation compilation = compile(
+                "test.Config",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "@TerraceConfig",
@@ -41,7 +41,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void nestedField() {
-        Compilation compilation = compile("test.Outer",
+        Compilation compilation = compile(
+                "test.Outer",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Nested;",
@@ -63,7 +64,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void bareValuesOnATerraceConfigEnum() {
-        Compilation compilation = compile("test.LevelConfig",
+        Compilation compilation = compile(
+                "test.LevelConfig",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Values;",
@@ -81,7 +83,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void valuesFromAMirror() {
-        Compilation compilation = compile("test.MirrorConfig",
+        Compilation compilation = compile(
+                "test.MirrorConfig",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Values;",
@@ -100,7 +103,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void literalValuesList() {
-        Compilation compilation = compile("test.LiteralConfig",
+        Compilation compilation = compile(
+                "test.LiteralConfig",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Values;",
@@ -114,7 +118,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void rangeOnANumericField() {
-        Compilation compilation = compile("test.RangeConfig",
+        Compilation compilation = compile(
+                "test.RangeConfig",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Range;",
@@ -128,7 +133,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void elementOnAContainerOfAStruct() {
-        Compilation compilation = compile("test.RoutesConfig",
+        Compilation compilation = compile(
+                "test.RoutesConfig",
                 "package test;",
                 "import java.util.List;",
                 "import de.timscho.config.annotations.TerraceConfig;",
@@ -149,7 +155,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void elementValuesOnAContainerOfAnEnum() {
-        Compilation compilation = compile("test.MethodsConfig",
+        Compilation compilation = compile(
+                "test.MethodsConfig",
                 "package test;",
                 "import java.util.List;",
                 "import de.timscho.config.annotations.TerraceConfig;",
@@ -168,7 +175,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void skipOmitsTheField() {
-        Compilation compilation = compile("test.SkipConfig",
+        Compilation compilation = compile(
+                "test.SkipConfig",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Skip;",
@@ -184,7 +192,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void unresolvedFieldTypeIsACompileError() {
-        Compilation compilation = compile("test.Unresolved",
+        Compilation compilation = compile(
+                "test.Unresolved",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "@TerraceConfig",
@@ -198,7 +207,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void rangeOnANonNumericFieldIsACompileError() {
-        Compilation compilation = compile("test.BadRange",
+        Compilation compilation = compile(
+                "test.BadRange",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Range;",
@@ -213,7 +223,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void rangeWithNoBoundSetIsACompileError() {
-        Compilation compilation = compile("test.EmptyRange",
+        Compilation compilation = compile(
+                "test.EmptyRange",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Range;",
@@ -228,7 +239,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void nestedOnANonAnnotatedTypeIsACompileError() {
-        Compilation compilation = compile("test.BadNested",
+        Compilation compilation = compile(
+                "test.BadNested",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Nested;",
@@ -246,7 +258,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void containerElementWithNoShapeIsACompileError() {
-        Compilation compilation = compile("test.BadContainer",
+        Compilation compilation = compile(
+                "test.BadContainer",
                 "package test;",
                 "import java.util.List;",
                 "import de.timscho.config.annotations.TerraceConfig;",
@@ -260,7 +273,8 @@ class TerraceConfigProcessorTest {
 
     @Test
     void conflictingShapeAnnotationsIsACompileError() {
-        Compilation compilation = compile("test.Conflicting",
+        Compilation compilation = compile(
+                "test.Conflicting",
                 "package test;",
                 "import de.timscho.config.annotations.TerraceConfig;",
                 "import de.timscho.config.annotations.Nested;",

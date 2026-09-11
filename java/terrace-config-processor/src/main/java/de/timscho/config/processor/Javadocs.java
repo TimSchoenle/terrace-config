@@ -8,8 +8,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class Javadocs {
 
-    private Javadocs() {
-    }
+    private Javadocs() {}
 
     static String summary(String docs) {
         if (docs.isEmpty()) {

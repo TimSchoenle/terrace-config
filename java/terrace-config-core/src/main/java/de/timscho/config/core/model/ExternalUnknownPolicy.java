@@ -8,7 +8,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * {@code spec/v1/FORMAT.md}.
  */
 public enum ExternalUnknownPolicy {
-
     @JsonProperty("allow")
     ALLOW,
 

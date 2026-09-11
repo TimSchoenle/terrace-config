@@ -40,6 +40,8 @@ class AppConfig {
 
     @TerraceConfig
     enum LogLevel {
-        TRACE, DEBUG, INFO
+        TRACE,
+        DEBUG,
+        INFO
     }
 }

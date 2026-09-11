@@ -1,5 +1,9 @@
 package de.timscho.config.core.refusal;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -16,10 +20,6 @@ import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * One test per {@code spec/v1/FORMAT.md} refusal, numbered as that section numbers them, plus one
@@ -53,7 +53,8 @@ class ContractValidatorTest {
                         .build())
                 .jsonSchema(de.timscho.config.core.model.JsonSchemaDocument.of(
                         java.util.Map.of("$schema", "http://json-schema.org/draft-07/schema#")))
-                .external(External.builder().unknown(ExternalUnknownPolicy.REJECT).build());
+                .external(
+                        External.builder().unknown(ExternalUnknownPolicy.REJECT).build());
     }
 
     private static LoaderVar loaderVar(String env, LoaderRole role) {
@@ -75,7 +76,8 @@ class ContractValidatorTest {
 
     @Test
     void wellFormedContractPassesEveryCheck() {
-        assertThatCode(() -> ContractValidator.validate(validContract().build())).doesNotThrowAnyException();
+        assertThatCode(() -> ContractValidator.validate(validContract().build()))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -163,7 +165,8 @@ class ContractValidatorTest {
 
     @Test
     void refusal5_duplicateExternalVariable() {
-        ExternalVar port = ExternalVar.builder().name("PORT").textForm(TextForm.TEXT).build();
+        ExternalVar port =
+                ExternalVar.builder().name("PORT").textForm(TextForm.TEXT).build();
         Contract contract = validContract()
                 .external(External.builder()
                         .env(List.of(port, port))
@@ -183,8 +186,7 @@ class ContractValidatorTest {
                         .build())
                 .build();
 
-        assertThatThrownBy(() -> ContractValidator.validate(contract))
-                .isInstanceOf(SecretWithDefaultException.class);
+        assertThatThrownBy(() -> ContractValidator.validate(contract)).isInstanceOf(SecretWithDefaultException.class);
     }
 
     @Test
@@ -195,8 +197,7 @@ class ContractValidatorTest {
                         .build())
                 .build();
 
-        assertThatThrownBy(() -> ContractValidator.validate(contract))
-                .isInstanceOf(EmptyPrefixException.class);
+        assertThatThrownBy(() -> ContractValidator.validate(contract)).isInstanceOf(EmptyPrefixException.class);
     }
 
     @Test
