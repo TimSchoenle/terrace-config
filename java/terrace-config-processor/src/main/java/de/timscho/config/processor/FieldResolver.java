@@ -42,7 +42,13 @@ final class FieldResolver {
             return null;
         }
 
-        String name = field.getSimpleName().toString();
+        // `@JsonProperty`'s value when present, exactly as `TerraceConfigProcessor.renderEnum`
+        // already reads it for an enum constant — a field renamed for Jackson's own binding is a
+        // field the loader actually reads under that name, and a key path built from the Java
+        // identifier instead would describe an environment variable nothing in the loader
+        // responds to.
+        String name =
+                JacksonReflection.jsonPropertyName(field, field.getSimpleName().toString());
         String docs = Javadocs.normalize(elements.getDocComment(field));
         String summary = Javadocs.summary(docs);
         boolean secret = field.getAnnotation(Secret.class) != null;
