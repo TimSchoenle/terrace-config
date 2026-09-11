@@ -111,7 +111,7 @@ figment = { version = "=0.10.19", features = ["toml", "env", "test"] }
 # second implementation is held to, and a meta-schema nothing validates against drifts from the
 # implementation it was written from. Default features off — they pull `reqwest` and a TLS stack
 # to resolve remote `$ref`s, and the meta-schema deliberately has none.
-jsonschema = { version = "=0.55.0", default-features = false }
+jsonschema = { version = "=0.55.1", default-features = false }
 serde = { version = "=1.0.229", features = ["derive"] }
 secrecy = { version = "=0.10.3", features = ["serde"] }
 tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
