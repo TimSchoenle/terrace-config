@@ -1,0 +1,68 @@
+# Kept in one place so every module builds against the same versions.
+# `terrace-config-annotations` must not take a dependency from here at all, by design: a service
+# annotating its configuration types should not have to pull in Jackson or a schema validator just
+# to compile against the annotations.
+[versions]
+junit = "5.11.4"
+assertj = "3.27.3"
+# Jackson 2.x, `com.fasterxml.jackson:*` — the codec `-core-jackson2` builds against; also used by
+# -spec-tck as an internal implementation detail, never exposed on a public API.
+jackson = "2.18.3"
+# Jackson 3.x, `tools.jackson.core:*` — the codec `-core-jackson3` builds against. Jackson 3
+# renamed its Maven coordinates from `com.fasterxml.jackson` (except jackson-annotations, which
+# deliberately stayed on 2.x so both majors can depend on it), so a 2.x and a 3.x Jackson artifact
+# are different artifacts entirely and can coexist on one classpath without colliding. See
+# docs/migration-progress.md, "Dual Jackson 2 / 3 support".
+jackson3 = "3.0.0"
+# 1.18.44+ is required for `lombok.jacksonized.jacksonVersion`, which lets one `@Jacksonized`
+# model emit both Jackson 2's and Jackson 3's `@JsonDeserialize`/`@JsonPOJOBuilder` at once — see
+# the same migration-progress.md section.
+lombok = "1.18.46"
+# The io.freefair.lombok Gradle *plugin*, not the lombok library above — tracks the Gradle
+# wrapper's own minor version per the plugin's compatibility policy, not the lombok library
+# version. Consumed by buildSrc/build.gradle.kts to build the shared convention plugin that
+# applies it; kept in this same catalog so there's still exactly one file to bump either version.
+lombok-plugin = "9.1.0"
+# The com.diffplug.spotless Gradle plugin. Consumed by buildSrc/build.gradle.kts the same way
+# lombok-plugin above is — added to buildSrc's own build classpath so
+# terrace-config.java-conventions can `id("com.diffplug.spotless")` with no version, one place to
+# bump. See java/README.md's "buildSrc" section.
+spotless-plugin = "8.10.2"
+# The formatter spotless's `palantirJavaFormat(...)` step runs — a separate artefact from the
+# plugin above, resolved by spotless itself at format time rather than put on any build classpath.
+# 4-space indentation, 120-column width, matches this codebase's existing style (and the disabled
+# `.idea/palantir-java-format.xml` IDE plugin config already checked in, waiting on this).
+palantir-java-format = "2.98.0"
+json-schema-validator = "1.5.5"
+spring-boot = "3.5.16"
+compile-testing = "0.21.0"
+# TOML parsing for `terrace-config-loader`'s file layer. Returns nested `Map`/`List`/scalar Java
+# types directly (`TomlParseResult.toMap()`), which is exactly the shape the loader's other
+# layers (environment, secrets directory, `_FILE` indirection) already produce.
+tomlj = "1.1.1"
+# Nullness contract vocabulary (`@NullMarked`, `@Nullable`) read by IDEs and null-checking static
+# analysis (NullAway, the Checker Framework, IntelliJ). Runtime-retained per the spec, but the
+# jar is a handful of annotation types only -- see the per-module dependency declarations for
+# which configuration (`implementation` vs `compileOnly`) each module uses and why.
+jspecify = "1.0.1"
+# `org.jetbrains.annotations` -- `@Contract`, `@Unmodifiable`, `@Blocking`/`@NonBlocking`,
+# `@VisibleForTesting`, `@Language`, `@MagicConstant` and friends: the parts of IntelliJ's
+# inspection vocabulary jspecify doesn't cover. Nullness itself is jspecify's job in this
+# codebase, not this library's -- see java/README.md's null-safety section. CLASS retention
+# (confirmed against the library's own source), so every module takes it `compileOnly`: it can
+# never be required at runtime, not even reflectively.
+jetbrains-annotations = "26.1.0"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-databind-v3 = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson3" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+compile-testing = { module = "com.google.testing.compile:compile-testing", version.ref = "compile-testing" }
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter", version.ref = "spring-boot" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }

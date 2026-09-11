@@ -72,7 +72,7 @@ fields are derived from both:
 | `schema.loader[]` | which variables the loader itself reads |
 
 The Rust reference implementation is tier 3 against itself, which is what
-[`tests/spec.rs`](../../tests/spec.rs) checks. Do not expect to reach it from another language, and
+[`tests/spec.rs`](../../rust/tests/spec.rs) checks. Do not expect to reach it from another language, and
 do not treat failing to as a defect.
 
 ## The corpus
@@ -128,7 +128,7 @@ breaking months before there is a second implementation's document to vendor.
 The reference implementation checks itself on every test run:
 
 ```bash
-cargo test --all-features --test spec
+cargo test --all-features --test spec --manifest-path rust/Cargo.toml
 ```
 
 Four checks, failing for different reasons. Two validate what the crate renders *now* against the
@@ -139,7 +139,7 @@ corpus alone cannot catch: an expectation stored while wrong. One compares the t
 When a rendering changes on purpose:
 
 ```bash
-TERRACE_SPEC_BLESS=1 cargo test --all-features --test spec
+TERRACE_SPEC_BLESS=1 cargo test --all-features --test spec --manifest-path rust/Cargo.toml
 ```
 
 Then read the diff. That diff is the change every other implementation now has to match, and it

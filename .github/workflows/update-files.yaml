@@ -51,13 +51,13 @@ jobs:
       # needs, and one toolchain fewer to install.
       - name: Resolve both lockfiles
         run: |
-          cargo fetch
-          cargo fetch --manifest-path fuzz/Cargo.toml
+          cargo fetch --manifest-path rust/Cargo.toml
+          cargo fetch --manifest-path rust/fuzz/Cargo.toml
 
       - name: Commit and push if changed
         id: auto-commit
         uses: TimSchoenle/actions/actions/common/commit-changes@cf936b448984595778c82c079af93d0bb5d49297 # tag=actions-common-commit-changes-v1.5.1
         with:
           commit_message: 'build: update lockfiles'
-          file_pattern: 'Cargo.lock fuzz/Cargo.lock'
+          file_pattern: 'rust/Cargo.lock rust/fuzz/Cargo.lock'
           token: ${{ steps.generate_token.outputs.token }}

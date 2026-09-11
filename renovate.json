@@ -13,8 +13,15 @@
     },
     {
       "description": "`fuzz/` is a separate workspace whose lockfile only ever backs a local fuzzing run. Bumps there are grouped so they cost one pull request rather than one per crate.",
-      "matchFileNames": ["fuzz/Cargo.toml"],
+      "matchFileNames": ["rust/fuzz/Cargo.toml"],
       "groupName": "fuzz harness dependencies"
+    },
+    {
+      "description": "Gradle support for the Java implementations under `java/` (build tool switched from the originally chosen Maven this session). Test-scoped dependencies are grouped the way `fuzz/` is above, so a JUnit/AssertJ bump costs one pull request rather than one per artefact.",
+      "matchManagers": ["gradle"],
+      "matchFileNames": ["java/**/build.gradle.kts", "java/gradle/libs.versions.toml"],
+      "matchDepTypes": ["test"],
+      "groupName": "java test dependencies"
     }
   ]
 }

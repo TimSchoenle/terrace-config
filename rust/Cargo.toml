@@ -1,0 +1,175 @@
+# The macro crate is a member rather than a workspace of its own: it is version-locked to this
+# one, so `cargo fmt --all`, `cargo clippy --workspace` and a single `Cargo.lock` covering both
+# is exactly the coupling that already exists. (`fuzz/` is the opposite case — see its manifest.)
+[workspace]
+members = ["macros"]
+
+[package]
+name = "terrace-config"
+version = "0.12.0"
+edition = "2024"
+authors = ["Tim Schönle"]
+license = "MIT"
+description = "Layered figment configuration that survives mounted-secret rotation."
+repository = "https://github.com/TimSchoenle/terrace-config"
+readme = "README.md"
+keywords = ["configuration", "figment", "kubernetes", "secrets", "hot-reload"]
+categories = ["config"]
+rust-version = "1.94"
+# Distributed as a git dependency. `publish = false` prevents an accidental `cargo publish`
+# while leaving the name reservable on crates.io.
+publish = false
+
+# Two feature sets, because the two halves have entirely different dependency weight and
+# entirely different audiences.
+#
+# `loader` is the crate's name-sake: the layered figment, its three providers, and the
+# `Loaded`/`Sources` pair. It costs `figment`.
+#
+# `reload` is a supervisor that rebuilds a runtime when files change. **It does not depend on
+# `loader`, and must not be made to.** It is useful to anyone with a
+# `Fn(Arc<C>, CancellationToken) -> Future` and a way to detect change, regardless of how they
+# load configuration; requiring figment would shrink its audience for no benefit. The one line
+# joining the halves is `impl Source for Sources`, which exists only when both are on.
+#
+# The split is load-bearing in the other direction too: a service that only reads a config file
+# at boot has no reason to link tokio, notify and tracing, and with `default-features = false`
+# it does not.
+[features]
+default = ["loader"]
+loader = ["dep:figment", "dep:serde"]
+# `schema` is an *add-on to* `loader`, not a third independent half. Every spelling it reports is
+# derived from a `Dialect`, and the defaults column is read out of a serialised figment `Value`;
+# there is no audience for it that is not already loading configuration this way.
+#
+# `serde/derive` is pulled in here rather than in `loader` on purpose: the loader itself only
+# needs `DeserializeOwned` as a bound, and a service that loads configuration at boot has no
+# reason to compile `serde_derive` on this crate's account.
+schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros"]
+# `schema-cli` is the generator every consumer of `schema` was writing by hand: the `--format`
+# vocabulary, the argument parsing, the dispatch across the six renderings, and the two readers
+# that check a built image against what was generated. It costs no dependency `schema` did not
+# already pull — it is a feature so that a service which links `schema` to render a table at
+# runtime does not also compile an argument parser it will never call.
+schema-cli = ["schema"]
+# `testing` is an add-on to `loader` in the same way `schema` is, and for the same reason: every
+# affordance it has is one of the loader's layers — a secrets directory, TOML fragments, `_FILE`
+# indirection — and every name it writes is derived from the loader's own `Dialect`. It belongs in
+# a consumer's `[dev-dependencies]`; it is deliberately **not** part of `full`, so that a service
+# asking for everything the crate does at runtime does not link a test harness.
+#
+# `figment/test` supplies the process-wide lock, the temporary directory and the save/restore of
+# the environment. `std::env::set_var` is `unsafe` in edition 2024 and this crate forbids unsafe
+# code, so `figment::Jail` is not a convenience here — it is the only way in.
+#
+# `tokio?/rt` is weak on purpose: it reads as "if tokio is being compiled anyway, add `rt`", which
+# is what `Jail::block_on` needs, without `testing` pulling tokio in for a consumer who does not
+# use `reload`. The `reload` feature itself asks tokio for `macros`, `sync` and `time` only,
+# because the supervisor runs on the caller's runtime rather than building one.
+testing = ["loader", "figment/test", "tokio?/rt"]
+# `explain` is the third add-on to `loader`, and the only feature in this manifest that costs no
+# dependency at all. It is a feature anyway, for the reason the rest of the crate is split: a
+# service that loads its configuration and never reports on it should not carry the reporting.
+# What it carries is not trivial — a second walk of every layer, a `Display` over all of it, and
+# the strings that render it — and it is dead weight in an image that will never print one.
+#
+# Unlike `testing`, it *is* part of `full`: printing where a value came from is something a
+# service does at runtime, in the log it was already writing at boot.
+explain = ["loader"]
+reload = [
+    "dep:notify",
+    "dep:notify-debouncer-full",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:tracing",
+]
+full = ["loader", "reload", "schema", "schema-cli", "explain"]
+
+[dependencies]
+thiserror = "2"
+
+# --- loader ---
+figment = { version = "0.10", features = ["toml", "env"], optional = true }
+serde = { version = "1", optional = true }
+
+# --- schema ---
+# `=`, not `^`: the derive expands to struct literals of `terrace_config::schema` types, so the
+# two crates are one artefact and a version skew between them is a compile error at best.
+terrace-config-macros = { version = "0.12.0", path = "macros", optional = true }
+serde_json = { version = "1", optional = true }
+
+# --- reload ---
+notify = { version = "8.2", optional = true }
+notify-debouncer-full = { version = "0.7", optional = true }
+tokio = { version = "1.43", features = ["macros", "sync", "time"], optional = true }
+tokio-util = { version = "0.7", optional = true }
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]
+figment = { version = "=0.10.19", features = ["toml", "env", "test"] }
+# The spec conformance suite in `tests/spec.rs`: `spec/v1/contract.schema.json` is the document a
+# second implementation is held to, and a meta-schema nothing validates against drifts from the
+# implementation it was written from. Default features off — they pull `reqwest` and a TLS stack
+# to resolve remote `$ref`s, and the meta-schema deliberately has none.
+jsonschema = { version = "=0.55.0", default-features = false }
+serde = { version = "=1.0.229", features = ["derive"] }
+secrecy = { version = "=0.10.3", features = ["serde"] }
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
+tokio-util = "=0.7.19"
+
+# Declared on the workspace and inherited by both members, so the macro crate — which writes the
+# code every consumer compiles — cannot be held to a looser standard than the crate it writes it
+# for.
+[lints]
+workspace = true
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+# Covers the crate root, every module, every exported item, and every public struct field. That
+# makes `rustdoc::missing_crate_level_docs` redundant, so it is absent below.
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+# `#[expect(…, reason = "…")]`, never a bare `#[allow(…)]`: an `allow` goes on silently
+# forever, an `expect` warns the moment its claim stops holding.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+multiple_crate_versions = "allow"
+# Both are already in `pedantic`. Named again so the next reader knows they are deliberate
+# rather than swept in with the group, and so dropping `pedantic` would not drop them.
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+# An identifier written outside backticks renders as prose and stops being searchable.
+doc_markdown = "warn"
+# The missing blank line after the summary, which turns the whole comment into the index entry.
+too_long_first_doc_paragraph = "warn"
+doc_link_with_quotes = "warn"
+doc_broken_link = "warn"
+doc_include_without_cfg = "warn"
+must_use_candidate = "allow"
+
+[workspace.lints.rustdoc]
+# A broken intra-doc link renders as literal `[`Foo`]` text — invisible to anyone reading the
+# rendered page, and this crate's doc comments are the artefact being reused.
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+unescaped_backticks = "warn"
+
+# The shape a documentation job takes, kept compiling by `cargo clippy --all-targets` rather
+# than by a README that says what it used to look like.
+[[example]]
+name = "config-schema"
+required-features = ["schema-cli"]
+
+# The other half of the crate: a service that actually boots on this loader, rather than one that
+# only describes it. `tests/example_service.rs` includes `examples/service/config.rs` by path and
+# runs it through `testing::Harness`, so this is kept correct by a real assertion, not merely
+# compiling.
+[[example]]
+name = "service"
+required-features = ["loader"]

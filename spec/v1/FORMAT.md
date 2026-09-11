@@ -19,7 +19,7 @@ schema disagree about whether a document is well-formed, the schema is wrong and
 but a consumer may rely on the schema, so the fix is a spec change, not a reading.
 
 [rustdoc]: https://docs.rs/terrace-config
-[docs/CONTRACT.md]: ../../docs/CONTRACT.md
+[docs/CONTRACT.md]: ../../rust/docs/CONTRACT.md
 
 ## Conventions
 

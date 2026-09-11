@@ -54,7 +54,7 @@ readable while consumers move.
 |---|---|
 | writing a consumer — a chart gate, a deployment check | [`v1/FORMAT.md`](v1/FORMAT.md), especially *Reading a container* and *Reading a variable* |
 | writing a producer in another language | [`v1/CONFORMANCE.md`](v1/CONFORMANCE.md) first, then the corpus, then `FORMAT.md` |
-| using the Rust implementation | [`../docs/CONTRACT.md`](../docs/CONTRACT.md) |
+| using the Rust implementation | [`../rust/docs/CONTRACT.md`](../rust/docs/CONTRACT.md) |
 | validating a document you were handed | [`v1/contract.schema.json`](v1/contract.schema.json) |
 
 ## Using the meta-schema
