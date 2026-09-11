@@ -16,4 +16,7 @@ dependencies {
     // below. Version comes from the same catalog every module's own dependencies use — see
     // settings.gradle.kts in this directory for how buildSrc reaches that file.
     implementation("io.freefair.gradle:lombok-plugin:${libs.versions.lombok.plugin.get()}")
+    // The plugin artefact backing `id("com.diffplug.spotless")` in terrace-config.java-conventions
+    // below, same reasoning.
+    implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.plugin.get()}")
 }

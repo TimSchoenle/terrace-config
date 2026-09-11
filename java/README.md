@@ -205,6 +205,30 @@ string-keyed `VersionCatalogsExtension` lookup instead (`libs.findLibrary("...")
 `libs.findVersion("...")`); ordinary module `build.gradle.kts` files keep using the type-safe
 accessors as before.
 
+## Formatting
+
+Every module gets [`com.diffplug.spotless`](https://plugins.gradle.org/plugin/com.diffplug.spotless)
+from `terrace-config.java-conventions` — the same "one place, every module" wiring as the Java
+toolchain and test dependencies above, not something left to each contributor's own IDE settings.
+
+- **`palantirJavaFormat`**, not `googleJavaFormat`: it keeps 4-space indentation and a 120-column
+  width, what every file under `java/` already used by hand, where google-java-format would force
+  2-space/100-column and reformat the whole tree away from its existing style. The version comes
+  from `gradle/libs.versions.toml`'s `palantir-java-format` entry, resolved by Spotless itself at
+  format time rather than put on any module's own classpath. Matches
+  `.idea/palantir-java-format.xml`, the IntelliJ side of the same formatter.
+- **`formatAnnotations()`** keeps a `TYPE_USE` annotation (jspecify's `@Nullable`, see
+  "Null-safety" below) inline on the field/parameter it types, rather than pushed onto its own line
+  the way a declaration annotation like `@Override` would be — the one case a plain
+  `palantirJavaFormat()` call gets wrong on its own.
+- **`importOrder("java", "javax", "", "de.timscho")`**: the JDK first, then every third-party
+  import together alphabetically (Jackson, Lombok, jspecify, JetBrains, ...), then this codebase's
+  own `de.timscho.*` packages last — one canonical order instead of the ad-hoc per-file grouping
+  that predates this setup. `removeUnusedImports()` runs alongside it.
+- **Enforced in CI** (`./gradlew spotlessCheck`, in the same step as `test` in `.github/workflows/ci.yml`'s
+  `java` job) rather than only applied locally. Run `./gradlew spotlessApply` to fix violations —
+  Spotless reports the exact diff `spotlessCheck` would otherwise fail on.
+
 ## Lombok
 
 The [`io.freefair.lombok`](https://plugins.gradle.org/plugin/io.freefair.lombok) Gradle plugin,
