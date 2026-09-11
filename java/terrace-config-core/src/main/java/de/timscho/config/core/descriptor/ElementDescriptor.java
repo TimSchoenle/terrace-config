@@ -2,6 +2,8 @@ package de.timscho.config.core.descriptor;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * What a container-typed key's element looks like, one level down from {@link KeyDescriptor}. At
  * most one of {@code values} and {@code nestedKeys} is populated; {@code typeName} is always
@@ -17,6 +19,6 @@ import java.util.List;
 public record ElementDescriptor(
         String typeName,
         List<String> values,
-        RangeConstraint range,
+        @Nullable RangeConstraint range,
         List<KeyDescriptor> nestedKeys) {
 }

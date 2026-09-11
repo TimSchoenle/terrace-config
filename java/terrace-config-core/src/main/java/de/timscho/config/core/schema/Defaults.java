@@ -8,6 +8,7 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fills in each key's observed default from an already-assembled value — a port of the Rust
@@ -62,7 +63,7 @@ public class Defaults {
     }
 
     /** The value at a dotted path, or {@code null} for one {@code root} does not carry — see {@link #containsPath}. */
-    private static Object find(Map<String, Object> root, String path) {
+    private static @Nullable Object find(Map<String, Object> root, String path) {
         Object current = root;
         for (String segment : path.split("\\.")) {
             if (!(current instanceof Map<?, ?> map) || !map.containsKey(segment)) {
@@ -90,7 +91,7 @@ public class Defaults {
      * A default value as a table would show it, or {@code null} for one that means "absent" — an
      * explicit null and a missing key render the same way, which is what they mean to an operator.
      */
-    private static String renderValue(Object value, int depth) {
+    private static @Nullable String renderValue(@Nullable Object value, int depth) {
         if (depth > MAX_DEPTH) {
             return "\u2026";
         }

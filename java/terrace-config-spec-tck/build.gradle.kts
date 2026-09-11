@@ -16,4 +16,7 @@ plugins {
 dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.json.schema.validator)
+    // jspecify's own guidance, not `compileOnly` — see gradle/libs.versions.toml and
+    // terrace-config-annotations/build.gradle.kts for the one deliberate exception to it.
+    implementation(libs.jspecify)
 }

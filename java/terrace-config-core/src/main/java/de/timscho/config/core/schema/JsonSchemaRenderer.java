@@ -11,6 +11,7 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The JSON Schema rendering: what an editor or a Helm chart validates a rendered document
@@ -152,7 +153,7 @@ public class JsonSchemaRenderer {
     }
 
     /** The {@code description} for a key: its comment, and what its default means. */
-    private static String description(Key key, JsonSchemaOptions options) {
+    private static @Nullable String description(Key key, JsonSchemaOptions options) {
         String docs = options.docs().of(key.getDocs());
         String note = key.getNote() != null ? "Default: " + key.getNote() + "." : null;
         if (docs != null && note != null) {

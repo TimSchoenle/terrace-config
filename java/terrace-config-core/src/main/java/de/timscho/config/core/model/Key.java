@@ -7,9 +7,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One configuration key, in every spelling that can supply it — {@code
@@ -34,25 +34,23 @@ import lombok.extern.jackson.Jacksonized;
 public class Key {
 
     /** The document path, e.g. {@code csp.cloudflare.turnstile}. Unique across {@code keys}. */
-    @NonNull
     String path;
 
     /** The variable supplying it directly. Null means no variable names it; see {@link #unreachable}. */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    String env;
+    @Nullable String env;
 
     /** The variable naming a file that holds it. */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     @JsonProperty("env_file")
-    String envFile;
+    @Nullable String envFile;
 
     /** The file name inside the secrets directory that supplies it. */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     @JsonProperty("secrets_file")
-    String secretsFile;
+    @Nullable String secretsFile;
 
     /** Prose describing the key. Empty when there was none. Markdown; the first paragraph is the summary. */
-    @NonNull
     @Builder.Default
     String docs = "";
 
@@ -62,10 +60,9 @@ public class Key {
      * value, never this.
      */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    String ty;
+    @Nullable String ty;
 
     /** The fixed set of values the key accepts. Empty when the key is not a choice. */
-    @NonNull
     @Builder.Default
     List<String> values = List.of();
 
@@ -74,7 +71,7 @@ public class Key {
      * no check is possible; a consumer must not invent one.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    Map<String, Object> constraint;
+    @Nullable Map<String, Object> constraint;
 
     /**
      * What the characters of an environment variable must be, before anything parses them.
@@ -82,41 +79,36 @@ public class Key {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonProperty("text_constraint")
-    Map<String, Object> textConstraint;
+    @Nullable Map<String, Object> textConstraint;
 
-    @NonNull
     @JsonProperty("text_form")
     TextForm textForm;
 
     /** Other document spellings of this key. A file using one loads, so a consumer must accept them. */
-    @NonNull
     @Builder.Default
     List<String> aliases = List.of();
 
     /** The environment spellings of {@link #aliases}, derived by the producer. */
-    @NonNull
     @Builder.Default
     @JsonProperty("env_aliases")
     List<String> envAliases = List.of();
 
-    @NonNull
     @Builder.Default
     @JsonProperty("env_file_aliases")
     List<String> envFileAliases = List.of();
 
-    @NonNull
     @Builder.Default
     @JsonProperty("secrets_file_aliases")
     List<String> secretsFileAliases = List.of();
 
     /** Why no environment variable is published, required exactly when {@link #env} is null. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    UnreachableReason unreachable;
+    @Nullable UnreachableReason unreachable;
 
     /** The observed default, rendered for display. Null when the key has none. {@code <redacted>} for a secret. */
     @JsonProperty("default")
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    String defaultText;
+    @Nullable String defaultText;
 
     /**
      * The same default as {@link #defaultText}, as a value rather than as text. Null when the
@@ -125,11 +117,11 @@ public class Key {
      */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     @JsonProperty("default_value")
-    Object defaultValue;
+    @Nullable Object defaultValue;
 
     /** Prose qualifying the default, e.g. {@code permanent} for a zero that means no expiry. */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    String note;
+    @Nullable String note;
 
     /** Whether some layer must supply the key. Not JSON Schema's {@code required}. */
     boolean required;

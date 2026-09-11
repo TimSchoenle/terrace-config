@@ -21,6 +21,9 @@ plugins {
 dependencies {
     compileOnly(libs.jackson.databind)
     compileOnly(libs.jackson.databind.v3)
+    // jspecify's own guidance, not `compileOnly` — see gradle/libs.versions.toml and
+    // terrace-config-annotations/build.gradle.kts for the one deliberate exception to it.
+    implementation(libs.jspecify)
 }
 
 // Test sources reflectively load the Lombok-generated `@JsonDeserialize`/`@JsonInclude` etc.

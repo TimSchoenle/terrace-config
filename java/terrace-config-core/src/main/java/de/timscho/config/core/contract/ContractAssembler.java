@@ -17,6 +17,7 @@ import de.timscho.config.core.refusal.ContractValidator;
 import de.timscho.config.core.schema.JsonSchemaOptions;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Combines a built {@link Schema} with an {@link App} and a {@link Producer} into a full
@@ -94,7 +95,9 @@ public class ContractAssembler {
      * applied here to a hand-declared {@link ExternalVar}. {@code null} means unconstrained: a
      * type this module does not recognise, published as an unchecked existence-only declaration.
      */
-    private static Map<String, Object> deriveConstraint(String ty, List<String> values) {
+    // Fully qualified to avoid colliding with this file's own `Contract` (the model type) import.
+    @org.jetbrains.annotations.Contract(pure = true)
+    private static @Nullable Map<String, Object> deriveConstraint(@Nullable String ty, List<String> values) {
         if (!values.isEmpty()) {
             Map<String, Object> schema = new TreeMap<>();
             schema.put("type", "string");

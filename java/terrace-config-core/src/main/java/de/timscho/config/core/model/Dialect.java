@@ -3,7 +3,6 @@ package de.timscho.config.core.model;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
@@ -24,16 +23,13 @@ public class Dialect {
      * prefixless loader cannot tell its own namespace from the machine's, and every gate in
      * {@code spec/v1/FORMAT.md} rests on that distinction.
      */
-    @NonNull
     String prefix;
 
     /** What separates path segments in an environment spelling, e.g. {@code __}. */
-    @NonNull
     @JsonProperty("nesting_separator")
     String nestingSeparator;
 
     /** What marks a variable as naming a file rather than holding a value, e.g. {@code _FILE}. */
-    @NonNull
     @JsonProperty("indirection_suffix")
     String indirectionSuffix;
 }

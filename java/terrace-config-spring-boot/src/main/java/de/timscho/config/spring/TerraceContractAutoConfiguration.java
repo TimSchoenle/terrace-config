@@ -49,17 +49,24 @@ public class TerraceContractAutoConfiguration {
      */
     @Bean
     public Contract terraceContract(TerraceContractProperties properties, Environment environment) {
-        TypeDescriptor descriptor = loadDescriptor(properties.getType());
+        String type = properties.getType();
+        if (type == null) {
+            // Unreachable in practice: `@ConditionalOnProperty` above already gates this whole
+            // bean on `terrace.contract.type` being set.
+            throw new IllegalStateException("terrace.contract.type is required but was null.");
+        }
+        TypeDescriptor descriptor = loadDescriptor(type);
 
-        String appName = properties.getAppName() != null
-                ? properties.getAppName()
+        String configuredAppName = properties.getAppName();
+        String appName = configuredAppName != null
+                ? configuredAppName
                 : environment.getProperty("spring.application.name", "application");
         App app = App.builder().name(appName).version(properties.getAppVersion()).build();
 
         String prefix = properties.getEnvPrefix();
         if (prefix == null || prefix.isEmpty()) {
             throw new IllegalStateException(
-                    "terrace.contract.type is set to " + properties.getType()
+                    "terrace.contract.type is set to " + type
                             + ", but terrace.contract.env-prefix is not; a contract needs an "
                             + "environment namespace to describe.");
         }

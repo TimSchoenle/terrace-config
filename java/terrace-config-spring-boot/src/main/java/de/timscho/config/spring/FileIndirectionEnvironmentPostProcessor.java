@@ -21,6 +21,8 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.env.StandardEnvironment;
 
+import org.jetbrains.annotations.Blocking;
+
 /**
  * The one layer Spring's own binder does not already give it: {@code <NAME>_FILE=/path} naming a
  * file whose contents supply the key {@code <NAME>} would otherwise have named directly —
@@ -91,6 +93,7 @@ public final class FileIndirectionEnvironmentPostProcessor implements Environmen
      * \n}, never spaces or tabs, since a trailing space can be a real character of a real
      * credential.
      */
+    @Blocking
     private static String readValue(String envName, Path path) {
         byte[] bytes;
         try {

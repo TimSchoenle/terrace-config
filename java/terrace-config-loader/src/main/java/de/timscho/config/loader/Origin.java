@@ -8,6 +8,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.experimental.Accessors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One key, and every layer that supplied it.
@@ -53,7 +54,7 @@ public final class Origin {
      * for an empty list, which cannot happen in practice — an entry exists because a layer wrote
      * into it.
      */
-    static Origin fromSources(String key, List<Layer> sources) {
+    static @Nullable Origin fromSources(String key, List<Layer> sources) {
         if (sources.isEmpty()) {
             return null;
         }

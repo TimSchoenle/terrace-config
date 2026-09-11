@@ -6,6 +6,7 @@ import java.util.Map;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The filesystem inputs a config was assembled from, and a fingerprint of the result — the Java
@@ -53,7 +54,7 @@ public final class Sources {
         return !sameValue(fingerprint, previous.fingerprint);
     }
 
-    private static boolean sameValue(Object a, Object b) {
+    private static boolean sameValue(@Nullable Object a, @Nullable Object b) {
         if (a instanceof Double left && b instanceof Double right) {
             return Double.doubleToLongBits(left) == Double.doubleToLongBits(right);
         }

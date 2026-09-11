@@ -1,8 +1,8 @@
 // Applied by every module under java/ (directly, or transitively through
 // terrace-config.lombok-conventions). Replaces what used to be the root java/build.gradle.kts's
-// `subprojects { ... }` block: same Java 25 toolchain, UTF-8 encoding, and JUnit 5 + AssertJ test
-// dependencies for every module, just expressed once here instead of via cross-project
-// configuration. See java/README.md's "buildSrc" section.
+// `subprojects { ... }` block: same Java 25 toolchain, UTF-8 encoding, JUnit 5 + AssertJ test
+// dependencies, and the JetBrains annotations vocabulary, for every module, just expressed once
+// here instead of via cross-project configuration. See java/README.md's "buildSrc" section.
 import org.gradle.api.artifacts.VersionCatalogsExtension
 
 plugins {
@@ -38,6 +38,17 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(libs.findLibrary("assertj-core").get())
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+// `@Contract`, `@Unmodifiable`, `@Blocking`/`@NonBlocking`, `@VisibleForTesting` and the rest of
+// the IntelliJ inspection vocabulary jspecify doesn't cover -- see the catalog entry in
+// gradle/libs.versions.toml for why every module, including terrace-config-annotations, takes
+// this uniformly and only as `compileOnly`: CLASS retention means it is never a runtime
+// requirement, so unlike jspecify (see each module's own dependencies block) there is no
+// per-module decision to make here.
+dependencies {
+    compileOnly(libs.findLibrary("jetbrains-annotations").get())
+    testCompileOnly(libs.findLibrary("jetbrains-annotations").get())
 }
 
 tasks.test {

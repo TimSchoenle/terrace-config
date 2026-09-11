@@ -4,7 +4,6 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
@@ -19,15 +18,12 @@ import lombok.extern.jackson.Jacksonized;
 @JsonPropertyOrder({"env", "ignore", "unknown"})
 public class External {
 
-    @NonNull
     @Builder.Default
     List<ExternalVar> env = List.of();
 
     /** Names nobody owns. Only a trailing {@code *} is a wildcard. */
-    @NonNull
     @Builder.Default
     List<String> ignore = List.of();
 
-    @NonNull
     ExternalUnknownPolicy unknown;
 }

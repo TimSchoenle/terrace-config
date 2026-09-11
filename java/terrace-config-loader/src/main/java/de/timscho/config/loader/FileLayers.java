@@ -11,6 +11,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.experimental.Accessors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The file-backed layers, collected together so the shadowing check can see all of them at once.
@@ -21,7 +22,7 @@ final class FileLayers {
 
     /** The secrets-directory layer, or {@code null} if none was configured — {@link Explanation}'s own use. */
     @Getter(AccessLevel.PACKAGE)
-    private final SecretsDir secrets;
+    private final @Nullable SecretsDir secrets;
 
     private final FileSuffixEnv files;
 

@@ -7,9 +7,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A variable this image reads that is nobody's configuration key — {@code
@@ -26,38 +26,34 @@ import lombok.extern.jackson.Jacksonized;
 })
 public class ExternalVar {
 
-    @NonNull
     String name;
 
     /** What reads it — a toolchain, a base image, a library. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    String owner;
+    @Nullable String owner;
 
-    @NonNull
     @Builder.Default
     String docs = "";
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    String ty;
+    @Nullable String ty;
 
-    @NonNull
     @Builder.Default
     List<String> values = List.of();
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    Map<String, Object> constraint;
+    @Nullable Map<String, Object> constraint;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonProperty("text_constraint")
-    Map<String, Object> textConstraint;
+    @Nullable Map<String, Object> textConstraint;
 
-    @NonNull
     @JsonProperty("text_form")
     TextForm textForm;
 
     @JsonProperty("default")
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    String defaultText;
+    @Nullable String defaultText;
 
     boolean required;
 

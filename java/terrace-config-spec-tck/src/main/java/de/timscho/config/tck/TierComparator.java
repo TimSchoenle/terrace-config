@@ -7,6 +7,8 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Compares a produced document against a stored corpus case, at the level the claimed tier
  * covers — no more.
@@ -77,7 +79,7 @@ public final class TierComparator {
         }
     }
 
-    private static JsonNode findKey(JsonNode document, String path) {
+    private static @Nullable JsonNode findKey(JsonNode document, String path) {
         for (JsonNode key : document.path("schema").path("keys")) {
             if (path.equals(key.path("path").asText(null))) {
                 return key;

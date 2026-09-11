@@ -6,6 +6,8 @@ import java.util.List;
 
 import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * The result of asking whether a field's declared type is one of the containers this processor
  * looks through — {@code Optional}, {@code List}, {@code Set} or {@code Map} — and, if so, what
@@ -18,9 +20,9 @@ final class ContainerShape {
     static final ContainerShape NONE = new ContainerShape(ContainerKind.NONE, null);
 
     private final ContainerKind kind;
-    private final TypeMirror element;
+    private final @Nullable TypeMirror element;
 
-    private ContainerShape(ContainerKind kind, TypeMirror element) {
+    private ContainerShape(ContainerKind kind, @Nullable TypeMirror element) {
         this.kind = kind;
         this.element = element;
     }
@@ -29,7 +31,7 @@ final class ContainerShape {
         return kind;
     }
 
-    TypeMirror element() {
+    @Nullable TypeMirror element() {
         return element;
     }
 

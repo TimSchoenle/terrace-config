@@ -51,7 +51,8 @@ own suite uses a `MockEnvironment` from `spring-test` rather than a real `Spring
 
 ## Conventions
 
-No streams (loops), Lombok for the model classes, minimal dependencies, and
+No streams (loops), Lombok for the model classes, minimal dependencies, `@NullMarked` packages
+with jspecify `@Nullable` for genuine absence (see "Null-safety" below), and
 deterministic-by-construction rendering — ordered collections and explicit property order rather
 than relying on incidental iteration order. Comments explain why, not what.
 `terrace-config-spec-tck` and `terrace-config-core` already follow all of them.
@@ -183,9 +184,10 @@ by hand) that compiles two *convention plugins* under
 ID, to every module below it:
 
 - **`terrace-config.java-conventions`** — the Java 25 toolchain, UTF-8 source/Javadoc encoding,
-  and the JUnit 5 + AssertJ test dependencies every module gets. Applied by all six modules,
-  either directly (`terrace-config-annotations`, `terrace-config-spec-tck`) or transitively
-  through the plugin below.
+  the JUnit 5 + AssertJ test dependencies, and the `org.jetbrains.annotations` `compileOnly`
+  dependency (see "Null-safety" below) every module gets. Applied by all eight modules, either
+  directly (`terrace-config-annotations`, `terrace-config-spec-tck`) or transitively through the
+  plugin below.
 - **`terrace-config.lombok-conventions`** — the above, plus `io.freefair.lombok` pre-configured
   with the version from `gradle/libs.versions.toml`. Applied by `terrace-config-core`,
   `terrace-config-processor`, `terrace-config-loader` and `terrace-config-spring-boot`.
@@ -228,6 +230,64 @@ picks up by walking up from each source file's directory (`config.stopBubbling =
 walk at `java/`, so the rest of the repository is unaffected). IntelliJ/RustRover need the Lombok
 plugin installed and annotation processing enabled to display generated members while editing;
 both are already true for anyone who has opened `terrace-config-core` in this session.
+
+## Null-safety
+
+Every package under `src/main/java` (all eleven of them, across all eight modules) carries a
+`package-info.java` with `@NullMarked` (`org.jspecify.annotations`): every field, parameter and
+return type in the package is non-null unless explicitly annotated `@Nullable`. Nullness is
+jspecify's job alone in this codebase — see the next paragraph for why `org.jetbrains.annotations`
+stays out of it despite also defining `@Nullable`/`@NotNull`.
+
+- **Why jspecify, not JetBrains, for nullness.** Both libraries define nullability annotations;
+  using both for the same purpose would be redundant vocabulary for the same audience (a strict
+  reviewer's first question). jspecify is the vendor-neutral, JSR-305-successor standard
+  ([jspecify.dev](https://jspecify.dev)) that javac, IntelliJ/RustRover, the Checker Framework,
+  NullAway and Error Prone all read natively, so it is the one every module declares.
+  `org.jetbrains.annotations` still earns its own dependency (see `gradle/libs.versions.toml` and
+  `terrace-config.java-conventions.gradle.kts`) for the inspection vocabulary jspecify doesn't
+  cover: `@Contract` (used on `ContractAssembler`'s pure `deriveConstraint` helper — imported by
+  fully-qualified name there, since this codebase's own `Contract` model type would otherwise
+  collide with the annotation's simple name), and `@Blocking` (used on every method that performs
+  real file I/O: both `ContractCodec.write(Contract, Path)`/`read(Path)` copies,
+  `MetaSchemaValidator.load()`, and `FileIndirectionEnvironmentPostProcessor`'s file read).
+- **Dependency shape.** jspecify's own guidance
+  ([jspecify.dev/docs/using](https://jspecify.dev/docs/using/)) is `implementation` (or `api` under
+  `java-library`), not `compileOnly`, since its annotations carry `RUNTIME` retention and the jar
+  is tiny — every module takes it that way except `terrace-config-annotations`, which declares it
+  `compileOnly` instead as a deliberate, narrow exception to jspecify's own advice: that module's
+  entire reason to exist is costing a consumer nothing beyond the JDK (see its own
+  `build.gradle.kts`), and every type in it is a `SOURCE`-retention `@interface` anyway, where
+  `@Nullable` cannot apply to an annotation element in the first place.
+  `org.jetbrains.annotations` is `compileOnly` everywhere without exception — confirmed against the
+  library's own source, every annotation in it is `CLASS`-retention, so it is never a runtime
+  requirement, not even reflectively.
+- **Lombok interaction.** jspecify's `@Nullable` is `TYPE_USE`-only, written on the field itself
+  (`@Nullable String foo;`, not above it), so a bare field-level annotation would stop at the field
+  and never reach a Lombok-generated getter return type, builder-setter parameter, or
+  all-args-constructor parameter — the actual public API those classes expose. `java/lombok.config`
+  lists `org.jspecify.annotations.Nullable` under `lombok.copyableAnnotations` so Lombok copies it
+  onto every generated signature it belongs on.
+- **What actually ended up `@Nullable`.** Only fields/parameters/returns with a real "this can
+  genuinely be absent" story: a model field the meta-schema itself marks optional (`Key.env`,
+  `ExternalVar.owner`, `App.version`, ...), a private helper's `null`-sentinel return
+  (`SchemaAssembler`'s constraint builders, `Origin.fromSources`, `TomlLayers.fragmentKeys`), an
+  `Object.equals(Object)` override's parameter (`JsonSchemaDocument`, per the method's own
+  contract), and a Spring `@ConfigurationProperties` bean's unset-until-bound fields
+  (`TerraceContractProperties`). Two narrow, documented exceptions: (1) the four fields
+  `TerraceConfigProcessor` assigns in its overridden `init` rather than a constructor stay
+  non-null by convention, the same "initializer method" exemption NullAway grants framework
+  lifecycle methods — see that package's own `package-info.java`; (2) `lombok.NonNull` (a
+  *runtime* constructor/builder guard, an orthogonal concern to jspecify's *static* contract) has
+  been removed everywhere it previously stood in for a nullness *declaration* — a required field
+  is now non-null by the enclosing package's `@NullMarked` default alone, with no runtime
+  enforcement beyond what Jackson/the caller already provides.
+- **A correctness fix surfaced along the way.** Formalising `ContainerShape.element()` as
+  `@Nullable` (true of its type — the `NONE` sentinel constructs it with `null`) exposed a latent
+  invariant `FieldResolver.resolveContainerField` relied on silently: `element()` is only ever
+  non-null when `kind() != NONE`, which is exactly the one branch that method runs under. It now
+  asserts that explicitly (`IllegalStateException` if it's somehow not, documented as unreachable)
+  instead of leaving the guarantee implicit.
 
 ## Dual Jackson 2 / 3 support
 

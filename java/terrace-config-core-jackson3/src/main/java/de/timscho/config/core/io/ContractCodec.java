@@ -14,6 +14,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 import de.timscho.config.core.model.Contract;
 
+import org.jetbrains.annotations.Blocking;
+
 /**
  * Reads and writes a {@link Contract} as the {@code json} rendering — {@code
  * spec/v1/contract.schema.json}'s envelope, byte for byte.
@@ -46,6 +48,7 @@ public final class ContractCodec {
         return (rendered + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
+    @Blocking
     public static void write(Contract contract, Path target) {
         try {
             Files.write(target, write(contract));
@@ -58,6 +61,7 @@ public final class ContractCodec {
         return MAPPER.readValue(json, Contract.class);
     }
 
+    @Blocking
     public static Contract read(Path source) {
         try (InputStream in = Files.newInputStream(source)) {
             return MAPPER.readValue(in, Contract.class);
