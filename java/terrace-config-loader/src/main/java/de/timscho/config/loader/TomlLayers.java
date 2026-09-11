@@ -16,6 +16,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -98,7 +99,7 @@ final class TomlLayers {
      * {@link Explanation}'s own reporting, kept separate from {@link #merged()} since a report
      * has to name each file's own keys rather than the merged result.
      */
-    static List<String> fragmentKeys(Path path) {
+    static @Nullable List<String> fragmentKeys(Path path) {
         TomlParseResult result;
         try {
             result = Toml.parse(path);

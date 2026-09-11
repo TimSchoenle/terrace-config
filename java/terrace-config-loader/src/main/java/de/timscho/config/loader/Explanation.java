@@ -13,6 +13,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.experimental.Accessors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where every value {@link TerraceLoader} can see would come from — the Java equivalent of the
@@ -64,7 +65,7 @@ public final class Explanation {
     private final List<Map.Entry<Path, Fragment>> fragments;
 
     private final String secretsVar;
-    private final Path secretsDir;
+    private final @Nullable Path secretsDir;
     private final int envKeys;
     private final int secretsKeys;
     private final int indirectionKeys;

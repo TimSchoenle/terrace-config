@@ -16,6 +16,8 @@ import com.networknt.schema.SchemaValidatorsConfig;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 
+import org.jetbrains.annotations.Blocking;
+
 /**
  * Checks a document against {@code spec/v1/contract.schema.json}.
  *
@@ -39,6 +41,7 @@ public final class MetaSchemaValidator {
     }
 
     /** Loads {@code spec/v1/contract.schema.json} and compiles both entry points. */
+    @Blocking
     public static MetaSchemaValidator load() {
         return forSchema(readMetaSchema());
     }

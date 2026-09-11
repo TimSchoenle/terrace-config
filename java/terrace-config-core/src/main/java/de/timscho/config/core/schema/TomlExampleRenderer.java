@@ -10,6 +10,7 @@ import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code config.example.toml} rendering: the file an operator edits, generated rather than
@@ -134,7 +135,8 @@ public class TomlExampleRenderer {
         }
 
         if (key.isReserved()) {
-            String env = key.getEnv() != null ? key.getEnv() : "the environment";
+            String keyEnv = key.getEnv();
+            String env = keyEnv != null ? keyEnv : "the environment";
             wrapped(out, "Reserved: only " + env + " supplies this key; a file may not.");
         } else if (options.spellings()) {
             wrapped(out, spellings(key));
@@ -187,8 +189,9 @@ public class TomlExampleRenderer {
         if (key.isSecret()) {
             return tomlString(options.secretPlaceholder());
         }
-        if (key.getDefaultValue() != null) {
-            String literal = tomlLiteral(key.getDefaultValue(), 0);
+        Object defaultValue = key.getDefaultValue();
+        if (defaultValue != null) {
+            String literal = tomlLiteral(defaultValue, 0);
             if (literal != null) {
                 return literal;
             }
@@ -214,7 +217,7 @@ public class TomlExampleRenderer {
     }
 
     /** A default value as TOML, or {@code null} for one TOML cannot carry. */
-    private static String tomlLiteral(Object value, int depth) {
+    private static @Nullable String tomlLiteral(@Nullable Object value, int depth) {
         if (depth > MAX_DEPTH) {
             return null;
         }

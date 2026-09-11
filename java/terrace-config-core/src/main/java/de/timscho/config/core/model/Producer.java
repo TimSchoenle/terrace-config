@@ -2,7 +2,6 @@ package de.timscho.config.core.model;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
@@ -22,11 +21,9 @@ import lombok.extern.jackson.Jacksonized;
 public class Producer {
 
     /** The implementation, e.g. {@code terrace-config-java}. A stable identifier, not a display name. */
-    @NonNull
     String name;
 
     /** The implementation's own version. Not {@code app.version}, which versions the described service. */
-    @NonNull
     String version;
 
     /**
@@ -34,6 +31,5 @@ public class Producer {
      * {@code terrace-java}. Named rather than restated: a vocabulary describing every way a
      * binder might read a string is a language two implementations can disagree in.
      */
-    @NonNull
     String loader;
 }

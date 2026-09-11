@@ -30,6 +30,18 @@ compile-testing = "0.21.0"
 # types directly (`TomlParseResult.toMap()`), which is exactly the shape the loader's other
 # layers (environment, secrets directory, `_FILE` indirection) already produce.
 tomlj = "1.1.1"
+# Nullness contract vocabulary (`@NullMarked`, `@Nullable`) read by IDEs and null-checking static
+# analysis (NullAway, the Checker Framework, IntelliJ). Runtime-retained per the spec, but the
+# jar is a handful of annotation types only -- see the per-module dependency declarations for
+# which configuration (`implementation` vs `compileOnly`) each module uses and why.
+jspecify = "1.0.1"
+# `org.jetbrains.annotations` -- `@Contract`, `@Unmodifiable`, `@Blocking`/`@NonBlocking`,
+# `@VisibleForTesting`, `@Language`, `@MagicConstant` and friends: the parts of IntelliJ's
+# inspection vocabulary jspecify doesn't cover. Nullness itself is jspecify's job in this
+# codebase, not this library's -- see java/README.md's null-safety section. CLASS retention
+# (confirmed against the library's own source), so every module takes it `compileOnly`: it can
+# never be required at runtime, not even reflectively.
+jetbrains-annotations = "26.1.0"
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -42,3 +54,5 @@ compile-testing = { module = "com.google.testing.compile:compile-testing", versi
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter", version.ref = "spring-boot" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
 tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }

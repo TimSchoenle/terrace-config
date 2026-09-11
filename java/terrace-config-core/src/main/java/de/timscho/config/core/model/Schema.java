@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
@@ -37,14 +36,11 @@ public class Schema {
     @JsonProperty("schema_version")
     int schemaVersion;
 
-    @NonNull
     Dialect dialect;
 
-    @NonNull
     @Builder.Default
     List<LoaderVar> loader = List.of();
 
-    @NonNull
     @Builder.Default
     List<Key> keys = List.of();
 

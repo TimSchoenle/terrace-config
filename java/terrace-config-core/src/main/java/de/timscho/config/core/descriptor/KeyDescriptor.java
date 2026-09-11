@@ -2,6 +2,8 @@ package de.timscho.config.core.descriptor;
 
 import java.util.List;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * One field of a {@code @TerraceConfig}-annotated type, described independently of any dialect —
  * no environment spelling, no alias derivation, no {@code text_form}. A loader or Spring producer
@@ -37,11 +39,11 @@ public record KeyDescriptor(
         String typeName,
         ContainerKind container,
         boolean secret,
-        String note,
+        @Nullable String note,
         List<String> values,
-        RangeConstraint range,
+        @Nullable RangeConstraint range,
         List<KeyDescriptor> nestedKeys,
-        ElementDescriptor element,
+        @Nullable ElementDescriptor element,
         boolean closed) {
 
     /** Which container, if any, wraps a field's declared type. */

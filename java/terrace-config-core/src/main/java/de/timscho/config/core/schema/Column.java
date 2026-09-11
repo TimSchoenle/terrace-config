@@ -3,6 +3,7 @@ package de.timscho.config.core.schema;
 import java.util.List;
 
 import de.timscho.config.core.model.Key;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One column of the Markdown key table — ported from the Rust crate's {@code schema::markdown::Column}.
@@ -72,7 +73,10 @@ public enum Column {
             case SECRETS_FILE -> optionalCode(key.getSecretsFile());
             case DEFAULT -> renderDefault(key, true);
             case DEFAULT_VALUE -> renderDefault(key, false);
-            case NOTE -> key.getNote() == null ? "—" : cell(key.getNote());
+            case NOTE -> {
+                String note = key.getNote();
+                yield note == null ? "—" : cell(note);
+            }
             case FLAGS -> renderFlags(key);
             case REQUIRED -> yesOrDash(key.isRequired());
             case SECRET -> yesOrDash(key.isSecret());
@@ -82,8 +86,9 @@ public enum Column {
 
     private static String renderType(Key key) {
         List<String> values = key.getValues();
+        String ty = key.getTy();
         if (values.isEmpty()) {
-            return optionalCode(key.getTy());
+            return optionalCode(ty);
         }
         StringBuilder choices = new StringBuilder();
         for (String value : values) {
@@ -92,7 +97,7 @@ public enum Column {
             }
             choices.append('`').append(escape(value)).append('`');
         }
-        return key.getTy() != null ? "`" + escape(key.getTy()) + "`: " + choices : choices.toString();
+        return ty != null ? "`" + escape(ty) + "`: " + choices : choices.toString();
     }
 
     private static String renderAliases(Key key) {
@@ -111,16 +116,18 @@ public enum Column {
     }
 
     private static String renderDefault(Key key, boolean withNote) {
+        String defaultText = key.getDefaultText();
         String value;
-        if (key.getDefaultText() != null) {
-            value = "`" + escape(key.getDefaultText()) + "`";
+        if (defaultText != null) {
+            value = "`" + escape(defaultText) + "`";
         } else if (key.isRequired()) {
             value = "—";
         } else {
             value = "unset";
         }
-        if (withNote && key.getNote() != null) {
-            return value + " (" + cell(key.getNote()) + ")";
+        String note = key.getNote();
+        if (withNote && note != null) {
+            return value + " (" + cell(note) + ")";
         }
         return value;
     }
@@ -144,7 +151,7 @@ public enum Column {
     }
 
     /** A spelling as inline code, or an em dash when there is none. */
-    private static String optionalCode(String value) {
+    private static String optionalCode(@Nullable String value) {
         return value == null ? "—" : "`" + escape(value) + "`";
     }
 

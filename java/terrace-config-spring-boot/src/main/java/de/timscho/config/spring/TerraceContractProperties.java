@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The handful of things only a service itself knows, and {@link TerraceContractAutoConfiguration}
@@ -33,14 +34,14 @@ public class TerraceContractProperties {
      * generated {@code <Type>Descriptor.DESCRIPTOR} is what {@link TerraceContractAutoConfiguration}
      * looks up by reflection -- required for the auto-configuration to activate at all.
      */
-    private String type;
+    private @Nullable String type;
 
     /** The environment namespace this service's configuration lives under, e.g. {@code MYAPP_}. */
-    private String envPrefix;
+    private @Nullable String envPrefix;
 
     /** {@link de.timscho.config.core.model.App#getName()}. Defaults to {@code spring.application.name}. */
-    private String appName;
+    private @Nullable String appName;
 
     /** {@link de.timscho.config.core.model.App#getVersion()}. Omitted when unset. */
-    private String appVersion;
+    private @Nullable String appVersion;
 }

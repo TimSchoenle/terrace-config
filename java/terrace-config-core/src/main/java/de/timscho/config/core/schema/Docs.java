@@ -1,5 +1,7 @@
 package de.timscho.config.core.schema;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * How much of a key's documentation comment a rendering carries into a JSON Schema {@code
  * description} — ported from the Rust crate's {@code Docs}, which the Markdown and TOML
@@ -17,7 +19,7 @@ public enum Docs {
     FULL;
 
     /** The text this setting takes from {@code docs}, or {@code null} when there is nothing to take. */
-    public String of(String docs) {
+    public @Nullable String of(String docs) {
         String text;
         switch (this) {
             case NONE:

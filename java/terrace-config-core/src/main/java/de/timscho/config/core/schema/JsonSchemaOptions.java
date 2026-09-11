@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Value;
 import lombok.With;
 import lombok.experimental.Accessors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * How {@link JsonSchemaRenderer} renders — ported from the Rust crate's {@code JsonSchema}
@@ -30,10 +31,10 @@ public class JsonSchemaOptions {
     String metaSchema;
 
     /** The document's {@code $id}. Omitted by default. */
-    String id;
+    @Nullable String id;
 
     /** The document's {@code title}. Omitted by default. */
-    String title;
+    @Nullable String title;
 
     /** How much of each key's documentation comment becomes its {@code description}. */
     Docs docs;

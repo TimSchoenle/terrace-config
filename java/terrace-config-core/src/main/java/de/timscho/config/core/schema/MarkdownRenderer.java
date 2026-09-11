@@ -7,6 +7,7 @@ import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Markdown rendering: GitHub-flavoured tables, ready to paste into a README — a port of the
@@ -92,7 +93,7 @@ public class MarkdownRenderer {
         return out.toString();
     }
 
-    private static String optionalCode(String value) {
+    private static String optionalCode(@Nullable String value) {
         return value == null ? "—" : "`" + escape(value) + "`";
     }
 

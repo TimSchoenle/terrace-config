@@ -15,4 +15,7 @@ dependencies {
     implementation(project(":terrace-config-annotations"))
     implementation(project(":terrace-config-core"))
     testImplementation(libs.compile.testing)
+    // jspecify's own guidance, not `compileOnly` — see gradle/libs.versions.toml and
+    // terrace-config-annotations/build.gradle.kts for the one deliberate exception to it.
+    implementation(libs.jspecify)
 }

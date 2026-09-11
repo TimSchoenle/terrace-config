@@ -20,6 +20,8 @@ import de.timscho.config.annotations.TerraceConfig;
 import de.timscho.config.annotations.Values;
 import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Resolves one field of a {@code @TerraceConfig} struct to the Java source of a {@code new
  * KeyDescriptor(...)} expression, or throws {@link DescriptorException} naming the field, its
@@ -35,7 +37,7 @@ final class FieldResolver {
     }
 
     /** {@code null} means the field carries {@code @Skip} and contributes no key. */
-    String resolve(VariableElement field) {
+    @Nullable String resolve(VariableElement field) {
         if (field.getAnnotation(de.timscho.config.annotations.Skip.class) != null) {
             return null;
         }
@@ -114,6 +116,11 @@ final class FieldResolver {
     private Shape resolveContainerField(VariableElement field, ContainerShape shape) {
         Shape result = new Shape();
         TypeMirror elementType = shape.element();
+        if (elementType == null) {
+            // Unreachable in practice: `ContainerShape.of` never pairs a non-`NONE` kind (the
+            // only way to reach this method — see `resolve`) with a `null` element.
+            throw new IllegalStateException("container shape " + shape.kind() + " has no element type");
+        }
 
         if (field.getAnnotation(Nested.class) != null || field.getAnnotation(Values.class) != null) {
             throw error(field, "is a container field; use @Element/@ElementValues, not @Nested/@Values");
@@ -187,7 +194,7 @@ final class FieldResolver {
                 + CodeGen.doubleLiteral(exclMin) + ", " + CodeGen.doubleLiteral(exclMax) + ")";
     }
 
-    private static Double finiteOrNull(double value) {
+    private static @Nullable Double finiteOrNull(double value) {
         return Double.isNaN(value) ? null : value;
     }
 
@@ -215,7 +222,7 @@ final class FieldResolver {
         }
     }
 
-    private TypeElement asDeclaredElement(TypeMirror type) {
+    private @Nullable TypeElement asDeclaredElement(TypeMirror type) {
         if (!(type instanceof DeclaredType)) {
             return null;
         }
@@ -237,7 +244,7 @@ final class FieldResolver {
     }
 
     /** Reads an annotation's {@code Class} element via the standard {@link MirroredTypeException} dance. */
-    private TypeMirror mirrorOf(java.util.function.Supplier<Class<?>> access) {
+    private @Nullable TypeMirror mirrorOf(java.util.function.Supplier<Class<?>> access) {
         try {
             access.get();
             return null;

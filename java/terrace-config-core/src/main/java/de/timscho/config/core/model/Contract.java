@@ -8,7 +8,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
@@ -57,20 +56,15 @@ public class Contract {
     @Builder.Default
     int terraceContract = ENVELOPE_VERSION;
 
-    @NonNull
     Producer producer;
 
-    @NonNull
     App app;
 
-    @NonNull
     Schema schema;
 
-    @NonNull
     @JsonProperty("json_schema")
     JsonSchemaDocument jsonSchema;
 
-    @NonNull
     External external;
 
     /**

@@ -15,6 +15,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import org.jspecify.annotations.Nullable;
 
 import de.timscho.config.core.descriptor.SchemaAssembler;
 import de.timscho.config.core.descriptor.TypeDescriptor;
@@ -52,10 +53,10 @@ public final class TerraceLoader {
     private final String prefix;
 
     /** Override the variable naming the TOML layer. Defaults to {@code <PREFIX>CONFIG}. */
-    private String configVar;
+    private @Nullable String configVar;
 
     /** Override the variable naming the secrets directory. Defaults to {@code <PREFIX>SECRETS_DIR}. */
-    private String secretsDirVar;
+    private @Nullable String secretsDirVar;
 
     /** Where the TOML layer looks when the configuration variable is unset. Defaults to {@code config.toml}. */
     private Path defaultConfigPath = Path.of(DEFAULT_CONFIG_PATH);

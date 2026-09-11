@@ -3,9 +3,9 @@ package de.timscho.config.core.model;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import lombok.Builder;
-import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A variable the loader reads to decide what the layers are, rather than to fill a key —
@@ -18,16 +18,13 @@ import lombok.extern.jackson.Jacksonized;
 @JsonPropertyOrder({"env", "role", "docs", "default"})
 public class LoaderVar {
 
-    @NonNull
     String env;
 
-    @NonNull
     LoaderRole role;
 
-    @NonNull
     String docs;
 
     /** What the loader assumes when the variable is unset. Null when there is no default. */
     @JsonProperty("default")
-    String defaultValue;
+    @Nullable String defaultValue;
 }

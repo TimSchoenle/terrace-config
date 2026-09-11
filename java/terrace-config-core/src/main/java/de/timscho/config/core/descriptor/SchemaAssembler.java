@@ -16,6 +16,7 @@ import de.timscho.config.core.model.UnreachableReason;
 
 import lombok.AllArgsConstructor;
 import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link
@@ -138,7 +139,8 @@ public class SchemaAssembler {
     }
 
     /** The JSON Schema keywords this field's value must satisfy, or {@code null} if none apply. */
-    private static Map<String, Object> constraint(KeyDescriptor field, boolean container, TextForm textForm, List<String> values) {
+    private static @Nullable Map<String, Object> constraint(
+            KeyDescriptor field, boolean container, TextForm textForm, List<String> values) {
         if (container) {
             Map<String, Object> schema = new TreeMap<>();
             if (Objects.requireNonNull(field.container()) == KeyDescriptor.ContainerKind.MAP) {
@@ -155,7 +157,7 @@ public class SchemaAssembler {
         return leafConstraint(textForm, values, field.range());
     }
 
-    private static Map<String, Object> elementConstraint(ElementDescriptor element) {
+    private static @Nullable Map<String, Object> elementConstraint(@Nullable ElementDescriptor element) {
         if (element == null) {
             return null;
         }
@@ -163,7 +165,8 @@ public class SchemaAssembler {
         return leafConstraint(elementForm, element.values(), element.range());
     }
 
-    private static Map<String, Object> leafConstraint(TextForm textForm, List<String> values, RangeConstraint range) {
+    private static @Nullable Map<String, Object> leafConstraint(
+            TextForm textForm, List<String> values, @Nullable RangeConstraint range) {
         Map<String, Object> schema = new TreeMap<>();
         switch (textForm) {
             case CHOICE:
@@ -191,13 +194,13 @@ public class SchemaAssembler {
         }
     }
 
-    private static Map<String, Object> rangeOnly(RangeConstraint range) {
+    private static @Nullable Map<String, Object> rangeOnly(RangeConstraint range) {
         Map<String, Object> schema = new TreeMap<>();
         addRange(schema, range);
         return schema.isEmpty() ? null : schema;
     }
 
-    private static void addRange(Map<String, Object> schema, RangeConstraint range) {
+    private static void addRange(Map<String, Object> schema, @Nullable RangeConstraint range) {
         if (range == null) {
             return;
         }
@@ -232,7 +235,7 @@ public class SchemaAssembler {
     }
 
     /** The key a case-folding, separator-splitting environment reader makes of {@code name}. */
-    private static String envLayerKey(Dialect dialect, String name) {
+    private static @Nullable String envLayerKey(Dialect dialect, String name) {
         String trimmed = name.trim();
         if (!trimmed.startsWith(dialect.getPrefix())) {
             return null;
@@ -248,7 +251,7 @@ public class SchemaAssembler {
     }
 
     /** The key an indirection variable names, if {@code name} is one, or {@code null}. */
-    private static String indirectionTarget(Dialect dialect, String name) {
+    private static @Nullable String indirectionTarget(Dialect dialect, String name) {
         if (!name.startsWith(dialect.getPrefix())) {
             return null;
         }
@@ -260,13 +263,13 @@ public class SchemaAssembler {
         return key.isEmpty() ? null : key;
     }
 
-    private static String indirectionName(Dialect dialect, String env) {
+    private static @Nullable String indirectionName(Dialect dialect, String env) {
         String candidate = env + dialect.getIndirectionSuffix();
         return isSettableEnvName(candidate) ? candidate : null;
     }
 
     /** The secrets-directory file name for {@code path}, when one can name it. */
-    private static String secretsFileName(Dialect dialect, String path) {
+    private static @Nullable String secretsFileName(Dialect dialect, String path) {
         String name = path.replace(".", dialect.getNestingSeparator());
         if (name.contains(".") || !isNameableFile(name)) {
             return null;
@@ -285,8 +288,8 @@ public class SchemaAssembler {
 
     @AllArgsConstructor
     private static final class Spelling {
-        final String env;
-        final UnreachableReason unreachable;
+        final @Nullable String env;
+        final @Nullable UnreachableReason unreachable;
     }
 
     /** The leaf shapes {@link Key#getTextForm()} distinguishes, plus a {@code NUMBER} form this
