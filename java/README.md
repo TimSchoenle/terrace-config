@@ -15,10 +15,12 @@ what remains open.
 | `terrace-config-core` | The envelope model, the eight build-time refusals, and the `json-schema` rendering. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the `json` codecs. | **implemented** — validation, a Jackson-version-agnostic model, and `Schema.toJsonSchema()`; the remaining renderings (markdown, toml, contract, labels, dockerfile, ...) are open |
 | `terrace-config-core-jackson2` | The byte-stable `json` codec for the `-core` model, built on Jackson 2.x. | **implemented** |
 | `terrace-config-core-jackson3` | The same codec, built on Jackson 3.x instead. | **implemented** |
-| `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. | **implemented** |
+| `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. A field's key path follows its `@JsonProperty` rename when present, matching whichever binder actually reads that name (`FieldResolver.resolve`), the same way it already follows one for an enum constant. | **implemented** |
 | `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | **implemented** — layers, dialect and shadow policy; schema/`explain()`/watched-reload wiring against the processor's descriptors is open |
 | `terrace-config-spring-boot` | The Spring Boot starter over Spring's `Binder`. `producer.loader` is `spring-boot`, target **tier 1**. | **implemented** — the `_FILE` indirection `EnvironmentPostProcessor`, the `_`-vs-`__` dialect divergence, and `SpringContractProducer` assembling a full validated `Contract` from a `TypeDescriptor`; a starter auto-configuration is still open |
 | `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3 |
+| `terrace-config-example-service` | A worked example: a small "orders" service loading its configuration through `-loader`, mirroring `rust/examples/service/` field for field. `OrdersServiceConfigTest` exercises the example's own `Config` class through `TerraceLoader`, so it stays correct by a real assertion rather than by compiling alone — run it with `./gradlew :terrace-config-example-service:run`. `Config` is also `@TerraceConfig`; `--contract` renders it as a real `Contract`, checked fresh against the committed `contract.json` by `ContractTest` on every run. | **implemented** |
+| `terrace-config-example-spring-service` | The same "orders" service, this time configured through `-spring-boot` instead of `-loader`. `OrdersPropertiesBindingTest` exercises `OrdersProperties` through Spring's own `Binder` via `ApplicationContextRunner`; `OrdersServiceFileIndirectionIntegrationTest` boots the real `SpringApplication` — the one thing a context runner cannot do — to prove `_FILE` indirection actually reaches a bound bean, including the `_`-vs-`__` divergence's own failure mode. Run it with `./gradlew :terrace-config-example-spring-service:run`. `--contract` and `ContractTest` give it the same checked-fresh `contract.json` as the loader example, this time through `SpringContractProducer`. | **implemented** |
 
 ## Building and testing
 
@@ -48,6 +50,29 @@ resolved or correctly refused. `terrace-config-loader`'s own suite exercises rea
 since it has no `Contract`-shaped output of its own yet — see below. `terrace-config-spring-boot`'s
 own suite uses a `MockEnvironment` from `spring-test` rather than a real `SpringApplication`, since
 `EnvironmentPostProcessor`s run before there is a context to boot — see below.
+`terrace-config-example-service`'s own suite is the same shape as `-loader`'s, against the exact
+`Config` class its `OrdersService.main` boots with, rather than a type redeclared for the test.
+`terrace-config-example-spring-service`'s suite splits in two: `OrdersPropertiesBindingTest` binds
+`OrdersProperties` through `ApplicationContextRunner`, the same lightweight-context idiom
+`TerraceContractAutoConfigurationTest` already uses, while
+`OrdersServiceFileIndirectionIntegrationTest` boots a real `SpringApplication` — swapping in a
+fake `SystemEnvironmentPropertySource` before `run()` rather than touching this JVM's own
+environment — because `_FILE` indirection is an `EnvironmentPostProcessor`, which a context runner
+never invokes.
+
+Both example modules also carry a `ContractTest`: it renders a fresh `Contract` from the module's
+own annotated type and compares it, byte for byte, against the `contract.json` checked into that
+module's directory — the same "regenerated and diffed, never trusted merely because it once
+matched" guarantee `cargo test`'s `the_checked_in_contract_matches_what_the_types_render_today`
+gives the Rust crate's own `examples/service/`. Regenerate either with the module's own `run` task:
+`./gradlew :terrace-config-example-service:run --args=--contract`. A key whose Java name changes
+case in a way the environment fold cannot reverse — `bindAddr`, say — renders with `"env": null`
+and `"unreachable": "unnameable"` rather than a spelling nothing would actually respond to; see
+`terrace-config-example-service`'s own `Config` (which works around it with `@JsonProperty`,
+now that `terrace-config-processor` reads the same rename `-loader`'s binder does) against
+`terrace-config-example-spring-service`'s `OrdersProperties` (which does not need to, and so
+leaves `bindAddr`, `database.maxConnections` and `logLevel` genuinely unreachable in the contract
+even though Spring's own relaxed binding happens to tolerate them).
 
 ## Conventions
 

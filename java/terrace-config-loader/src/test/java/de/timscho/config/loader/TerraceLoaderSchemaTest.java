@@ -25,7 +25,8 @@ class TerraceLoaderSchemaTest {
 
         assertThat(schema.getKeys())
                 .extracting(Key::getPath)
-                .containsExactlyInAnyOrder("database.url", "database.port", "level", "token", "retries", "retryCount");
+                .containsExactlyInAnyOrder(
+                        "database.url", "database.port", "level", "token", "retries", "retryCount", "max_retries");
 
         Key url = keyAt(schema, "database.url");
         assertThat(url.getEnv()).isEqualTo("TEST_DATABASE__URL");
@@ -53,6 +54,13 @@ class TerraceLoaderSchemaTest {
         Key retries = keyAt(schema, "retries");
         assertThat(retries.getTextForm()).isEqualTo(TextForm.INTEGER);
         assertThat(retries.getConstraint()).containsEntry("minimum", 0.0).containsEntry("maximum", 65535.0);
+
+        // `retryLimit` is declared `@JsonProperty("max_retries")`: the key path — and so the
+        // environment spelling below — follows that rename rather than the Java field name, the
+        // same way `TerraceConfigProcessor.renderEnum` already follows it for an enum constant.
+        // `TEST_RETRYLIMIT` genuinely does not reach this field; `TEST_MAX_RETRIES` does.
+        Key maxRetries = keyAt(schema, "max_retries");
+        assertThat(maxRetries.getEnv()).isEqualTo("TEST_MAX_RETRIES");
     }
 
     @Test

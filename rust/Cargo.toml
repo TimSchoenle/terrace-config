@@ -165,3 +165,11 @@ unescaped_backticks = "warn"
 [[example]]
 name = "config-schema"
 required-features = ["schema-cli"]
+
+# The other half of the crate: a service that actually boots on this loader, rather than one that
+# only describes it. `tests/example_service.rs` includes `examples/service/config.rs` by path and
+# runs it through `testing::Harness`, so this is kept correct by a real assertion, not merely
+# compiling.
+[[example]]
+name = "service"
+required-features = ["loader"]

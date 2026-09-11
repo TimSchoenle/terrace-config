@@ -10,7 +10,8 @@ import org.jspecify.annotations.Nullable;
  * combines this with its own dialect to build the actual {@code Key} model in {@link
  * de.timscho.config.core.model}.
  *
- * @param name       the field's own name, as declared — the last segment of the eventual key path
+ * @param name       the field's own name — {@code @JsonProperty}'s value when present, otherwise
+ *                   as declared — the last segment of the eventual key path
  * @param docs       the field's full Javadoc, verbatim; empty if none
  * @param summary    the first paragraph of {@code docs}, matching rustdoc's own summary convention
  * @param typeName   the field's Java type, simple-named (e.g. {@code "String"}, {@code
