@@ -1,0 +1,213 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config-java",
+    "version": "0.0.0-dev",
+    "loader": "terrace-java"
+  },
+  "app": {
+    "name": "orders-service"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "ORDERS_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "ORDERS_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose *.toml files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "ORDERS_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files -- a mounted Kubernetes Secret volume. Each file supplies the key its name spells.",
+        "default": null
+      },
+      {
+        "env": "ORDERS_PROFILE",
+        "role": "reserved",
+        "docs": "Read directly from the environment before the layered config exists, so no file may supply it.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "bind_addr",
+        "env": "ORDERS_BIND_ADDR",
+        "env_file": "ORDERS_BIND_ADDR_FILE",
+        "secrets_file": "bind_addr",
+        "docs": "Address the HTTP listener binds to.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "port",
+        "env": "ORDERS_PORT",
+        "env_file": "ORDERS_PORT_FILE",
+        "secrets_file": "port",
+        "docs": "Port the HTTP listener binds to.",
+        "ty": "int",
+        "values": [],
+        "constraint": {
+          "type": "integer"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "database.url",
+        "env": "ORDERS_DATABASE__URL",
+        "env_file": "ORDERS_DATABASE__URL_FILE",
+        "secrets_file": "database__url",
+        "docs": "Connection string. A real deployment supplies this through the secrets directory or file\n indirection, never through a plain environment variable, so the compiled default below is\n the only value this field is meant to ever hold in plain sight.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": true,
+        "reserved": false
+      },
+      {
+        "path": "database.max_connections",
+        "env": "ORDERS_DATABASE__MAX_CONNECTIONS",
+        "env_file": "ORDERS_DATABASE__MAX_CONNECTIONS_FILE",
+        "secrets_file": "database__max_connections",
+        "docs": "Maximum number of pooled connections.",
+        "ty": "int",
+        "values": [],
+        "constraint": {
+          "type": "integer"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "log_level",
+        "env": "ORDERS_LOG_LEVEL",
+        "env_file": "ORDERS_LOG_LEVEL_FILE",
+        "secrets_file": "log_level",
+        "docs": "How much the service says.",
+        "ty": "LogLevel",
+        "values": [
+          "trace",
+          "debug",
+          "info",
+          "warn"
+        ],
+        "constraint": {
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn"
+          ],
+          "type": "string"
+        },
+        "text_form": "choice",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "bind_addr": {
+        "description": "Address the HTTP listener binds to.",
+        "type": "string"
+      },
+      "database": {
+        "additionalProperties": false,
+        "properties": {
+          "max_connections": {
+            "description": "Maximum number of pooled connections.",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Connection string. A real deployment supplies this through the secrets directory or file\n indirection, never through a plain environment variable, so the compiled default below is\n the only value this field is meant to ever hold in plain sight.",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "type": "object"
+      },
+      "log_level": {
+        "description": "How much the service says.",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn"
+        ],
+        "type": "string"
+      },
+      "port": {
+        "description": "Port the HTTP listener binds to.",
+        "type": "integer"
+      }
+    },
+    "title": "orders-service configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

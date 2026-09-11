@@ -1,0 +1,197 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config-java",
+    "version": "0.0.0-dev",
+    "loader": "spring-boot"
+  },
+  "app": {
+    "name": "orders-service"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "ORDERS_",
+      "nesting_separator": "_",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [],
+    "keys": [
+      {
+        "path": "bindAddr",
+        "env": null,
+        "env_file": null,
+        "secrets_file": null,
+        "docs": "Address the HTTP listener binds to.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "unreachable": "unnameable",
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "port",
+        "env": "ORDERS_PORT",
+        "env_file": "ORDERS_PORT_FILE",
+        "secrets_file": "port",
+        "docs": "Port the HTTP listener binds to.",
+        "ty": "int",
+        "values": [],
+        "constraint": {
+          "type": "integer"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "database.url",
+        "env": "ORDERS_DATABASE_URL",
+        "env_file": "ORDERS_DATABASE_URL_FILE",
+        "secrets_file": "database_url",
+        "docs": "Connection string. A real deployment supplies this through file indirection, never through\n a plain environment variable, so the compiled default below is the only value this field\n is meant to ever hold in plain sight.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": true,
+        "reserved": false
+      },
+      {
+        "path": "database.maxConnections",
+        "env": null,
+        "env_file": null,
+        "secrets_file": null,
+        "docs": "Maximum number of pooled connections.",
+        "ty": "int",
+        "values": [],
+        "constraint": {
+          "type": "integer"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "unreachable": "unnameable",
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "logLevel",
+        "env": null,
+        "env_file": null,
+        "secrets_file": null,
+        "docs": "How much the service says.",
+        "ty": "LogLevel",
+        "values": [
+          "TRACE",
+          "DEBUG",
+          "INFO",
+          "WARN"
+        ],
+        "constraint": {
+          "enum": [
+            "TRACE",
+            "DEBUG",
+            "INFO",
+            "WARN"
+          ],
+          "type": "string"
+        },
+        "text_form": "choice",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "unreachable": "unnameable",
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "bindAddr": {
+        "description": "Address the HTTP listener binds to.",
+        "type": "string"
+      },
+      "database": {
+        "additionalProperties": false,
+        "properties": {
+          "maxConnections": {
+            "description": "Maximum number of pooled connections.",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Connection string. A real deployment supplies this through file indirection, never through\n a plain environment variable, so the compiled default below is the only value this field\n is meant to ever hold in plain sight.",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "type": "object"
+      },
+      "logLevel": {
+        "description": "How much the service says.",
+        "enum": [
+          "TRACE",
+          "DEBUG",
+          "INFO",
+          "WARN"
+        ],
+        "type": "string"
+      },
+      "port": {
+        "description": "Port the HTTP listener binds to.",
+        "type": "integer"
+      }
+    },
+    "title": "orders-service configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

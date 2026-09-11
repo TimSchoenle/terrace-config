@@ -1,0 +1,238 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config",
+    "version": "0.12.0",
+    "loader": "figment"
+  },
+  "app": {
+    "name": "orders-service",
+    "version": "v0.12.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "ORDERS_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "ORDERS_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "ORDERS_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file supplies the key its name spells.",
+        "default": null
+      },
+      {
+        "env": "ORDERS_PROFILE",
+        "role": "reserved",
+        "docs": "Read directly from the environment before the layered config exists, so no file may supply it.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "bind_addr",
+        "env": "ORDERS_BIND_ADDR",
+        "env_file": "ORDERS_BIND_ADDR_FILE",
+        "secrets_file": "bind_addr",
+        "docs": "Address the HTTP listener binds to.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "127.0.0.1",
+        "default_value": "127.0.0.1",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "port",
+        "env": "ORDERS_PORT",
+        "env_file": "ORDERS_PORT_FILE",
+        "secrets_file": "port",
+        "docs": "Port the HTTP listener binds to.",
+        "ty": "u16",
+        "values": [],
+        "constraint": {
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "8080",
+        "default_value": 8080,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "database.url",
+        "env": "ORDERS_DATABASE__URL",
+        "env_file": "ORDERS_DATABASE__URL_FILE",
+        "secrets_file": "database__url",
+        "docs": "Connection string. A credential, so it is a `SecretString` rather than a `String` even\nthough the compiled default below is not one — a real deployment supplies this through\nthe secrets directory or `_FILE` indirection, never through the environment in plain\nsight.",
+        "ty": "SecretString",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": true,
+        "reserved": false
+      },
+      {
+        "path": "database.max_connections",
+        "env": "ORDERS_DATABASE__MAX_CONNECTIONS",
+        "env_file": "ORDERS_DATABASE__MAX_CONNECTIONS_FILE",
+        "secrets_file": "database__max_connections",
+        "docs": "Maximum number of pooled connections.",
+        "ty": "u32",
+        "values": [],
+        "constraint": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "10",
+        "default_value": 10,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "log_level",
+        "env": "ORDERS_LOG_LEVEL",
+        "env_file": "ORDERS_LOG_LEVEL_FILE",
+        "secrets_file": "log_level",
+        "docs": "How much the service says.",
+        "ty": "LogLevel",
+        "values": [
+          "trace",
+          "debug",
+          "info",
+          "warn"
+        ],
+        "constraint": {
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn"
+          ],
+          "type": "string"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*(trace|debug|info|warn)\\s*$",
+          "type": "string"
+        },
+        "text_form": "choice",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "info",
+        "default_value": "info",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "bind_addr": {
+        "default": "127.0.0.1",
+        "description": "Address the HTTP listener binds to.",
+        "type": "string"
+      },
+      "database": {
+        "additionalProperties": false,
+        "properties": {
+          "max_connections": {
+            "default": 10,
+            "description": "Maximum number of pooled connections.",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "url": {
+            "description": "Connection string. A credential, so it is a `SecretString` rather than a `String` even\nthough the compiled default below is not one — a real deployment supplies this through\nthe secrets directory or `_FILE` indirection, never through the environment in plain\nsight.",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "type": "object"
+      },
+      "log_level": {
+        "default": "info",
+        "description": "How much the service says.",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn"
+        ],
+        "type": "string"
+      },
+      "port": {
+        "default": 8080,
+        "description": "Port the HTTP listener binds to.",
+        "maximum": 65535,
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "title": "orders-service configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}
