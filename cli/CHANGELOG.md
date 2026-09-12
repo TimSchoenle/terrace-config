@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.2...terrace-contract-v0.2.3) (2026-09-12)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.55.1 ([#127](https://github.com/TimSchoenle/terrace-config/issues/127)) ([8599dbc](https://github.com/TimSchoenle/terrace-config/commit/8599dbc9a0a1a671ae6274855c6295e877df5f6a))
+
 ## [0.2.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.1...terrace-contract-v0.2.2) (2026-09-10)
 
 
