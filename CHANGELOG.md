@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.12.1](https://github.com/TimSchoenle/terrace-config/compare/v0.12.0...v0.12.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.55.1 ([#127](https://github.com/TimSchoenle/terrace-config/issues/127)) ([8599dbc](https://github.com/TimSchoenle/terrace-config/commit/8599dbc9a0a1a671ae6274855c6295e877df5f6a))
+* **deps:** update rust crate sha2 to 0.11 ([#112](https://github.com/TimSchoenle/terrace-config/issues/112)) ([6131467](https://github.com/TimSchoenle/terrace-config/commit/61314675a6d6b54a6ee96ff8290afcb8992f3c29))
+* **deps:** update rust crate toml to v1 ([#101](https://github.com/TimSchoenle/terrace-config/issues/101)) ([78bd77f](https://github.com/TimSchoenle/terrace-config/commit/78bd77f872470d20b77f4f00b540f7f449e69e59))
+
+
+### Miscellaneous
+
+* **cli:** re-release as 0.2.2 to publish the image 0.2.1 never got ([#119](https://github.com/TimSchoenle/terrace-config/issues/119)) ([87b2ce8](https://github.com/TimSchoenle/terrace-config/commit/87b2ce84717ca3bb1930b2308c7cd630dce89607))
+* **deps:** pin rust crate serde_norway to =0.9.42 ([#109](https://github.com/TimSchoenle/terrace-config/issues/109)) ([ee20865](https://github.com/TimSchoenle/terrace-config/commit/ee20865b4ac9cc4b12ce4bb7630165626531a9d9))
+* **deps:** update all non-major action updates ([e68ee7a](https://github.com/TimSchoenle/terrace-config/commit/e68ee7a8c51291bee24aa34b8aef88e65da8c8d7))
+* **deps:** update all non-major action updates ([#110](https://github.com/TimSchoenle/terrace-config/issues/110)) ([e68ee7a](https://github.com/TimSchoenle/terrace-config/commit/e68ee7a8c51291bee24aa34b8aef88e65da8c8d7))
+* **deps:** update docker/build-push-action action to v7 ([#113](https://github.com/TimSchoenle/terrace-config/issues/113)) ([e2ec2fa](https://github.com/TimSchoenle/terrace-config/commit/e2ec2fa371d84112f6a58c6825ae75b853a86c9f))
+* **deps:** update docker/login-action action to v4 ([#116](https://github.com/TimSchoenle/terrace-config/issues/116)) ([1eaf3cb](https://github.com/TimSchoenle/terrace-config/commit/1eaf3cb5c723df5a44e7531e992c24322bdcec79))
+* **deps:** update docker/metadata-action action to v6 ([#117](https://github.com/TimSchoenle/terrace-config/issues/117)) ([b57b621](https://github.com/TimSchoenle/terrace-config/commit/b57b62104f3a33abb251153ac3cb262a0642b45b))
+* **deps:** update docker/setup-buildx-action action to v4 ([#120](https://github.com/TimSchoenle/terrace-config/issues/120)) ([9980030](https://github.com/TimSchoenle/terrace-config/commit/9980030e1d4755f8d1b44d2e5a42a587b4d48919))
+* **deps:** update github artifact actions (major) ([#121](https://github.com/TimSchoenle/terrace-config/issues/121)) ([2d2296a](https://github.com/TimSchoenle/terrace-config/commit/2d2296a76dd500d8eb3500f8ef23327f576bac0e))
+* **deps:** update taiki-e/install-action action to v2.87.8 ([#124](https://github.com/TimSchoenle/terrace-config/issues/124)) ([31c9a7a](https://github.com/TimSchoenle/terrace-config/commit/31c9a7a61100c5bd2728a883e42257345ea25790))
+* **deps:** update taiki-e/install-action action to v2.87.9 ([#130](https://github.com/TimSchoenle/terrace-config/issues/130)) ([89104b9](https://github.com/TimSchoenle/terrace-config/commit/89104b9bbc760f264e6eaf12475e9562f3058e3f))
+* **deps:** update timschoenle/actions/actions/common/readme-variables to vactions-common-readme-variables-v1.2.1 ([#105](https://github.com/TimSchoenle/terrace-config/issues/105)) ([79b152e](https://github.com/TimSchoenle/terrace-config/commit/79b152e0f00ba2286e51a4482064bbb47fb1e8bf))
+* **deps:** update timschoenle/actions/actions/common/render-template-and-commit to vactions-common-render-template-and-commit-v1.1.8 ([#126](https://github.com/TimSchoenle/terrace-config/issues/126)) ([6b8cb52](https://github.com/TimSchoenle/terrace-config/commit/6b8cb528d2c2f060c2d29f65c9fcba2efaae4507))
+* **deps:** update zizmorcore/zizmor-action action to v0.6.4 ([#129](https://github.com/TimSchoenle/terrace-config/issues/129)) ([53bbe44](https://github.com/TimSchoenle/terrace-config/commit/53bbe44cd2adb2ccf52619bac925eb20e6d63430))
+* **main:** release terrace-contract 0.2.0 ([#108](https://github.com/TimSchoenle/terrace-config/issues/108)) ([cc8b042](https://github.com/TimSchoenle/terrace-config/commit/cc8b04286b30143c6cdffc110bead9bfb027e489))
+* **main:** release terrace-contract 0.2.1 ([#114](https://github.com/TimSchoenle/terrace-config/issues/114)) ([4e55918](https://github.com/TimSchoenle/terrace-config/commit/4e55918a52c8352f6b7aba959542b710bf11c9f6))
+* **main:** release terrace-contract 0.2.2 ([#122](https://github.com/TimSchoenle/terrace-config/issues/122)) ([f0124b7](https://github.com/TimSchoenle/terrace-config/commit/f0124b7b34996f152109ad9f857a7cbae64f8c96))
+
 ## [0.12.0](https://github.com/TimSchoenle/terrace-config/compare/v0.11.0...v0.12.0) (2026-09-10)
 
 
