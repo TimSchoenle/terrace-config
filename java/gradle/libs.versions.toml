@@ -5,7 +5,7 @@
 [versions]
 junit = "5.11.4"
 assertj = "3.27.3"
-jackson = "2.18.3"
+jackson = "2.18.9"
 jackson3 = "3.0.0"
 lombok = "1.18.46"
 lombok-plugin = "9.1.0"
