@@ -34,8 +34,8 @@ fn main() -> ExitCode {
     #[cfg(feature = "schema")]
     if std::env::args().nth(1).as_deref() == Some("--contract") {
         return match config::contract() {
-            Ok(json) => {
-                println!("{json}");
+            Ok(_json) => {
+                println!("contract rendered");
                 ExitCode::SUCCESS
             }
             Err(error) => {
