@@ -218,7 +218,7 @@ jobs:
         working-directory: dist
         run: sha256sum -- * > SHA256SUMS
 
-      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       # Keyless: the certificate records which workflow, in which repository, at which ref produced
       # these bytes, and a verifier pins that identity rather than a key somebody has to hold.
@@ -353,7 +353,7 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       # The digest, not a tag: a tag moves and a signature over one says nothing about the bytes a
       # consumer pulled. This is the same argument the contract refresh makes about vendoring.
