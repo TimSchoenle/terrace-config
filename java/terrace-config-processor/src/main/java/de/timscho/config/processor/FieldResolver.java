@@ -3,6 +3,7 @@ package de.timscho.config.processor;
 import java.util.List;
 
 import javax.annotation.processing.ProcessingEnvironment;
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
@@ -11,6 +12,9 @@ import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 
+import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
+import com.sun.source.util.Trees;
 import org.jspecify.annotations.Nullable;
 
 import de.timscho.config.annotations.ElementValues;
@@ -31,9 +35,17 @@ import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 final class FieldResolver {
 
     private final Elements elements;
+    private final Trees trees;
 
     FieldResolver(ProcessingEnvironment env) {
         this.elements = env.getElementUtils();
+        // `Trees` is the compiler's own public tree API (`com.sun.source.util`/`com.sun.source.tree`,
+        // exported unconditionally by `jdk.compiler` since Java 9 — unlike `com.sun.tools.javac.*`,
+        // it needs no `--add-exports`), the only way this processor can see whether a field
+        // declaration carries an initializer at all: `VariableElement` alone answers that only for
+        // a `static final` constant (`getConstantValue()`), never for an ordinary instance field
+        // like `private String port = "8080";`.
+        this.trees = Trees.instance(env);
     }
 
     /** {@code null} means the field carries {@code @Skip} and contributes no key. */
@@ -75,8 +87,68 @@ final class FieldResolver {
                 + resolved.range + ", "
                 + resolved.nestedKeys + ", "
                 + resolved.element + ", "
-                + resolved.closed
+                + resolved.closed + ", "
+                + hasDefault(field)
                 + ")";
+    }
+
+    /**
+     * Whether {@code field} carries a default — the Java equivalent of a Rust field carrying
+     * {@code #[serde(default = "…")]}, and what {@link
+     * de.timscho.config.core.descriptor.SchemaAssembler} uses to decide {@link
+     * de.timscho.config.core.model.Key#isRequired()}. Two independent signals, because one field
+     * shape hides the other: {@link #hasInitializer} sees a plain {@code private String port =
+     * "8080";}, but not a Lombok {@code @Builder.Default} field, whose initializer {@link
+     * #hasLombokBuilderDefault} has to find a different way — see that method for why.
+     */
+    private boolean hasDefault(VariableElement field) {
+        return hasInitializer(field) || hasLombokBuilderDefault(field);
+    }
+
+    /**
+     * Whether {@code field}'s own declaration carries an initializer, read straight off the
+     * compiler's own tree for it. {@code VariableElement} alone answers this only for a {@code
+     * static final} constant ({@code getConstantValue()}), never for an ordinary instance field —
+     * this is the only way to see one on a field Lombok has not touched. A field the compiler
+     * cannot recover a tree for (only possible for one resolved from a previously compiled {@code
+     * .class}, never a field this processor is generating a descriptor for in the same round) is
+     * treated as having none, the conservative reading — the same one an absent initializer
+     * itself gets.
+     */
+    private boolean hasInitializer(VariableElement field) {
+        Tree tree = trees.getTree(field);
+        return tree instanceof VariableTree variableTree && variableTree.getInitializer() != null;
+    }
+
+    /**
+     * Whether {@code field} carries {@code @lombok.Builder.Default}, read by qualified name off
+     * its {@link AnnotationMirror}s rather than importing the annotation type — the same reason
+     * {@link JacksonReflection} reads Jackson's own annotations that way: this processor takes no
+     * compile dependency on Lombok, and an annotated service may not have it on its own classpath
+     * at all.
+     *
+     * <p><b>Why {@link #hasInitializer} cannot see this field's default.</b> Lombok's {@code
+     * @Builder}/{@code @Jacksonized} handler rewrites a {@code @Builder.Default} field's AST node
+     * in place, during its own annotation-processing round: the initializer is lifted out into a
+     * synthetic {@code private static X $default$fieldName()} method, and the field declaration's
+     * own initializer is nulled out — verified empirically against this exact processor (compiled
+     * a small {@code @Value @Builder @Jacksonized} type with a {@code @Builder.Default} field and
+     * inspected the generated descriptor: {@code hasInitializer} alone reports {@code false} for
+     * it). Whether Lombok's round runs before this processor's own is not something either
+     * processor's ordering guarantees, so by the time {@link #hasInitializer} calls {@link
+     * Trees#getTree}, the initializer may already be gone — the same {@code JCTree} object,
+     * mutated, not a separate pre-Lombok snapshot. The annotation's own presence is the
+     * unaffected signal: Lombok refuses to compile {@code @Builder.Default} on a field with no
+     * initializer at all, so seeing the annotation is itself proof one was written, whatever the
+     * tree looks like by the time this processor reads it.
+     */
+    private boolean hasLombokBuilderDefault(VariableElement field) {
+        for (AnnotationMirror mirror : field.getAnnotationMirrors()) {
+            if (mirror.getAnnotationType().toString().equals("lombok.Builder.Default")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final class Shape {

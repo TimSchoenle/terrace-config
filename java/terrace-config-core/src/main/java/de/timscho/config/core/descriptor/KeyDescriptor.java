@@ -32,6 +32,14 @@ import org.jspecify.annotations.Nullable;
  * @param closed     whether the field's own type is closed to unknown properties (read off {@code
  *                   @JsonIgnoreProperties(ignoreUnknown = false)}), meaningful only when {@code
  *                   nestedKeys} or {@code element} carries a nested struct
+ * @param hasDefault whether the field declaration carries an initializer ({@code private String
+ *                   port = "8080";}, not {@code private String port;}) — the Java equivalent of a
+ *                   Rust field carrying {@code #[serde(default = "…")]}, read from source by
+ *                   {@code FieldResolver} via the compiler's {@code Trees} API. A key whose field
+ *                   has one is never {@link de.timscho.config.core.model.Key#isRequired()}: the
+ *                   binder leaves an omitted key at exactly the value written here, so this is
+ *                   what actually determines {@code required} — {@code container ==
+ *                   ContainerKind.OPTIONAL} is a second, independent way for a key to be optional
  */
 public record KeyDescriptor(
         String name,
@@ -45,7 +53,8 @@ public record KeyDescriptor(
         @Nullable RangeConstraint range,
         List<KeyDescriptor> nestedKeys,
         @Nullable ElementDescriptor element,
-        boolean closed) {
+        boolean closed,
+        boolean hasDefault) {
 
     /** Which container, if any, wraps a field's declared type. */
     public enum ContainerKind {

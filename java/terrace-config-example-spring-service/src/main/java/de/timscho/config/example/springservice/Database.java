@@ -1,5 +1,6 @@
 package de.timscho.config.example.springservice;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -19,6 +20,16 @@ public class Database {
      */
     // Plain prose above, no `{@code}` markup: `Javadocs.normalize` carries a field's doc comment
     // into `contract.json` verbatim rather than rendering javadoc tags.
+    //
+    // `access = WRITE_ONLY`: Spring's own `Binder` ignores Jackson annotations entirely, so this
+    // changes nothing about how a real deployment binds `url` — it only tells `ContractGenerator`'s
+    // own `ObjectMapper().convertValue(new OrdersProperties(), Map.class)` (used to find each
+    // key's observed default for `Schema.withDefaultsFromValue`) to skip this field, exactly as
+    // the Rust example's `SecretString` field's `#[serde(skip_serializing)]` does. Without it, the
+    // very real default below would flow through as an *observed* default, and
+    // `ContractValidator`'s own "a secret must not carry a default" refusal
+    // (`SecretWithDefaultException`) would then refuse the contract this class renders.
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Secret
     private String url = "postgres://localhost/orders_dev";
 

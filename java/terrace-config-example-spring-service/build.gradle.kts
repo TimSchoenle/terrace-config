@@ -27,6 +27,13 @@ dependencies {
     annotationProcessor(project(":terrace-config-processor"))
     implementation(libs.spring.boot.starter)
     testImplementation(libs.spring.boot.starter.test)
+    // `spring-boot-starter` alone pulls in no Jackson: that only arrives with `-starter-json` (via
+    // `-starter-web`), which this plain, non-web service never depends on. `ContractGenerator`
+    // needs an `ObjectMapper` of its own to convert a default-constructed `OrdersProperties` to
+    // the nested map `SpringContractProducer.produce`'s defaults parameter expects — the same
+    // reason `terrace-config-example-service` declares this explicitly rather than relying on a
+    // transitive `implementation` dependency two modules away.
+    implementation(libs.jackson.databind)
 }
 
 application {

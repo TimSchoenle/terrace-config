@@ -52,10 +52,10 @@
         "env_aliases": [],
         "env_file_aliases": [],
         "secrets_file_aliases": [],
-        "default": null,
-        "default_value": null,
+        "default": "127.0.0.1",
+        "default_value": "127.0.0.1",
         "note": null,
-        "required": true,
+        "required": false,
         "secret": false,
         "reserved": false
       },
@@ -75,10 +75,10 @@
         "env_aliases": [],
         "env_file_aliases": [],
         "secrets_file_aliases": [],
-        "default": null,
-        "default_value": null,
+        "default": "8080",
+        "default_value": 8080,
         "note": null,
-        "required": true,
+        "required": false,
         "secret": false,
         "reserved": false
       },
@@ -101,7 +101,7 @@
         "default": null,
         "default_value": null,
         "note": null,
-        "required": true,
+        "required": false,
         "secret": true,
         "reserved": false
       },
@@ -121,10 +121,10 @@
         "env_aliases": [],
         "env_file_aliases": [],
         "secrets_file_aliases": [],
-        "default": null,
-        "default_value": null,
+        "default": "10",
+        "default_value": 10,
         "note": null,
-        "required": true,
+        "required": false,
         "secret": false,
         "reserved": false
       },
@@ -155,10 +155,10 @@
         "env_aliases": [],
         "env_file_aliases": [],
         "secrets_file_aliases": [],
-        "default": null,
-        "default_value": null,
+        "default": "info",
+        "default_value": "info",
         "note": null,
-        "required": true,
+        "required": false,
         "secret": false,
         "reserved": false
       }
@@ -169,6 +169,7 @@
     "additionalProperties": false,
     "properties": {
       "bind_addr": {
+        "default": "127.0.0.1",
         "description": "Address the HTTP listener binds to.",
         "type": "string"
       },
@@ -176,6 +177,7 @@
         "additionalProperties": false,
         "properties": {
           "max_connections": {
+            "default": 10,
             "description": "Maximum number of pooled connections.",
             "type": "integer"
           },
@@ -188,6 +190,7 @@
         "type": "object"
       },
       "log_level": {
+        "default": "info",
         "description": "How much the service says.",
         "enum": [
           "trace",
@@ -198,6 +201,7 @@
         "type": "string"
       },
       "port": {
+        "default": 8080,
         "description": "Port the HTTP listener binds to.",
         "type": "integer"
       }

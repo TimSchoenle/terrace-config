@@ -28,11 +28,14 @@ import de.timscho.config.core.model.UnreachableReason;
  * <p>The version of this document's shape is fixed at {@value #SCHEMA_VERSION}, matching the
  * Rust crate's own {@code SCHEMA_VERSION}.
  *
- * <p><b>Not ported yet</b>: filling in each key's observed default from a live instance (the
- * Rust crate's {@code Schema::with_defaults_from}, which needs a {@code T} to serialise and so
- * cannot be a static property of the descriptor alone) — every key here has {@code required =
- * true} unless its field is {@code Optional}, an approximation until that step exists. See
- * {@code docs/migration-progress.md} for the open item.
+ * <p>{@link de.timscho.config.core.model.Key#isRequired()} is {@code false} whenever the field is
+ * {@code Optional}-wrapped or {@link KeyDescriptor#hasDefault()} — the Java equivalent of the
+ * Rust derive macro's own {@code !(opts.has_serde_default || container.field_default ||
+ * is_option(ty))}, computed the same way: syntactically, from the field's own declaration, not
+ * from a live instance. Filling in what that default actually *is* still needs one — see {@link
+ * de.timscho.config.core.model.Schema#withDefaultsFromValue}, the Java port of {@code
+ * Schema::with_defaults_from_value}, which a caller runs against a default-constructed instance
+ * converted to a nested map.
  */
 @UtilityClass
 public class SchemaAssembler {
@@ -110,8 +113,8 @@ public class SchemaAssembler {
                 .textForm(textForm.model)
                 .secret(field.secret())
                 .note(field.note())
-                // Not derived from a live instance yet — see the class-level note.
-                .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL);
+                // Syntactic, matching the Rust derive macro exactly — see the class-level note.
+                .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
 
         Spelling spelling = envSpelling(dialect, path);
         builder.env(spelling.env);

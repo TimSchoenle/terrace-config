@@ -1,5 +1,6 @@
 package de.timscho.config.spring;
 
+import java.util.Map;
 import java.util.Set;
 
 import de.timscho.config.core.contract.ContractAssembler;
@@ -56,13 +57,44 @@ public final class SpringContractProducer {
      */
     public static Contract produce(
             TypeDescriptor descriptor, String prefix, SpringDialect springDialect, App app, External external) {
+        return produce(descriptor, prefix, springDialect, app, external, Map.of());
+    }
+
+    /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External, Map)} using {@link
+     * SpringDialect#standard()} and no declared external surface. */
+    public static Contract produce(TypeDescriptor descriptor, String prefix, App app, Map<String, Object> defaults) {
+        return produce(
+                descriptor, prefix, SpringDialect.standard(), app, ContractAssembler.noExternalSurface(), defaults);
+    }
+
+    /**
+     * {@link #produce(TypeDescriptor, String, SpringDialect, App, External)}, additionally filling
+     * in each non-required key's observed default from {@code defaults} — an already-nested map,
+     * typically {@code objectMapper.convertValue(defaultInstance, Map.class)} run against a
+     * default-constructed instance of the type {@code descriptor} describes. See {@link
+     * Schema#withDefaultsFromValue} for exactly what filling in means; {@code Map.of()} (what the
+     * four-argument overload above passes) leaves every key's default unset, the same as never
+     * calling this method at all.
+     *
+     * @throws de.timscho.config.core.refusal.ContractRefusalException the first of {@code
+     *                                                                  spec/v1/FORMAT.md}'s eight
+     *                                                                  refusals this contract
+     *                                                                  would violate
+     */
+    public static Contract produce(
+            TypeDescriptor descriptor,
+            String prefix,
+            SpringDialect springDialect,
+            App app,
+            External external,
+            Map<String, Object> defaults) {
         Dialect dialect = Dialect.builder()
                 .prefix(prefix)
                 .nestingSeparator(springDialect.separator())
                 .indirectionSuffix(springDialect.indirectionSuffix())
                 .build();
 
-        Schema schema = SchemaAssembler.assemble(descriptor, dialect, Set.of());
+        Schema schema = SchemaAssembler.assemble(descriptor, dialect, Set.of()).withDefaultsFromValue(defaults);
         Producer producer = ProducerIdentity.forLoader("spring-boot");
         return ContractAssembler.assemble(schema, app, producer, external);
     }

@@ -134,9 +134,16 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   environment name that a case-folding, separator-splitting reader can't map back to the same path
   is `Unreachable.Unnameable`; a name colliding with the indirection suffix is
   `Unreachable.Indirection`; a reserved key's file spellings are cleared, exactly as
-  `describe_at` does. `Key.required` is still derived from the field's own `Optional`-wrapping
-  rather than a live default value — see `Schema.withDefaultsFromValue` below for the piece of
-  `Schema::with_defaults_from` that *is* ported.
+  `describe_at` does. `Key.required` is `false` whenever the field is `Optional`-wrapped or
+  `KeyDescriptor.hasDefault()` — `FieldResolver` reads the latter off the field's own declaration
+  via the compiler's `Trees` API (whether it carries an initializer at all, e.g. `private String
+  port = "8080";` versus `private String port;`), the Java analogue of the Rust derive macro's own
+  syntactic `!(opts.has_serde_default || container.field_default || is_option(ty))` check — neither
+  language needs a live instance to know a key is optional. Filling in what the default actually
+  *is* still needs one; see `Schema.withDefaultsFromValue` below for the piece of `Schema::
+  with_defaults_from_value` that is ported, and `terrace-config-example-service`/
+  `-example-spring-service`'s own `ContractGenerator` for a caller that runs it against a
+  default-constructed instance.
 - **`Schema.toMarkdown()` / `toMarkdownWith(List<Column>)` / `toMarkdownLoader()` /
   `toMarkdownKeys(List<Column>)`** (`de.timscho.config.core.schema`) render GitHub-flavoured
   tables — a port of the Rust crate's `schema::markdown` module. `Column` is a 13-value enum
@@ -400,6 +407,14 @@ a loader or Spring producer combines it with its own dialect to build the actual
   `@JsonProperty` respectively — via `AnnotationMirror`, by qualified name, so the processor takes
   no compile dependency on either Jackson major (`jackson-annotations` is shared by both, see
   above, but even that import is avoided).
+- **A field's own initializer decides `KeyDescriptor.hasDefault`.** `VariableElement` alone can
+  answer "does this field have a constant value" only for a `static final` field
+  (`getConstantValue()`); an ordinary instance field like `private String port = "8080";` needs the
+  compiler's `Trees` API (`com.sun.source.util.Trees`/`com.sun.source.tree.VariableTree`) to see
+  whether its declaration carries an initializer at all — a package `jdk.compiler` exports
+  unconditionally (unlike `com.sun.tools.javac.*`), so no `--add-exports` is needed. `FieldResolver`
+  reads it once per field and bakes it into the generated `KeyDescriptor` as a compile-time
+  constant; see `SchemaAssembler` above for the one place it is read back out.
 - **Generated descriptors are always top-level classes**, even for a `@TerraceConfig` type nested
   inside another class: `Filer.createSourceFile` treats every dot in a name as a package
   separator, so `Outer.Inner` cannot become `Outer.InnerDescriptor` by simple concatenation — it
