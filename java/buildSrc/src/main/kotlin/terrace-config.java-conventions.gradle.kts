@@ -4,9 +4,11 @@
 // dependencies, and the JetBrains annotations vocabulary, for every module, just expressed once
 // here instead of via cross-project configuration. See java/README.md's "buildSrc" section.
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.plugins.quality.Checkstyle
 
 plugins {
     java
+    checkstyle
     id("com.diffplug.spotless")
 }
 
@@ -54,6 +56,17 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+checkstyle {
+    toolVersion = libs.findVersion("checkstyle").get().requiredVersion
+    configFile = rootProject.file("config/checkstyle/checkstyle.xml")
+    isIgnoreFailures = false
+    maxWarnings = 0
+}
+
+tasks.named<Checkstyle>("checkstyleTest") {
+    configFile = rootProject.file("config/checkstyle/checkstyle-test.xml")
 }
 
 spotless {
