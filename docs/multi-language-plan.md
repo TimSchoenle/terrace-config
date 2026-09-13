@@ -3,13 +3,29 @@
 Moving the Rust crate under `rust/`, and adding two Java producers — vanilla and Spring Boot — that
 conform to `spec/v1/`.
 
-**Status: plan, not yet started.** Nothing in this document has been implemented. It is written to
-be picked up by someone — or some agent instance — with no memory of the session that produced it,
-so it states the decisions already taken and the reasoning behind them rather than assuming either.
+**Status: largely executed on `main`.** This document was written as a plan before any of it
+existed, for someone — or some agent instance — with no memory of the session that produced it. Most
+of it has since landed, so read it as the reasoning behind the tree rather than as a to-do list:
 
-**Every relative link below is written against the post-move layout of section 2.** Links into
-`rust/` therefore do not resolve until Phase 0 has landed; links into `spec/` and `docs/` resolve
-either way, because neither directory moves.
+| Phase | State on `main` |
+|---|---|
+| 0 — the move | **Done.** The crate is under `rust/`, the root `README.md` is a generated front door, `cli/` stayed a sibling. |
+| 1 — skeleton and TCK | **Done**, as a Gradle build under `java/`. |
+| 2 — core and processor | **Done**, with `-core` split from two codec modules, `-core-jackson2` and `-core-jackson3`. |
+| 3 — the two producers | **Mostly done** in [#98](https://github.com/TimSchoenle/terrace-config/pull/98): the five-layer loader, the Spring `_FILE` `EnvironmentPostProcessor` and `SpringContractProducer`, and two example services with checked-in contracts. No tier is claimed yet. |
+| 4, 5 | Not started. |
+
+**Per-module status lives in [`java/README.md`](../java/README.md)**, which is maintained with the
+code; where it and this table disagree, it is right.
+
+**One divergence needs a decision rather than an edit.** Sections below were corrected after
+[#96](https://github.com/TimSchoenle/terrace-config/pull/96) to say the Java TCK wraps
+`terrace-contract conform` and `-core` renders nothing. #98 was built to the earlier draft instead:
+its `terrace-config-spec-tck` carries its own meta-schema validator and tier comparator, and `-core`
+renders `json-schema`. Either `contract-cli-plan.md`'s cutover still applies to that code, or the
+plan should say the Java-side versions are kept on purpose. This document does not settle it.
+
+Relative links below are written against the post-move layout, which is now the real one.
 
 ### Its half of the problem
 
