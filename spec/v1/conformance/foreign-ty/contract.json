@@ -135,12 +135,10 @@
       },
       "token": {
         "description": "Credential for the upstream API.",
-        "type": "string"
+        "type": "string",
+        "writeOnly": true
       }
     },
-    "required": [
-      "token"
-    ],
     "title": "foreign-ty configuration",
     "type": "object"
   },

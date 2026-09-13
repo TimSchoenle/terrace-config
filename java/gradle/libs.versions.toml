@@ -1,0 +1,35 @@
+# Kept in one place so every module builds against the same versions.
+# `terrace-config-annotations` must not take a dependency from here at all, by design: a service
+# annotating its configuration types should not have to pull in Jackson or a schema validator just
+# to compile against the annotations.
+[versions]
+junit = "5.11.4"
+assertj = "3.27.3"
+jackson = "2.18.3"
+jackson3 = "3.0.0"
+lombok = "1.18.46"
+lombok-plugin = "9.1.0"
+spotless-plugin = "8.10.2"
+palantir-java-format = "2.98.0"
+json-schema-validator = "1.5.5"
+spring-boot = "3.5.16"
+compile-testing = "0.21.0"
+tomlj = "1.1.1"
+jspecify = "1.0.1"
+jetbrains-annotations = "26.1.0"
+checkstyle = "10.26.1"
+vanniktech-publish-plugin = "0.37.0"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-databind-v3 = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson3" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+compile-testing = { module = "com.google.testing.compile:compile-testing", version.ref = "compile-testing" }
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter", version.ref = "spring-boot" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }

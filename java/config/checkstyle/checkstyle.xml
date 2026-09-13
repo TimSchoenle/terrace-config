@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  Applied to every module's main sources (checkstyleMain) by `terrace-config.java-conventions`.
+  See java/README.md's "Static analysis" section for the full rationale behind every module below,
+  in particular:
+    - why this file does not re-litigate anything Spotless's `palantirJavaFormat` already decides
+      (indentation, brace placement, wrapping) — duplicating a formatting opinion here would just
+      give the two tools something to disagree about;
+    - which modules were left out because they misfire against Lombok-generated code Checkstyle
+      never sees (it reads source, not the bytecode Lombok's annotation processor emits from it);
+    - the "final" modules (FinalClass/FinalParameters/FinalLocalVariable) and how they interact
+      with `@UtilityClass`/`@Value`;
+    - checkstyle-test.xml next to this file for the (deliberately lighter) ruleset `checkstyleTest`
+      runs instead.
+
+  toolVersion is pinned in gradle/libs.versions.toml (`checkstyle`); bump both together.
+-->
+<module name="Checker">
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- Lets a genuinely justified violation be silenced in source with, e.g.,
+         @SuppressWarnings("checkstyle:FinalClass") plus a comment saying why — see
+         SuppressWarningsHolder below, which is what makes the annotation take effect. -->
+    <module name="SuppressWarningsFilter"/>
+
+    <module name="NewlineAtEndOfFile"/>
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+    <module name="FileLength">
+        <property name="max" value="2000"/>
+    </module>
+    <module name="LineLength">
+        <!-- Matches palantirJavaFormat's own 120-column width (terrace-config.java-conventions),
+             so a file that passes spotlessCheck never fails this on width alone. -->
+        <property name="max" value="120"/>
+        <property name="ignorePattern" value="^\s*\*\s*@see\s+&lt;a\s+href="/>
+    </module>
+
+    <module name="TreeWalker">
+        <module name="SuppressWarningsHolder"/>
+
+        <!-- ============================== Imports ============================== -->
+        <!-- NOT enabled: CustomImportOrder/ImportOrder. Group-and-blank-line placement is
+             Spotless's `importOrder("java", "javax", "", "de.timscho")` job (terrace-config.
+             java-conventions), already enforced by `spotlessCheck` in CI — a second, hand-rolled
+             copy of that grouping here mismatched Spotless's actual static-import placement the
+             moment a file used one (`import static org.assertj...`), failing every test file that
+             does. Re-deriving Spotless's exact static-import semantics just to duplicate a check
+             it already owns is exactly the formatting duplication this file otherwise avoids. -->
+        <module name="AvoidStarImport"/>
+        <module name="RedundantImport"/>
+        <module name="UnusedImports">
+            <property name="processJavadoc" value="true"/>
+        </module>
+
+        <!-- ============================== Naming ============================== -->
+        <!-- Standard Sun/Google-style identifier shapes; nothing here is Lombok-specific because
+             Checkstyle only ever sees the field/parameter names actually written in source —
+             Lombok's own generated accessor/builder names are synthesized after Checkstyle has
+             already run and are never subject to these checks. -->
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="MemberName"/>
+        <module name="ParameterName"/>
+        <module name="LambdaParameterName"/>
+        <module name="CatchParameterName"/>
+        <module name="LocalVariableName"/>
+        <module name="LocalFinalVariableName"/>
+        <module name="PatternVariableName"/>
+        <module name="ConstantName"/>
+        <module name="StaticVariableName"/>
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+        <module name="ClassTypeParameterName"/>
+        <module name="MethodTypeParameterName"/>
+        <module name="InterfaceTypeParameterName"/>
+        <module name="RecordComponentName"/>
+        <module name="RecordTypeParameterName"/>
+
+        <!-- ============================== Design ============================== -->
+        <!-- FinalClass only fires on a class whose only constructors are already private — it
+             cannot false-positive against a Lombok `@UtilityClass` (which adds that private
+             constructor itself, invisibly to Checkstyle, so there is nothing in source for this
+             check to see) or an `@Value` class (no constructor at all unless one is hand-written).
+             It exists as a safety net for a *hand-written* private-constructor class that forgot
+             `final`; the project's actual "every concrete class is `final`" convention is broader
+             than this check can express and is enforced by review, not tooling — see
+             java/README.md's "Static analysis" section for why a bespoke AST check for that was
+             deliberately not written. -->
+        <module name="FinalClass"/>
+        <module name="InterfaceIsType"/>
+        <module name="OneTopLevelClass"/>
+        <module name="MutableException"/>
+        <!-- NOT enabled: HideUtilityClassConstructor. Its heuristic is "a class with only static
+             members has no explicit constructor in source, therefore needs a hand-written private
+             one" — exactly backwards for `@UtilityClass` (which adds that private constructor
+             itself, after Checkstyle has already read plain source and concluded there is none),
+             so it fired on every `@UtilityClass` in this codebase. It also can't distinguish that
+             shape from a genuine non-utility class that merely happens to expose only `static
+             void main` (`OrdersServiceApplication`), which it flagged the same way. -->
+        <!-- NOT enabled: InnerTypeLast. This codebase deliberately places a small nested support
+             type (e.g. `FieldResolver.Shape`) next to the method that introduces it rather than
+             bundled at the end of the class — a legitimate, real locality-of-reference choice this
+             check assumes away rather than a lapse to fix by moving code around. -->
+        <!-- NOT enabled: VisibilityModifier. Its whole premise — a field with no explicit `private`
+             is an encapsulation violation — is exactly what `java/lombok.config`'s
+             `lombok.fieldDefaults.defaultPrivate = true` exists to make safe project-wide: every
+             field in a Lombok-processed module (every `@Value` model class in `-core`, most of
+             `-loader`/`-spring-boot`) is written with no access modifier on purpose, trusting
+             Lombok to default it to `private`, and Checkstyle reads that same source *before*
+             Lombok's own processor ever runs — it cannot see the default being applied, only the
+             absence of a keyword, so it flagged every one of those fields as needing to be private.
+             There is no configuration that reconciles the two: the property this check would need
+             ("treat default access as private in a Lombok-processed module") does not exist. -->
+
+        <!-- ============================== Finality (strict, on request) ============================== -->
+        <!-- Every hand-written method/constructor parameter must say `final` explicitly. Doesn't
+             touch Lombok-generated constructors/setters (not in source, so invisible here);
+             abstract/interface method declarations are skipped by the check itself, unconditionally
+             — `final` on a parameter with no method body to enforce it against is noise, not
+             safety, so there is no property to configure for it. -->
+        <module name="FinalParameters">
+            <property name="tokens" value="METHOD_DEF,CTOR_DEF"/>
+        </module>
+        <!-- Every local variable that is never reassigned must say `final` explicitly. Left at the
+             VARIABLE_DEF-only default (not PARAMETER_DEF, which FinalParameters above already
+             owns) and enhanced-for/try-with-resources variables left unvalidated — forcing
+             `final` on a loop's own iteration variable is exactly the kind of noise that makes a
+             "strict" ruleset get disabled wholesale instead of followed. -->
+        <module name="FinalLocalVariable">
+            <property name="tokens" value="VARIABLE_DEF"/>
+            <property name="validateEnhancedForLoopVariable" value="false"/>
+        </module>
+
+        <!-- ============================== Coding ============================== -->
+        <module name="EqualsHashCode"/>
+        <module name="EqualsAvoidNull"/>
+        <module name="CovariantEquals"/>
+        <module name="InnerAssignment"/>
+        <module name="MultipleVariableDeclarations"/>
+        <module name="OneStatementPerLine"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="StringLiteralEquality"/>
+        <module name="NoClone"/>
+        <module name="NoFinalizer"/>
+        <module name="PackageDeclaration"/>
+        <module name="ModifiedControlVariable"/>
+        <module name="FallThrough"/>
+        <module name="DefaultComesLast"/>
+        <module name="ArrayTypeStyle"/>
+        <module name="UpperEll"/>
+        <module name="OuterTypeFilename"/>
+        <!-- NOT enabled: MissingSwitchDefault. This codebase switches over closed, sealed
+             hierarchies (Layer, Fragment, LabelFault) with the compiler itself enforcing
+             exhaustiveness — see java/README.md. Requiring a `default` arm there would demand
+             dead code the compiler already proves unreachable, on every future sealed switch. -->
+        <!-- NOT enabled: MagicNumber. This codebase's numeric literals are schema/format constants
+             (TOML integer bounds, JSON Schema draft numbers) inherently more readable inline than
+             behind an extracted, one-use constant name — see the Rust crate's own equivalent
+             ports for the same values, none of which name them either. -->
+
+        <!-- ============================== Blocks ============================== -->
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>
+        </module>
+        <module name="NeedBraces"/>
+        <module name="AvoidNestedBlocks"/>
+
+        <!-- ============================== Modifiers ============================== -->
+        <module name="ModifierOrder"/>
+        <module name="RedundantModifier"/>
+
+        <!-- ============================== Javadoc ============================== -->
+        <!-- Requires every public type to carry *some* Javadoc (every file under src/main/java
+             already does, per the codebase's own "comments explain why, not what" convention —
+             java/README.md's "Conventions" section) without requiring one on every public
+             method too, which this codebase deliberately does not do — a getter/setter Lombok
+             writes has no source-level declaration to attach a comment to in the first place, and
+             a hand-written method already gets a comment only where the "why" isn't obvious from
+             the signature. -->
+        <module name="MissingJavadocType">
+            <property name="scope" value="public"/>
+            <property name="tokens" value="CLASS_DEF,INTERFACE_DEF,ENUM_DEF,ANNOTATION_DEF,RECORD_DEF"/>
+        </module>
+        <module name="JavadocStyle">
+            <property name="checkFirstSentence" value="false"/>
+        </module>
+        <module name="NonEmptyAtclauseDescription"/>
+        <module name="InvalidJavadocPosition"/>
+
+        <!-- ============================== Sizes ============================== -->
+        <module name="MethodLength">
+            <property name="max" value="150"/>
+        </module>
+        <module name="ParameterNumber">
+            <property name="max" value="8"/>
+        </module>
+        <module name="AnonInnerLength">
+            <property name="max" value="40"/>
+        </module>
+    </module>
+</module>

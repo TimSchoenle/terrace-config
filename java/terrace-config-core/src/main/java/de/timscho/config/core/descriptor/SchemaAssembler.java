@@ -1,0 +1,345 @@
+package de.timscho.config.core.descriptor;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+
+import lombok.AllArgsConstructor;
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
+
+import de.timscho.config.core.model.Dialect;
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.Schema;
+import de.timscho.config.core.model.UnreachableReason;
+
+/**
+ * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link
+ * Schema} — the Java equivalent of the Rust crate's {@code Schema::describe_at}. {@code
+ * terrace-config-loader}'s {@code schema()}/{@code schema_at()} and a future Spring producer's
+ * {@code Contract} both build on this, since neither has to re-derive how a key path becomes an
+ * environment or secrets-file spelling.
+ *
+ * <p>The version of this document's shape is fixed at {@value #SCHEMA_VERSION}, matching the
+ * Rust crate's own {@code SCHEMA_VERSION}.
+ *
+ * <p>{@link de.timscho.config.core.model.Key#isRequired()} is {@code false} whenever the field is
+ * {@code Optional}-wrapped or {@link KeyDescriptor#hasDefault()} — the Java equivalent of the
+ * Rust derive macro's own {@code !(opts.has_serde_default || container.field_default ||
+ * is_option(ty))}, computed the same way: syntactically, from the field's own declaration, not
+ * from a live instance. Filling in what that default actually *is* still needs one — see {@link
+ * de.timscho.config.core.model.Schema#withDefaultsFromValue}, the Java port of {@code
+ * Schema::with_defaults_from_value}, which a caller runs against a default-constructed instance
+ * converted to a nested map.
+ */
+@UtilityClass
+public class SchemaAssembler {
+
+    /** The version of this document's shape. Matches the Rust crate's {@code SCHEMA_VERSION}. */
+    public static final int SCHEMA_VERSION = 2;
+
+    /** The keys of {@code descriptor}, spelled according to {@code dialect}. */
+    public static Schema assemble(
+            final TypeDescriptor descriptor, final Dialect dialect, final Set<String> reservedEnvNames) {
+        return assemble(descriptor, dialect, reservedEnvNames, "");
+    }
+
+    /**
+     * The keys of {@code descriptor}, as they are spelled when it sits at {@code root} in a
+     * larger configuration — {@code schemaAt("csp")} on a type describing {@code
+     * cloudflare.turnstile} produces {@code csp.cloudflare.turnstile}. An empty {@code root} is
+     * {@link #assemble(TypeDescriptor, Dialect, Set)}.
+     *
+     * @param reservedEnvNames every environment name (full spelling, e.g. {@code MYAPP_CONFIG})
+     *                         the loader itself reads before the layers exist; matched
+     *                         case-insensitively, mirroring {@code Dialect::is_reserved}
+     */
+    public static Schema assemble(
+            final TypeDescriptor descriptor,
+            final Dialect dialect,
+            final Set<String> reservedEnvNames,
+            final String root) {
+        final Set<String> reservedUpper = new HashSet<>();
+        for (String reserved : reservedEnvNames) {
+            reservedUpper.add(reserved.toUpperCase(Locale.ROOT));
+        }
+
+        final List<Key> keys = new ArrayList<>();
+        walk(descriptor.keys(), root, keys, dialect, reservedUpper);
+
+        return Schema.builder()
+                .schemaVersion(SCHEMA_VERSION)
+                .dialect(dialect)
+                .keys(keys)
+                .build();
+    }
+
+    /** Walks {@code fields}, appending one {@link Key} per leaf/container field to {@code out}. */
+    private static void walk(
+            final List<KeyDescriptor> fields,
+            final String prefix,
+            final List<Key> out,
+            final Dialect dialect,
+            final Set<String> reservedUpper) {
+        for (KeyDescriptor field : fields) {
+            final String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
+            final boolean isNestedStruct = !field.nestedKeys().isEmpty()
+                    && (field.container() == KeyDescriptor.ContainerKind.NONE
+                            || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
+            if (isNestedStruct) {
+                // `#[config(nested)]`: the field opens a level rather than becoming a key of its
+                // own, bare or behind an `Optional` — neither carries a key of its own in Rust
+                // either, since a struct field has no scalar value to bind directly.
+                walk(field.nestedKeys(), path, out, dialect, reservedUpper);
+            } else {
+                out.add(leaf(field, path, dialect, reservedUpper));
+            }
+        }
+    }
+
+    /** One field as a leaf {@link Key} — the whole of a container field, structured or not. */
+    private static Key leaf(
+            final KeyDescriptor field, final String path, final Dialect dialect, final Set<String> reservedUpper) {
+        final boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
+                && field.container() != KeyDescriptor.ContainerKind.OPTIONAL;
+
+        final List<String> values = !field.values().isEmpty()
+                ? field.values()
+                : field.element() != null ? field.element().values() : List.of();
+        final TextForm textForm = textForm(field, container, values);
+
+        final Key.KeyBuilder builder = Key.builder()
+                .path(path)
+                .docs(field.docs() != null ? field.docs() : "")
+                .ty(field.typeName())
+                .values(values)
+                .constraint(constraint(field, container, textForm, values))
+                .textForm(textForm.model)
+                .secret(field.secret())
+                .note(field.note())
+                // Syntactic, matching the Rust derive macro exactly — see the class-level note.
+                .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
+
+        final Spelling spelling = envSpelling(dialect, path);
+        builder.env(spelling.env);
+        final boolean reserved = spelling.env != null && reservedUpper.contains(spelling.env.toUpperCase(Locale.ROOT));
+        builder.reserved(reserved);
+        if (reserved) {
+            // Read straight from the environment, so neither file mechanism can supply it.
+            builder.envFile(null);
+            builder.secretsFile(null);
+            builder.unreachable(spelling.unreachable);
+        } else {
+            builder.envFile(spelling.env != null ? indirectionName(dialect, spelling.env) : null);
+            builder.secretsFile(secretsFileName(dialect, path));
+            builder.unreachable(spelling.unreachable);
+        }
+        return builder.build();
+    }
+
+    /** How to read the field's own value, before {@link Key#getConstraint()} checks it. */
+    private static TextForm textForm(final KeyDescriptor field, final boolean container, final List<String> values) {
+        if (container) {
+            return TextForm.STRUCTURED;
+        }
+        if (!values.isEmpty()) {
+            return TextForm.CHOICE;
+        }
+        return TextForm.of(field.typeName());
+    }
+
+    /** The JSON Schema keywords this field's value must satisfy, or {@code null} if none apply. */
+    private static @Nullable Map<String, Object> constraint(
+            final KeyDescriptor field, final boolean container, final TextForm textForm, final List<String> values) {
+        if (container) {
+            final Map<String, Object> schema = new TreeMap<>();
+            if (Objects.requireNonNull(field.container()) == KeyDescriptor.ContainerKind.MAP) {
+                schema.put("type", "object");
+            } else {
+                schema.put("type", "array");
+                final Map<String, Object> items = elementConstraint(field.element());
+                if (items != null) {
+                    schema.put("items", items);
+                }
+            }
+            return schema;
+        }
+        return leafConstraint(textForm, values, field.range());
+    }
+
+    private static @Nullable Map<String, Object> elementConstraint(@Nullable final ElementDescriptor element) {
+        if (element == null) {
+            return null;
+        }
+        final TextForm elementForm = !element.values().isEmpty() ? TextForm.CHOICE : TextForm.of(element.typeName());
+        return leafConstraint(elementForm, element.values(), element.range());
+    }
+
+    private static @Nullable Map<String, Object> leafConstraint(
+            final TextForm textForm, final List<String> values, @Nullable final RangeConstraint range) {
+        final Map<String, Object> schema = new TreeMap<>();
+        switch (textForm) {
+            case CHOICE:
+                schema.put("type", "string");
+                schema.put("enum", new ArrayList<>(values));
+                return schema;
+            case TEXT:
+                schema.put("type", "string");
+                return schema;
+            case BOOLEAN:
+                schema.put("type", "boolean");
+                return schema;
+            case INTEGER:
+                schema.put("type", "integer");
+                addRange(schema, range);
+                return schema;
+            case NUMBER:
+                schema.put("type", "number");
+                addRange(schema, range);
+                return schema;
+            case UNKNOWN:
+            default:
+                // No check is possible; a consumer must not invent one.
+                return range == null ? null : rangeOnly(range);
+        }
+    }
+
+    private static @Nullable Map<String, Object> rangeOnly(final RangeConstraint range) {
+        final Map<String, Object> schema = new TreeMap<>();
+        addRange(schema, range);
+        return schema.isEmpty() ? null : schema;
+    }
+
+    private static void addRange(final Map<String, Object> schema, @Nullable final RangeConstraint range) {
+        if (range == null) {
+            return;
+        }
+        if (range.min() != null) {
+            schema.put("minimum", range.min());
+        }
+        if (range.max() != null) {
+            schema.put("maximum", range.max());
+        }
+        if (range.exclusiveMin() != null) {
+            schema.put("exclusiveMinimum", range.exclusiveMin());
+        }
+        if (range.exclusiveMax() != null) {
+            schema.put("exclusiveMaximum", range.exclusiveMax());
+        }
+    }
+
+    /** The environment spelling of {@code path}, when the environment can actually name it. */
+    private static Spelling envSpelling(final Dialect dialect, final String path) {
+        final String name =
+                dialect.getPrefix() + path.toUpperCase(Locale.ROOT).replace(".", dialect.getNestingSeparator());
+        if (!isSettableEnvName(name)) {
+            return new Spelling(null, UnreachableReason.UNNAMEABLE);
+        }
+        if (indirectionTarget(dialect, name) != null) {
+            return new Spelling(null, UnreachableReason.INDIRECTION);
+        }
+        final String mapped = envLayerKey(dialect, name);
+        if (path.equals(mapped)) {
+            return new Spelling(name, null);
+        }
+        return new Spelling(null, UnreachableReason.UNNAMEABLE);
+    }
+
+    /** The key a case-folding, separator-splitting environment reader makes of {@code name}. */
+    private static @Nullable String envLayerKey(final Dialect dialect, final String name) {
+        final String trimmed = name.trim();
+        if (!trimmed.startsWith(dialect.getPrefix())) {
+            return null;
+        }
+        final String suffix = trimmed.substring(dialect.getPrefix().length());
+        final String mapped = suffix.replace(dialect.getNestingSeparator(), ".").trim();
+        for (String segment : mapped.split("\\.", -1)) {
+            if (segment.isEmpty()) {
+                return null;
+            }
+        }
+        return mapped.toLowerCase(Locale.ROOT);
+    }
+
+    /** The key an indirection variable names, if {@code name} is one, or {@code null}. */
+    private static @Nullable String indirectionTarget(final Dialect dialect, final String name) {
+        if (!name.startsWith(dialect.getPrefix())) {
+            return null;
+        }
+        final String rest = name.substring(dialect.getPrefix().length());
+        if (!rest.endsWith(dialect.getIndirectionSuffix())) {
+            return null;
+        }
+        final String key =
+                rest.substring(0, rest.length() - dialect.getIndirectionSuffix().length());
+        return key.isEmpty() ? null : key;
+    }
+
+    private static @Nullable String indirectionName(final Dialect dialect, final String env) {
+        final String candidate = env + dialect.getIndirectionSuffix();
+        return isSettableEnvName(candidate) ? candidate : null;
+    }
+
+    /** The secrets-directory file name for {@code path}, when one can name it. */
+    private static @Nullable String secretsFileName(final Dialect dialect, final String path) {
+        final String name = path.replace(".", dialect.getNestingSeparator());
+        if (name.contains(".") || !isNameableFile(name)) {
+            return null;
+        }
+        final String[] parts = name.toLowerCase(Locale.ROOT)
+                .split(
+                        java.util.regex.Pattern.quote(
+                                dialect.getNestingSeparator().toLowerCase(Locale.ROOT)),
+                        -1);
+        return String.join(".", parts).equals(path) ? name : null;
+    }
+
+    private static boolean isSettableEnvName(final String name) {
+        return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('=') < 0;
+    }
+
+    private static boolean isNameableFile(final String name) {
+        return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('/') < 0 && name.indexOf('\\') < 0;
+    }
+
+    @AllArgsConstructor
+    private static final class Spelling {
+        final @Nullable String env;
+        final @Nullable UnreachableReason unreachable;
+    }
+
+    /** The leaf shapes {@link Key#getTextForm()} distinguishes, plus a {@code NUMBER} form this
+     * assembler uses internally for a floating-point range before folding it into the model's
+     * {@link de.timscho.config.core.model.TextForm#UNKNOWN} — a float's own value is still
+     * {@code Unknown} in the published document, matching the Rust crate. */
+    @AllArgsConstructor
+    private enum TextForm {
+        TEXT(de.timscho.config.core.model.TextForm.TEXT),
+        INTEGER(de.timscho.config.core.model.TextForm.INTEGER),
+        NUMBER(de.timscho.config.core.model.TextForm.UNKNOWN),
+        BOOLEAN(de.timscho.config.core.model.TextForm.BOOLEAN),
+        CHOICE(de.timscho.config.core.model.TextForm.CHOICE),
+        STRUCTURED(de.timscho.config.core.model.TextForm.STRUCTURED),
+        UNKNOWN(de.timscho.config.core.model.TextForm.UNKNOWN);
+
+        final de.timscho.config.core.model.TextForm model;
+
+        static TextForm of(final String typeName) {
+            return switch (typeName) {
+                case "String", "CharSequence", "char", "Character" -> TEXT;
+                case "boolean", "Boolean" -> BOOLEAN;
+                case "byte", "short", "int", "long", "Byte", "Short", "Integer", "Long", "BigInteger" -> INTEGER;
+                case "float", "double", "Float", "Double", "BigDecimal" ->
+                    // A float is not certain enough to check — matches the Rust crate's own
+                    // `TextForm::Unknown` for this case.
+                    NUMBER;
+                default -> UNKNOWN;
+            };
+        }
+    }
+}
