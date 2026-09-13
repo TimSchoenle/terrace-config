@@ -147,9 +147,6 @@
         "type": "object"
       }
     },
-    "required": [
-      "data"
-    ],
     "title": "tier-1-spellings configuration",
     "type": "object"
   },
