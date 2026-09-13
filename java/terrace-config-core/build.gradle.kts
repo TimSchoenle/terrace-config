@@ -10,6 +10,7 @@ description = "The envelope model, the eight build-time refusals, and the `json-
 // java/README.md's Lombok section and the root java/lombok.config.
 plugins {
     id("terrace-config.lombok-conventions")
+    id("terrace-config.publish-conventions")
 }
 
 // This module holds only the document model, never an `ObjectMapper` of either Jackson major —

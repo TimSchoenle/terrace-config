@@ -8,6 +8,7 @@ description = "terrace-config-spring: starter + producer over Spring's Binder, t
 
 plugins {
     id("terrace-config.lombok-conventions")
+    id("terrace-config.publish-conventions")
 }
 
 // Deliberately no direct Jackson dependency, declared or transitive-pinned: this module only ever

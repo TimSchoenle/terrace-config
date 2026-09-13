@@ -8,6 +8,7 @@ description = "The byte-stable JSON codec for the contract model, built on Jacks
 
 plugins {
     id("terrace-config.java-conventions")
+    id("terrace-config.publish-conventions")
 }
 
 dependencies {

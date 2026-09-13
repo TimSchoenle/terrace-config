@@ -9,6 +9,7 @@ description = "The @TerraceConfig annotation processor, mirroring #[derive(Descr
 // (TypeDescriptor/KeyDescriptor/...), never Lombok-annotated classes of its own.
 plugins {
     id("terrace-config.java-conventions")
+    id("terrace-config.publish-conventions")
 }
 
 dependencies {

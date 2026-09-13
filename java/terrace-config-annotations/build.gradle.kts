@@ -13,6 +13,7 @@ description = "@TerraceConfig and the rest of the annotation vocabulary read by 
 // make. See java/README.md's Lombok section.
 plugins {
     id("terrace-config.java-conventions")
+    id("terrace-config.publish-conventions")
 }
 
 // jspecify's own guidance (see gradle/libs.versions.toml) is `implementation`/`api`, not

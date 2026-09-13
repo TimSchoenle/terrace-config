@@ -8,6 +8,7 @@ description = "terrace-config-java: the vanilla five-layer loader, target tier 2
 
 plugins {
     id("terrace-config.lombok-conventions")
+    id("terrace-config.publish-conventions")
 }
 
 dependencies {

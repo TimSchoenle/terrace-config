@@ -223,6 +223,10 @@ ID, to every module below it:
 - **`terrace-config.lombok-conventions`** — the above, plus `io.freefair.lombok` pre-configured
   with the version from `gradle/libs.versions.toml`. Applied by `terrace-config-core`,
   `terrace-config-processor`, `terrace-config-loader` and `terrace-config-spring-boot`.
+- **`terrace-config.publish-conventions`** — `com.vanniktech.maven.publish` pre-configured with
+  the licence/developer/SCM POM metadata common to every published artefact, plus javadoc and
+  sources jars. Applied by the seven modules with a public artefact — see "Publishing to JitPack"
+  below for which those are, and why Maven Central itself isn't wired up (yet).
 
 This replaces what used to be a root `java/build.gradle.kts` `subprojects { ... }` block: the same
 settings, but expressed as plugins a module opts into by ID rather than configuration silently
@@ -236,6 +240,70 @@ with a differently-shaped catalog), so the two convention plugins above use the 
 string-keyed `VersionCatalogsExtension` lookup instead (`libs.findLibrary("...")`,
 `libs.findVersion("...")`); ordinary module `build.gradle.kts` files keep using the type-safe
 accessors as before.
+
+## Publishing to JitPack
+
+Seven of the ten modules carry `terrace-config.publish-conventions` and are published:
+`terrace-config-annotations`, `terrace-config-core`, `terrace-config-core-jackson2`,
+`terrace-config-core-jackson3`, `terrace-config-processor`, `terrace-config-loader`,
+`terrace-config-spring-boot`. `terrace-config-spec-tck` and the two `-example-*` modules
+deliberately do not — the first is a test-only tool against `spec/v1/conformance/`, and the
+other two are worked examples meant to be read, not depended on.
+
+Coordinates need nothing set per module: `group` (`de.timscho`) and `version` come from the
+`allprojects {}` block in the root `build.gradle.kts`, and the plugin's default `artifactId` is
+the Gradle project name, which already matches. A module states only its own `pom.name`/
+`pom.description`, taken from the `description` property every `build.gradle.kts` already
+declares — everything else common to a release (licence, developer, SCM URL) lives once in
+`terrace-config.publish-conventions`.
+
+Maven Central itself is not wired up right now — no Sonatype account, no GPG key, no signing —
+by choice, not by omission: [JitPack](https://jitpack.io) needs none of that. It builds directly
+from a pushed tag, on request, the first time someone resolves it, and caches the result — no
+release workflow to run at all, since there's no separate publish step to trigger; the tag itself
+is the release. `terrace-config.publish-conventions.gradle.kts`'s own comment says what to add
+back (`publishToMavenCentral`, `signAllPublications`, a `release-java.yml`) if Central publishing
+is wanted later.
+
+`jitpack.yml`, at the repository root (JitPack always looks there, not under `java/`), tells it
+the project's actual Gradle root isn't the repository root and to skip the test suite — this
+repository's own CI (`ci.yml`) already runs and gates on it; JitPack is building on demand for
+whoever is waiting on the resolution that triggered it, not re-running this repository's checks:
+
+```yaml
+jdk:
+  - openjdk21
+install:
+  - cd java && ./gradlew publishToMavenLocal -x test --console=plain
+```
+
+`publishToMavenLocal`: JitPack's whole model is copying whatever lands in `~/.m2/repository` into
+what it serves back to a consumer — confirmed by running the exact command above locally, which
+lands working jars, sources jars, javadoc jars and POMs in `~/.m2` for all seven modules, no
+signing or credentials needed anywhere in the path. The Java 25 toolchain itself is unaffected by
+whatever JDK actually runs the wrapper on JitPack's build image — see
+`org.gradle.toolchains.foojay-resolver-convention` in `settings.gradle.kts`, added for exactly
+this: it fetches a matching JDK 25 itself rather than requiring the host to already have one.
+
+A consumer depends on JitPack the same way as any other repository, against a pushed tag or
+commit — a released version like `v0.1.0` once release-please has cut one, or a branch name /
+short commit SHA for something unreleased:
+
+```kotlin
+repositories {
+    maven { url = uri("https://jitpack.io") }
+}
+
+dependencies {
+    // one module — group is `com.github.<user>.<repo>`, artifact is the Gradle module name
+    implementation("com.github.TimSchoenle.terrace-config:terrace-config-loader:<tag>")
+    // every published module at once — group is `com.github.<user>`, artifact is the repo name
+    implementation("com.github.TimSchoenle:terrace-config:<tag>")
+}
+```
+
+Only the seven modules `terrace-config.publish-conventions` applies are resolvable this way — the
+same seven listed at the top of this section, for the same reason.
 
 ## Formatting
 

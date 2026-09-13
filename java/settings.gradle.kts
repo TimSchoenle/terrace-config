@@ -1,6 +1,11 @@
 // Aggregator only — no code of its own. Building it builds every module in dependency order;
 // releasing it releases nothing, since each artefact below is versioned and released
 // independently (see release-please-config.json once the Java packages are wired in).
+
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 rootProject.name = "terrace-config-parent"
 
 // The version catalog at gradle/libs.versions.toml is picked up by convention; no explicit
