@@ -22,6 +22,16 @@ mutants.out.old/
 *.pdb
 
 # ---------------------------------------------------------------------------
+# Java / Gradle
+# ---------------------------------------------------------------------------
+# Compiled output for every module under java/. A bare `build/` matches any directory of that
+# name at any depth, mirroring how `target/` is handled for Cargo above.
+build/
+.gradle/
+# The wrapper jar itself IS committed (it's how CI and a fresh clone get the exact pinned
+# Gradle version without a local install); only its ad hoc distribution cache is not.
+
+# ---------------------------------------------------------------------------
 # Environment & secrets (never commit these)
 # ---------------------------------------------------------------------------
 .env

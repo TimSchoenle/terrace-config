@@ -1,0 +1,39 @@
+# `cargo deny check`. Run in CI on every push and on the weekly schedule — the advisory
+# database moves without this repository changing, so a filtered run is not enough.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+ignore = []
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "Zlib",
+    # MIT with the attribution clause removed, so strictly more permissive than the `MIT` above.
+    # Reached through `jsonschema` -> `referencing` -> `fluent-uri` -> `borrow-or-share`, which is
+    # the URI parser the validator resolves a `$ref` with. Listed rather than left to be discovered
+    # by whoever next adds a dependency that happens to pull it in.
+    "MIT-0",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -50,8 +50,37 @@ Phase 0 and most of phase 1 are built, in `cli/`. What exists and is under test:
 implementation's own `TERRACE_SPEC_BLESS` run, which is §5 arriving with phase 1 rather than after
 it.
 
-Still to come, in the order §11 gives: the Java cutover (phase 2), then the chart half — `k8s`,
-the gates, the marker language, the derived documents and the writers.
+### The consumer half
+
+Phases 3, 4 and 5 are built and the Python they replaced is deleted in `helm-charts`. Phase 6 has
+its network half.
+
+| | ships | verified by |
+|---|---|---|
+| phase 3 | `check` | 444 findings agreeing over a mutant of the rendered tree |
+| phase 4 | `bindings`, `shapes`, `coverage` | 232 markers read identically; every derived `@schema` block reproduced byte for byte |
+| phase 5 | `diff`, `secrets`, `readme`, `tests`, `explain` | four revisions byte-identical; 151 unclaimed and 24 over-projected mounts agreeing over a mutant render; 7 credential references and 15 generated suites reproduced byte for byte; 28 explanations agreeing field for field |
+| phase 6 | `pull` | 25 cases against a recorded registry, behind the `Registry` seam |
+
+Still to come: phase 2's Java cutover, and phase 6's writers — `scaffold`, the adopt path and the
+`sync` that composes them. Those are last for the reason §11 gives, and the reason has not changed:
+a generator that is wrong writes its mistake into the tree, where a parity harness cannot see it as
+a diff. `config_scaffold.py` and `adopt-config.py` stay in `helm-charts` until they are ported, and
+`config_testgen.py` keeps `satisfying` and `VALUES_ROOT` for the first of them to read.
+
+### What the port found
+
+- **`producer` had to be optional in the reader.** §7.1's registry needs `producer.loader`, and
+  every contract vendored in the corpus predates the field — so a reader as strict as the writer
+  would refuse legal `terrace_contract: 1` bytes. It is optional here and required by the schema,
+  and the asymmetry is deliberate.
+- **A ported test caught a real defect in the port.** The range check returned early for a
+  `structured` value, so a structured key was never held to its `constraint` at all. Fixing it
+  widened the check, and the parity harness proved the widening changed no finding on the corpus.
+- **A clean corpus is a weak oracle**, so four of the comparisons run over a deliberately broken
+  tree — an unknown key in every document, an unaccounted variable on every container, a renamed
+  marker target per chart, every Secret mounted a second time at a path nothing resolved. Every
+  one of those found rules the clean tree never reached.
 
 Two things found while building, both now fixed in the plan's own terms rather than only in code:
 
@@ -225,8 +254,49 @@ The Rust equivalent needs both halves, and the second decides a dependency: `ser
 unmaintained and `deny.toml` will say so, so typed reads go to `serde_norway` or `serde_yaml_ng`;
 the marker work needs events with line and column, from `yaml-rust2`, `saphyr` or `marked-yaml`.
 
-**Spike it before phase 4.** It blocks nothing earlier — the entire producer-side half, which is
-what the Java work needs, touches no YAML at all.
+**Spiked, and answered.** Both halves, and the second differently from how the question was posed.
+
+**Typed reads: `serde_norway`.** The maintained fork of `serde_yaml`, MIT or Apache-2.0, with the
+same `serde` surface — including the multi-document deserialiser a rendered file needs. Adopted in
+phase 3 and proven over the whole chart tree: nine charts, seventy-one rendered files, every
+`values.yaml` and every declaration.
+
+**Markers: `saphyr-parser`, and a line-keyed scan that no crate can replace.** The question assumed
+a comment-preserving parser would do the marker work. None exists — `saphyr`, `yaml-rust2` and
+`marked-yaml` all discard comments, and `marked-yaml` keeps spans rather than trivia — so the
+comment scan is line-keyed in Rust for exactly the reason it is in Python. That is not the fallback;
+it is the only design available, and the Python's is the right shape.
+
+What an event parser *does* buy is the other half, and it is worth more than the comment question
+was:
+
+```text
+2:0  MappingStart          server:
+8:2  Scalar(port)            port: 8080          <- the key, at its own line
+13:2 Scalar(not: a…port: 1)  a block scalar is one event, not two mapping keys
+```
+
+`saphyr-parser` reports a `Span` on every event, so **the values path is built from the document's
+own structure rather than from indentation**. The Python tracks indentation by hand and carries a
+`skip_deeper_than` for the two regions that break it — sequence items and block scalars — because a
+`port: 1` inside a literal block looks exactly like a mapping key to a line reader. To an event
+parser it is one scalar. Both hand-coded exceptions disappear, and so does the class of defect they
+exist to prevent.
+
+So the marker reader is two passes over one file, and they meet on a line number:
+
+| Pass | Reads | Gives |
+|---|---|---|
+| `saphyr-parser` events | the structure | every mapping key's dotted path, and the line it sits on |
+| a line scan | the comments | every `@config` marker, and the line it sits on |
+
+A marker binds to the first key whose line is below its `@schema` block — which is what "attached by
+contiguity" already means, stated against the parser's own answer instead of against a reconstruction
+of it. Measured on the corpus: 205 keys in `portfolio`, 589 in `tankovault`, every dotted path and
+every line correct.
+
+`saphyr-parser` is one dependency deep (`arraydeque`, plus the `thiserror` already linked), MIT or
+Apache-2.0, and carries no `serde`. It is not needed before phase 4.
 
 ---
 
@@ -703,7 +773,11 @@ including a `--no-default-features` row; a `release-binaries` workflow; a contai
 
 ## 15. Open questions
 
-1. **The YAML pair.** §3.1. Blocks phase 4, nothing earlier.
+1. ~~**The YAML pair.**~~ **Settled** (§3.1): `serde_norway` for typed reads, adopted in phase 3;
+   `saphyr-parser` for the marker half, plus a line-keyed comment scan, because no Rust crate
+   preserves comments and the comment *is* the marker. The parser earns its place on the other half
+   of the problem — it gives the values path from the structure, which removes both of the
+   hand-coded exceptions the line reader needs.
 2. **Does `render` accept a bare schema document, or only a contract?** A contract requires an
    `App`, and a service rendering a README table has no build identity to state. Accepting both is
    two input shapes; requiring a contract is a synthetic `App`. Leaning: accept both, since

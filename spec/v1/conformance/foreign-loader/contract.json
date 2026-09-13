@@ -1,0 +1,142 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config-spring-boot",
+    "version": "0.0.0-conformance",
+    "loader": "spring-boot"
+  },
+  "app": {
+    "name": "foreign-loader",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "FOREIGN_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "FOREIGN_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer.",
+        "default": "config.toml"
+      },
+      {
+        "env": "FOREIGN_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "server.port",
+        "env": "FOREIGN_SERVER__PORT",
+        "env_file": "FOREIGN_SERVER__PORT_FILE",
+        "secrets_file": "server__port",
+        "docs": "Port the HTTP listener binds.",
+        "ty": "int",
+        "values": [],
+        "constraint": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "text_constraint": {
+          "type": "string",
+          "pattern": "^\\s*[+-]?[0-9]+\\s*$"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "8080",
+        "default_value": 8080,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "logging.level",
+        "env": "FOREIGN_LOGGING__LEVEL",
+        "env_file": "FOREIGN_LOGGING__LEVEL_FILE",
+        "secrets_file": "logging__level",
+        "docs": "How much the service says.",
+        "ty": "org.slf4j.event.Level",
+        "values": [
+          "ERROR",
+          "WARN",
+          "INFO",
+          "DEBUG"
+        ],
+        "constraint": {
+          "type": "string",
+          "enum": [
+            "ERROR",
+            "WARN",
+            "INFO",
+            "DEBUG"
+          ]
+        },
+        "text_form": "choice",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "INFO",
+        "default_value": "INFO",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "logging": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "default": "INFO",
+            "description": "How much the service says.",
+            "enum": [
+              "ERROR",
+              "WARN",
+              "INFO",
+              "DEBUG"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "server": {
+        "additionalProperties": false,
+        "properties": {
+          "port": {
+            "default": 8080,
+            "description": "Port the HTTP listener binds.",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "title": "foreign-loader configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

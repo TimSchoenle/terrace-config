@@ -1,11 +1,43 @@
-# The spec is read by toolchains that are not this repository's — a Java build, a chart's CI job, a
-# JSON Schema validator — and its conformance corpus is compared byte for byte. Line endings are
-# part of those bytes, and the generator behind `TERRACE_SPEC_BLESS` writes LF, so a working tree
-# that checked the corpus out as CRLF would be dirty from the moment it was cloned.
-spec/** text eol=lf
+# Normalize everything Git considers text to LF on checkout; anything Git can't classify as
+# text is left alone rather than guessed at.
+* text=auto eol=lf
 
-# A fuzz seed is an input, not a text file: its bytes are what reproduce a finding, and a CRLF
-# checkout would hand the harness a directive it never saw. The same reasoning as `spec/**` above,
-# one layer down.
+# --- Source ---
+*.rs text eol=lf diff=rust
+*.rs.bk -text -diff
+
+# --- Structured data / config ---
+*.toml text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.dict text eol=lf
+
+# --- Docs / prose ---
+*.md text eol=lf diff=markdown
+LICENSE text eol=lf
+*.hbs text eol=lf
+
+# --- Scripts ---
+*.sh text eol=lf
+
+# --- Housekeeping ---
+.gitattributes text eol=lf
+.gitignore text eol=lf
+*.gitkeep text eol=lf
+
+# The spec is read by toolchains that are not this repository's, and its conformance corpus is
+# compared byte for byte; a CRLF checkout would be dirty from the moment it was cloned.
+spec/** text eol=lf
+spec/v1/conformance/**/rendered/** linguist-generated=true
+
+# Fuzz seeds are inputs, not prose: their exact bytes are what reproduce a finding.
+fuzz/seeds/** text eol=lf
+fuzz/corpus/** text eol=lf
 cli/fuzz/seeds/** text eol=lf
 cli/fuzz/corpus/** text eol=lf
+
+# Machine-written artifacts: collapsed by default in GitHub diffs/stats, still diffable locally.
+CHANGELOG.md linguist-generated=true
+.release-please-manifest.json linguist-generated=true
+Cargo.lock linguist-generated=true

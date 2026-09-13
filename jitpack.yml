@@ -1,0 +1,24 @@
+# An alternative to Maven Central for the Java artefacts (see java/README.md's "Publishing to
+# JitPack" section) that needs no account, no token and no GPG key: JitPack builds straight from
+# a pushed tag on request, the first time someone resolves it, and caches the result. Consumers
+# add `https://jitpack.io` as a repository and depend on `com.github.TimSchoenle.terrace-config:
+# <module>:<tag>` -- see that README section for the exact coordinates each of the seven
+# publishable modules gets.
+#
+# JitPack's own runner only needs a JVM new enough to run the Gradle wrapper itself (Gradle 9
+# requires 17+); the actual Java 25 toolchain the modules compile against is fetched by the
+# `org.gradle.toolchains.foojay-resolver-convention` plugin declared in java/settings.gradle.kts,
+# not by this file -- see that plugin's own comment for why it exists at all.
+jdk:
+  - openjdk21
+
+# The Gradle project root is `java/`, not the repository root, so the default "run the wrapper
+# where it finds one" behaviour would look in the wrong directory. `-x test`: JitPack is building
+# on demand for whoever is waiting on the dependency resolution that triggered this, not running
+# this repository's own CI -- see .github/workflows/ci.yml for the checked, gated test run every
+# commit already gets. `publishToMavenLocal`, not `publishToMavenCentral`: the seven modules'
+# `terrace-config.publish-conventions` plugin configures both, but only the local-repository task
+# needs no Central Portal credentials or GPG key -- JitPack copies whatever lands in
+# `~/.m2/repository` into what it serves back to a consumer, it never touches Central at all.
+install:
+  - cd java && ./gradlew publishToMavenLocal -x test --console=plain
