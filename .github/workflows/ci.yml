@@ -88,7 +88,11 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
-      - uses: TimSchoenle/actions/actions/rust/clippy@90667cd95bd8ee306fbd54412c2e082448fb5a40
+      # Pinned to TimSchoenle/actions#1673 (fix/rust-clippy-source-directory): the previous SHA
+      # never threaded `source_directory` into the clippy step itself, so every consumer whose
+      # Cargo project is not at the repo root got "could not find Cargo.toml" instead of a lint
+      # result. Re-pin to `main` once that PR is merged.
+      - uses: TimSchoenle/actions/actions/rust/clippy@e48facb4ef3fbab884c3fe19656ddbe7047ac513
         with:
           source_directory: rust
           clippy_arguments: ${{ matrix.features }} --all-targets
