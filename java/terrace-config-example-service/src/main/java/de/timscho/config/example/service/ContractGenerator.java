@@ -33,12 +33,12 @@ final class ContractGenerator {
 
     /** Assembles and validates the {@link Contract} for {@link Config}, reachable under {@code ORDERS_}. */
     static Contract generate() {
-        Schema schema = TerraceLoader.of("ORDERS_")
+        final Schema schema = TerraceLoader.of("ORDERS_")
                 .reserve("ORDERS_PROFILE")
                 .schema(ConfigDescriptor.DESCRIPTOR)
                 .withDefaultsFromValue(defaultsAsMap());
-        App app = App.builder().name("orders-service").build();
-        Producer producer = ProducerIdentity.forLoader("terrace-java");
+        final App app = App.builder().name("orders-service").build();
+        final Producer producer = ProducerIdentity.forLoader("terrace-java");
         return ContractAssembler.assemble(schema, app, producer);
     }
 
@@ -55,7 +55,7 @@ final class ContractGenerator {
     }
 
     /** {@link #generate()}, rendered as the same pretty-printed JSON {@link ContractCodec#write} writes to a file. */
-    static String toJson(Contract contract) {
+    static String toJson(final Contract contract) {
         return new String(ContractCodec.write(contract), java.nio.charset.StandardCharsets.UTF_8);
     }
 }

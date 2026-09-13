@@ -26,7 +26,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "terrace.contract")
-public class TerraceContractProperties {
+public final class TerraceContractProperties {
 
     /**
      * The fully qualified name of the {@code @TerraceConfig}-annotated configuration type. Its

@@ -11,7 +11,7 @@ final class DescriptorException extends RuntimeException {
 
     private final transient Element element;
 
-    DescriptorException(Element element, String message) {
+    DescriptorException(final Element element, final String message) {
         super(message);
         this.element = element;
     }

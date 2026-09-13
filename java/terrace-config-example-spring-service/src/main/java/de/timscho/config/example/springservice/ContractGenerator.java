@@ -29,7 +29,7 @@ final class ContractGenerator {
 
     /** Assembles and validates the {@link Contract} for {@link OrdersProperties}, reachable under {@code ORDERS_}. */
     static Contract generate() {
-        App app = App.builder().name("orders-service").build();
+        final App app = App.builder().name("orders-service").build();
         return SpringContractProducer.produce(OrdersPropertiesDescriptor.DESCRIPTOR, "ORDERS_", app, defaultsAsMap());
     }
 
@@ -45,7 +45,7 @@ final class ContractGenerator {
     }
 
     /** {@link #generate()}, rendered as the same pretty-printed JSON {@link ContractCodec#write} writes to a file. */
-    static String toJson(Contract contract) {
+    static String toJson(final Contract contract) {
         return new String(ContractCodec.write(contract), java.nio.charset.StandardCharsets.UTF_8);
     }
 }

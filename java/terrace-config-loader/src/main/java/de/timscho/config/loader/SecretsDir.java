@@ -36,18 +36,18 @@ final class SecretsDir {
      *
      * <p>{@code origin} names whatever pointed at {@code dir} and is quoted back in any error.
      */
-    static SecretsDir read(String origin, Path dir, Dialect dialect) {
-        Map<String, FileValue> values = new LinkedHashMap<>();
+    static SecretsDir read(final String origin, final Path dir, final Dialect dialect) {
+        final Map<String, FileValue> values = new LinkedHashMap<>();
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(dir)) {
             for (Path entry : entries) {
-                String name = entry.getFileName().toString();
+                final String name = entry.getFileName().toString();
                 if (name.startsWith(".")) {
                     continue;
                 }
                 if (!Files.isRegularFile(entry)) {
                     continue;
                 }
-                String key = keyFromName(name, entry, dialect);
+                final String key = keyFromName(name, entry, dialect);
                 values.put(key, new FileValue(entry, LayerValues.readValue(entry)));
             }
         } catch (IOException e) {
@@ -57,7 +57,7 @@ final class SecretsDir {
     }
 
     /** The figment key a secrets-directory file name denotes. */
-    private static String keyFromName(String name, Path path, Dialect dialect) {
+    private static String keyFromName(final String name, final Path path, final Dialect dialect) {
         if (name.contains(".")) {
             throw new LoaderException(path + " is not a usable key: `.` is not the nesting separator, `"
                     + dialect.separator() + "` is (`auth" + dialect.separator()
@@ -65,7 +65,7 @@ final class SecretsDir {
                     + "file out of the secrets directory.");
         }
 
-        String spelled = dialect.envSpellingOfName(name);
+        final String spelled = dialect.envSpellingOfName(name);
         if (dialect.isReserved(spelled)) {
             throw new LoaderException(path + " names " + spelled + ", which is read directly from the environment "
                     + "before the layered config is built, so a file cannot supply it.");

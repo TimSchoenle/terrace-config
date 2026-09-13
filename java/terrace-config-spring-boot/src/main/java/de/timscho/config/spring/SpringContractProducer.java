@@ -41,7 +41,7 @@ public final class SpringContractProducer {
 
     /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External)} using {@link SpringDialect#standard()}
      * and no declared external surface. */
-    public static Contract produce(TypeDescriptor descriptor, String prefix, App app) {
+    public static Contract produce(final TypeDescriptor descriptor, final String prefix, final App app) {
         return produce(descriptor, prefix, SpringDialect.standard(), app, ContractAssembler.noExternalSurface());
     }
 
@@ -56,13 +56,18 @@ public final class SpringContractProducer {
      *                                                                  would violate
      */
     public static Contract produce(
-            TypeDescriptor descriptor, String prefix, SpringDialect springDialect, App app, External external) {
+            final TypeDescriptor descriptor,
+            final String prefix,
+            final SpringDialect springDialect,
+            final App app,
+            final External external) {
         return produce(descriptor, prefix, springDialect, app, external, Map.of());
     }
 
     /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External, Map)} using {@link
      * SpringDialect#standard()} and no declared external surface. */
-    public static Contract produce(TypeDescriptor descriptor, String prefix, App app, Map<String, Object> defaults) {
+    public static Contract produce(
+            final TypeDescriptor descriptor, final String prefix, final App app, final Map<String, Object> defaults) {
         return produce(
                 descriptor, prefix, SpringDialect.standard(), app, ContractAssembler.noExternalSurface(), defaults);
     }
@@ -82,20 +87,21 @@ public final class SpringContractProducer {
      *                                                                  would violate
      */
     public static Contract produce(
-            TypeDescriptor descriptor,
-            String prefix,
-            SpringDialect springDialect,
-            App app,
-            External external,
-            Map<String, Object> defaults) {
-        Dialect dialect = Dialect.builder()
+            final TypeDescriptor descriptor,
+            final String prefix,
+            final SpringDialect springDialect,
+            final App app,
+            final External external,
+            final Map<String, Object> defaults) {
+        final Dialect dialect = Dialect.builder()
                 .prefix(prefix)
                 .nestingSeparator(springDialect.separator())
                 .indirectionSuffix(springDialect.indirectionSuffix())
                 .build();
 
-        Schema schema = SchemaAssembler.assemble(descriptor, dialect, Set.of()).withDefaultsFromValue(defaults);
-        Producer producer = ProducerIdentity.forLoader("spring-boot");
+        final Schema schema =
+                SchemaAssembler.assemble(descriptor, dialect, Set.of()).withDefaultsFromValue(defaults);
+        final Producer producer = ProducerIdentity.forLoader("spring-boot");
         return ContractAssembler.assemble(schema, app, producer, external);
     }
 }

@@ -69,7 +69,7 @@ public class JsonSchemaOptions {
     }
 
     /** The document's {@code title}, unless one was already chosen. */
-    public JsonSchemaOptions orTitle(String title) {
+    public JsonSchemaOptions orTitle(final String title) {
         return this.title != null ? this : withTitle(title);
     }
 }

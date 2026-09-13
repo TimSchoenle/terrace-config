@@ -19,8 +19,8 @@ public enum Docs {
     FULL;
 
     /** The text this setting takes from {@code docs}, or {@code null} when there is nothing to take. */
-    public @Nullable String of(String docs) {
-        String text;
+    public @Nullable String of(final String docs) {
+        final String text;
         switch (this) {
             case NONE:
                 return null;
@@ -36,8 +36,8 @@ public enum Docs {
     }
 
     /** The first paragraph of {@code docs}, on one line, soft wraps turned into spaces. */
-    private static String summary(String docs) {
-        StringBuilder summary = new StringBuilder();
+    private static String summary(final String docs) {
+        final StringBuilder summary = new StringBuilder();
         for (String line : docs.split("\n", -1)) {
             if (line.trim().isEmpty()) {
                 break;
@@ -50,7 +50,7 @@ public enum Docs {
         return summary.toString();
     }
 
-    private static String stripTrailingWhitespace(String docs) {
+    private static String stripTrailingWhitespace(final String docs) {
         int end = docs.length();
         while (end > 0 && Character.isWhitespace(docs.charAt(end - 1))) {
             end--;

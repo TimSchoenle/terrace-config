@@ -29,7 +29,7 @@ public class MarkdownRenderer {
      * Both tables: the variables the loader reads, then the configuration keys under
      * {@link Column#DEFAULT_COLUMNS}. Ends with a newline.
      */
-    public static String toMarkdown(Schema schema) {
+    public static String toMarkdown(final Schema schema) {
         return toMarkdownWith(schema, Column.DEFAULT_COLUMNS);
     }
 
@@ -38,9 +38,9 @@ public class MarkdownRenderer {
      * is one, since an operator who cannot find {@code <PREFIX>CONFIG} cannot use any of the
      * rest. Ends with a newline.
      */
-    public static String toMarkdownWith(Schema schema, List<Column> columns) {
-        String loader = toMarkdownLoader(schema);
-        String keys = toMarkdownKeys(schema, columns);
+    public static String toMarkdownWith(final Schema schema, final List<Column> columns) {
+        final String loader = toMarkdownLoader(schema);
+        final String keys = toMarkdownKeys(schema, columns);
         if (loader.isEmpty()) {
             return keys;
         }
@@ -52,13 +52,13 @@ public class MarkdownRenderer {
      * The loader-variable table alone. Empty when the schema has no loader variables -- a header
      * with no rows under it would be a table promising variables that do not exist.
      */
-    public static String toMarkdownLoader(Schema schema) {
-        List<LoaderVar> loader = schema.getLoader();
+    public static String toMarkdownLoader(final Schema schema) {
+        final List<LoaderVar> loader = schema.getLoader();
         if (loader.isEmpty()) {
             return "";
         }
 
-        StringBuilder out = new StringBuilder();
+        final StringBuilder out = new StringBuilder();
         out.append("| Variable | Role | Default | Purpose |\n");
         out.append("|---|---|---|---|\n");
         for (LoaderVar var : loader) {
@@ -80,16 +80,16 @@ public class MarkdownRenderer {
      * still renders its header: an empty configuration section is a real shape, and the header
      * says the section was generated rather than forgotten.
      */
-    public static String toMarkdownKeys(Schema schema, List<Column> columns) {
-        StringBuilder out = new StringBuilder();
-        List<String> headers = new java.util.ArrayList<>();
+    public static String toMarkdownKeys(final Schema schema, final List<Column> columns) {
+        final StringBuilder out = new StringBuilder();
+        final List<String> headers = new java.util.ArrayList<>();
         for (Column column : columns) {
             headers.add(column.heading());
         }
         out.append("| ").append(String.join(" | ", headers)).append(" |\n");
         out.append("|").repeat("---|", columns.size()).append("\n");
         for (Key key : schema.getKeys()) {
-            List<String> cells = new java.util.ArrayList<>();
+            final List<String> cells = new java.util.ArrayList<>();
             for (Column column : columns) {
                 cells.add(column.render(key));
             }
@@ -98,18 +98,18 @@ public class MarkdownRenderer {
         return out.toString();
     }
 
-    private static String optionalCode(@Nullable String value) {
+    private static String optionalCode(@Nullable final String value) {
         return value == null ? "—" : "`" + escape(value) + "`";
     }
 
-    private static String cell(String text) {
+    private static String cell(final String text) {
         if (text.isEmpty()) {
             return "—";
         }
         return escape(text).replace("\n", "<br>");
     }
 
-    private static String escape(String text) {
+    private static String escape(final String text) {
         return text.replace("\\", "\\\\").replace("|", "\\|");
     }
 }

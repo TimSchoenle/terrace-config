@@ -16,12 +16,12 @@ import tools.jackson.core.util.DefaultPrettyPrinter;
 final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
 
     CompactEmptyContainerPrettyPrinter() {
-        DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+        final DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
         indentObjectsWith(indenter);
         indentArraysWith(indenter);
     }
 
-    private CompactEmptyContainerPrettyPrinter(CompactEmptyContainerPrettyPrinter base) {
+    private CompactEmptyContainerPrettyPrinter(final CompactEmptyContainerPrettyPrinter base) {
         super(base);
     }
 
@@ -36,12 +36,12 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
      * Jackson 2's {@code writeObjectFieldValueSeparator}, field -&gt; name).
      */
     @Override
-    public void writeObjectNameValueSeparator(JsonGenerator g) {
+    public void writeObjectNameValueSeparator(final JsonGenerator g) {
         g.writeRaw(": ");
     }
 
     @Override
-    public void writeEndArray(JsonGenerator g, int nrOfEntries) {
+    public void writeEndArray(final JsonGenerator g, final int nrOfEntries) {
         if (!_arrayIndenter.isInline()) {
             --_nesting;
         }
@@ -52,7 +52,7 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
     }
 
     @Override
-    public void writeEndObject(JsonGenerator g, int nrOfEntries) {
+    public void writeEndObject(final JsonGenerator g, final int nrOfEntries) {
         if (!_objectIndenter.isInline()) {
             --_nesting;
         }

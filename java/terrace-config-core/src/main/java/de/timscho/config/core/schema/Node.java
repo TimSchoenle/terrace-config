@@ -30,7 +30,7 @@ final class Node {
     /** The levels below this one, in the order they were first reached. */
     public final List<Node> children = new ArrayList<>();
 
-    private Node(String segment) {
+    private Node(final String segment) {
         this.segment = segment;
     }
 
@@ -38,20 +38,20 @@ final class Node {
      * Group {@code keys} by the path each one carries, split on {@code .} — the same split a
      * dialect's nesting separator ultimately maps back onto.
      */
-    static Node of(List<Key> keys) {
-        Node root = new Node("");
+    static Node of(final List<Key> keys) {
+        final Node root = new Node("");
         for (Key key : keys) {
             root.insert(key.getPath().split("\\.", -1), 0, key);
         }
         return root;
     }
 
-    private void insert(String[] segments, int index, Key key) {
+    private void insert(final String[] segments, final int index, final Key key) {
         if (index == segments.length - 1) {
             keys.add(key);
             return;
         }
-        String head = segments[index];
+        final String head = segments[index];
         Node child = null;
         for (Node candidate : children) {
             if (candidate.segment.equals(head)) {
@@ -91,7 +91,7 @@ final class Node {
      * nested struct beside it -- a field that wanted {@code @Nested} and did not get it. TOML
      * cannot express both, so a renderer has to know.
      */
-    boolean opens(String segment) {
+    boolean opens(final String segment) {
         for (Node child : children) {
             if (child.segment.equals(segment)) {
                 return true;
@@ -101,8 +101,8 @@ final class Node {
     }
 
     /** The last segment of a dotted path — the key's own name, as a file spells it. */
-    static String name(String path) {
-        int lastDot = path.lastIndexOf('.');
+    static String name(final String path) {
+        final int lastDot = path.lastIndexOf('.');
         return lastDot < 0 ? path : path.substring(lastDot + 1);
     }
 }

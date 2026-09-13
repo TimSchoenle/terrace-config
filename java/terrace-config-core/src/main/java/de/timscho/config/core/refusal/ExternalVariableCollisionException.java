@@ -6,7 +6,7 @@ package de.timscho.config.core.refusal;
  */
 public final class ExternalVariableCollisionException extends ContractRefusalException {
 
-    public ExternalVariableCollisionException(String name) {
+    public ExternalVariableCollisionException(final String name) {
         super("external variable `" + name + "` collides with a variable the loader reads");
     }
 }

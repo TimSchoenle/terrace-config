@@ -50,11 +50,11 @@ public final class Sources {
      * is the safe direction: a needless reload of a value nobody actually writes, against a
      * reload loop that never ends.
      */
-    public boolean differsFrom(Sources previous) {
+    public boolean differsFrom(final Sources previous) {
         return !sameValue(fingerprint, previous.fingerprint);
     }
 
-    private static boolean sameValue(@Nullable Object a, @Nullable Object b) {
+    private static boolean sameValue(@Nullable final Object a, @Nullable final Object b) {
         if (a instanceof Double left && b instanceof Double right) {
             return Double.doubleToLongBits(left) == Double.doubleToLongBits(right);
         }

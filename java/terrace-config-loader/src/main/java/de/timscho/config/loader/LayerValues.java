@@ -25,14 +25,14 @@ class LayerValues {
      * a trailing newline is not part of the value, but a trailing space can be a real character
      * of a real password.
      */
-    static String readValue(Path path) {
-        byte[] bytes;
+    static String readValue(final Path path) {
+        final byte[] bytes;
         try {
             bytes = Files.readAllBytes(path);
         } catch (IOException e) {
             throw new LoaderException("reading " + path + ": " + e.getMessage(), e);
         }
-        String text = decodeStrictUtf8(path, bytes);
+        final String text = decodeStrictUtf8(path, bytes);
         int end = text.length();
         while (end > 0 && (text.charAt(end - 1) == '\r' || text.charAt(end - 1) == '\n')) {
             end--;
@@ -40,7 +40,7 @@ class LayerValues {
         return text.substring(0, end);
     }
 
-    private static String decodeStrictUtf8(Path path, byte[] bytes) {
+    private static String decodeStrictUtf8(final Path path, final byte[] bytes) {
         try {
             return StandardCharsets.UTF_8
                     .newDecoder()
@@ -59,14 +59,14 @@ class LayerValues {
      * layer does when two keys disagree about whether a segment is a leaf.
      */
     @SuppressWarnings("unchecked")
-    static void insertNested(Map<String, Object> dict, String key, Object value) {
-        int dot = key.indexOf('.');
+    static void insertNested(final Map<String, Object> dict, final String key, final Object value) {
+        final int dot = key.indexOf('.');
         if (dot < 0) {
             dict.put(key, value);
             return;
         }
-        String head = key.substring(0, dot);
-        String rest = key.substring(dot + 1);
+        final String head = key.substring(0, dot);
+        final String rest = key.substring(dot + 1);
         Object entry = dict.get(head);
         if (!(entry instanceof Map)) {
             entry = new LinkedHashMap<String, Object>();
@@ -80,10 +80,10 @@ class LayerValues {
      * else overwrites.
      */
     @SuppressWarnings("unchecked")
-    static void deepMerge(Map<String, Object> target, Map<String, Object> source) {
+    static void deepMerge(final Map<String, Object> target, final Map<String, Object> source) {
         for (Map.Entry<String, Object> entry : source.entrySet()) {
-            Object existing = target.get(entry.getKey());
-            Object incoming = entry.getValue();
+            final Object existing = target.get(entry.getKey());
+            final Object incoming = entry.getValue();
             if (existing instanceof Map && incoming instanceof Map) {
                 deepMerge((Map<String, Object>) existing, (Map<String, Object>) incoming);
             } else {

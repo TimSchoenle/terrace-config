@@ -25,7 +25,7 @@ public class ProducerIdentity {
      * read it from.
      */
     public static String version() {
-        String implementationVersion = ProducerIdentity.class.getPackage().getImplementationVersion();
+        final String implementationVersion = ProducerIdentity.class.getPackage().getImplementationVersion();
         return implementationVersion != null ? implementationVersion : "0.0.0-dev";
     }
 
@@ -33,7 +33,7 @@ public class ProducerIdentity {
      * A {@link Producer} identifying this module, naming {@code loader} as the library whose
      * environment reads a document's {@code text_constraint}s were measured against.
      */
-    public static Producer forLoader(String loader) {
+    public static Producer forLoader(final String loader) {
         return Producer.builder().name(NAME).version(version()).loader(loader).build();
     }
 }

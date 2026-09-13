@@ -34,7 +34,7 @@ public final class MetaSchemaValidator {
     private final JsonSchema fullSchema;
     private final JsonSchema schemaHalf;
 
-    private MetaSchemaValidator(JsonSchema fullSchema, JsonSchema schemaHalf) {
+    private MetaSchemaValidator(final JsonSchema fullSchema, final JsonSchema schemaHalf) {
         this.fullSchema = fullSchema;
         this.schemaHalf = schemaHalf;
     }
@@ -45,12 +45,12 @@ public final class MetaSchemaValidator {
         return forSchema(readMetaSchema());
     }
 
-    static MetaSchemaValidator forSchema(JsonNode metaSchema) {
-        SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().build();
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+    static MetaSchemaValidator forSchema(final JsonNode metaSchema) {
+        final SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().build();
+        final JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
 
-        JsonSchema full = factory.getSchema(metaSchema, config);
-        JsonSchema half = factory.getSchema(schemaHalfNode(metaSchema), config);
+        final JsonSchema full = factory.getSchema(metaSchema, config);
+        final JsonSchema half = factory.getSchema(schemaHalfNode(metaSchema), config);
         return new MetaSchemaValidator(full, half);
     }
 
@@ -59,8 +59,8 @@ public final class MetaSchemaValidator {
      * live in the same document, so a copy with its root swapped reaches them without a registry
      * — a test that needed one would be testing the resolver, not the schema.
      */
-    private static JsonNode schemaHalfNode(JsonNode metaSchema) {
-        ObjectNode sub = metaSchema.deepCopy();
+    private static JsonNode schemaHalfNode(final JsonNode metaSchema) {
+        final ObjectNode sub = metaSchema.deepCopy();
         sub.remove(List.of("type", "properties", "required", "title", "description"));
         sub.put("$id", "https://terrace.dev/spec/v1/schema-only.json");
         sub.put("$ref", "#/$defs/schema");
@@ -68,7 +68,7 @@ public final class MetaSchemaValidator {
     }
 
     private static JsonNode readMetaSchema() {
-        Path path = SpecPaths.metaSchema();
+        final Path path = SpecPaths.metaSchema();
         try {
             return MAPPER.readTree(path.toFile());
         } catch (IOException e) {
@@ -77,17 +77,17 @@ public final class MetaSchemaValidator {
     }
 
     /** Every error validating {@code instance} against the full envelope, empty if it is valid. */
-    public List<String> validateEnvelope(JsonNode instance) {
+    public List<String> validateEnvelope(final JsonNode instance) {
         return describe(fullSchema.validate(instance));
     }
 
     /** Every error validating {@code schemaHalf} against {@code #/$defs/schema} alone. */
-    public List<String> validateSchemaHalf(JsonNode schemaHalf) {
+    public List<String> validateSchemaHalf(final JsonNode schemaHalf) {
         return describe(this.schemaHalf.validate(schemaHalf));
     }
 
-    private static List<String> describe(Set<ValidationMessage> messages) {
-        List<String> described = new ArrayList<>();
+    private static List<String> describe(final Set<ValidationMessage> messages) {
+        final List<String> described = new ArrayList<>();
         for (ValidationMessage message : messages) {
             described.add("  at `" + message.getInstanceLocation() + "`: " + message.getMessage());
         }

@@ -9,10 +9,10 @@ final class CodeGen {
 
     private CodeGen() {}
 
-    static String stringLiteral(String value) {
-        StringBuilder out = new StringBuilder("\"");
+    static String stringLiteral(final String value) {
+        final StringBuilder out = new StringBuilder("\"");
         for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
+            final char c = value.charAt(i);
             switch (c) {
                 case '"':
                     out.append("\\\"");
@@ -37,15 +37,15 @@ final class CodeGen {
         return out.toString();
     }
 
-    static String nullableStringLiteral(@Nullable String value) {
+    static String nullableStringLiteral(@Nullable final String value) {
         return value == null ? "null" : stringLiteral(value);
     }
 
-    static String stringListLiteral(List<String> values) {
+    static String stringListLiteral(final List<String> values) {
         if (values.isEmpty()) {
             return "java.util.List.of()";
         }
-        StringBuilder out = new StringBuilder("java.util.List.of(");
+        final StringBuilder out = new StringBuilder("java.util.List.of(");
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) {
                 out.append(", ");
@@ -56,7 +56,7 @@ final class CodeGen {
         return out.toString();
     }
 
-    static String doubleLiteral(@Nullable Double value) {
+    static String doubleLiteral(@Nullable final Double value) {
         if (value == null) {
             return "null";
         }

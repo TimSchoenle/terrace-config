@@ -29,6 +29,10 @@ import de.timscho.config.core.model.Contract;
  * service with no such property gets no {@link Contract} bean and no reflective lookup is even
  * attempted.
  */
+// Deliberately not `final`, unlike every other concrete class under java/ (see java/README.md's
+// "Static analysis" section): `@AutoConfiguration` is `@Configuration` underneath, and
+// `proxyBeanMethods` defaults to `true` there too -- Spring CGLIB-subclasses this class at
+// startup for the same reason `OrdersServiceApplication` stays non-final.
 @AutoConfiguration
 @EnableConfigurationProperties(TerraceContractProperties.class)
 @ConditionalOnProperty(prefix = "terrace.contract", name = "type")
@@ -48,23 +52,23 @@ public class TerraceContractAutoConfiguration {
      *                                {@code public static final TypeDescriptor DESCRIPTOR} field
      */
     @Bean
-    public Contract terraceContract(TerraceContractProperties properties, Environment environment) {
-        String type = properties.getType();
+    public Contract terraceContract(final TerraceContractProperties properties, final Environment environment) {
+        final String type = properties.getType();
         if (type == null) {
             // Unreachable in practice: `@ConditionalOnProperty` above already gates this whole
             // bean on `terrace.contract.type` being set.
             throw new IllegalStateException("terrace.contract.type is required but was null.");
         }
-        TypeDescriptor descriptor = loadDescriptor(type);
+        final TypeDescriptor descriptor = loadDescriptor(type);
 
-        String configuredAppName = properties.getAppName();
-        String appName = configuredAppName != null
+        final String configuredAppName = properties.getAppName();
+        final String appName = configuredAppName != null
                 ? configuredAppName
                 : environment.getProperty("spring.application.name", "application");
-        App app =
+        final App app =
                 App.builder().name(appName).version(properties.getAppVersion()).build();
 
-        String prefix = properties.getEnvPrefix();
+        final String prefix = properties.getEnvPrefix();
         if (prefix == null || prefix.isEmpty()) {
             throw new IllegalStateException("terrace.contract.type is set to " + type
                     + ", but terrace.contract.env-prefix is not; a contract needs an "
@@ -74,9 +78,9 @@ public class TerraceContractAutoConfiguration {
         return SpringContractProducer.produce(descriptor, prefix, app);
     }
 
-    private static TypeDescriptor loadDescriptor(String typeName) {
-        String descriptorName = typeName + "Descriptor";
-        Class<?> descriptorClass;
+    private static TypeDescriptor loadDescriptor(final String typeName) {
+        final String descriptorName = typeName + "Descriptor";
+        final Class<?> descriptorClass;
         try {
             descriptorClass = Class.forName(descriptorName);
         } catch (ClassNotFoundException e) {
@@ -87,7 +91,7 @@ public class TerraceContractAutoConfiguration {
                     e);
         }
         try {
-            Field field = descriptorClass.getField("DESCRIPTOR");
+            final Field field = descriptorClass.getField("DESCRIPTOR");
             return (TypeDescriptor) field.get(null);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(

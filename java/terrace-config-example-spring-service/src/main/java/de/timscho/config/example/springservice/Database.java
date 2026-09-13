@@ -11,7 +11,7 @@ import de.timscho.config.annotations.TerraceConfig;
 @TerraceConfig
 @Getter
 @Setter
-public class Database {
+public final class Database {
 
     /**
      * Connection string. A real deployment supplies this through file indirection, never through

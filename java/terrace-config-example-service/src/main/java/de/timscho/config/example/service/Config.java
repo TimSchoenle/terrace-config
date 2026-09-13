@@ -39,7 +39,7 @@ import de.timscho.config.loader.TerraceLoader;
 @TerraceConfig
 @Getter
 @Setter
-public class Config {
+public final class Config {
 
     /** Address the HTTP listener binds to. */
     @JsonProperty("bind_addr")

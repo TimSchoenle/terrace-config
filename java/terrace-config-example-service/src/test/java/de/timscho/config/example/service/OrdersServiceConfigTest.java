@@ -30,7 +30,10 @@ class OrdersServiceConfigTest {
     @TempDir
     Path tmp;
 
-    /** A loader over a config path inside the sandbox, so a stray {@code config.toml} in the working directory can never decide a test. */
+    /**
+     * A loader over a config path inside the sandbox, so a stray {@code config.toml} in the
+     * working directory can never decide a test.
+     */
     private TerraceLoader loader() {
         return TerraceLoader.of("ORDERS_").reserve("ORDERS_PROFILE").defaultConfigPath(tmp.resolve("config.toml"));
     }

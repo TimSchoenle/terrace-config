@@ -31,34 +31,34 @@ final class FileSuffixEnv {
      * Scanned over the whole environment rather than looked up by name, because the keys are
      * open-ended: there is no list of them to consult.
      */
-    static FileSuffixEnv read(Dialect dialect, Map<String, String> environment) {
-        String prefix = dialect.prefix();
-        Map<String, FileValue> values = new LinkedHashMap<>();
-        Map<String, String> origins = new LinkedHashMap<>();
+    static FileSuffixEnv read(final Dialect dialect, final Map<String, String> environment) {
+        final String prefix = dialect.prefix();
+        final Map<String, FileValue> values = new LinkedHashMap<>();
+        final Map<String, String> origins = new LinkedHashMap<>();
 
         for (Map.Entry<String, String> entry : environment.entrySet()) {
-            String name = entry.getKey();
-            Optional<String> target = dialect.indirectionTarget(name);
+            final String name = entry.getKey();
+            final Optional<String> target = dialect.indirectionTarget(name);
             if (target.isEmpty()) {
                 continue;
             }
-            String key = target.get();
+            final String key = target.get();
 
-            String spelled = prefix + key;
+            final String spelled = prefix + key;
             if (dialect.isReserved(spelled)) {
                 throw new LoaderException(name + " is set, but " + spelled + " is read directly from the "
                         + "environment before the layered config is built, so a file "
                         + "cannot supply it. Set " + spelled + " itself.");
             }
 
-            Path path = Path.of(entry.getValue());
-            String value;
+            final Path path = Path.of(entry.getValue());
+            final String value;
             try {
                 value = LayerValues.readValue(path);
             } catch (LoaderException e) {
                 throw new LoaderException(name + " names " + path + ": " + e.getMessage(), e);
             }
-            String keyPath = dialect.keyPath(key);
+            final String keyPath = dialect.keyPath(key);
             origins.put(keyPath, name);
             values.put(keyPath, new FileValue(path, value));
         }
@@ -67,7 +67,7 @@ final class FileSuffixEnv {
     }
 
     /** The variable that named the file supplying {@code key}, in the spelling it was set in. */
-    Optional<String> origin(String key) {
+    Optional<String> origin(final String key) {
         return Optional.ofNullable(origins.get(key));
     }
 
@@ -84,9 +84,9 @@ final class FileSuffixEnv {
      * registered against the old inode never fires again.
      */
     List<Path> watchPaths() {
-        List<Path> paths = new ArrayList<>();
+        final List<Path> paths = new ArrayList<>();
         for (FileValue value : values.values()) {
-            Path parent = value.path().toAbsolutePath().getParent();
+            final Path parent = value.path().toAbsolutePath().getParent();
             if (parent != null) {
                 paths.add(parent);
             }

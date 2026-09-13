@@ -49,12 +49,12 @@ public final class Dialect {
     private final Set<String> reserved;
 
     /** A dialect over {@code prefix}, with {@code __} nesting and the {@code _FILE} suffix. */
-    public static Dialect of(String prefix) {
+    public static Dialect of(final String prefix) {
         return new Dialect(prefix, DEFAULT_SEPARATOR, DEFAULT_FILE_SUFFIX, Collections.emptySet());
     }
 
     /** Replace the nesting separator. Defaults to {@code __}. */
-    public Dialect withNestingSeparator(String separator) {
+    public Dialect withNestingSeparator(final String separator) {
         return new Dialect(prefix, separator, fileSuffix, reserved);
     }
 
@@ -65,8 +65,8 @@ public final class Dialect {
      * config, so a file cannot supply it. Matching is case-insensitive, see {@link
      * #isReserved(String)}.
      */
-    public Dialect reserve(String key) {
-        Set<String> next = new LinkedHashSet<>(reserved);
+    public Dialect reserve(final String key) {
+        final Set<String> next = new LinkedHashSet<>(reserved);
         next.add(key.toUpperCase(Locale.ROOT));
         return new Dialect(prefix, separator, fileSuffix, Collections.unmodifiableSet(next));
     }
@@ -77,7 +77,7 @@ public final class Dialect {
     }
 
     /** Whether {@code name} — a full environment spelling — is reserved. Case-insensitive. */
-    public boolean isReserved(String name) {
+    public boolean isReserved(final String name) {
         return reserved.contains(name.toUpperCase(Locale.ROOT));
     }
 
@@ -85,19 +85,19 @@ public final class Dialect {
      * An environment key suffix ({@code AUTH__JWT_SECRET}) as a key path ({@code
      * auth.jwt_secret}). The separator is matched case-insensitively.
      */
-    public String keyPath(String suffix) {
-        String lowered = suffix.toLowerCase(Locale.ROOT);
-        String[] parts = lowered.split(java.util.regex.Pattern.quote(separator.toLowerCase(Locale.ROOT)), -1);
+    public String keyPath(final String suffix) {
+        final String lowered = suffix.toLowerCase(Locale.ROOT);
+        final String[] parts = lowered.split(java.util.regex.Pattern.quote(separator.toLowerCase(Locale.ROOT)), -1);
         return String.join(".", parts);
     }
 
     /** A key path back in its environment spelling, for error messages. */
-    public String envSpelling(String key) {
+    public String envSpelling(final String key) {
         return prefix + key.toUpperCase(Locale.ROOT).replace(".", separator);
     }
 
     /** The environment spelling of a bare key name, without treating {@code .} as nesting. */
-    String envSpellingOfName(String name) {
+    String envSpellingOfName(final String name) {
         return prefix + name.toUpperCase(Locale.ROOT);
     }
 
@@ -105,15 +105,15 @@ public final class Dialect {
      * The key an indirection variable names, if {@code name} is one — {@code
      * <PREFIX><KEY><SUFFIX>} with a non-empty {@code <KEY>}.
      */
-    java.util.Optional<String> indirectionTarget(String name) {
+    java.util.Optional<String> indirectionTarget(final String name) {
         if (!name.startsWith(prefix)) {
             return java.util.Optional.empty();
         }
-        String rest = name.substring(prefix.length());
+        final String rest = name.substring(prefix.length());
         if (!rest.endsWith(fileSuffix)) {
             return java.util.Optional.empty();
         }
-        String key = rest.substring(0, rest.length() - fileSuffix.length());
+        final String key = rest.substring(0, rest.length() - fileSuffix.length());
         return key.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(key);
     }
 
@@ -121,8 +121,8 @@ public final class Dialect {
      * Every key the environment supplies directly, against the variables that supply it.
      * Excludes {@code _FILE} indirections and reserved keys.
      */
-    Map<String, Set<String>> plainEnvEntries(Map<String, String> environment) {
-        Map<String, Set<String>> keys = new TreeMap<>();
+    Map<String, Set<String>> plainEnvEntries(final Map<String, String> environment) {
+        final Map<String, Set<String>> keys = new TreeMap<>();
         for (String name : environment.keySet()) {
             if (isReserved(name)) {
                 continue;
@@ -131,7 +131,7 @@ public final class Dialect {
                 continue;
             }
             if (name.startsWith(prefix)) {
-                String suffix = name.substring(prefix.length());
+                final String suffix = name.substring(prefix.length());
                 if (!suffix.isEmpty()) {
                     keys.computeIfAbsent(keyPath(suffix), k -> new TreeSet<>()).add(name);
                 }
@@ -141,7 +141,7 @@ public final class Dialect {
     }
 
     /** Every key the environment supplies directly. */
-    Set<String> plainEnvKeys(Map<String, String> environment) {
+    Set<String> plainEnvKeys(final Map<String, String> environment) {
         return new TreeSet<>(plainEnvEntries(environment).keySet());
     }
 }

@@ -23,7 +23,7 @@ final class JacksonReflection {
     private JacksonReflection() {}
 
     /** Whether {@code @JsonIgnoreProperties(ignoreUnknown = false)} is present. */
-    static boolean isClosed(Element element) {
+    static boolean isClosed(final Element element) {
         for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().toString().equals(JSON_IGNORE_PROPERTIES)) {
                 continue;
@@ -39,7 +39,7 @@ final class JacksonReflection {
     }
 
     /** {@code @JsonProperty("...")}'s value, or {@code fallback} if the annotation is absent. */
-    static String jsonPropertyName(Element element, String fallback) {
+    static String jsonPropertyName(final Element element, final String fallback) {
         for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().toString().equals(JSON_PROPERTY)) {
                 continue;

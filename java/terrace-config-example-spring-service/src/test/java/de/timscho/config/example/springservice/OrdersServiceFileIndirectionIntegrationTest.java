@@ -100,7 +100,10 @@ class OrdersServiceFileIndirectionIntegrationTest {
                 .run();
     }
 
-    /** A real {@link StandardEnvironment} whose system-environment source carries {@code entries} instead of this process's own. */
+    /**
+     * A real {@link StandardEnvironment} whose system-environment source carries {@code entries}
+     * instead of this process's own.
+     */
     private static StandardEnvironment fakeSystemEnvironment(Map<String, String> entries) {
         StandardEnvironment environment = new StandardEnvironment();
         environment

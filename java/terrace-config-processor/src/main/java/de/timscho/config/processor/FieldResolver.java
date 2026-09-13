@@ -37,7 +37,7 @@ final class FieldResolver {
     private final Elements elements;
     private final Trees trees;
 
-    FieldResolver(ProcessingEnvironment env) {
+    FieldResolver(final ProcessingEnvironment env) {
         this.elements = env.getElementUtils();
         // `Trees` is the compiler's own public tree API (`com.sun.source.util`/`com.sun.source.tree`,
         // exported unconditionally by `jdk.compiler` since Java 9 — unlike `com.sun.tools.javac.*`,
@@ -49,7 +49,7 @@ final class FieldResolver {
     }
 
     /** {@code null} means the field carries {@code @Skip} and contributes no key. */
-    @Nullable String resolve(VariableElement field) {
+    @Nullable String resolve(final VariableElement field) {
         if (field.getAnnotation(de.timscho.config.annotations.Skip.class) != null) {
             return null;
         }
@@ -59,19 +59,19 @@ final class FieldResolver {
         // field the loader actually reads under that name, and a key path built from the Java
         // identifier instead would describe an environment variable nothing in the loader
         // responds to.
-        String name =
+        final String name =
                 JacksonReflection.jsonPropertyName(field, field.getSimpleName().toString());
-        String docs = Javadocs.normalize(elements.getDocComment(field));
-        String summary = Javadocs.summary(docs);
-        boolean secret = field.getAnnotation(Secret.class) != null;
-        Note noteAnn = field.getAnnotation(Note.class);
-        String note = noteAnn == null ? null : noteAnn.value();
+        final String docs = Javadocs.normalize(elements.getDocComment(field));
+        final String summary = Javadocs.summary(docs);
+        final boolean secret = field.getAnnotation(Secret.class) != null;
+        final Note noteAnn = field.getAnnotation(Note.class);
+        final String note = noteAnn == null ? null : noteAnn.value();
 
-        TypeMirror declaredType = field.asType();
-        String typeName = TypeNames.simplify(declaredType.toString());
-        ContainerShape shape = ContainerShape.of(declaredType);
+        final TypeMirror declaredType = field.asType();
+        final String typeName = TypeNames.simplify(declaredType.toString());
+        final ContainerShape shape = ContainerShape.of(declaredType);
 
-        Shape resolved = shape.kind() == ContainerKind.NONE
+        final Shape resolved = shape.kind() == ContainerKind.NONE
                 ? resolveLeafField(field, declaredType)
                 : resolveContainerField(field, shape);
 
@@ -101,7 +101,7 @@ final class FieldResolver {
      * "8080";}, but not a Lombok {@code @Builder.Default} field, whose initializer {@link
      * #hasLombokBuilderDefault} has to find a different way — see that method for why.
      */
-    private boolean hasDefault(VariableElement field) {
+    private boolean hasDefault(final VariableElement field) {
         return hasInitializer(field) || hasLombokBuilderDefault(field);
     }
 
@@ -115,8 +115,8 @@ final class FieldResolver {
      * treated as having none, the conservative reading — the same one an absent initializer
      * itself gets.
      */
-    private boolean hasInitializer(VariableElement field) {
-        Tree tree = trees.getTree(field);
+    private boolean hasInitializer(final VariableElement field) {
+        final Tree tree = trees.getTree(field);
         return tree instanceof VariableTree variableTree && variableTree.getInitializer() != null;
     }
 
@@ -142,7 +142,7 @@ final class FieldResolver {
      * initializer at all, so seeing the annotation is itself proof one was written, whatever the
      * tree looks like by the time this processor reads it.
      */
-    private boolean hasLombokBuilderDefault(VariableElement field) {
+    private boolean hasLombokBuilderDefault(final VariableElement field) {
         for (AnnotationMirror mirror : field.getAnnotationMirrors()) {
             if (mirror.getAnnotationType().toString().equals("lombok.Builder.Default")) {
                 return true;
@@ -159,19 +159,19 @@ final class FieldResolver {
         boolean closed;
     }
 
-    private Shape resolveLeafField(VariableElement field, TypeMirror declaredType) {
-        Shape shape = new Shape();
-        Nested nested = field.getAnnotation(Nested.class);
-        Values values = field.getAnnotation(Values.class);
-        Range range = field.getAnnotation(Range.class);
+    private Shape resolveLeafField(final VariableElement field, final TypeMirror declaredType) {
+        final Shape shape = new Shape();
+        final Nested nested = field.getAnnotation(Nested.class);
+        final Values values = field.getAnnotation(Values.class);
+        final Range range = field.getAnnotation(Range.class);
 
-        int annotationCount = (nested != null ? 1 : 0) + (values != null ? 1 : 0) + (range != null ? 1 : 0);
+        final int annotationCount = (nested != null ? 1 : 0) + (values != null ? 1 : 0) + (range != null ? 1 : 0);
         if (annotationCount > 1) {
             throw error(field, "carries more than one of @Nested/@Values/@Range; exactly one describes a field");
         }
 
         if (nested != null) {
-            TypeElement nestedType = requireTerraceConfigStruct(field, declaredType, "@Nested");
+            final TypeElement nestedType = requireTerraceConfigStruct(field, declaredType, "@Nested");
             shape.nestedKeys = descriptorReference(nestedType) + ".DESCRIPTOR.keys()";
             shape.closed = JacksonReflection.isClosed(nestedType);
             return shape;
@@ -191,9 +191,9 @@ final class FieldResolver {
         throw mustSayNothingError(field, declaredType);
     }
 
-    private Shape resolveContainerField(VariableElement field, ContainerShape shape) {
-        Shape result = new Shape();
-        TypeMirror elementType = shape.element();
+    private Shape resolveContainerField(final VariableElement field, final ContainerShape shape) {
+        final Shape result = new Shape();
+        final TypeMirror elementType = shape.element();
         if (elementType == null) {
             // Unreachable in practice: `ContainerShape.of` never pairs a non-`NONE` kind (the
             // only way to reach this method — see `resolve`) with a `null` element.
@@ -204,27 +204,28 @@ final class FieldResolver {
             throw error(field, "is a container field; use @Element/@ElementValues, not @Nested/@Values");
         }
 
-        de.timscho.config.annotations.Element elementAnn =
+        final de.timscho.config.annotations.Element elementAnn =
                 field.getAnnotation(de.timscho.config.annotations.Element.class);
-        ElementValues elementValues = field.getAnnotation(ElementValues.class);
-        Range range = field.getAnnotation(Range.class);
+        final ElementValues elementValues = field.getAnnotation(ElementValues.class);
+        final Range range = field.getAnnotation(Range.class);
 
-        int annotationCount = (elementAnn != null ? 1 : 0) + (elementValues != null ? 1 : 0) + (range != null ? 1 : 0);
+        final int annotationCount =
+                (elementAnn != null ? 1 : 0) + (elementValues != null ? 1 : 0) + (range != null ? 1 : 0);
         if (annotationCount > 1) {
             throw error(
                     field, "carries more than one of @Element/@ElementValues/@Range; exactly one describes an element");
         }
 
         if (elementAnn != null) {
-            TypeElement nestedType = requireTerraceConfigStruct(field, elementType, "@Element");
-            String nestedKeys = descriptorReference(nestedType) + ".DESCRIPTOR.keys()";
+            final TypeElement nestedType = requireTerraceConfigStruct(field, elementType, "@Element");
+            final String nestedKeys = descriptorReference(nestedType) + ".DESCRIPTOR.keys()";
             result.element = "new de.timscho.config.core.descriptor.ElementDescriptor("
                     + CodeGen.stringLiteral(TypeNames.simplify(elementType.toString())) + ", "
                     + "java.util.List.of(), null, " + nestedKeys + ")";
             return result;
         }
         if (elementValues != null) {
-            String valuesExpr =
+            final String valuesExpr =
                     resolveValues(field, elementType, elementValues::from, elementValues.value(), "@ElementValues");
             result.element = "new de.timscho.config.core.descriptor.ElementDescriptor("
                     + CodeGen.stringLiteral(TypeNames.simplify(elementType.toString())) + ", "
@@ -248,30 +249,30 @@ final class FieldResolver {
     }
 
     private String resolveValues(
-            Element site,
-            TypeMirror ownType,
-            java.util.function.Supplier<Class<?>> fromAccessor,
-            String[] literal,
-            String attribute) {
-        TypeMirror fromMirror = mirrorOf(fromAccessor);
-        boolean fromSet = fromMirror != null && !fromMirror.toString().equals("java.lang.Void");
-        boolean literalSet = literal.length > 0;
+            final Element site,
+            final TypeMirror ownType,
+            final java.util.function.Supplier<Class<?>> fromAccessor,
+            final String[] literal,
+            final String attribute) {
+        final TypeMirror fromMirror = mirrorOf(fromAccessor);
+        final boolean fromSet = fromMirror != null && !fromMirror.toString().equals("java.lang.Void");
+        final boolean literalSet = literal.length > 0;
         if (fromSet && literalSet) {
             throw error(site, attribute + " cannot combine from(...) with a literal list");
         }
         if (literalSet) {
             return CodeGen.stringListLiteral(List.of(literal));
         }
-        TypeMirror enumType = fromSet ? fromMirror : ownType;
-        TypeElement enumElement = requireTerraceConfigEnum(site, enumType, attribute);
+        final TypeMirror enumType = fromSet ? fromMirror : ownType;
+        final TypeElement enumElement = requireTerraceConfigEnum(site, enumType, attribute);
         return descriptorReference(enumElement) + ".DESCRIPTOR.values()";
     }
 
-    private String rangeExpression(Element site, Range range) {
-        Double min = finiteOrNull(range.min());
-        Double max = finiteOrNull(range.max());
-        Double exclMin = finiteOrNull(range.exclusiveMin());
-        Double exclMax = finiteOrNull(range.exclusiveMax());
+    private String rangeExpression(final Element site, final Range range) {
+        final Double min = finiteOrNull(range.min());
+        final Double max = finiteOrNull(range.max());
+        final Double exclMin = finiteOrNull(range.exclusiveMin());
+        final Double exclMax = finiteOrNull(range.exclusiveMax());
         if (min == null && max == null && exclMin == null && exclMax == null) {
             throw error(site, "@Range has none of min/max/exclusiveMin/exclusiveMax set");
         }
@@ -280,12 +281,12 @@ final class FieldResolver {
                 + CodeGen.doubleLiteral(exclMin) + ", " + CodeGen.doubleLiteral(exclMax) + ")";
     }
 
-    private static @Nullable Double finiteOrNull(double value) {
+    private static @Nullable Double finiteOrNull(final double value) {
         return Double.isNaN(value) ? null : value;
     }
 
-    private TypeElement requireTerraceConfigStruct(Element site, TypeMirror type, String attribute) {
-        TypeElement element = asDeclaredElement(type);
+    private TypeElement requireTerraceConfigStruct(final Element site, final TypeMirror type, final String attribute) {
+        final TypeElement element = asDeclaredElement(type);
         if (element == null
                 || element.getAnnotation(TerraceConfig.class) == null
                 || element.getKind() == javax.lang.model.element.ElementKind.ENUM) {
@@ -295,8 +296,8 @@ final class FieldResolver {
         return element;
     }
 
-    private TypeElement requireTerraceConfigEnum(Element site, TypeMirror type, String attribute) {
-        TypeElement element = asDeclaredElement(type);
+    private TypeElement requireTerraceConfigEnum(final Element site, final TypeMirror type, final String attribute) {
+        final TypeElement element = asDeclaredElement(type);
         if (element == null
                 || element.getAnnotation(TerraceConfig.class) == null
                 || element.getKind() != javax.lang.model.element.ElementKind.ENUM) {
@@ -305,37 +306,37 @@ final class FieldResolver {
         return element;
     }
 
-    private void requireNumericLeaf(Element site, TypeMirror type, String attribute) {
+    private void requireNumericLeaf(final Element site, final TypeMirror type, final String attribute) {
         if (!LeafTypes.isNumeric(type)) {
             throw error(site, attribute + " needs a numeric type; " + type + " is not one");
         }
     }
 
-    private @Nullable TypeElement asDeclaredElement(TypeMirror type) {
+    private @Nullable TypeElement asDeclaredElement(final TypeMirror type) {
         if (!(type instanceof DeclaredType)) {
             return null;
         }
-        javax.lang.model.element.Element element = ((DeclaredType) type).asElement();
+        final javax.lang.model.element.Element element = ((DeclaredType) type).asElement();
         return element instanceof TypeElement ? (TypeElement) element : null;
     }
 
-    private String descriptorReference(TypeElement type) {
+    private String descriptorReference(final TypeElement type) {
         return DescriptorNaming.qualifiedName(type, elements);
     }
 
-    private DescriptorException mustSayNothingError(Element field, TypeMirror type) {
+    private DescriptorException mustSayNothingError(final Element field, final TypeMirror type) {
         return error(
                 field,
                 "publishes no shape at all; its type " + type
                         + " is not a recognised leaf. Resolve it with @Values, @Nested, @Range, or @Skip the field");
     }
 
-    private DescriptorException error(Element site, String message) {
+    private DescriptorException error(final Element site, final String message) {
         return new DescriptorException(site, "field '" + site.getSimpleName() + "' " + message);
     }
 
     /** Reads an annotation's {@code Class} element via the standard {@link MirroredTypeException} dance. */
-    private @Nullable TypeMirror mirrorOf(java.util.function.Supplier<Class<?>> access) {
+    private @Nullable TypeMirror mirrorOf(final java.util.function.Supplier<Class<?>> access) {
         try {
             access.get();
             return null;

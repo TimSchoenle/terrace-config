@@ -43,7 +43,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
     private FieldResolver fieldResolver;
 
     @Override
-    public synchronized void init(javax.annotation.processing.ProcessingEnvironment env) {
+    public synchronized void init(final javax.annotation.processing.ProcessingEnvironment env) {
         super.init(env);
         this.messager = env.getMessager();
         this.filer = env.getFiler();
@@ -52,7 +52,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
     }
 
     @Override
-    public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+    public boolean process(final Set<? extends TypeElement> annotations, final RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getElementsAnnotatedWith(TerraceConfig.class)) {
             if (!(element instanceof TypeElement)) {
                 continue;
@@ -62,9 +62,9 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
         return true;
     }
 
-    private void generate(TypeElement type) {
-        List<DescriptorException> errors = new ArrayList<>();
-        String source = type.getKind() == ElementKind.ENUM ? renderEnum(type) : renderStruct(type, errors);
+    private void generate(final TypeElement type) {
+        final List<DescriptorException> errors = new ArrayList<>();
+        final String source = type.getKind() == ElementKind.ENUM ? renderEnum(type) : renderStruct(type, errors);
 
         for (DescriptorException error : errors) {
             messager.printMessage(Diagnostic.Kind.ERROR, error.getMessage(), error.element());
@@ -73,9 +73,9 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
             return;
         }
 
-        String descriptorName = DescriptorNaming.qualifiedName(type, elements);
+        final String descriptorName = DescriptorNaming.qualifiedName(type, elements);
         try {
-            JavaFileObject file = filer.createSourceFile(descriptorName, type);
+            final JavaFileObject file = filer.createSourceFile(descriptorName, type);
             try (Writer writer = file.openWriter()) {
                 writer.write(source);
             }
@@ -85,18 +85,18 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
         }
     }
 
-    private String renderStruct(TypeElement type, List<DescriptorException> errors) {
-        List<String> keyExpressions = new ArrayList<>();
+    private String renderStruct(final TypeElement type, final List<DescriptorException> errors) {
+        final List<String> keyExpressions = new ArrayList<>();
         for (Element enclosed : type.getEnclosedElements()) {
             if (enclosed.getKind() != ElementKind.FIELD) {
                 continue;
             }
-            VariableElement field = (VariableElement) enclosed;
+            final VariableElement field = (VariableElement) enclosed;
             if (field.getModifiers().contains(Modifier.STATIC)) {
                 continue;
             }
             try {
-                String keyExpression = fieldResolver.resolve(field);
+                final String keyExpression = fieldResolver.resolve(field);
                 if (keyExpression != null) {
                     keyExpressions.add(keyExpression);
                 }
@@ -107,7 +107,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
         if (!errors.isEmpty()) {
             return "";
         }
-        boolean closed = JacksonReflection.isClosed(type);
+        final boolean closed = JacksonReflection.isClosed(type);
         return renderClass(
                 type,
                 "de.timscho.config.core.descriptor.TypeDescriptor.Kind.STRUCT",
@@ -116,13 +116,13 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
                 closed);
     }
 
-    private String renderEnum(TypeElement type) {
-        List<String> values = new ArrayList<>();
+    private String renderEnum(final TypeElement type) {
+        final List<String> values = new ArrayList<>();
         for (Element enclosed : type.getEnclosedElements()) {
             if (enclosed.getKind() != ElementKind.ENUM_CONSTANT) {
                 continue;
             }
-            String fallback = enclosed.getSimpleName().toString();
+            final String fallback = enclosed.getSimpleName().toString();
             values.add(JacksonReflection.jsonPropertyName(enclosed, fallback));
         }
         return renderClass(
@@ -134,10 +134,14 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
     }
 
     private String renderClass(
-            TypeElement type, String kindExpression, String keysExpression, String valuesExpression, boolean closed) {
-        String pkg = elements.getPackageOf(type).getQualifiedName().toString();
-        String simpleName = DescriptorNaming.simpleName(type);
-        StringBuilder out = new StringBuilder();
+            final TypeElement type,
+            final String kindExpression,
+            final String keysExpression,
+            final String valuesExpression,
+            final boolean closed) {
+        final String pkg = elements.getPackageOf(type).getQualifiedName().toString();
+        final String simpleName = DescriptorNaming.simpleName(type);
+        final StringBuilder out = new StringBuilder();
         if (!pkg.isEmpty()) {
             out.append("package ").append(pkg).append(";\n\n");
         }
@@ -159,11 +163,11 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
         return out.toString();
     }
 
-    private static String listOf(List<String> expressions) {
+    private static String listOf(final List<String> expressions) {
         if (expressions.isEmpty()) {
             return "java.util.List.of()";
         }
-        StringBuilder out = new StringBuilder("java.util.List.of(\n");
+        final StringBuilder out = new StringBuilder("java.util.List.of(\n");
         for (int i = 0; i < expressions.size(); i++) {
             if (i > 0) {
                 out.append(",\n");

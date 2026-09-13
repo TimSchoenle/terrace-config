@@ -30,8 +30,8 @@ import de.timscho.config.core.model.Schema;
 public class JsonSchemaRenderer {
 
     /** The schema as a JSON Schema document, nested {@code properties} object per path level. */
-    public static Map<String, Object> document(Schema schema, JsonSchemaOptions options) {
-        List<Key> reachable = new ArrayList<>();
+    public static Map<String, Object> document(final Schema schema, final JsonSchemaOptions options) {
+        final List<Key> reachable = new ArrayList<>();
         for (Key key : schema.getKeys()) {
             if (!key.isReserved()) {
                 reachable.add(key);
@@ -39,7 +39,7 @@ public class JsonSchemaRenderer {
         }
         // No closed levels here: whether an undeclared key is an error at the document's own
         // levels is `options.closed()`'s question, not a type's.
-        Map<String, Object> document = object(Node.of(reachable), "", options, Collections.emptySet());
+        final Map<String, Object> document = object(Node.of(reachable), "", options, Collections.emptySet());
 
         document.put("$schema", options.metaSchema());
         if (options.id() != null) {
@@ -55,19 +55,20 @@ public class JsonSchemaRenderer {
      * One level of the configuration as a JSON Schema object. {@code path} is where this level
      * sits, dotted, empty at the root.
      */
-    private static Map<String, Object> object(Node node, String path, JsonSchemaOptions options, Set<String> closed) {
-        Map<String, Object> properties = new TreeMap<>();
-        List<Object> required = new ArrayList<>();
+    private static Map<String, Object> object(
+            final Node node, final String path, final JsonSchemaOptions options, final Set<String> closed) {
+        final Map<String, Object> properties = new TreeMap<>();
+        final List<Object> required = new ArrayList<>();
         // A required key with aliases is a *choice* of properties, one of which must be present —
         // `required` cannot say that, so those collect here under one `allOf` instead.
-        List<Object> either = new ArrayList<>();
+        final List<Object> either = new ArrayList<>();
 
         for (Key key : node.keys) {
-            String name = Node.name(key.getPath());
-            Map<String, Object> keySchema = leaf(key, options);
+            final String name = Node.name(key.getPath());
+            final Map<String, Object> keySchema = leaf(key, options);
 
             for (String alias : key.getAliases()) {
-                Map<String, Object> spelling = new TreeMap<>(keySchema);
+                final Map<String, Object> spelling = new TreeMap<>(keySchema);
                 spelling.put("description", "Another spelling of `" + key.getPath() + "`.");
                 properties.put(Node.name(alias), spelling);
             }
@@ -78,12 +79,12 @@ public class JsonSchemaRenderer {
                 if (key.getAliases().isEmpty()) {
                     required.add(name);
                 } else {
-                    List<Object> spellings = new ArrayList<>();
+                    final List<Object> spellings = new ArrayList<>();
                     spellings.add(requiredOne(name));
                     for (String alias : key.getAliases()) {
                         spellings.add(requiredOne(Node.name(alias)));
                     }
-                    Map<String, Object> anyOf = new TreeMap<>();
+                    final Map<String, Object> anyOf = new TreeMap<>();
                     anyOf.put("anyOf", spellings);
                     either.add(anyOf);
                 }
@@ -92,14 +93,14 @@ public class JsonSchemaRenderer {
         // After the leaves, so the one shape neither format can carry — a key and a table of the
         // same name in one parent — resolves to the table.
         for (Node child : node.children) {
-            String childPath = path.isEmpty() ? child.segment : path + "." + child.segment;
+            final String childPath = path.isEmpty() ? child.segment : path + "." + child.segment;
             properties.put(child.segment, object(child, childPath, options, closed));
             if (child.required() && options.requirePresent()) {
                 required.add(child.segment);
             }
         }
 
-        Map<String, Object> objectSchema = new TreeMap<>();
+        final Map<String, Object> objectSchema = new TreeMap<>();
         objectSchema.put("type", "object");
         objectSchema.put("properties", properties);
         if (!required.isEmpty()) {
@@ -114,17 +115,17 @@ public class JsonSchemaRenderer {
         return objectSchema;
     }
 
-    private static Map<String, Object> requiredOne(String name) {
-        Map<String, Object> requiredOne = new TreeMap<>();
+    private static Map<String, Object> requiredOne(final String name) {
+        final Map<String, Object> requiredOne = new TreeMap<>();
         requiredOne.put("required", List.of(name));
         return requiredOne;
     }
 
     /** One key as a JSON Schema subschema. */
-    private static Map<String, Object> leaf(Key key, JsonSchemaOptions options) {
-        Map<String, Object> schema = new TreeMap<>();
+    private static Map<String, Object> leaf(final Key key, final JsonSchemaOptions options) {
+        final Map<String, Object> schema = new TreeMap<>();
 
-        String description = description(key, options);
+        final String description = description(key, options);
         if (description != null) {
             schema.put("description", description);
         }
@@ -132,7 +133,7 @@ public class JsonSchemaRenderer {
         // Read off the key rather than re-derived: the key's own `constraint` already composed
         // the type's shape with whatever element schema a container-typed key reported.
         if (key.getConstraint() != null) {
-            Map<String, Object> constraint = deepCopy(key.getConstraint());
+            final Map<String, Object> constraint = deepCopy(key.getConstraint());
             if (options.closed()) {
                 close(constraint);
             }
@@ -153,9 +154,9 @@ public class JsonSchemaRenderer {
     }
 
     /** The {@code description} for a key: its comment, and what its default means. */
-    private static @Nullable String description(Key key, JsonSchemaOptions options) {
-        String docs = options.docs().of(key.getDocs());
-        String note = key.getNote() != null ? "Default: " + key.getNote() + "." : null;
+    private static @Nullable String description(final Key key, final JsonSchemaOptions options) {
+        final String docs = options.docs().of(key.getDocs());
+        final String note = key.getNote() != null ? "Default: " + key.getNote() + "." : null;
         if (docs != null && note != null) {
             return docs + "\n\n" + note;
         }
@@ -163,8 +164,8 @@ public class JsonSchemaRenderer {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> deepCopy(Map<String, Object> source) {
-        Map<String, Object> copy = new TreeMap<>();
+    private static Map<String, Object> deepCopy(final Map<String, Object> source) {
+        final Map<String, Object> copy = new TreeMap<>();
         for (Map.Entry<String, Object> entry : source.entrySet()) {
             copy.put(entry.getKey(), deepCopyValue(entry.getValue()));
         }
@@ -172,7 +173,7 @@ public class JsonSchemaRenderer {
     }
 
     @SuppressWarnings("unchecked")
-    private static Object deepCopyValue(Object value) {
+    private static Object deepCopyValue(final Object value) {
         if (value instanceof Map) {
             return deepCopy((Map<String, Object>) value);
         }
@@ -189,17 +190,17 @@ public class JsonSchemaRenderer {
      * than overwriting either, since those are schemas of their own.
      */
     @SuppressWarnings("unchecked")
-    private static void close(Map<String, Object> schema) {
-        Object items = schema.get("items");
+    private static void close(final Map<String, Object> schema) {
+        final Object items = schema.get("items");
         if (items instanceof Map) {
             close((Map<String, Object>) items);
         }
-        Object additionalProperties = schema.get("additionalProperties");
+        final Object additionalProperties = schema.get("additionalProperties");
         if (additionalProperties instanceof Map) {
             close((Map<String, Object>) additionalProperties);
             return;
         }
-        Object properties = schema.get("properties");
+        final Object properties = schema.get("properties");
         if (!(properties instanceof Map)) {
             return;
         }

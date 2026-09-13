@@ -31,8 +31,8 @@ public final class TierComparator {
      * Every disagreement between {@code produced} and {@code expected} that the given tier cares
      * about. Empty means the produced document satisfies the claimed tier against this case.
      */
-    public static List<String> compare(Tier tier, JsonNode produced, JsonNode expected) {
-        List<String> diffs = new ArrayList<>();
+    public static List<String> compare(final Tier tier, final JsonNode produced, final JsonNode expected) {
+        final List<String> diffs = new ArrayList<>();
         compareTier1(produced, diffs);
         if (tier == Tier.TIER_1) {
             return diffs;
@@ -45,30 +45,30 @@ public final class TierComparator {
         return diffs;
     }
 
-    private static void compareTier1(JsonNode produced, List<String> diffs) {
-        JsonNode producer = produced.path("producer");
+    private static void compareTier1(final JsonNode produced, final List<String> diffs) {
+        final JsonNode producer = produced.path("producer");
         for (String field : new String[] {"name", "version", "loader"}) {
-            String value = producer.path(field).asText("");
+            final String value = producer.path(field).asText("");
             if (value.isBlank()) {
                 diffs.add("tier 1: `producer." + field + "` is missing or blank");
             }
         }
     }
 
-    private static void compareTier2(JsonNode produced, JsonNode expected, List<String> diffs) {
+    private static void compareTier2(final JsonNode produced, final JsonNode expected, final List<String> diffs) {
         for (JsonNode expectedKey : expected.path("schema").path("keys")) {
-            String path = expectedKey.path("path").asText(null);
+            final String path = expectedKey.path("path").asText(null);
             if (path == null) {
                 continue; // Malformed corpus; the meta-schema check reports this separately.
             }
-            JsonNode producedKey = findKey(produced, path);
+            final JsonNode producedKey = findKey(produced, path);
             if (producedKey == null) {
                 diffs.add("tier 2: key `" + path + "` is in the stored case but not in the produced document");
                 continue;
             }
             for (String field : TIER_2_FIELDS) {
-                JsonNode expectedValue = expectedKey.path(field);
-                JsonNode producedValue = producedKey.path(field);
+                final JsonNode expectedValue = expectedKey.path(field);
+                final JsonNode producedValue = producedKey.path(field);
                 if (!expectedValue.equals(producedValue)) {
                     diffs.add("tier 2: key `" + path + "`, field `" + field + "`: expected " + expectedValue
                             + ", produced " + producedValue);
@@ -77,7 +77,7 @@ public final class TierComparator {
         }
     }
 
-    private static @Nullable JsonNode findKey(JsonNode document, String path) {
+    private static @Nullable JsonNode findKey(final JsonNode document, final String path) {
         for (JsonNode key : document.path("schema").path("keys")) {
             if (path.equals(key.path("path").asText(null))) {
                 return key;
@@ -86,18 +86,18 @@ public final class TierComparator {
         return null;
     }
 
-    private static void compareTier3(JsonNode produced, JsonNode expected, List<String> diffs) {
-        JsonNode normalisedProduced = withConformanceVersion(produced);
-        JsonNode normalisedExpected = withConformanceVersion(expected);
+    private static void compareTier3(final JsonNode produced, final JsonNode expected, final List<String> diffs) {
+        final JsonNode normalisedProduced = withConformanceVersion(produced);
+        final JsonNode normalisedExpected = withConformanceVersion(expected);
         if (!normalisedProduced.equals(normalisedExpected)) {
             diffs.add("tier 3: " + firstDifference(normalisedExpected, normalisedProduced));
         }
     }
 
     /** {@code producer.version} substituted with {@link ConformanceVersion#VALUE} on a copy. */
-    private static JsonNode withConformanceVersion(JsonNode document) {
-        JsonNode copy = document.deepCopy();
-        JsonNode producer = copy.path("producer");
+    private static JsonNode withConformanceVersion(final JsonNode document) {
+        final JsonNode copy = document.deepCopy();
+        final JsonNode producer = copy.path("producer");
         if (producer instanceof ObjectNode producerObject) {
             producerObject.put("version", ConformanceVersion.VALUE);
         }
@@ -108,16 +108,16 @@ public final class TierComparator {
      * The first path the two documents disagree on. A whole-document dump is not useful to a
      * reader chasing one changed field, which is the common case once a rendering is close.
      */
-    private static String firstDifference(JsonNode expected, JsonNode produced) {
+    private static String firstDifference(final JsonNode expected, final JsonNode produced) {
         return firstDifference("", expected, produced);
     }
 
-    private static String firstDifference(String path, JsonNode expected, JsonNode produced) {
+    private static String firstDifference(final String path, final JsonNode expected, final JsonNode produced) {
         if (expected.isObject() && produced.isObject()) {
-            Iterator<String> names = expected.fieldNames();
+            final Iterator<String> names = expected.fieldNames();
             while (names.hasNext()) {
-                String name = names.next();
-                String childPath = path + "/" + name;
+                final String name = names.next();
+                final String childPath = path + "/" + name;
                 if (!produced.has(name)) {
                     return "at `" + childPath + "`: missing from the produced document";
                 }
@@ -125,19 +125,19 @@ public final class TierComparator {
                     return firstDifference(childPath, expected.get(name), produced.get(name));
                 }
             }
-            Iterator<String> producedNames = produced.fieldNames();
+            final Iterator<String> producedNames = produced.fieldNames();
             while (producedNames.hasNext()) {
-                String name = producedNames.next();
+                final String name = producedNames.next();
                 if (!expected.has(name)) {
                     return "at `" + (path + "/" + name) + "`: present only in the produced document";
                 }
             }
         }
         if (expected.isArray() && produced.isArray()) {
-            int max = Math.max(expected.size(), produced.size());
+            final int max = Math.max(expected.size(), produced.size());
             for (int i = 0; i < max; i++) {
-                JsonNode expectedItem = expected.path(i);
-                JsonNode producedItem = produced.path(i);
+                final JsonNode expectedItem = expected.path(i);
+                final JsonNode producedItem = produced.path(i);
                 if (!expectedItem.equals(producedItem)) {
                     return firstDifference(path + "[" + i + "]", expectedItem, producedItem);
                 }

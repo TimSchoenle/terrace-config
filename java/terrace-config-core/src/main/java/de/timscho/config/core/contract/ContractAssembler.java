@@ -33,7 +33,7 @@ import de.timscho.config.core.schema.JsonSchemaOptions;
 public class ContractAssembler {
 
     /** {@link #assemble(Schema, App, Producer, External)} with nothing declared external. */
-    public static Contract assemble(Schema schema, App app, Producer producer) {
+    public static Contract assemble(final Schema schema, final App app, final Producer producer) {
         return assemble(schema, app, producer, noExternalSurface());
     }
 
@@ -53,13 +53,14 @@ public class ContractAssembler {
      *                                                                  eight refusals this
      *                                                                  contract would violate
      */
-    public static Contract assemble(Schema schema, App app, Producer producer, External external) {
-        External derivedExternal = deriveExternalConstraints(external);
+    public static Contract assemble(
+            final Schema schema, final App app, final Producer producer, final External external) {
+        final External derivedExternal = deriveExternalConstraints(external);
 
-        JsonSchemaOptions options = JsonSchemaOptions.forContract().orTitle(app.getName() + " configuration");
-        Map<String, Object> rendered = schema.toJsonSchemaWith(options);
+        final JsonSchemaOptions options = JsonSchemaOptions.forContract().orTitle(app.getName() + " configuration");
+        final Map<String, Object> rendered = schema.toJsonSchemaWith(options);
 
-        Contract contract = Contract.builder()
+        final Contract contract = Contract.builder()
                 .producer(producer)
                 .app(app)
                 .schema(schema)
@@ -76,11 +77,11 @@ public class ContractAssembler {
         return External.builder().unknown(ExternalUnknownPolicy.REJECT).build();
     }
 
-    private static External deriveExternalConstraints(External external) {
-        List<ExternalVar> derived = new ArrayList<>();
+    private static External deriveExternalConstraints(final External external) {
+        final List<ExternalVar> derived = new ArrayList<>();
         for (ExternalVar var : external.getEnv()) {
             if (var.getConstraint() == null) {
-                Map<String, Object> constraint = deriveConstraint(var.getTy(), var.getValues());
+                final Map<String, Object> constraint = deriveConstraint(var.getTy(), var.getValues());
                 derived.add(
                         constraint == null
                                 ? var
@@ -100,9 +101,10 @@ public class ContractAssembler {
      */
     // Fully qualified to avoid colliding with this file's own `Contract` (the model type) import.
     @org.jetbrains.annotations.Contract(pure = true)
-    private static @Nullable Map<String, Object> deriveConstraint(@Nullable String ty, List<String> values) {
+    private static @Nullable Map<String, Object> deriveConstraint(
+            @Nullable final String ty, final List<String> values) {
         if (!values.isEmpty()) {
-            Map<String, Object> schema = new TreeMap<>();
+            final Map<String, Object> schema = new TreeMap<>();
             schema.put("type", "string");
             schema.put("enum", new ArrayList<>(values));
             return schema;
@@ -110,7 +112,7 @@ public class ContractAssembler {
         if (ty == null) {
             return null;
         }
-        String type =
+        final String type =
                 switch (ty) {
                     case "String", "CharSequence", "char", "Character" -> "string";
                     case "boolean", "Boolean" -> "boolean";
@@ -121,7 +123,7 @@ public class ContractAssembler {
         if (type == null) {
             return null;
         }
-        Map<String, Object> schema = new TreeMap<>();
+        final Map<String, Object> schema = new TreeMap<>();
         schema.put("type", type);
         return schema;
     }

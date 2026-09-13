@@ -10,14 +10,14 @@ final class Javadocs {
 
     private Javadocs() {}
 
-    static String summary(String docs) {
+    static String summary(final String docs) {
         if (docs.isEmpty()) {
             return "";
         }
-        String[] lines = docs.split("\\R", -1);
-        StringBuilder summary = new StringBuilder();
+        final String[] lines = docs.split("\\R", -1);
+        final StringBuilder summary = new StringBuilder();
         for (String line : lines) {
-            String trimmed = line.trim();
+            final String trimmed = line.trim();
             if (trimmed.isEmpty()) {
                 break;
             }
@@ -29,7 +29,7 @@ final class Javadocs {
         return summary.toString();
     }
 
-    static String normalize(@Nullable String rawDocComment) {
+    static String normalize(@Nullable final String rawDocComment) {
         if (rawDocComment == null) {
             return "";
         }

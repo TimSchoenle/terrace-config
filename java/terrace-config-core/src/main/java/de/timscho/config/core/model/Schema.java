@@ -57,7 +57,7 @@ public class Schema {
 
     /** The same document, with a chosen dialect and set of annotations. See {@link JsonSchemaOptions}. */
     @JsonIgnore
-    public Map<String, Object> toJsonSchemaWith(JsonSchemaOptions options) {
+    public Map<String, Object> toJsonSchemaWith(final JsonSchemaOptions options) {
         return JsonSchemaRenderer.document(this, options);
     }
 
@@ -73,7 +73,7 @@ public class Schema {
 
     /** Both tables, with a chosen set of key columns. See {@link Column}. */
     @JsonIgnore
-    public String toMarkdownWith(List<Column> columns) {
+    public String toMarkdownWith(final List<Column> columns) {
         return MarkdownRenderer.toMarkdownWith(this, columns);
     }
 
@@ -85,7 +85,7 @@ public class Schema {
 
     /** The configuration-key table alone, with a chosen set of columns. */
     @JsonIgnore
-    public String toMarkdownKeys(List<Column> columns) {
+    public String toMarkdownKeys(final List<Column> columns) {
         return MarkdownRenderer.toMarkdownKeys(this, columns);
     }
 
@@ -100,7 +100,7 @@ public class Schema {
 
     /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}. */
     @JsonIgnore
-    public String toTomlExampleWith(TomlExampleOptions options) {
+    public String toTomlExampleWith(final TomlExampleOptions options) {
         return TomlExampleRenderer.toTomlExampleWith(this, options);
     }
 
@@ -115,7 +115,7 @@ public class Schema {
      * is never carried, only the redaction {@code <redacted>}.
      */
     @JsonIgnore
-    public Schema withDefaultsFromValue(Map<String, Object> root) {
+    public Schema withDefaultsFromValue(final Map<String, Object> root) {
         return Defaults.withDefaultsFromValue(this, root);
     }
 }

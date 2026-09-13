@@ -64,7 +64,7 @@ public enum Column {
         };
     }
 
-    String render(Key key) {
+    String render(final Key key) {
         return switch (this) {
             case PATH -> "`" + escape(key.getPath()) + "`";
             case TYPE -> renderType(key);
@@ -75,7 +75,7 @@ public enum Column {
             case DEFAULT -> renderDefault(key, true);
             case DEFAULT_VALUE -> renderDefault(key, false);
             case NOTE -> {
-                String note = key.getNote();
+                final String note = key.getNote();
                 yield note == null ? "—" : cell(note);
             }
             case FLAGS -> renderFlags(key);
@@ -85,13 +85,13 @@ public enum Column {
         };
     }
 
-    private static String renderType(Key key) {
-        List<String> values = key.getValues();
-        String ty = key.getTy();
+    private static String renderType(final Key key) {
+        final List<String> values = key.getValues();
+        final String ty = key.getTy();
         if (values.isEmpty()) {
             return optionalCode(ty);
         }
-        StringBuilder choices = new StringBuilder();
+        final StringBuilder choices = new StringBuilder();
         for (String value : values) {
             if (!choices.isEmpty()) {
                 choices.append(" \\| ");
@@ -101,12 +101,12 @@ public enum Column {
         return ty != null ? "`" + escape(ty) + "`: " + choices : choices.toString();
     }
 
-    private static String renderAliases(Key key) {
-        List<String> aliases = key.getAliases();
+    private static String renderAliases(final Key key) {
+        final List<String> aliases = key.getAliases();
         if (aliases.isEmpty()) {
             return "—";
         }
-        StringBuilder out = new StringBuilder();
+        final StringBuilder out = new StringBuilder();
         for (String alias : aliases) {
             if (!out.isEmpty()) {
                 out.append(", ");
@@ -116,9 +116,9 @@ public enum Column {
         return out.toString();
     }
 
-    private static String renderDefault(Key key, boolean withNote) {
-        String defaultText = key.getDefaultText();
-        String value;
+    private static String renderDefault(final Key key, final boolean withNote) {
+        final String defaultText = key.getDefaultText();
+        final String value;
         if (defaultText != null) {
             value = "`" + escape(defaultText) + "`";
         } else if (key.isRequired()) {
@@ -126,15 +126,15 @@ public enum Column {
         } else {
             value = "unset";
         }
-        String note = key.getNote();
+        final String note = key.getNote();
         if (withNote && note != null) {
             return value + " (" + cell(note) + ")";
         }
         return value;
     }
 
-    private static String renderFlags(Key key) {
-        List<String> notes = new java.util.ArrayList<>();
+    private static String renderFlags(final Key key) {
+        final List<String> notes = new java.util.ArrayList<>();
         if (key.isRequired()) {
             notes.add("required");
         }
@@ -147,17 +147,17 @@ public enum Column {
         return notes.isEmpty() ? "—" : String.join(", ", notes);
     }
 
-    private static String yesOrDash(boolean flag) {
+    private static String yesOrDash(final boolean flag) {
         return flag ? "yes" : "—";
     }
 
     /** A spelling as inline code, or an em dash when there is none. */
-    private static String optionalCode(@Nullable String value) {
+    private static String optionalCode(@Nullable final String value) {
         return value == null ? "—" : "`" + escape(value) + "`";
     }
 
     /** Prose in a table cell: newlines become breaks, and {@code |} stops ending the cell early. */
-    private static String cell(String text) {
+    private static String cell(final String text) {
         if (text.isEmpty()) {
             return "—";
         }
@@ -165,13 +165,13 @@ public enum Column {
     }
 
     /** A doc comment in a table cell: its summary, on one line. */
-    private static String summaryCell(String text) {
-        String summary = Docs.SUMMARY.of(text);
+    private static String summaryCell(final String text) {
+        final String summary = Docs.SUMMARY.of(text);
         return summary == null ? "—" : escape(summary);
     }
 
     /** The characters that would otherwise be read as table structure. */
-    private static String escape(String text) {
+    private static String escape(final String text) {
         return text.replace("\\", "\\\\").replace("|", "\\|");
     }
 }

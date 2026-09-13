@@ -23,14 +23,14 @@ final class DescriptorNaming {
 
     private DescriptorNaming() {}
 
-    static String simpleName(TypeElement type) {
-        Deque<String> segments = new ArrayDeque<>();
+    static String simpleName(final TypeElement type) {
+        final Deque<String> segments = new ArrayDeque<>();
         Element current = type;
         while (current instanceof TypeElement) {
             segments.addFirst(current.getSimpleName().toString());
             current = current.getEnclosingElement();
         }
-        StringBuilder out = new StringBuilder();
+        final StringBuilder out = new StringBuilder();
         for (String segment : segments) {
             if (!out.isEmpty()) {
                 out.append('$');
@@ -41,9 +41,9 @@ final class DescriptorNaming {
         return out.toString();
     }
 
-    static String qualifiedName(TypeElement type, Elements elements) {
-        String pkg = elements.getPackageOf(type).getQualifiedName().toString();
-        String simple = simpleName(type);
+    static String qualifiedName(final TypeElement type, final Elements elements) {
+        final String pkg = elements.getPackageOf(type).getQualifiedName().toString();
+        final String simple = simpleName(type);
         return pkg.isEmpty() ? simple : pkg + "." + simple;
     }
 }

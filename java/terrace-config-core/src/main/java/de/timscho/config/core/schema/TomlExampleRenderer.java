@@ -33,26 +33,26 @@ public class TomlExampleRenderer {
     private static final int MAX_DEPTH = 32;
 
     /** The schema as a commented {@code config.toml}, ready to be copied and edited. */
-    public static String toTomlExample(Schema schema) {
+    public static String toTomlExample(final Schema schema) {
         return toTomlExampleWith(schema, TomlExampleOptions.defaults());
     }
 
     /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}. */
-    public static String toTomlExampleWith(Schema schema, TomlExampleOptions options) {
-        List<String> blocks = new ArrayList<>();
+    public static String toTomlExampleWith(final Schema schema, final TomlExampleOptions options) {
+        final List<String> blocks = new ArrayList<>();
         if (options.header()) {
             blocks.add(preamble(schema));
         }
-        Node root = Node.of(schema.getKeys());
+        final Node root = Node.of(schema.getKeys());
         collect(blocks, root, "", options);
         return String.join("\n", blocks);
     }
 
     /** What the file is, and the variables that decide whether it is read at all. */
-    private static String preamble(Schema schema) {
-        String prefix = schema.getDialect().getPrefix();
-        String suffix = schema.getDialect().getIndirectionSuffix();
-        StringBuilder out = new StringBuilder();
+    private static String preamble(final Schema schema) {
+        final String prefix = schema.getDialect().getPrefix();
+        final String suffix = schema.getDialect().getIndirectionSuffix();
+        final StringBuilder out = new StringBuilder();
 
         paragraph(out, "Configuration for a service reading " + prefix + "-prefixed keys.");
         comment(out, "");
@@ -71,15 +71,16 @@ public class TomlExampleRenderer {
                         + suffix + "`, and a key-named file in the secrets directory. A secret belongs in "
                         + "one of those -- this file is usually committed.");
 
-        List<LoaderVar> loader = schema.getLoader();
+        final List<LoaderVar> loader = schema.getLoader();
         if (!loader.isEmpty()) {
             comment(out, "");
             comment(out, "Read before this file exists:");
             for (LoaderVar var : loader) {
                 comment(out, "");
-                String defaultSuffix = var.getDefaultValue() != null ? ", default `" + var.getDefaultValue() + "`" : "";
+                final String defaultSuffix =
+                        var.getDefaultValue() != null ? ", default `" + var.getDefaultValue() + "`" : "";
                 comment(out, "  " + var.getEnv() + " -- " + var.getRole().label() + defaultSuffix);
-                String summary = Docs.SUMMARY.of(var.getDocs());
+                final String summary = Docs.SUMMARY.of(var.getDocs());
                 flowed(out, "    ", "    ", summary == null ? "" : summary);
             }
         }
@@ -88,12 +89,13 @@ public class TomlExampleRenderer {
     }
 
     /** Push this level's block, then every level below it. Depth first and leaves first, as TOML requires. */
-    private static void collect(List<String> blocks, Node node, String header, TomlExampleOptions options) {
-        StringBuilder block = new StringBuilder();
+    private static void collect(
+            final List<String> blocks, final Node node, final String header, final TomlExampleOptions options) {
+        final StringBuilder block = new StringBuilder();
         if (!header.isEmpty()) {
             block.append('[').append(header).append("]\n");
         }
-        List<String> keyBlocks = new ArrayList<>();
+        final List<String> keyBlocks = new ArrayList<>();
         for (Key key : node.keys) {
             keyBlocks.add(keyBlock(key, node, options));
         }
@@ -104,24 +106,24 @@ public class TomlExampleRenderer {
         }
 
         for (Node child : node.children) {
-            String segment = tomlKey(child.segment);
-            String childHeader = header.isEmpty() ? segment : header + "." + segment;
+            final String segment = tomlKey(child.segment);
+            final String childHeader = header.isEmpty() ? segment : header + "." + segment;
             collect(blocks, child, childHeader, options);
         }
     }
 
     /** One key: what it is for, above what it is set to. */
-    private static String keyBlock(Key key, Node parent, TomlExampleOptions options) {
-        StringBuilder out = new StringBuilder();
+    private static String keyBlock(final Key key, final Node parent, final TomlExampleOptions options) {
+        final StringBuilder out = new StringBuilder();
 
-        String docs = options.docs().of(key.getDocs());
+        final String docs = options.docs().of(key.getDocs());
         if (docs != null) {
             for (String line : docs.split("\n", -1)) {
                 comment(out, line);
             }
         }
 
-        List<String> values = key.getValues();
+        final List<String> values = key.getValues();
         if (key.getTy() != null && values.isEmpty()) {
             comment(out, "Type: " + key.getTy());
         } else if (key.getTy() != null) {
@@ -135,8 +137,8 @@ public class TomlExampleRenderer {
         }
 
         if (key.isReserved()) {
-            String keyEnv = key.getEnv();
-            String env = keyEnv != null ? keyEnv : "the environment";
+            final String keyEnv = key.getEnv();
+            final String env = keyEnv != null ? keyEnv : "the environment";
             wrapped(out, "Reserved: only " + env + " supplies this key; a file may not.");
         } else if (options.spellings()) {
             wrapped(out, spellings(key));
@@ -151,8 +153,8 @@ public class TomlExampleRenderer {
             comment(out, "Unset by default: the value below is only the shape.");
         }
 
-        String name = Node.name(key.getPath());
-        boolean shadowed = parent.opens(name);
+        final String name = Node.name(key.getPath());
+        final boolean shadowed = parent.opens(name);
         if (shadowed) {
             wrapped(out, "Shadowed by the table of the same name below: TOML cannot carry both.");
         }
@@ -166,8 +168,8 @@ public class TomlExampleRenderer {
     }
 
     /** The other ways this key can be supplied, as one comment line. */
-    private static String spellings(Key key) {
-        List<String> ways = new ArrayList<>();
+    private static String spellings(final Key key) {
+        final List<String> ways = new ArrayList<>();
         if (key.getEnv() != null) {
             ways.add(key.getEnv());
         }
@@ -184,13 +186,13 @@ public class TomlExampleRenderer {
     }
 
     /** The value written for a key: its default, a redaction, or a placeholder of the right shape. */
-    private static String literal(Key key, TomlExampleOptions options) {
+    private static String literal(final Key key, final TomlExampleOptions options) {
         if (key.isSecret()) {
             return tomlString(options.secretPlaceholder());
         }
-        Object defaultValue = key.getDefaultValue();
+        final Object defaultValue = key.getDefaultValue();
         if (defaultValue != null) {
-            String literal = tomlLiteral(defaultValue, 0);
+            final String literal = tomlLiteral(defaultValue, 0);
             if (literal != null) {
                 return literal;
             }
@@ -199,9 +201,9 @@ public class TomlExampleRenderer {
     }
 
     /** A value of the key's type that is still obviously not an answer. */
-    private static String placeholder(Key key, String text) {
+    private static String placeholder(final Key key, final String text) {
         String shape = null;
-        Map<String, Object> constraint = key.getConstraint();
+        final Map<String, Object> constraint = key.getConstraint();
         if (constraint != null && constraint.get("type") instanceof String type) {
             shape = type;
         }
@@ -216,7 +218,7 @@ public class TomlExampleRenderer {
     }
 
     /** A default value as TOML, or {@code null} for one TOML cannot carry. */
-    private static @Nullable String tomlLiteral(@Nullable Object value, int depth) {
+    private static @Nullable String tomlLiteral(@Nullable final Object value, final int depth) {
         if (depth > MAX_DEPTH) {
             return null;
         }
@@ -241,9 +243,9 @@ public class TomlExampleRenderer {
             return tomlFloat(((Number) value).doubleValue());
         }
         if (value instanceof List<?> items) {
-            List<String> rendered = new ArrayList<>(items.size());
+            final List<String> rendered = new ArrayList<>(items.size());
             for (Object item : items) {
-                String literal = tomlLiteral(item, depth + 1);
+                final String literal = tomlLiteral(item, depth + 1);
                 if (literal == null) {
                     // An array element cannot be left out the way a table entry can.
                     return null;
@@ -253,9 +255,9 @@ public class TomlExampleRenderer {
             return "[" + String.join(", ", rendered) + "]";
         }
         if (value instanceof Map<?, ?> dict) {
-            List<String> rendered = new ArrayList<>();
+            final List<String> rendered = new ArrayList<>();
             for (Map.Entry<?, ?> entry : dict.entrySet()) {
-                String literal = tomlLiteral(entry.getValue(), depth + 1);
+                final String literal = tomlLiteral(entry.getValue(), depth + 1);
                 if (literal != null) {
                     rendered.add(tomlKey(String.valueOf(entry.getKey())) + " = " + literal);
                 }
@@ -266,8 +268,8 @@ public class TomlExampleRenderer {
     }
 
     /** A whole number as TOML, or {@code null} for one TOML's signed 64 bits cannot hold. */
-    private static String tomlInteger(Number number) {
-        BigInteger value = number instanceof BigInteger big ? big : BigInteger.valueOf(number.longValue());
+    private static String tomlInteger(final Number number) {
+        final BigInteger value = number instanceof BigInteger big ? big : BigInteger.valueOf(number.longValue());
         if (value.bitLength() > 63) {
             return null;
         }
@@ -275,14 +277,14 @@ public class TomlExampleRenderer {
     }
 
     /** A float as TOML: never bare digits, because bare digits are a TOML *integer*. */
-    private static String tomlFloat(double value) {
+    private static String tomlFloat(final double value) {
         if (Double.isNaN(value)) {
             return "nan";
         }
         if (Double.isInfinite(value)) {
             return value > 0 ? "inf" : "-inf";
         }
-        String rendered = String.valueOf(value);
+        final String rendered = String.valueOf(value);
         if (rendered.contains(".") || rendered.contains("e") || rendered.contains("E")) {
             return rendered;
         }
@@ -290,11 +292,11 @@ public class TomlExampleRenderer {
     }
 
     /** A TOML basic string: quoted, with everything the format cannot carry raw escaped. */
-    private static String tomlString(String text) {
-        StringBuilder out = new StringBuilder(text.length() + 2);
+    private static String tomlString(final String text) {
+        final StringBuilder out = new StringBuilder(text.length() + 2);
         out.append('"');
         for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
+            final char c = text.charAt(i);
             switch (c) {
                 case '"' -> out.append("\\\"");
                 case '\\' -> out.append("\\\\");
@@ -317,11 +319,11 @@ public class TomlExampleRenderer {
     }
 
     /** A key name as TOML spells it: bare where it can be, quoted where it cannot. */
-    private static String tomlKey(String name) {
+    private static String tomlKey(final String name) {
         boolean bare = !name.isEmpty();
         if (bare) {
             for (int i = 0; i < name.length(); i++) {
-                char c = name.charAt(i);
+                final char c = name.charAt(i);
                 if (!(Character.isLetterOrDigit(c) && c < 128) && c != '_' && c != '-') {
                     bare = false;
                     break;
@@ -332,14 +334,14 @@ public class TomlExampleRenderer {
     }
 
     /** One comment line, with no trailing space on an empty one. */
-    private static void comment(StringBuilder out, String text) {
+    private static void comment(final StringBuilder out, final String text) {
         if (text.isEmpty()) {
             out.append("#\n");
             return;
         }
         out.append("# ");
         for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
+            final char c = text.charAt(i);
             if (c == '\t' || (c >= ' ' && c != '\u007f')) {
                 out.append(c);
             } else {
@@ -350,18 +352,18 @@ public class TomlExampleRenderer {
     }
 
     /** Prose as comment lines, wrapped flush left. */
-    private static void paragraph(StringBuilder out, String text) {
+    private static void paragraph(final StringBuilder out, final String text) {
         flowed(out, "", "", text);
     }
 
     /** One assembled line, wrapped, with a hanging indent marking what is a continuation. */
-    private static void wrapped(StringBuilder out, String text) {
+    private static void wrapped(final StringBuilder out, final String text) {
         flowed(out, "", "  ", text);
     }
 
     /** As {@link #wrapped}, with a chosen indent on the first line and on the rest. */
-    private static void flowed(StringBuilder out, String first, String rest, String text) {
-        StringBuilder line = new StringBuilder();
+    private static void flowed(final StringBuilder out, final String first, final String rest, final String text) {
+        final StringBuilder line = new StringBuilder();
         String indent = first;
         for (String word : text.split("\\s+")) {
             if (word.isEmpty()) {

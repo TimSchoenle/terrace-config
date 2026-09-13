@@ -6,7 +6,7 @@ package de.timscho.config.core.refusal;
  */
 public final class SecretWithDefaultException extends ContractRefusalException {
 
-    public SecretWithDefaultException(String path) {
+    public SecretWithDefaultException(final String path) {
         super("`" + path + "` is a secret and must not carry a default");
     }
 }

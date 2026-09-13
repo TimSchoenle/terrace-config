@@ -73,8 +73,8 @@ public class Contract {
      * no host-side generator run to feed {@code --label}.
      */
     @JsonIgnore
-    public List<Map.Entry<String, String>> labels(String path) {
-        List<Map.Entry<String, String>> labels = new ArrayList<>();
+    public List<Map.Entry<String, String>> labels(final String path) {
+        final List<Map.Entry<String, String>> labels = new ArrayList<>();
         labels.add(Map.entry(LABEL_VERSION, Integer.toString(terraceContract)));
         labels.add(Map.entry(LABEL_PATH, path));
         labels.add(Map.entry(LABEL_PREFIX, schema.getDialect().getPrefix()));
@@ -86,17 +86,17 @@ public class Contract {
      * a newline; no trailing backslash, so a following instruction needs no separator.
      */
     @JsonIgnore
-    public String toDockerfileLabels(String path) {
-        StringBuilder rendered = new StringBuilder("LABEL ");
-        List<Map.Entry<String, String>> labels = labels(path);
+    public String toDockerfileLabels(final String path) {
+        final StringBuilder rendered = new StringBuilder("LABEL ");
+        final List<Map.Entry<String, String>> labels = labels(path);
         for (int index = 0; index < labels.size(); index++) {
             if (index > 0) {
                 rendered.append(" \\\n      ");
             }
-            Map.Entry<String, String> label = labels.get(index);
+            final Map.Entry<String, String> label = labels.get(index);
             rendered.append(label.getKey()).append("=\"");
             for (int i = 0; i < label.getValue().length(); i++) {
-                char character = label.getValue().charAt(i);
+                final char character = label.getValue().charAt(i);
                 if (character == '"' || character == '\\') {
                     rendered.append('\\');
                 }
@@ -110,7 +110,7 @@ public class Contract {
 
     /** {@link #toDockerfileLabels} wrapped in {@link #MARKER_BEGIN} and {@link #MARKER_END}. */
     @JsonIgnore
-    public String toDockerfileBlock(String path) {
+    public String toDockerfileBlock(final String path) {
         return MARKER_BEGIN + "\n" + toDockerfileLabels(path) + MARKER_END + "\n";
     }
 
@@ -119,10 +119,10 @@ public class Contract {
      * the image carries them all; extra labels are ignored.
      */
     @JsonIgnore
-    public List<LabelFault> checkLabels(String path, Map<String, String> imageLabels) {
-        List<LabelFault> faults = new ArrayList<>();
+    public List<LabelFault> checkLabels(final String path, final Map<String, String> imageLabels) {
+        final List<LabelFault> faults = new ArrayList<>();
         for (Map.Entry<String, String> expected : labels(path)) {
-            String found = imageLabels.get(expected.getKey());
+            final String found = imageLabels.get(expected.getKey());
             if (found == null) {
                 faults.add(LabelFault.missing(expected.getKey()));
             } else if (!found.equals(expected.getValue())) {
@@ -139,8 +139,8 @@ public class Contract {
      *                                not the first
      */
     @JsonIgnore
-    public void verifyLabels(String path, Map<String, String> imageLabels) {
-        List<LabelFault> faults = checkLabels(path, imageLabels);
+    public void verifyLabels(final String path, final Map<String, String> imageLabels) {
+        final List<LabelFault> faults = checkLabels(path, imageLabels);
         if (!faults.isEmpty()) {
             throw new ContractLabelException(faults);
         }

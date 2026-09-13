@@ -21,13 +21,13 @@ public final class JsonSchemaDocument {
 
     private final Map<String, Object> fields;
 
-    private JsonSchemaDocument(Map<String, Object> fields) {
+    private JsonSchemaDocument(final Map<String, Object> fields) {
         this.fields = fields;
     }
 
     @JsonCreator
-    public static JsonSchemaDocument of(Map<String, Object> fields) {
-        Object schema = fields.get("$schema");
+    public static JsonSchemaDocument of(final Map<String, Object> fields) {
+        final Object schema = fields.get("$schema");
         if (!(schema instanceof String schemaText) || schemaText.isEmpty()) {
             throw new IllegalArgumentException("json_schema.$schema must be a non-empty string");
         }
@@ -44,7 +44,7 @@ public final class JsonSchemaDocument {
     }
 
     @Override
-    public boolean equals(@Nullable Object other) {
+    public boolean equals(@Nullable final Object other) {
         if (this == other) {
             return true;
         }

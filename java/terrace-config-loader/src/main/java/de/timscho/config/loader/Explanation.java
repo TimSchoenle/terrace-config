@@ -86,18 +86,18 @@ public final class Explanation {
      * <p>Package-private, and takes the loader's own assembly product rather than re-reading the
      * environment: a report that did its own reading could disagree with the load it describes.
      */
-    static Explanation of(TerraceLoader.Layers layers, Map<String, String> environment) {
+    static Explanation of(final TerraceLoader.Layers layers, final Map<String, String> environment) {
         // Appended in merge order, so the last source of a key is the one in effect. The order
         // below is `TerraceLoader.assemble`'s own, and has to stay it.
-        Map<String, List<Layer>> sources = new TreeMap<>();
+        final Map<String, List<Layer>> sources = new TreeMap<>();
 
-        List<Map.Entry<Path, Fragment>> fragments = new ArrayList<>();
+        final List<Map.Entry<Path, Fragment>> fragments = new ArrayList<>();
         for (Path path : layers.toml().files()) {
-            Fragment fragment;
+            final Fragment fragment;
             if (!Files.isRegularFile(path)) {
                 fragment = new Fragment.Missing();
             } else {
-                List<String> keys = TomlLayers.fragmentKeys(path);
+                final List<String> keys = TomlLayers.fragmentKeys(path);
                 if (keys == null) {
                     fragment = new Fragment.Unreadable();
                 } else {
@@ -110,16 +110,16 @@ public final class Explanation {
             fragments.add(Map.entry(path, fragment));
         }
 
-        Map<String, Set<String>> env = layers.dialect().plainEnvEntries(environment);
-        int envKeys = env.size();
+        final Map<String, Set<String>> env = layers.dialect().plainEnvEntries(environment);
+        final int envKeys = env.size();
         for (Map.Entry<String, Set<String>> entry : env.entrySet()) {
             for (String var : entry.getValue()) {
                 sources.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(new Layer.Env(var));
             }
         }
 
-        SecretsDir secrets = layers.files().secrets();
-        int secretsKeys = secrets == null ? 0 : secrets.values().size();
+        final SecretsDir secrets = layers.files().secrets();
+        final int secretsKeys = secrets == null ? 0 : secrets.values().size();
         if (secrets != null) {
             for (Map.Entry<String, FileValue> entry : secrets.values().entrySet()) {
                 sources.computeIfAbsent(entry.getKey(), k -> new ArrayList<>())
@@ -127,14 +127,14 @@ public final class Explanation {
             }
         }
 
-        FileSuffixEnv indirections = layers.files().indirections();
-        int indirectionKeys = indirections.values().size();
+        final FileSuffixEnv indirections = layers.files().indirections();
+        final int indirectionKeys = indirections.values().size();
         for (Map.Entry<String, FileValue> entry : indirections.values().entrySet()) {
-            String key = entry.getKey();
+            final String key = entry.getKey();
             // Recorded alongside the value, so this is the spelling the operator used. The
             // fallback reconstructs the documented one and cannot really be reached: it is the
             // last code that should throw to say so.
-            String var = indirections
+            final String var = indirections
                     .origin(key)
                     .orElseGet(() ->
                             layers.dialect().envSpelling(key) + layers.dialect().indirectionSuffix());
@@ -142,9 +142,9 @@ public final class Explanation {
                     .add(new Layer.Indirection(var, entry.getValue().path()));
         }
 
-        List<Origin> origins = new ArrayList<>();
+        final List<Origin> origins = new ArrayList<>();
         for (Map.Entry<String, List<Layer>> entry : sources.entrySet()) {
-            Origin origin = Origin.fromSources(entry.getKey(), entry.getValue());
+            final Origin origin = Origin.fromSources(entry.getKey(), entry.getValue());
             if (origin != null) {
                 origins.add(origin);
             }
@@ -166,7 +166,7 @@ public final class Explanation {
     }
 
     /** One key's origin, by key path ({@code auth.jwt_secret}). */
-    public Optional<Origin> origin(String key) {
+    public Optional<Origin> origin(final String key) {
         for (Origin origin : origins) {
             if (origin.key().equals(key)) {
                 return Optional.of(origin);
@@ -177,7 +177,7 @@ public final class Explanation {
 
     /** The keys more than one layer supplied, in key-path order. */
     public List<Origin> contested() {
-        List<Origin> contested = new ArrayList<>();
+        final List<Origin> contested = new ArrayList<>();
         for (Origin origin : origins) {
             if (origin.isContested()) {
                 contested.add(origin);
@@ -199,8 +199,8 @@ public final class Explanation {
      */
     @Override
     public String toString() {
-        StringBuilder out = new StringBuilder();
-        int contestedCount = contested().size();
+        final StringBuilder out = new StringBuilder();
+        final int contestedCount = contested().size();
         out.append("terrace-config: prefix `").append(prefix).append("`, ").append(plural(origins.size(), "key"));
         if (contestedCount > 0) {
             out.append(", ").append(contestedCount).append(" supplied by more than one layer");
@@ -259,7 +259,7 @@ public final class Explanation {
         for (Origin origin : origins) {
             longest = Math.max(longest, origin.key().length());
         }
-        int width = Math.min(longest, MAX_KEY_WIDTH);
+        final int width = Math.min(longest, MAX_KEY_WIDTH);
 
         for (Origin origin : origins) {
             out.append("\n  ").append(pad(origin.key(), width)).append("  <- ").append(origin.effective());
@@ -273,11 +273,11 @@ public final class Explanation {
         return out.toString();
     }
 
-    private static String pad(String value, int width) {
+    private static String pad(final String value, final int width) {
         if (value.length() >= width) {
             return value;
         }
-        StringBuilder padded = new StringBuilder(value);
+        final StringBuilder padded = new StringBuilder(value);
         while (padded.length() < width) {
             padded.append(' ');
         }
@@ -285,12 +285,12 @@ public final class Explanation {
     }
 
     /** {@code 1 key} / {@code 4 keys}, so a report reads as English rather than as a template. */
-    private static String plural(int count, String noun) {
+    private static String plural(final int count, final String noun) {
         return count == 1 ? count + " " + noun : count + " " + noun + "s";
     }
 
     /** A layer's key count, where zero is worth spelling out: it is the finding, not the absence of one. */
-    private static String count(int keys) {
+    private static String count(final int keys) {
         return keys == 0 ? "none" : plural(keys, "key");
     }
 }

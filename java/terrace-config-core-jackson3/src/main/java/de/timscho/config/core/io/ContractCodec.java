@@ -41,13 +41,13 @@ public final class ContractCodec {
     }
 
     /** Renders {@code contract} as {@code json}, terminated with one trailing newline. */
-    public static byte[] write(Contract contract) {
-        String rendered = MAPPER.writeValueAsString(contract);
+    public static byte[] write(final Contract contract) {
+        final String rendered = MAPPER.writeValueAsString(contract);
         return (rendered + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
     @Blocking
-    public static void write(Contract contract, Path target) {
+    public static void write(final Contract contract, final Path target) {
         try {
             Files.write(target, write(contract));
         } catch (IOException e) {
@@ -55,12 +55,12 @@ public final class ContractCodec {
         }
     }
 
-    public static Contract read(byte[] json) {
+    public static Contract read(final byte[] json) {
         return MAPPER.readValue(json, Contract.class);
     }
 
     @Blocking
-    public static Contract read(Path source) {
+    public static Contract read(final Path source) {
         try (InputStream in = Files.newInputStream(source)) {
             return MAPPER.readValue(in, Contract.class);
         } catch (IOException e) {

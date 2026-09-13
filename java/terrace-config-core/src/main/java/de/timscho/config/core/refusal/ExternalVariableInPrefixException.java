@@ -6,7 +6,7 @@ package de.timscho.config.core.refusal;
  */
 public final class ExternalVariableInPrefixException extends ContractRefusalException {
 
-    public ExternalVariableInPrefixException(String name, String prefix) {
+    public ExternalVariableInPrefixException(final String name, final String prefix) {
         super("external variable `" + name + "` carries the dialect prefix `" + prefix + "`");
     }
 }

@@ -27,8 +27,8 @@ public class Defaults {
     /** The same bound {@link Node} enforces, for the same reason: a value this deep is a stack overflow risk. */
     private static final int MAX_DEPTH = 32;
 
-    public static Schema withDefaultsFromValue(Schema schema, Map<String, Object> root) {
-        List<Key> keys = new ArrayList<>(schema.getKeys().size());
+    public static Schema withDefaultsFromValue(final Schema schema, final Map<String, Object> root) {
+        final List<Key> keys = new ArrayList<>(schema.getKeys().size());
         for (Key key : schema.getKeys()) {
             // A required key has no default by definition: loading fails until something
             // supplies it, and whatever `root` happens to hold is an artefact of building the
@@ -38,13 +38,13 @@ public class Defaults {
                 continue;
             }
 
-            Object observed = find(root, key.getPath());
+            final Object observed = find(root, key.getPath());
             if (observed == null && !containsPath(root, key.getPath())) {
                 keys.add(key);
                 continue;
             }
 
-            String rendered = renderValue(observed, 0);
+            final String rendered = renderValue(observed, 0);
             if (rendered == null) {
                 keys.add(key);
                 continue;
@@ -64,7 +64,7 @@ public class Defaults {
     }
 
     /** The value at a dotted path, or {@code null} for one {@code root} does not carry — see {@link #containsPath}. */
-    private static @Nullable Object find(Map<String, Object> root, String path) {
+    private static @Nullable Object find(final Map<String, Object> root, final String path) {
         Object current = root;
         for (String segment : path.split("\\.")) {
             if (!(current instanceof Map<?, ?> map) || !map.containsKey(segment)) {
@@ -76,9 +76,9 @@ public class Defaults {
     }
 
     /** Whether {@code root} carries a value at this path at all, distinguishing "absent" from "present but null". */
-    private static boolean containsPath(Map<String, Object> root, String path) {
+    private static boolean containsPath(final Map<String, Object> root, final String path) {
         Object current = root;
-        String[] segments = path.split("\\.");
+        final String[] segments = path.split("\\.");
         for (int i = 0; i < segments.length; i++) {
             if (!(current instanceof Map<?, ?> map) || !map.containsKey(segments[i])) {
                 return false;
@@ -92,7 +92,7 @@ public class Defaults {
      * A default value as a table would show it, or {@code null} for one that means "absent" — an
      * explicit null and a missing key render the same way, which is what they mean to an operator.
      */
-    private static @Nullable String renderValue(@Nullable Object value, int depth) {
+    private static @Nullable String renderValue(@Nullable final Object value, final int depth) {
         if (depth > MAX_DEPTH) {
             return "\u2026";
         }
@@ -107,9 +107,9 @@ public class Defaults {
             return value.toString();
         }
         if (value instanceof List<?> items) {
-            List<String> rendered = new ArrayList<>(items.size());
+            final List<String> rendered = new ArrayList<>(items.size());
             for (Object item : items) {
-                String literal = renderValue(item, depth + 1);
+                final String literal = renderValue(item, depth + 1);
                 rendered.add(literal == null ? "unset" : literal);
             }
             return "[" + String.join(", ", rendered) + "]";
@@ -117,9 +117,9 @@ public class Defaults {
         if (value instanceof Map<?, ?> dict) {
             // A dict at a leaf means the field wanted `@Nested`. Rendered as an inline table
             // rather than dropped, so the output shows what is actually there.
-            List<String> rendered = new ArrayList<>();
+            final List<String> rendered = new ArrayList<>();
             for (Map.Entry<?, ?> entry : dict.entrySet()) {
-                String literal = renderValue(entry.getValue(), depth + 1);
+                final String literal = renderValue(entry.getValue(), depth + 1);
                 rendered.add(entry.getKey() + " = " + (literal == null ? "unset" : literal));
             }
             return "{ " + String.join(", ", rendered) + " }";

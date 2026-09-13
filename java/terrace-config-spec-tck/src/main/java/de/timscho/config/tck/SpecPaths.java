@@ -23,7 +23,7 @@ final class SpecPaths {
         return specV1Dir().resolve("contract.schema.json");
     }
 
-    static Path conformanceCase(String name) {
+    static Path conformanceCase(final String name) {
         return specV1Dir().resolve("conformance").resolve(name).resolve("contract.json");
     }
 }

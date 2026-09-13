@@ -19,12 +19,12 @@ import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
 
     CompactEmptyContainerPrettyPrinter() {
-        DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+        final DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
         indentObjectsWith(indenter);
         indentArraysWith(indenter);
     }
 
-    private CompactEmptyContainerPrettyPrinter(CompactEmptyContainerPrettyPrinter base) {
+    private CompactEmptyContainerPrettyPrinter(final CompactEmptyContainerPrettyPrinter base) {
         super(base);
     }
 
@@ -35,12 +35,12 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
 
     /** {@code "key": value}, not {@code "key" : value} — the corpus never has a space before the colon. */
     @Override
-    public void writeObjectFieldValueSeparator(JsonGenerator g) throws IOException {
+    public void writeObjectFieldValueSeparator(final JsonGenerator g) throws IOException {
         g.writeRaw(": ");
     }
 
     @Override
-    public void writeEndArray(JsonGenerator g, int nrOfEntries) throws IOException {
+    public void writeEndArray(final JsonGenerator g, final int nrOfEntries) throws IOException {
         if (!_arrayIndenter.isInline()) {
             --_nesting;
         }
@@ -51,7 +51,7 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
     }
 
     @Override
-    public void writeEndObject(JsonGenerator g, int nrOfEntries) throws IOException {
+    public void writeEndObject(final JsonGenerator g, final int nrOfEntries) throws IOException {
         if (!_objectIndenter.isInline()) {
             --_nesting;
         }

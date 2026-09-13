@@ -16,17 +16,17 @@ public abstract sealed class LabelFault {
      * or {@link Contract#LABEL_PREFIX}. */
     private final String name;
 
-    public static LabelFault missing(String name) {
+    public static LabelFault missing(final String name) {
         return new Missing(name);
     }
 
-    public static LabelFault mismatch(String name, String found, String expected) {
+    public static LabelFault mismatch(final String name, final String found, final String expected) {
         return new Mismatch(name, found, expected);
     }
 
     /** The image carries no label of this name at all. */
     public static final class Missing extends LabelFault {
-        private Missing(String name) {
+        private Missing(final String name) {
             super(name);
         }
 
@@ -46,7 +46,7 @@ public abstract sealed class LabelFault {
         /** What this contract says it should carry. */
         private final String expected;
 
-        private Mismatch(String name, String found, String expected) {
+        private Mismatch(final String name, final String found, final String expected) {
             super(name);
             this.found = found;
             this.expected = expected;

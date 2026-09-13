@@ -6,7 +6,7 @@ package de.timscho.config.core.refusal;
  */
 public final class DuplicateExternalVariableException extends ContractRefusalException {
 
-    public DuplicateExternalVariableException(String name) {
+    public DuplicateExternalVariableException(final String name) {
         super("external variable `" + name + "` is declared more than once");
     }
 }

@@ -50,12 +50,12 @@ public final class SpringDialect {
     }
 
     /** Replace the nesting separator. Defaults to {@code _}, matching Spring's own binder. */
-    public SpringDialect withNestingSeparator(String separator) {
+    public SpringDialect withNestingSeparator(final String separator) {
         return new SpringDialect(separator, indirectionSuffix);
     }
 
     /** Whether {@code envName} is a {@code _FILE}-suffixed indirection, with a non-empty target. */
-    public boolean isIndirection(String envName) {
+    public boolean isIndirection(final String envName) {
         return indirectionTarget(envName).isPresent();
     }
 
@@ -63,11 +63,11 @@ public final class SpringDialect {
      * The environment variable name {@code envName} points a file's contents at, if {@code
      * envName} is a well-formed indirection — non-empty, and not itself all suffix.
      */
-    public Optional<String> indirectionTarget(String envName) {
+    public Optional<String> indirectionTarget(final String envName) {
         if (!envName.endsWith(indirectionSuffix)) {
             return Optional.empty();
         }
-        String target = envName.substring(0, envName.length() - indirectionSuffix.length());
+        final String target = envName.substring(0, envName.length() - indirectionSuffix.length());
         return target.isEmpty() ? Optional.empty() : Optional.of(target);
     }
 
@@ -78,7 +78,7 @@ public final class SpringDialect {
      * so a value this class publishes under this name binds exactly where the equivalent
      * environment variable would have.
      */
-    public String propertyName(String envName) {
+    public String propertyName(final String envName) {
         return envName.toLowerCase(Locale.ROOT).replace(separator, ".");
     }
 }

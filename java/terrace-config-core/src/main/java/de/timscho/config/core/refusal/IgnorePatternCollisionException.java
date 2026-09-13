@@ -7,7 +7,7 @@ package de.timscho.config.core.refusal;
  */
 public final class IgnorePatternCollisionException extends ContractRefusalException {
 
-    public IgnorePatternCollisionException(String pattern, String env) {
+    public IgnorePatternCollisionException(final String pattern, final String env) {
         super("ignore pattern `" + pattern + "` covers `" + env + "`, which the loader reads");
     }
 }

@@ -7,7 +7,7 @@ package de.timscho.config.core.refusal;
  */
 public abstract class ContractRefusalException extends RuntimeException {
 
-    protected ContractRefusalException(String message) {
+    protected ContractRefusalException(final String message) {
         super(message);
     }
 }

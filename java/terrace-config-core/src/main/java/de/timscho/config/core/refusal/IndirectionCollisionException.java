@@ -9,7 +9,7 @@ package de.timscho.config.core.refusal;
  */
 public final class IndirectionCollisionException extends ContractRefusalException {
 
-    public IndirectionCollisionException(String key, String otherKey, String env) {
+    public IndirectionCollisionException(final String key, final String otherKey, final String env) {
         super("`" + key + "`'s env `" + env + "` is `" + otherKey + "`'s indirection variable");
     }
 }

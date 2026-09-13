@@ -30,7 +30,7 @@ public final class ContractCodec {
     private ContractCodec() {}
 
     private static ObjectMapper newMapper() {
-        ObjectMapper mapper = new ObjectMapper();
+        final ObjectMapper mapper = new ObjectMapper();
         mapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -39,9 +39,9 @@ public final class ContractCodec {
     }
 
     /** Renders {@code contract} as {@code json}, terminated with one trailing newline. */
-    public static byte[] write(Contract contract) {
+    public static byte[] write(final Contract contract) {
         try {
-            String rendered = MAPPER.writeValueAsString(contract);
+            final String rendered = MAPPER.writeValueAsString(contract);
             return (rendered + "\n").getBytes(StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -49,7 +49,7 @@ public final class ContractCodec {
     }
 
     @Blocking
-    public static void write(Contract contract, Path target) {
+    public static void write(final Contract contract, final Path target) {
         try {
             Files.write(target, write(contract));
         } catch (IOException e) {
@@ -57,7 +57,7 @@ public final class ContractCodec {
         }
     }
 
-    public static Contract read(byte[] json) {
+    public static Contract read(final byte[] json) {
         try {
             return MAPPER.readValue(json, Contract.class);
         } catch (IOException e) {
@@ -66,7 +66,7 @@ public final class ContractCodec {
     }
 
     @Blocking
-    public static Contract read(Path source) {
+    public static Contract read(final Path source) {
         try (InputStream in = Files.newInputStream(source)) {
             return MAPPER.readValue(in, Contract.class);
         } catch (IOException e) {

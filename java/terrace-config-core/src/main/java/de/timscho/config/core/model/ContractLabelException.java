@@ -15,13 +15,13 @@ public final class ContractLabelException extends RuntimeException {
     /** Every label fault this contract found, in declaration order. */
     private final transient List<LabelFault> faults;
 
-    public ContractLabelException(List<LabelFault> faults) {
+    public ContractLabelException(final List<LabelFault> faults) {
         super(message(faults));
         this.faults = List.copyOf(faults);
     }
 
-    private static String message(List<LabelFault> faults) {
-        StringBuilder message = new StringBuilder();
+    private static String message(final List<LabelFault> faults) {
+        final StringBuilder message = new StringBuilder();
         for (int i = 0; i < faults.size(); i++) {
             if (i > 0) {
                 message.append('\n');

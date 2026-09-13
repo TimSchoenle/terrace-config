@@ -44,7 +44,8 @@ public class SchemaAssembler {
     public static final int SCHEMA_VERSION = 2;
 
     /** The keys of {@code descriptor}, spelled according to {@code dialect}. */
-    public static Schema assemble(TypeDescriptor descriptor, Dialect dialect, Set<String> reservedEnvNames) {
+    public static Schema assemble(
+            final TypeDescriptor descriptor, final Dialect dialect, final Set<String> reservedEnvNames) {
         return assemble(descriptor, dialect, reservedEnvNames, "");
     }
 
@@ -59,13 +60,16 @@ public class SchemaAssembler {
      *                         case-insensitively, mirroring {@code Dialect::is_reserved}
      */
     public static Schema assemble(
-            TypeDescriptor descriptor, Dialect dialect, Set<String> reservedEnvNames, String root) {
-        Set<String> reservedUpper = new HashSet<>();
+            final TypeDescriptor descriptor,
+            final Dialect dialect,
+            final Set<String> reservedEnvNames,
+            final String root) {
+        final Set<String> reservedUpper = new HashSet<>();
         for (String reserved : reservedEnvNames) {
             reservedUpper.add(reserved.toUpperCase(Locale.ROOT));
         }
 
-        List<Key> keys = new ArrayList<>();
+        final List<Key> keys = new ArrayList<>();
         walk(descriptor.keys(), root, keys, dialect, reservedUpper);
 
         return Schema.builder()
@@ -77,10 +81,14 @@ public class SchemaAssembler {
 
     /** Walks {@code fields}, appending one {@link Key} per leaf/container field to {@code out}. */
     private static void walk(
-            List<KeyDescriptor> fields, String prefix, List<Key> out, Dialect dialect, Set<String> reservedUpper) {
+            final List<KeyDescriptor> fields,
+            final String prefix,
+            final List<Key> out,
+            final Dialect dialect,
+            final Set<String> reservedUpper) {
         for (KeyDescriptor field : fields) {
-            String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
-            boolean isNestedStruct = !field.nestedKeys().isEmpty()
+            final String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
+            final boolean isNestedStruct = !field.nestedKeys().isEmpty()
                     && (field.container() == KeyDescriptor.ContainerKind.NONE
                             || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
             if (isNestedStruct) {
@@ -95,16 +103,17 @@ public class SchemaAssembler {
     }
 
     /** One field as a leaf {@link Key} — the whole of a container field, structured or not. */
-    private static Key leaf(KeyDescriptor field, String path, Dialect dialect, Set<String> reservedUpper) {
-        boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
+    private static Key leaf(
+            final KeyDescriptor field, final String path, final Dialect dialect, final Set<String> reservedUpper) {
+        final boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
                 && field.container() != KeyDescriptor.ContainerKind.OPTIONAL;
 
-        List<String> values = !field.values().isEmpty()
+        final List<String> values = !field.values().isEmpty()
                 ? field.values()
                 : field.element() != null ? field.element().values() : List.of();
-        TextForm textForm = textForm(field, container, values);
+        final TextForm textForm = textForm(field, container, values);
 
-        Key.KeyBuilder builder = Key.builder()
+        final Key.KeyBuilder builder = Key.builder()
                 .path(path)
                 .docs(field.docs() != null ? field.docs() : "")
                 .ty(field.typeName())
@@ -116,9 +125,9 @@ public class SchemaAssembler {
                 // Syntactic, matching the Rust derive macro exactly — see the class-level note.
                 .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
 
-        Spelling spelling = envSpelling(dialect, path);
+        final Spelling spelling = envSpelling(dialect, path);
         builder.env(spelling.env);
-        boolean reserved = spelling.env != null && reservedUpper.contains(spelling.env.toUpperCase(Locale.ROOT));
+        final boolean reserved = spelling.env != null && reservedUpper.contains(spelling.env.toUpperCase(Locale.ROOT));
         builder.reserved(reserved);
         if (reserved) {
             // Read straight from the environment, so neither file mechanism can supply it.
@@ -134,7 +143,7 @@ public class SchemaAssembler {
     }
 
     /** How to read the field's own value, before {@link Key#getConstraint()} checks it. */
-    private static TextForm textForm(KeyDescriptor field, boolean container, List<String> values) {
+    private static TextForm textForm(final KeyDescriptor field, final boolean container, final List<String> values) {
         if (container) {
             return TextForm.STRUCTURED;
         }
@@ -146,14 +155,14 @@ public class SchemaAssembler {
 
     /** The JSON Schema keywords this field's value must satisfy, or {@code null} if none apply. */
     private static @Nullable Map<String, Object> constraint(
-            KeyDescriptor field, boolean container, TextForm textForm, List<String> values) {
+            final KeyDescriptor field, final boolean container, final TextForm textForm, final List<String> values) {
         if (container) {
-            Map<String, Object> schema = new TreeMap<>();
+            final Map<String, Object> schema = new TreeMap<>();
             if (Objects.requireNonNull(field.container()) == KeyDescriptor.ContainerKind.MAP) {
                 schema.put("type", "object");
             } else {
                 schema.put("type", "array");
-                Map<String, Object> items = elementConstraint(field.element());
+                final Map<String, Object> items = elementConstraint(field.element());
                 if (items != null) {
                     schema.put("items", items);
                 }
@@ -163,17 +172,17 @@ public class SchemaAssembler {
         return leafConstraint(textForm, values, field.range());
     }
 
-    private static @Nullable Map<String, Object> elementConstraint(@Nullable ElementDescriptor element) {
+    private static @Nullable Map<String, Object> elementConstraint(@Nullable final ElementDescriptor element) {
         if (element == null) {
             return null;
         }
-        TextForm elementForm = !element.values().isEmpty() ? TextForm.CHOICE : TextForm.of(element.typeName());
+        final TextForm elementForm = !element.values().isEmpty() ? TextForm.CHOICE : TextForm.of(element.typeName());
         return leafConstraint(elementForm, element.values(), element.range());
     }
 
     private static @Nullable Map<String, Object> leafConstraint(
-            TextForm textForm, List<String> values, @Nullable RangeConstraint range) {
-        Map<String, Object> schema = new TreeMap<>();
+            final TextForm textForm, final List<String> values, @Nullable final RangeConstraint range) {
+        final Map<String, Object> schema = new TreeMap<>();
         switch (textForm) {
             case CHOICE:
                 schema.put("type", "string");
@@ -200,13 +209,13 @@ public class SchemaAssembler {
         }
     }
 
-    private static @Nullable Map<String, Object> rangeOnly(RangeConstraint range) {
-        Map<String, Object> schema = new TreeMap<>();
+    private static @Nullable Map<String, Object> rangeOnly(final RangeConstraint range) {
+        final Map<String, Object> schema = new TreeMap<>();
         addRange(schema, range);
         return schema.isEmpty() ? null : schema;
     }
 
-    private static void addRange(Map<String, Object> schema, @Nullable RangeConstraint range) {
+    private static void addRange(final Map<String, Object> schema, @Nullable final RangeConstraint range) {
         if (range == null) {
             return;
         }
@@ -225,15 +234,16 @@ public class SchemaAssembler {
     }
 
     /** The environment spelling of {@code path}, when the environment can actually name it. */
-    private static Spelling envSpelling(Dialect dialect, String path) {
-        String name = dialect.getPrefix() + path.toUpperCase(Locale.ROOT).replace(".", dialect.getNestingSeparator());
+    private static Spelling envSpelling(final Dialect dialect, final String path) {
+        final String name =
+                dialect.getPrefix() + path.toUpperCase(Locale.ROOT).replace(".", dialect.getNestingSeparator());
         if (!isSettableEnvName(name)) {
             return new Spelling(null, UnreachableReason.UNNAMEABLE);
         }
         if (indirectionTarget(dialect, name) != null) {
             return new Spelling(null, UnreachableReason.INDIRECTION);
         }
-        String mapped = envLayerKey(dialect, name);
+        final String mapped = envLayerKey(dialect, name);
         if (path.equals(mapped)) {
             return new Spelling(name, null);
         }
@@ -241,13 +251,13 @@ public class SchemaAssembler {
     }
 
     /** The key a case-folding, separator-splitting environment reader makes of {@code name}. */
-    private static @Nullable String envLayerKey(Dialect dialect, String name) {
-        String trimmed = name.trim();
+    private static @Nullable String envLayerKey(final Dialect dialect, final String name) {
+        final String trimmed = name.trim();
         if (!trimmed.startsWith(dialect.getPrefix())) {
             return null;
         }
-        String suffix = trimmed.substring(dialect.getPrefix().length());
-        String mapped = suffix.replace(dialect.getNestingSeparator(), ".").trim();
+        final String suffix = trimmed.substring(dialect.getPrefix().length());
+        final String mapped = suffix.replace(dialect.getNestingSeparator(), ".").trim();
         for (String segment : mapped.split("\\.", -1)) {
             if (segment.isEmpty()) {
                 return null;
@@ -257,31 +267,31 @@ public class SchemaAssembler {
     }
 
     /** The key an indirection variable names, if {@code name} is one, or {@code null}. */
-    private static @Nullable String indirectionTarget(Dialect dialect, String name) {
+    private static @Nullable String indirectionTarget(final Dialect dialect, final String name) {
         if (!name.startsWith(dialect.getPrefix())) {
             return null;
         }
-        String rest = name.substring(dialect.getPrefix().length());
+        final String rest = name.substring(dialect.getPrefix().length());
         if (!rest.endsWith(dialect.getIndirectionSuffix())) {
             return null;
         }
-        String key =
+        final String key =
                 rest.substring(0, rest.length() - dialect.getIndirectionSuffix().length());
         return key.isEmpty() ? null : key;
     }
 
-    private static @Nullable String indirectionName(Dialect dialect, String env) {
-        String candidate = env + dialect.getIndirectionSuffix();
+    private static @Nullable String indirectionName(final Dialect dialect, final String env) {
+        final String candidate = env + dialect.getIndirectionSuffix();
         return isSettableEnvName(candidate) ? candidate : null;
     }
 
     /** The secrets-directory file name for {@code path}, when one can name it. */
-    private static @Nullable String secretsFileName(Dialect dialect, String path) {
-        String name = path.replace(".", dialect.getNestingSeparator());
+    private static @Nullable String secretsFileName(final Dialect dialect, final String path) {
+        final String name = path.replace(".", dialect.getNestingSeparator());
         if (name.contains(".") || !isNameableFile(name)) {
             return null;
         }
-        String[] parts = name.toLowerCase(Locale.ROOT)
+        final String[] parts = name.toLowerCase(Locale.ROOT)
                 .split(
                         java.util.regex.Pattern.quote(
                                 dialect.getNestingSeparator().toLowerCase(Locale.ROOT)),
@@ -289,11 +299,11 @@ public class SchemaAssembler {
         return String.join(".", parts).equals(path) ? name : null;
     }
 
-    private static boolean isSettableEnvName(String name) {
+    private static boolean isSettableEnvName(final String name) {
         return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('=') < 0;
     }
 
-    private static boolean isNameableFile(String name) {
+    private static boolean isNameableFile(final String name) {
         return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('/') < 0 && name.indexOf('\\') < 0;
     }
 
@@ -319,7 +329,7 @@ public class SchemaAssembler {
 
         final de.timscho.config.core.model.TextForm model;
 
-        static TextForm of(String typeName) {
+        static TextForm of(final String typeName) {
             return switch (typeName) {
                 case "String", "CharSequence", "char", "Character" -> TEXT;
                 case "boolean", "Boolean" -> BOOLEAN;

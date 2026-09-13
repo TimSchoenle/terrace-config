@@ -36,7 +36,7 @@ import de.timscho.config.annotations.Values;
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "orders")
-public class OrdersProperties {
+public final class OrdersProperties {
 
     /** Address the HTTP listener binds to. */
     private String bindAddr = "127.0.0.1";

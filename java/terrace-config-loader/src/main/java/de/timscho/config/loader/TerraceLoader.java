@@ -78,12 +78,12 @@ public final class TerraceLoader {
      * MYAPP_SECRETS_DIR}, {@code MYAPP_*} and {@code MYAPP_<KEY>_FILE}. The prefix is taken
      * verbatim, trailing underscore included.
      */
-    public static TerraceLoader of(String prefix) {
+    public static TerraceLoader of(final String prefix) {
         return new TerraceLoader(prefix);
     }
 
     /** Override the nesting separator. Defaults to {@code __}. */
-    public TerraceLoader nestingSeparator(String separator) {
+    public TerraceLoader nestingSeparator(final String separator) {
         this.separator = separator;
         return this;
     }
@@ -93,7 +93,7 @@ public final class TerraceLoader {
      * reserved key is read from the environment before the layers exist, so a file may not
      * supply it.
      */
-    public TerraceLoader reserve(String key) {
+    public TerraceLoader reserve(final String key) {
         this.reserved.add(key);
         return this;
     }
@@ -130,7 +130,7 @@ public final class TerraceLoader {
      * is usually a generated {@code <Type>Descriptor.DESCRIPTOR} from {@code
      * terrace-config-processor}.
      */
-    public Schema schema(TypeDescriptor descriptor) {
+    public Schema schema(final TypeDescriptor descriptor) {
         return schemaAt(descriptor, "");
     }
 
@@ -140,19 +140,19 @@ public final class TerraceLoader {
      * csp.cloudflare.turnstile}, where {@link #schema} alone would produce {@code
      * cloudflare.turnstile}, a path that appears in no configuration file anywhere.
      */
-    public Schema schemaAt(TypeDescriptor descriptor, String root) {
-        de.timscho.config.core.model.Dialect modelDialect = de.timscho.config.core.model.Dialect.builder()
+    public Schema schemaAt(final TypeDescriptor descriptor, final String root) {
+        final de.timscho.config.core.model.Dialect modelDialect = de.timscho.config.core.model.Dialect.builder()
                 .prefix(prefix)
                 .nestingSeparator(separator)
                 .indirectionSuffix(fileSuffix)
                 .build();
 
-        Set<String> reservedEnvNames = new LinkedHashSet<>(reserved);
+        final Set<String> reservedEnvNames = new LinkedHashSet<>(reserved);
         reservedEnvNames.add(configVarName());
         reservedEnvNames.add(secretsDirVarName());
 
-        Schema schema = SchemaAssembler.assemble(descriptor, modelDialect, reservedEnvNames, root);
-        List<LoaderVar> loaderVars = new ArrayList<>();
+        final Schema schema = SchemaAssembler.assemble(descriptor, modelDialect, reservedEnvNames, root);
+        final List<LoaderVar> loaderVars = new ArrayList<>();
         loaderVars.add(LoaderVar.builder()
                 .env(configVarName())
                 .role(LoaderRole.CONFIG)
@@ -162,22 +162,22 @@ public final class TerraceLoader {
         loaderVars.add(LoaderVar.builder()
                 .env(secretsDirVarName())
                 .role(LoaderRole.SECRETS_DIR)
-                .docs(
-                        "Names a directory of key-named files -- a mounted Kubernetes Secret volume. Each file supplies the key its name spells.")
+                .docs("Names a directory of key-named files -- a mounted Kubernetes Secret volume. Each file "
+                        + "supplies the key its name spells.")
                 .build());
         for (String reservedKey : reserved) {
             loaderVars.add(LoaderVar.builder()
                     .env(reservedKey)
                     .role(LoaderRole.RESERVED)
-                    .docs(
-                            "Read directly from the environment before the layered config exists, so no file may supply it.")
+                    .docs("Read directly from the environment before the layered config exists, so no file "
+                            + "may supply it.")
                     .build());
         }
         return schema.toBuilder().loader(loaderVars).build();
     }
 
     /** Load a typed config, reading {@code System.getenv()} and the configured paths. */
-    public <T> T load(Class<T> type) {
+    public <T> T load(final Class<T> type) {
         return load(type, System.getenv());
     }
 
@@ -186,8 +186,8 @@ public final class TerraceLoader {
      * System.getenv()} — the seam a test uses to run this loader without touching the real
      * process environment.
      */
-    public <T> T load(Class<T> type, Map<String, String> environment) {
-        Map<String, Object> merged = assemble(environment);
+    public <T> T load(final Class<T> type, final Map<String, String> environment) {
+        final Map<String, Object> merged = assemble(environment);
         return new ObjectMapper().convertValue(merged, type);
     }
 
@@ -195,7 +195,7 @@ public final class TerraceLoader {
      * Load a typed config and everything a reload needs to load it again later, reading {@code
      * System.getenv()} and the configured paths.
      */
-    public <T> Loaded<T> loadWatched(Class<T> type) {
+    public <T> Loaded<T> loadWatched(final Class<T> type) {
         return loadWatched(type, System.getenv());
     }
 
@@ -207,19 +207,19 @@ public final class TerraceLoader {
      * hold a secret in a type with no useful {@code equals} of its own, so comparing the merged
      * map instead is what makes {@link Sources#differsFrom} usable at all.
      */
-    public <T> Loaded<T> loadWatched(Class<T> type, Map<String, String> environment) {
-        Layers layers = buildLayers(environment);
+    public <T> Loaded<T> loadWatched(final Class<T> type, final Map<String, String> environment) {
+        final Layers layers = buildLayers(environment);
 
-        Map<String, Object> merged = new LinkedHashMap<>();
+        final Map<String, Object> merged = new LinkedHashMap<>();
         LayerValues.deepMerge(merged, layers.toml().merged());
         LayerValues.deepMerge(merged, environmentLayer(layers.dialect(), environment));
         if (!layers.files().isEmpty()) {
             LayerValues.deepMerge(merged, layers.files().merged());
         }
 
-        T value = new ObjectMapper().convertValue(merged, type);
+        final T value = new ObjectMapper().convertValue(merged, type);
 
-        java.util.TreeSet<Path> watch = new java.util.TreeSet<>();
+        final java.util.TreeSet<Path> watch = new java.util.TreeSet<>();
         watch.addAll(layers.files().watchPaths());
         layers.toml().watchDir().ifPresent(watch::add);
 
@@ -239,15 +239,15 @@ public final class TerraceLoader {
     }
 
     /** As {@link #explain()}, against an explicit environment map. */
-    public Explanation explain(Map<String, String> environment) {
+    public Explanation explain(final Map<String, String> environment) {
         return Explanation.of(buildLayers(environment), environment);
     }
 
     /** The merged configuration, before binding to any type — the assembled nested map. */
-    Map<String, Object> assemble(Map<String, String> environment) {
-        Layers layers = buildLayers(environment);
+    Map<String, Object> assemble(final Map<String, String> environment) {
+        final Layers layers = buildLayers(environment);
 
-        Map<String, Object> merged = new LinkedHashMap<>();
+        final Map<String, Object> merged = new LinkedHashMap<>();
         LayerValues.deepMerge(merged, layers.toml().merged());
         LayerValues.deepMerge(merged, environmentLayer(layers.dialect(), environment));
         if (!layers.files().isEmpty()) {
@@ -261,21 +261,21 @@ public final class TerraceLoader {
      * merging them into one map — the step {@link #assemble} and {@link #explain} share, so
      * neither can disagree with the other about what was actually read.
      */
-    private Layers buildLayers(Map<String, String> environment) {
-        Dialect dialect = dialect();
+    private Layers buildLayers(final Map<String, String> environment) {
+        final Dialect dialect = dialect();
 
-        String configVarName = configVarName();
-        String configured = environment.get(configVarName);
-        boolean configFromEnv = configured != null;
-        Path configPath = configFromEnv ? Path.of(configured) : defaultConfigPath;
-        TomlLayers toml = TomlLayers.expand(configVarName, configPath);
+        final String configVarName = configVarName();
+        final String configured = environment.get(configVarName);
+        final boolean configFromEnv = configured != null;
+        final Path configPath = configFromEnv ? Path.of(configured) : defaultConfigPath;
+        final TomlLayers toml = TomlLayers.expand(configVarName, configPath);
 
-        String secretsVarName = secretsDirVarName();
-        String secretsDirValue = environment.get(secretsVarName);
-        Optional<Path> secretsDir = (secretsDirValue != null && !secretsDirValue.isBlank())
+        final String secretsVarName = secretsDirVarName();
+        final String secretsDirValue = environment.get(secretsVarName);
+        final Optional<Path> secretsDir = (secretsDirValue != null && !secretsDirValue.isBlank())
                 ? Optional.of(Path.of(secretsDirValue))
                 : Optional.empty();
-        FileLayers files = FileLayers.collect(secretsDir, secretsVarName, dialect, shadowPolicy, environment);
+        final FileLayers files = FileLayers.collect(secretsDir, secretsVarName, dialect, shadowPolicy, environment);
 
         return new Layers(dialect, configVarName, configPath, configFromEnv, toml, secretsVarName, secretsDir, files);
     }
@@ -304,17 +304,17 @@ public final class TerraceLoader {
      * <PREFIX><KEY>_FILE} are this loader's own mechanism rather than configuration — {@link
      * FileLayers} has already read and merged the latter as the key it names.
      */
-    private Map<String, Object> environmentLayer(Dialect dialect, Map<String, String> environment) {
-        Map<String, Object> dict = new LinkedHashMap<>();
+    private Map<String, Object> environmentLayer(final Dialect dialect, final Map<String, String> environment) {
+        final Map<String, Object> dict = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : environment.entrySet()) {
-            String name = entry.getKey();
+            final String name = entry.getKey();
             if (!name.startsWith(prefix)) {
                 continue;
             }
             if (dialect.isReserved(name) || dialect.indirectionTarget(name).isPresent()) {
                 continue;
             }
-            String suffix = name.substring(prefix.length());
+            final String suffix = name.substring(prefix.length());
             if (suffix.isEmpty()) {
                 continue;
             }

@@ -27,13 +27,14 @@ public final class OrdersService {
 
     private OrdersService() {}
 
-    public static void main(String[] args) {
+    public static void main(final String[] args) {
         if (args.length > 0 && "--contract".equals(args[0])) {
             System.out.println(ContractGenerator.toJson(ContractGenerator.generate()));
             return;
         }
 
-        Config config = TerraceLoader.of("ORDERS_").reserve("ORDERS_PROFILE").load(Config.class);
+        final Config config =
+                TerraceLoader.of("ORDERS_").reserve("ORDERS_PROFILE").load(Config.class);
 
         System.out.println("listening on " + config.getBindAddr() + ":" + config.getPort());
         System.out.println("log level: " + config.getLogLevel());
@@ -42,8 +43,8 @@ public final class OrdersService {
         // A real service passes this straight to its connection pool and never prints it.
         // Printed here only to make the point in the terminal: the value loaded, and it is not
         // the compiled default once an operator overrides it.
-        String url = config.getDatabase().getUrl();
-        boolean isDefault = url.contains("orders_dev");
+        final String url = config.getDatabase().getUrl();
+        final boolean isDefault = url.contains("orders_dev");
         System.out.println("database: " + (isDefault ? "local development default" : "overridden"));
     }
 }

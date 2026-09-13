@@ -38,7 +38,7 @@ public final class Origin {
 
     /** Every layer that supplied this key, lowest precedence first, ending with {@link #effective()}. */
     public List<Layer> sources() {
-        List<Layer> all = new ArrayList<>(shadowed);
+        final List<Layer> all = new ArrayList<>(shadowed);
         all.add(effective);
         return all;
     }
@@ -53,12 +53,12 @@ public final class Origin {
      * for an empty list, which cannot happen in practice — an entry exists because a layer wrote
      * into it.
      */
-    static @Nullable Origin fromSources(String key, List<Layer> sources) {
+    static @Nullable Origin fromSources(final String key, final List<Layer> sources) {
         if (sources.isEmpty()) {
             return null;
         }
-        List<Layer> shadowed = List.copyOf(sources.subList(0, sources.size() - 1));
-        Layer effective = sources.getLast();
+        final List<Layer> shadowed = List.copyOf(sources.subList(0, sources.size() - 1));
+        final Layer effective = sources.getLast();
         return new Origin(key, effective, shadowed);
     }
 }

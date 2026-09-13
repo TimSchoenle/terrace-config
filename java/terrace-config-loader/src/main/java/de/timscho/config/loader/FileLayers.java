@@ -33,10 +33,15 @@ final class FileLayers {
      * whatever pointed at it.
      */
     static FileLayers collect(
-            Optional<Path> dir, String origin, Dialect dialect, ShadowPolicy policy, Map<String, String> environment) {
-        SecretsDir secrets = dir.map(d -> SecretsDir.read(origin, d, dialect)).orElse(null);
-        FileSuffixEnv files = FileSuffixEnv.read(dialect, environment);
-        FileLayers layers = new FileLayers(secrets, files);
+            final Optional<Path> dir,
+            final String origin,
+            final Dialect dialect,
+            final ShadowPolicy policy,
+            final Map<String, String> environment) {
+        final SecretsDir secrets =
+                dir.map(d -> SecretsDir.read(origin, d, dialect)).orElse(null);
+        final FileSuffixEnv files = FileSuffixEnv.read(dialect, environment);
+        final FileLayers layers = new FileLayers(secrets, files);
         if (policy == ShadowPolicy.REJECT) {
             layers.rejectShadowedKeys(dialect, environment);
         }
@@ -50,7 +55,7 @@ final class FileLayers {
 
     /** The merged values from both file-backed layers: secrets directory, then indirection. */
     Map<String, Object> merged() {
-        Map<String, Object> dict = new LinkedHashMap<>();
+        final Map<String, Object> dict = new LinkedHashMap<>();
         if (secrets != null) {
             for (Map.Entry<String, FileValue> entry : secrets.values().entrySet()) {
                 LayerValues.insertNested(dict, entry.getKey(), entry.getValue().value());
@@ -66,13 +71,13 @@ final class FileLayers {
      * Refuse a key supplied by more than one of: the environment, the secrets directory, the
      * indirection variables.
      */
-    private void rejectShadowedKeys(Dialect dialect, Map<String, String> environment) {
-        Set<String> env = dialect.plainEnvKeys(environment);
-        Map<String, FileValue> secretValues = secrets == null ? Map.of() : secrets.values();
-        Map<String, FileValue> fileValues = files.values();
+    private void rejectShadowedKeys(final Dialect dialect, final Map<String, String> environment) {
+        final Set<String> env = dialect.plainEnvKeys(environment);
+        final Map<String, FileValue> secretValues = secrets == null ? Map.of() : secrets.values();
+        final Map<String, FileValue> fileValues = files.values();
 
         for (Map.Entry<String, FileValue> entry : secretValues.entrySet()) {
-            String key = entry.getKey();
+            final String key = entry.getKey();
             if (fileValues.containsKey(key)) {
                 throw shadowed(key, entry.getValue().path(), fileValues.get(key).path());
             }
@@ -81,14 +86,14 @@ final class FileLayers {
             }
         }
         for (Map.Entry<String, FileValue> entry : fileValues.entrySet()) {
-            String key = entry.getKey();
+            final String key = entry.getKey();
             if (env.contains(key)) {
                 throw shadowed(key, entry.getValue().path(), dialect.envSpelling(key));
             }
         }
     }
 
-    private static LoaderException shadowed(String key, Object source, Object other) {
+    private static LoaderException shadowed(final String key, final Object source, final Object other) {
         return new LoaderException("`" + key + "` is supplied twice — by " + source + " and by " + other
                 + ". Remove one: a stale environment variable shadowing a rotated secret "
                 + "keeps the service running on the old credential.");
@@ -105,7 +110,7 @@ final class FileLayers {
      * {@code ..data} directory over the old one rather than rewriting a file in place.
      */
     Set<Path> watchPaths() {
-        Set<Path> paths = new TreeSet<>();
+        final Set<Path> paths = new TreeSet<>();
         if (secrets != null) {
             paths.add(secrets.dir().toAbsolutePath());
         }
@@ -115,7 +120,7 @@ final class FileLayers {
 
     /** Every key path collected by either file-backed layer, for tests and diagnostics. */
     Set<String> keys() {
-        Set<String> keys = new TreeSet<>();
+        final Set<String> keys = new TreeSet<>();
         if (secrets != null) {
             keys.addAll(secrets.values().keySet());
         }

@@ -8,7 +8,7 @@ package de.timscho.config.core.refusal;
  */
 public final class IgnorePatternInPrefixException extends ContractRefusalException {
 
-    public IgnorePatternInPrefixException(String pattern, String prefix) {
+    public IgnorePatternInPrefixException(final String pattern, final String prefix) {
         super("ignore pattern `" + pattern + "` reaches into the dialect prefix `" + prefix + "`");
     }
 }

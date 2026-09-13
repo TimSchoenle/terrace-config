@@ -32,11 +32,16 @@ import org.springframework.context.ConfigurableApplicationContext;
  * that rendering, checked fresh by {@code ContractTest} rather than trusted merely because it
  * once matched.
  */
+// Deliberately not `final`, unlike every other concrete class under java/ (see java/README.md's
+// "Static analysis" section): `@SpringBootApplication` includes `@Configuration` with
+// `proxyBeanMethods` defaulting to `true`, so Spring CGLIB-subclasses this class at startup to
+// enforce singleton semantics on its own `@Bean` methods -- a final class here fails with
+// "Cannot subclass final class" the moment the context refreshes.
 @SpringBootApplication
 @EnableConfigurationProperties(OrdersProperties.class)
 public class OrdersServiceApplication {
 
-    static void main(String[] args) {
+    static void main(final String[] args) {
         if (args.length > 0 && "--contract".equals(args[0])) {
             System.out.println(ContractGenerator.toJson(ContractGenerator.generate()));
             return;
@@ -47,7 +52,7 @@ public class OrdersServiceApplication {
         }
     }
 
-    static void report(OrdersProperties properties) {
+    static void report(final OrdersProperties properties) {
         System.out.println("listening on " + properties.getBindAddr() + ":" + properties.getPort());
         System.out.println("log level: " + properties.getLogLevel());
         System.out.println("database pool: " + properties.getDatabase().getMaxConnections() + " connections");
@@ -55,8 +60,8 @@ public class OrdersServiceApplication {
         // A real service passes this straight to its connection pool and never prints it.
         // Printed here only to make the point in the terminal: the value loaded, and it is not
         // the compiled default once an operator overrides it.
-        String url = properties.getDatabase().getUrl();
-        boolean isDefault = url.contains("orders_dev");
+        final String url = properties.getDatabase().getUrl();
+        final boolean isDefault = url.contains("orders_dev");
         System.out.println("database: " + (isDefault ? "local development default" : "overridden"));
     }
 }

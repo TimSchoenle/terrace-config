@@ -28,7 +28,10 @@ import org.tomlj.TomlTable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 final class TomlLayers {
 
-    /** How deep a TOML fragment is walked by {@link #fragmentKeys} before the rest of a branch is reported as one path. */
+    /**
+     * How deep a TOML fragment is walked by {@link #fragmentKeys} before the rest of a branch is
+     * reported as one path.
+     */
     private static final int MAX_DEPTH = 32;
 
     private final Path root;
@@ -49,23 +52,23 @@ final class TomlLayers {
      * <p>Dot-prefixed entries are skipped, matching {@link SecretsDir}: a Kubernetes {@code
      * ConfigMap} volume is a directory of symlinks beside a {@code ..data} directory.
      */
-    static TomlLayers expand(String origin, Path path) {
+    static TomlLayers expand(final String origin, final Path path) {
         if (!Files.isDirectory(path)) {
             return new TomlLayers(path, List.of(path));
         }
 
-        List<Path> found = new ArrayList<>();
+        final List<Path> found = new ArrayList<>();
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(path)) {
             for (Path entry : entries) {
-                String name = entry.getFileName().toString();
+                final String name = entry.getFileName().toString();
                 if (name.startsWith(".")) {
                     continue;
                 }
                 if (!Files.isRegularFile(entry)) {
                     continue;
                 }
-                String extension = extensionOf(name);
-                if (extension.equalsIgnoreCase("toml")) {
+                final String extension = extensionOf(name);
+                if ("toml".equalsIgnoreCase(extension)) {
                     found.add(entry);
                 }
             }
@@ -76,8 +79,8 @@ final class TomlLayers {
         return new TomlLayers(path, found);
     }
 
-    private static String extensionOf(String name) {
-        int dot = name.lastIndexOf('.');
+    private static String extensionOf(final String name) {
+        final int dot = name.lastIndexOf('.');
         return dot < 0 ? "" : name.substring(dot + 1);
     }
 
@@ -89,7 +92,7 @@ final class TomlLayers {
         if (Files.isDirectory(root)) {
             return java.util.Optional.of(root);
         }
-        Path parent = root.toAbsolutePath().getParent();
+        final Path parent = root.toAbsolutePath().getParent();
         return java.util.Optional.ofNullable(parent);
     }
 
@@ -98,8 +101,8 @@ final class TomlLayers {
      * {@link Explanation}'s own reporting, kept separate from {@link #merged()} since a report
      * has to name each file's own keys rather than the merged result.
      */
-    static @Nullable List<String> fragmentKeys(Path path) {
-        TomlParseResult result;
+    static @Nullable List<String> fragmentKeys(final Path path) {
+        final TomlParseResult result;
         try {
             result = Toml.parse(path);
         } catch (IOException e) {
@@ -108,16 +111,17 @@ final class TomlLayers {
         if (result.hasErrors()) {
             return null;
         }
-        List<String> keys = new ArrayList<>();
+        final List<String> keys = new ArrayList<>();
         pushLeaves(result, "", keys, 0);
         return keys;
     }
 
     /** Push the dotted path of every leaf in {@code table} into {@code keys}. */
-    private static void pushLeaves(TomlTable table, String prefix, List<String> keys, int depth) {
+    private static void pushLeaves(
+            final TomlTable table, final String prefix, final List<String> keys, final int depth) {
         for (String segment : table.keySet()) {
-            String path = prefix.isEmpty() ? segment : prefix + "." + segment;
-            Object value = table.get(segment);
+            final String path = prefix.isEmpty() ? segment : prefix + "." + segment;
+            final Object value = table.get(segment);
             // An empty table is a leaf: it is a path the file really does mention, and a
             // fragment holding nothing else would otherwise report as supplying nothing.
             if (value instanceof TomlTable inner && !inner.isEmpty() && depth < MAX_DEPTH) {
@@ -130,19 +134,19 @@ final class TomlLayers {
 
     /** Every file, parsed and deep-merged in order into one nested map. */
     Map<String, Object> merged() {
-        Map<String, Object> merged = new LinkedHashMap<>();
+        final Map<String, Object> merged = new LinkedHashMap<>();
         for (Path file : files) {
             if (!Files.isRegularFile(file)) {
                 continue;
             }
-            TomlParseResult result;
+            final TomlParseResult result;
             try {
                 result = Toml.parse(file);
             } catch (IOException e) {
                 throw new UncheckedIOException("reading " + file + ": " + e.getMessage(), e);
             }
             if (result.hasErrors()) {
-                StringBuilder message = new StringBuilder();
+                final StringBuilder message = new StringBuilder();
                 for (Object error : result.errors()) {
                     if (message.length() > 0) {
                         message.append("; ");
@@ -162,23 +166,23 @@ final class TomlLayers {
      * converting them, which Jackson then misreads as a bean (picking up methods like {@code
      * isEmpty()} as a spurious {@code "empty"} property) instead of a JSON object.
      */
-    private static Map<String, Object> convertTable(TomlTable table) {
-        Map<String, Object> map = new LinkedHashMap<>();
+    private static Map<String, Object> convertTable(final TomlTable table) {
+        final Map<String, Object> map = new LinkedHashMap<>();
         for (String key : table.keySet()) {
             map.put(key, convertValue(table.get(key)));
         }
         return map;
     }
 
-    private static List<Object> convertArray(TomlArray array) {
-        List<Object> list = new ArrayList<>();
+    private static List<Object> convertArray(final TomlArray array) {
+        final List<Object> list = new ArrayList<>();
         for (int i = 0; i < array.size(); i++) {
             list.add(convertValue(array.get(i)));
         }
         return list;
     }
 
-    private static Object convertValue(Object value) {
+    private static Object convertValue(final Object value) {
         if (value instanceof TomlTable table) {
             return convertTable(table);
         }

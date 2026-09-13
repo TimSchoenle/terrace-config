@@ -23,7 +23,7 @@ final class ContainerShape {
     private final ContainerKind kind;
     private final @Nullable TypeMirror element;
 
-    private ContainerShape(ContainerKind kind, @Nullable TypeMirror element) {
+    private ContainerShape(final ContainerKind kind, @Nullable final TypeMirror element) {
         this.kind = kind;
         this.element = element;
     }
@@ -36,12 +36,12 @@ final class ContainerShape {
         return element;
     }
 
-    static ContainerShape of(TypeMirror type) {
+    static ContainerShape of(final TypeMirror type) {
         if (!(type instanceof DeclaredType declared)) {
             return NONE;
         }
-        String erasedName = declared.asElement().toString();
-        List<? extends TypeMirror> args = declared.getTypeArguments();
+        final String erasedName = declared.asElement().toString();
+        final List<? extends TypeMirror> args = declared.getTypeArguments();
         return switch (erasedName) {
             case "java.util.Optional" ->
                 args.size() == 1 ? new ContainerShape(ContainerKind.OPTIONAL, args.get(0)) : NONE;
