@@ -92,7 +92,7 @@ jobs:
       # never threaded `source_directory` into the clippy step itself, so every consumer whose
       # Cargo project is not at the repo root got "could not find Cargo.toml" instead of a lint
       # result. Re-pin to `main` once that PR is merged.
-      - uses: TimSchoenle/actions/actions/rust/clippy@e48facb4ef3fbab884c3fe19656ddbe7047ac513
+      - uses: TimSchoenle/actions/actions/rust/clippy@e16a1e466faf8ec751b26289c1898143a253269f # tag=actions-rust-clippy-v1.1.10
         with:
           source_directory: rust
           clippy_arguments: ${{ matrix.features }} --all-targets
