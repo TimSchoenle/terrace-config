@@ -292,7 +292,7 @@ jobs:
       - uses: actions/setup-java@7a6d8a8234af8eb26422e24e3006232cccaa061b # v4.6.0
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: "24.0.2+12"
       # `build-root-directory` was a v2/v3 input; this action version has no such input (cache
       # scoping is inferred from the wrapper's own location), and passing it just emits an
       # "unexpected input" warning. The build directory is set on the run step below instead.
