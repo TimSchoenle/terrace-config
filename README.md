@@ -2,7 +2,7 @@
 Generated from .github/templates/root-README.md.hbs — edit that file, not this one.
 
 CI renders it on every pull request and commits the result back to the branch, the same way it
-does for rust/README.md. See .github/workflows/docs.yml.
+does for rust/README.md and java/README.md. See .github/workflows/docs.yml.
 
 This is the repository's front door, not a second copy of the crate README: what the project is,
 the implementations and their conformance tiers in one table, and one link into each
@@ -31,11 +31,8 @@ happens to have implementations, not an implementation that happens to contain a
 | Implementation | Language | `producer.loader` | Tier | Status |
 |---|---|---|---|---|
 | [`rust/`](rust/README.md) | Rust | `figment` | tier 3 against itself | shipping |
-| `terrace-config-java` | Java | `terrace-java` | tier 2 (target) | not started |
-| `terrace-config-spring` | Java (Spring Boot) | `spring-boot` | tier 1 (target), divergence documented | not started |
-
-The two Java rows exist to state intent, not to link anywhere: `java/` does not exist in this
-repository yet. Once it does, its own README replaces this note and the links above follow.
+| [`terrace-config-java`](java/README.md) | Java | `terrace-java` | tier 2 (target) | shipping |
+| [`terrace-config-spring`](java/README.md#terrace-config-spring-boot) | Java (Spring Boot) | `spring-boot` | tier 1 (target), divergence documented | shipping |
 
 ## The spec
 

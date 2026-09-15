@@ -98,6 +98,16 @@ jobs:
           token: ${{ steps.generate_token.outputs.token }}
           commit_message: "docs: render README from template"
 
+      - name: Render and commit the Java README
+        id: java_readme
+        uses: TimSchoenle/actions/actions/common/render-template-and-commit@88e964d440835fd99f7e9d17b4ba1b48544303ba # tag=actions-common-render-template-and-commit-v1.1.9
+        with:
+          template: .github/templates/java-README.md.hbs
+          output: java/README.md
+          variables: ${{ steps.variables.outputs.variables }}
+          token: ${{ steps.generate_token.outputs.token }}
+          commit_message: "docs: render Java README from template"
+
       # The repository's front door, rendered from the same payload. It quotes none of the
       # crate-specific fields (MSRV, the docs table), so the manifest/docs-directory inputs above
       # only matter to the crate render — this one only reads `repo`.
@@ -115,6 +125,8 @@ jobs:
         env:
           COMMITTED: ${{ steps.readme.outputs.changes_detected }}
           COMMIT_URL: ${{ steps.readme.outputs.commit_url }}
+          JAVA_COMMITTED: ${{ steps.java_readme.outputs.changes_detected }}
+          JAVA_COMMIT_URL: ${{ steps.java_readme.outputs.commit_url }}
           ROOT_COMMITTED: ${{ steps.root_readme.outputs.changes_detected }}
           ROOT_COMMIT_URL: ${{ steps.root_readme.outputs.commit_url }}
         run: |
@@ -122,6 +134,11 @@ jobs:
             echo "rust/README.md re-rendered: ${COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "rust/README.md already matched its template." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${JAVA_COMMITTED}" = "true" ]; then
+            echo "java/README.md re-rendered: ${JAVA_COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "java/README.md already matched its template." >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ "${ROOT_COMMITTED}" = "true" ]; then
             echo "README.md re-rendered: ${ROOT_COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
@@ -172,6 +189,14 @@ jobs:
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
+          variables: ${{ steps.variables.outputs.variables }}
+          check: true
+
+      - name: Verify java/README.md is current
+        uses: TimSchoenle/actions/actions/common/render-template@cf936b448984595778c82c079af93d0bb5d49297 # tag=actions-common-render-template-v1.2.1
+        with:
+          template: .github/templates/java-README.md.hbs
+          output: java/README.md
           variables: ${{ steps.variables.outputs.variables }}
           check: true
 
