@@ -282,8 +282,8 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 decides both the changelog section and the version bump release-please proposes. `feat` and a
 breaking change move the minor while the crate is pre-1.0; `fix` moves the patch.
 
-`README.md` is generated. Edit `.github/templates/README.md.hbs` instead. CI renders it on every
-pull request and commits the result back to the branch, and a push to `main` whose `README.md`
+`rust/README.md` is generated. Edit `.github/templates/README.md.hbs` instead. CI renders it on every
+pull request and commits the result back to the branch, and a push to `main` whose `rust/README.md`
 does not match its template fails.
 
 The gates a pull request has to pass are in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml);

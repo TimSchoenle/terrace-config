@@ -7,13 +7,13 @@ does for rust/README.md and README.md. See .github/workflows/docs.yml.
 Nothing in this comment may contain a mustache that is not a real reference.
 -->
 
-# terrace-config (Java)
+# {{ repo.name }} (Java)
 
 The Java implementations of the configuration contract at [`spec/`](../spec/README.md).
 
-[![Release](https://img.shields.io/github/v/release/TimSchoenle/terrace-config?sort=semver)](https://github.com/TimSchoenle/terrace-config/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/TimSchoenle/terrace-config/ci.yml?branch=main&label=ci)](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml)
-[![Licence](https://img.shields.io/github/license/TimSchoenle/terrace-config)](../LICENSE)
+[![Release](https://img.shields.io/github/v/release/{{ repo.slug }}?sort=semver)]({{ repo.url }}/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/{{ repo.slug }}/ci.yml?branch={{ repo.branch }}&label=ci)]({{ repo.url }}/actions/workflows/ci.yml)
+[![Licence](https://img.shields.io/github/license/{{ repo.slug }})](../LICENSE)
 
 ## Modules
 
@@ -666,4 +666,4 @@ vulnerability.
 
 ## Licence
 
-MIT. [LICENSE](../LICENSE) has the terms.
+{{ repo.license }}. [LICENSE](../LICENSE) has the terms.

@@ -1,8 +1,8 @@
 # Contributing
 
 This is a multi-language repository: `spec/` is the shared, language-neutral contract, and each
-directory under it is an implementation that conforms to that contract. Today that is `rust/`
-only; `java/` is planned but does not exist yet.
+directory under it is an implementation that conforms to that contract. Today that includes `rust/`
+and `java/`.
 
 ## Commit messages
 
@@ -23,14 +23,14 @@ Each implementation documents its own commands in its own README. Today:
 | Implementation | Where | Commands |
 |---|---|---|
 | Rust | [`rust/README.md`](../rust/README.md#contributing) | `cargo fmt`, `cargo clippy`, `cargo test`, `cargo deny check`, the fuzz suite |
-
-Java's row is added once `java/` exists (see the Java skeleton work).
+| Java | [`java/README.md`](../java/README.md#contributing) | `./gradlew check` |
 
 ## Root-level files
 
 - `README.md` is generated from [`.github/templates/root-README.md.hbs`](../.github/templates/root-README.md.hbs).
   Edit the template, not the file; CI renders it on every pull request.
 - `rust/README.md` is generated the same way, from [`.github/templates/README.md.hbs`](../.github/templates/README.md.hbs).
+- `java/README.md` is generated the same way, from [`.github/templates/java-README.md.hbs`](../.github/templates/java-README.md.hbs).
 - `docs/` at the root holds repository-level documents only — this file and the migration plan
   and progress notes. Documents about a specific implementation live under that implementation's
   own `docs/` directory instead (for example `rust/docs/`).
