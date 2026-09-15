@@ -3,7 +3,7 @@
 # annotating its configuration types should not have to pull in Jackson or a schema validator just
 # to compile against the annotations.
 [versions]
-junit = "5.14.4"
+junit = "6.1.3"
 assertj = "3.27.7"
 jackson = "2.18.10"
 jackson3 = "3.1.6"
