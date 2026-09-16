@@ -19,6 +19,7 @@ final class JacksonReflection {
 
     private static final String JSON_IGNORE_PROPERTIES = "com.fasterxml.jackson.annotation.JsonIgnoreProperties";
     private static final String JSON_PROPERTY = "com.fasterxml.jackson.annotation.JsonProperty";
+    private static final String JSON_ALIAS = "com.fasterxml.jackson.annotation.JsonAlias";
 
     private JacksonReflection() {}
 
@@ -52,5 +53,32 @@ final class JacksonReflection {
             }
         }
         return fallback;
+    }
+
+    /** {@code @JsonAlias({"..."})}'s values, or empty list if the annotation is absent. */
+    static java.util.List<String> jsonAliases(final Element element) {
+        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+            if (!mirror.getAnnotationType().toString().equals(JSON_ALIAS)) {
+                continue;
+            }
+            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+                    mirror.getElementValues().entrySet()) {
+                if (entry.getKey().getSimpleName().contentEquals("value")) {
+                    final Object val = entry.getValue().getValue();
+                    if (val instanceof java.util.List<?> list) {
+                        final java.util.List<String> aliases = new java.util.ArrayList<>();
+                        for (Object item : list) {
+                            if (item instanceof AnnotationValue av) {
+                                aliases.add(String.valueOf(av.getValue()));
+                            } else {
+                                aliases.add(String.valueOf(item));
+                            }
+                        }
+                        return aliases;
+                    }
+                }
+            }
+        }
+        return java.util.List.of();
     }
 }

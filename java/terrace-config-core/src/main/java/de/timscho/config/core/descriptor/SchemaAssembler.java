@@ -97,14 +97,18 @@ public class SchemaAssembler {
                 // either, since a struct field has no scalar value to bind directly.
                 walk(field.nestedKeys(), path, out, dialect, reservedUpper);
             } else {
-                out.add(leaf(field, path, dialect, reservedUpper));
+                out.add(leaf(field, prefix, path, dialect, reservedUpper));
             }
         }
     }
 
     /** One field as a leaf {@link Key} — the whole of a container field, structured or not. */
     private static Key leaf(
-            final KeyDescriptor field, final String path, final Dialect dialect, final Set<String> reservedUpper) {
+            final KeyDescriptor field,
+            final String prefix,
+            final String path,
+            final Dialect dialect,
+            final Set<String> reservedUpper) {
         final boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
                 && field.container() != KeyDescriptor.ContainerKind.OPTIONAL;
 
@@ -113,6 +117,29 @@ public class SchemaAssembler {
                 : field.element() != null ? field.element().values() : List.of();
         final TextForm textForm = textForm(field, container, values);
 
+        final List<String> aliases = new ArrayList<>();
+        final List<String> envAliases = new ArrayList<>();
+        final List<String> envFileAliases = new ArrayList<>();
+        final List<String> secretsFileAliases = new ArrayList<>();
+        for (String alias : field.aliases()) {
+            final String aliasPath = prefix.isEmpty() ? alias : prefix + "." + alias;
+            aliases.add(aliasPath);
+            final Spelling aliasSpelling = envSpelling(dialect, aliasPath);
+            if (aliasSpelling.env != null) {
+                envAliases.add(aliasSpelling.env);
+                final String envFile = indirectionName(dialect, aliasSpelling.env);
+                if (envFile != null) {
+                    envFileAliases.add(envFile);
+                }
+            }
+            final String secretFile = secretsFileName(dialect, aliasPath);
+            if (secretFile != null) {
+                secretsFileAliases.add(secretFile);
+            }
+        }
+
+        final Map<String, Object> textConstraint = textConstraint(field, container, textForm, values);
+
         final Key.KeyBuilder builder = Key.builder()
                 .path(path)
                 .docs(field.docs() != null ? field.docs() : "")
@@ -120,10 +147,18 @@ public class SchemaAssembler {
                 .values(values)
                 .constraint(constraint(field, container, textForm, values))
                 .textForm(textForm.model)
+                .aliases(aliases)
+                .envAliases(envAliases)
+                .envFileAliases(envFileAliases)
+                .secretsFileAliases(secretsFileAliases)
                 .secret(field.secret())
                 .note(field.note())
                 // Syntactic, matching the Rust derive macro exactly — see the class-level note.
                 .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
+
+        if (textConstraint != null) {
+            builder.textConstraint(textConstraint);
+        }
 
         final Spelling spelling = envSpelling(dialect, path);
         builder.env(spelling.env);
@@ -140,6 +175,66 @@ public class SchemaAssembler {
             builder.unreachable(spelling.unreachable);
         }
         return builder.build();
+    }
+
+    private static @Nullable Map<String, Object> textConstraint(
+            final KeyDescriptor field, final boolean container, final TextForm textForm, final List<String> values) {
+        if (container) {
+            final Map<String, Object> schema = new TreeMap<>();
+            schema.put("pattern", "^\\s*[\\[\\{][\\s\\S]*[\\]\\}]\\s*$");
+            schema.put("type", "string");
+            return schema;
+        }
+        return switch (textForm) {
+            case CHOICE -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                final StringBuilder alternatives = new StringBuilder();
+                for (int i = 0; i < values.size(); i++) {
+                    if (i > 0) {
+                        alternatives.append("|");
+                    }
+                    alternatives.append(escapeRegex(values.get(i)));
+                }
+                schema.put("pattern", "^\\s*(" + alternatives + ")\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case BOOLEAN -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                schema.put("pattern", "^\\s*(true|false)\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case INTEGER -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                final boolean signed =
+                        !field.typeName().startsWith("u") && !field.typeName().startsWith("NonZeroU");
+                final String sign = signed ? "[-+]?" : "\\+?";
+                schema.put("pattern", "^\\s*" + sign + "[0-9]+\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case STRUCTURED -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                schema.put("pattern", "^\\s*[\\[\\{][\\s\\S]*[\\]\\}]\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case TEXT, NUMBER, UNKNOWN -> null;
+        };
+    }
+
+    private static String escapeRegex(final String value) {
+        final StringBuilder escaped = new StringBuilder(value.length());
+        final String special = "\\^$.|?*+()[]{}";
+        for (int i = 0; i < value.length(); i++) {
+            final char c = value.charAt(i);
+            if (special.indexOf(c) >= 0) {
+                escaped.append('\\');
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
     }
 
     /** How to read the field's own value, before {@link Key#getConstraint()} checks it. */

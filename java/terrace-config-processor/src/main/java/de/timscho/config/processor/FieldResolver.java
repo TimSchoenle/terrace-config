@@ -61,6 +61,7 @@ final class FieldResolver {
         // responds to.
         final String name =
                 JacksonReflection.jsonPropertyName(field, field.getSimpleName().toString());
+        final List<String> aliases = JacksonReflection.jsonAliases(field);
         final String docs = Javadocs.normalize(elements.getDocComment(field));
         final String summary = Javadocs.summary(docs);
         final boolean secret = field.getAnnotation(Secret.class) != null;
@@ -88,7 +89,8 @@ final class FieldResolver {
                 + resolved.nestedKeys + ", "
                 + resolved.element + ", "
                 + resolved.closed + ", "
-                + hasDefault(field)
+                + hasDefault(field) + ", "
+                + CodeGen.stringListLiteral(aliases)
                 + ")";
     }
 
