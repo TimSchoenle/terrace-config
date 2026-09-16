@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.2...terrace-contract-v0.3.0) (2026-09-16)
+
+
+### Features
+
+* implement experimental java implementation ([#98](https://github.com/TimSchoenle/terrace-config/issues/98)) ([26ffc70](https://github.com/TimSchoenle/terrace-config/commit/26ffc70d67d286964688f03d651fe51977e5df4f))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.55.1 ([#127](https://github.com/TimSchoenle/terrace-config/issues/127)) ([8599dbc](https://github.com/TimSchoenle/terrace-config/commit/8599dbc9a0a1a671ae6274855c6295e877df5f6a))
+* **deps:** update rust crate jsonschema to v0.56.0 ([#131](https://github.com/TimSchoenle/terrace-config/issues/131)) ([14b5729](https://github.com/TimSchoenle/terrace-config/commit/14b5729ab582f721dae9eab80d3d18fed9ae0484))
+
 ## [0.2.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.1...terrace-contract-v0.2.2) (2026-09-10)
 
 
