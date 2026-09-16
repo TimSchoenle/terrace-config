@@ -15,6 +15,16 @@ The Java implementations of the configuration contract at [`spec/`](../spec/READ
 [![CI](https://img.shields.io/github/actions/workflow/status/{{ repo.slug }}/ci.yml?branch={{ repo.branch }}&label=ci)]({{ repo.url }}/actions/workflows/ci.yml)
 [![Licence](https://img.shields.io/github/license/{{ repo.slug }})](../LICENSE)
 
+## What this is
+
+Two implementations of [`spec/`](../spec/README.md)'s contract, built on one shared pipeline: an
+annotation processor reads `@TerraceConfig` types at compile time and generates the descriptors
+[`terrace-config-loader`](#terrace-config-loader) and
+[`terrace-config-spring-boot`](#terrace-config-spring-boot) both assemble into a `Contract`.
+Neither hand-writes what a document should look like — `terrace-config-spec-tck` checks both
+against the same conformance corpus the Rust reference implementation authors, so a renamed field
+shows up as a failing test rather than a document nobody noticed had drifted.
+
 ## Modules
 
 | Module | What it is | Status |
@@ -26,7 +36,7 @@ The Java implementations of the configuration contract at [`spec/`](../spec/READ
 | `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. A field's key path follows its `@JsonProperty` rename when present, matching whichever binder actually reads that name (`FieldResolver.resolve`), the same way it already follows one for an enum constant. | **implemented** |
 | `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | **implemented** — layers, dialect and shadow policy; schema/`explain()`/watched-reload wiring against the processor's descriptors is open |
 | `terrace-config-spring-boot` | The Spring Boot starter over Spring's `Binder`. `producer.loader` is `spring-boot`, target **tier 1**. | **implemented** — the `_FILE` indirection `EnvironmentPostProcessor`, the `_`-vs-`__` dialect divergence, and `SpringContractProducer` assembling a full validated `Contract` from a `TypeDescriptor`; a starter auto-configuration is still open |
-| `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3 |
+| `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`, plus `JavaConformanceTest`: three real `@TerraceConfig` fixtures (`minimal`, `full-surface`, `unnameable-key`) rendered through the real loader and Jackson 2 codec, checked at tier 1 (meta-schema), tier 2 (dialect spellings against the shared spec corpus) and tier 3 (byte-for-byte against this module's own `conformance-java/` golden corpus — regenerate with `./gradlew :terrace-config-spec-tck:blessJavaConformance`). `JacksonParityTest` proves the Jackson 2 and Jackson 3 codecs render the same bytes. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3; `terrace-config-java` tier 3 against itself and tier 2 against the spec corpus |
 | `terrace-config-example-service` | A worked example: a small "orders" service loading its configuration through `-loader`, mirroring `rust/examples/service/` field for field. `OrdersServiceConfigTest` exercises the example's own `Config` class through `TerraceLoader`, so it stays correct by a real assertion rather than by compiling alone — run it with `./gradlew :terrace-config-example-service:run`. `Config` is also `@TerraceConfig`; `--contract` renders it as a real `Contract`, checked fresh against the committed `contract.json` by `ContractTest` on every run. | **implemented** |
 | `terrace-config-example-spring-service` | The same "orders" service, this time configured through `-spring-boot` instead of `-loader`. `OrdersPropertiesBindingTest` exercises `OrdersProperties` through Spring's own `Binder` via `ApplicationContextRunner`; `OrdersServiceFileIndirectionIntegrationTest` boots the real `SpringApplication` — the one thing a context runner cannot do — to prove `_FILE` indirection actually reaches a bound bean, including the `_`-vs-`__` divergence's own failure mode. Run it with `./gradlew :terrace-config-example-spring-service:run`. `--contract` and `ContractTest` give it the same checked-fresh `contract.json` as the loader example, this time through `SpringContractProducer`. | **implemented** |
 
@@ -666,4 +676,4 @@ vulnerability.
 
 ## Licence
 
-{{ repo.license }}. [LICENSE](../LICENSE) has the terms.
+{{#if repo.license}}`{{ repo.license }}`. {{/if}}See [LICENSE](../LICENSE) for the terms.

@@ -307,6 +307,37 @@ This asymmetry is why a consumer holding a mounted secret checks its contents ag
 and **not** against `text_constraint` — that one permits the surrounding whitespace an environment
 spelling may carry and a file keeps.
 
+<a id="terrace-java-reads"></a>
+For `terrace-java`:
+
+| Layer | Read |
+|---|---|
+| environment | the form's read; no separate trim step (Jackson's own scalar coercions already trim internally) |
+| secrets file, `_FILE` target | strip trailing line terminators, and nothing else |
+| the document (a TOML layer) | nothing; `tomlj` has already produced a parsed value |
+
+| `text_form` | Read |
+|---|---|
+| `integer` | drop surrounding whitespace, an optional leading `+` or `-`, then parse as a base-10 integer; a **blank string coerces to `0`** rather than being refused (Jackson's own primitive-from-blank-string rule) — a producer publishing this loader accepts that a merged-but-empty variable reads as zero, not as absent |
+| `boolean` | drop surrounding whitespace, then accept exactly `true`/`True`/`TRUE` or `false`/`False`/`FALSE`; no other spelling, `1`/`0` included |
+| `choice` | drop surrounding whitespace, then compare verbatim |
+| `text`, `unknown` | no read beyond the trim already reflected in `text_constraint` |
+
+**No `structured` read exists for this loader.** `terrace-config-loader`'s environment and file
+layers hand every value to the merged configuration map as a bare string; nothing in that path
+parses a JSON or TOML literal out of it the way `figment` does. A `structured` key is therefore
+reachable **only** through the TOML document layer (where `tomlj` has already produced the list or
+table) — never through its own environment variable, secrets file, or `_FILE` target, whatever
+`text_constraint` a document happens to publish for it. This is a real, current limitation of
+`terrace-java`, not a spec choice: a future version of this loader closing it would only ever *add*
+a read this table does not yet have, never change one that is here.
+
+Integer coercion was measured against Jackson's default `ObjectMapper`, the one
+`terrace-config-loader` binds every layer through: `"007"` reads as `7` (no octal interpretation),
+`"1_000"` and `"0x5"` are both refused, and `"5.0"` is refused rather than truncated. Boolean
+coercion accepts only the three case spellings Jackson's own error message names — not
+case-insensitive matching against `true`/`false` in general, and not `"1"`/`"0"`.
+
 ### What the file layers cannot supply
 
 A key-named file in the secrets directory and a `_FILE` target both deliver their contents as

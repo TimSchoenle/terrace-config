@@ -315,4 +315,4 @@ vulnerability.
 
 ## Licence
 
-MIT. [LICENSE](../LICENSE) has the terms.
+`MIT`. See [LICENSE](../LICENSE) for the terms.

@@ -149,6 +149,31 @@ Another implementation checks itself the same way, against the same files: build
 in your language, render it, substitute `producer.version`, and compare against the fields your tier
 claims.
 
+`terrace-config-java` does exactly this, in `java/terrace-config-spec-tck`'s `JavaConformanceTest`:
+
+```bash
+cd java
+./gradlew :terrace-config-spec-tck:test
+```
+
+Three checks per case (`minimal`, `full-surface`, `unnameable-key`), for a different reason each:
+the rendering validates against the meta-schema (tier 1); every dialect spelling — `env`, both file
+forms, every alias list, `unreachable` — agrees with this same shared corpus (tier 2); and the
+rendering is byte-identical, `producer.version` substituted, against a Java-only golden this module
+keeps for itself under `terrace-config-spec-tck/src/test/resources/conformance-java/` (tier 3
+against itself — the corpus above is Rust-authored and stays that way; a second implementation
+comparing itself byte-for-byte against it would be comparing against another language's type names
+and JSON Schema rendering, which is exactly what tier 2 exists to *not* require). Bless a changed
+rendering the same way:
+
+```bash
+cd java
+./gradlew :terrace-config-spec-tck:blessJavaConformance
+```
+
+Then read the diff under `terrace-config-spec-tck/src/test/resources/conformance-java/` the same
+way you would read one under `rendered/`.
+
 ## Adding an implementation
 
 1. **Pick `producer.name` and `producer.loader`.** The first identifies your code, the second the
@@ -180,6 +205,15 @@ matches no key, so a correct Spring deployment would fail the gate. Neither `tex
 
 The likely answer is a per-loader statement about indexed spellings rather than a pattern language,
 but it should be written against a real binder, not against this paragraph.
+
+`terrace-java` (the vanilla Java loader, distinct from Spring's relaxed binding above) currently
+takes neither spelling: its environment and file layers hand every value to the bind step as a bare
+string, and nothing parses a literal out of it — see [FORMAT.md's `terrace-java` table][terrace-java-reads].
+A `structured` key is reachable through this loader's TOML document layer only. Whether to teach the
+environment layer a literal parse, and if so which one, is exactly this same open question, not yet
+answered for a second loader either.
+
+[terrace-java-reads]: FORMAT.md#terrace-java-reads
 
 **Whether `text_form` needs a value for a fixed-point or decimal type.** A 64-bit float is
 `text_form: unknown` in the reference implementation — no measured pattern describes what its parse
