@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -39,7 +38,7 @@ final class SecretsDir {
     static SecretsDir read(final String origin, final Path dir, final Dialect dialect) {
         final Map<String, FileValue> values = new LinkedHashMap<>();
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(dir)) {
-            for (Path entry : entries) {
+            for (final Path entry : entries) {
                 final String name = entry.getFileName().toString();
                 if (name.startsWith(".")) {
                     continue;
@@ -75,6 +74,6 @@ final class SecretsDir {
 
     /** Whether the directory held no usable keys. */
     boolean isEmpty() {
-        return values.isEmpty();
+        return this.values.isEmpty();
     }
 }

@@ -1,13 +1,11 @@
 package de.timscho.config.core.schema;
 
-import java.util.List;
-
-import lombok.experimental.UtilityClass;
-import org.jspecify.annotations.Nullable;
-
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
+import java.util.List;
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Markdown rendering: GitHub-flavoured tables, ready to paste into a README — a port of the
@@ -28,6 +26,8 @@ public class MarkdownRenderer {
     /**
      * Both tables: the variables the loader reads, then the configuration keys under
      * {@link Column#DEFAULT_COLUMNS}. Ends with a newline.
+     *
+     * @param schema the schema to render
      */
     public static String toMarkdown(final Schema schema) {
         return toMarkdownWith(schema, Column.DEFAULT_COLUMNS);
@@ -37,6 +37,9 @@ public class MarkdownRenderer {
      * Both tables, with a chosen set of key columns. The loader-variable table leads when there
      * is one, since an operator who cannot find {@code <PREFIX>CONFIG} cannot use any of the
      * rest. Ends with a newline.
+     *
+     * @param schema  the schema to render
+     * @param columns which columns the configuration-key table shows, and in what order
      */
     public static String toMarkdownWith(final Schema schema, final List<Column> columns) {
         final String loader = toMarkdownLoader(schema);
@@ -51,6 +54,8 @@ public class MarkdownRenderer {
     /**
      * The loader-variable table alone. Empty when the schema has no loader variables -- a header
      * with no rows under it would be a table promising variables that do not exist.
+     *
+     * @param schema the schema to render
      */
     public static String toMarkdownLoader(final Schema schema) {
         final List<LoaderVar> loader = schema.getLoader();
@@ -61,7 +66,7 @@ public class MarkdownRenderer {
         final StringBuilder out = new StringBuilder();
         out.append("| Variable | Role | Default | Purpose |\n");
         out.append("|---|---|---|---|\n");
-        for (LoaderVar var : loader) {
+        for (final LoaderVar var : loader) {
             out.append("| `")
                     .append(escape(var.getEnv()))
                     .append("` | ")
@@ -79,18 +84,21 @@ public class MarkdownRenderer {
      * The configuration-key table alone, with a chosen set of columns. A schema with no keys
      * still renders its header: an empty configuration section is a real shape, and the header
      * says the section was generated rather than forgotten.
+     *
+     * @param schema  the schema to render
+     * @param columns which columns the table shows, and in what order
      */
     public static String toMarkdownKeys(final Schema schema, final List<Column> columns) {
         final StringBuilder out = new StringBuilder();
         final List<String> headers = new java.util.ArrayList<>();
-        for (Column column : columns) {
+        for (final Column column : columns) {
             headers.add(column.heading());
         }
         out.append("| ").append(String.join(" | ", headers)).append(" |\n");
         out.append("|").repeat("---|", columns.size()).append("\n");
-        for (Key key : schema.getKeys()) {
+        for (final Key key : schema.getKeys()) {
             final List<String> cells = new java.util.ArrayList<>();
-            for (Column column : columns) {
+            for (final Column column : columns) {
                 cells.add(column.render(key));
             }
             out.append("| ").append(String.join(" | ", cells)).append(" |\n");

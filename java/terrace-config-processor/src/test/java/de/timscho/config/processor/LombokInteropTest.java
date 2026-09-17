@@ -3,18 +3,16 @@ package de.timscho.config.processor;
 import static com.google.testing.compile.CompilationSubject.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.testing.compile.Compilation;
+import com.google.testing.compile.Compiler;
+import com.google.testing.compile.JavaFileObjects;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import javax.annotation.processing.Processor;
 import javax.tools.JavaFileObject;
-
-import com.google.testing.compile.Compilation;
-import com.google.testing.compile.Compiler;
-import com.google.testing.compile.JavaFileObjects;
 import org.junit.jupiter.api.Test;
 
 /**

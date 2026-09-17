@@ -1,11 +1,10 @@
 package de.timscho.config.example.springservice;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Getter;
-import lombok.Setter;
-
 import de.timscho.config.annotations.Secret;
 import de.timscho.config.annotations.TerraceConfig;
+import lombok.Getter;
+import lombok.Setter;
 
 /** The database this service persists orders to. */
 @TerraceConfig

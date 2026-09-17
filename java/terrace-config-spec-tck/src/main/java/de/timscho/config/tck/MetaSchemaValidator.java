@@ -1,12 +1,5 @@
 package de.timscho.config.tck;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -15,6 +8,12 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SchemaValidatorsConfig;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.jetbrains.annotations.Blocking;
 
 /**
@@ -76,19 +75,25 @@ public final class MetaSchemaValidator {
         }
     }
 
-    /** Every error validating {@code instance} against the full envelope, empty if it is valid. */
+    /** Every error validating {@code instance} against the full envelope, empty if it is valid.
+     *
+     * @param instance the document to validate
+     */
     public List<String> validateEnvelope(final JsonNode instance) {
-        return describe(fullSchema.validate(instance));
+        return describe(this.fullSchema.validate(instance));
     }
 
-    /** Every error validating {@code schemaHalf} against {@code #/$defs/schema} alone. */
-    public List<String> validateSchemaHalf(final JsonNode schemaHalf) {
-        return describe(this.schemaHalf.validate(schemaHalf));
+    /** Every error validating {@code instance} against {@code #/$defs/schema} alone.
+     *
+     * @param instance the {@code json_schema} half to validate
+     */
+    public List<String> validateSchemaHalf(final JsonNode instance) {
+        return describe(this.schemaHalf.validate(instance));
     }
 
     private static List<String> describe(final Set<ValidationMessage> messages) {
         final List<String> described = new ArrayList<>();
-        for (ValidationMessage message : messages) {
+        for (final ValidationMessage message : messages) {
             described.add("  at `" + message.getInstanceLocation() + "`: " + message.getMessage());
         }
         return described;

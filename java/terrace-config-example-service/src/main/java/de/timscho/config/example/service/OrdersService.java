@@ -27,6 +27,11 @@ public final class OrdersService {
 
     private OrdersService() {}
 
+    // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
+    // binary's actual terminal output for a human running `./gradlew ... :run` by hand (the
+    // rendered contract, or the config values it booted with) -- there is no SLF4J-worthy log
+    // event to attribute it to, and no other consumer for it to reach.
+    @SuppressWarnings("checkstyle:BanSystemOut")
     public static void main(final String[] args) {
         if (args.length > 0 && "--contract".equals(args[0])) {
             System.out.println(ContractGenerator.toJson(ContractGenerator.generate()));

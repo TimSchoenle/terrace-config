@@ -1,10 +1,9 @@
 package de.timscho.config.core.model;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -36,11 +35,11 @@ public final class JsonSchemaDocument {
 
     @JsonValue
     public Map<String, Object> asMap() {
-        return fields;
+        return this.fields;
     }
 
     public String schemaDialect() {
-        return (String) fields.get("$schema");
+        return (String) this.fields.get("$schema");
     }
 
     @Override
@@ -51,16 +50,16 @@ public final class JsonSchemaDocument {
         if (!(other instanceof JsonSchemaDocument that)) {
             return false;
         }
-        return fields.equals(that.fields);
+        return this.fields.equals(that.fields);
     }
 
     @Override
     public int hashCode() {
-        return fields.hashCode();
+        return this.fields.hashCode();
     }
 
     @Override
     public String toString() {
-        return "JsonSchemaDocument" + fields;
+        return "JsonSchemaDocument" + this.fields;
     }
 }

@@ -1,10 +1,7 @@
 package de.timscho.config.example.service;
 
-import java.util.Map;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import de.timscho.config.core.contract.ContractAssembler;
 import de.timscho.config.core.contract.ProducerIdentity;
 import de.timscho.config.core.io.ContractCodec;
@@ -13,6 +10,7 @@ import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.loader.TerraceLoader;
+import java.util.Map;
 
 /**
  * Renders this service's configuration as a contract document — {@code terrace-config-processor}'s
@@ -51,7 +49,7 @@ final class ContractGenerator {
      * constructed, never untrusted input, so sharing that instance would say more than is true.
      */
     private static Map<String, Object> defaultsAsMap() {
-        return new ObjectMapper().convertValue(new Config(), new TypeReference<Map<String, Object>>() {});
+        return new ObjectMapper().convertValue(new Config(), new TypeReference<>() {});
     }
 
     /** {@link #generate()}, rendered as the same pretty-printed JSON {@link ContractCodec#write} writes to a file. */

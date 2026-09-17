@@ -1,7 +1,6 @@
 package de.timscho.config.processor;
 
 import java.util.List;
-
 import org.jspecify.annotations.Nullable;
 
 /** Small helpers for rendering Java source literals into the generated descriptor classes. */

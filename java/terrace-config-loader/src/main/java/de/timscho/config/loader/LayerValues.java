@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
 import lombok.experimental.UtilityClass;
 
 /**
@@ -81,7 +80,7 @@ class LayerValues {
      */
     @SuppressWarnings("unchecked")
     static void deepMerge(final Map<String, Object> target, final Map<String, Object> source) {
-        for (Map.Entry<String, Object> entry : source.entrySet()) {
+        for (final Map.Entry<String, Object> entry : source.entrySet()) {
             final Object existing = target.get(entry.getKey());
             final Object incoming = entry.getValue();
             if (existing instanceof Map && incoming instanceof Map) {

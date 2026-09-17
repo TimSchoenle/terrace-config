@@ -1,7 +1,6 @@
 package de.timscho.config.processor;
 
 import java.util.Map;
-
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
@@ -25,11 +24,11 @@ final class JacksonReflection {
 
     /** Whether {@code @JsonIgnoreProperties(ignoreUnknown = false)} is present. */
     static boolean isClosed(final Element element) {
-        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+        for (final AnnotationMirror mirror : element.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().toString().equals(JSON_IGNORE_PROPERTIES)) {
                 continue;
             }
-            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+            for (final Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
                     mirror.getElementValues().entrySet()) {
                 if (entry.getKey().getSimpleName().contentEquals("ignoreUnknown")) {
                     return Boolean.FALSE.equals(entry.getValue().getValue());
@@ -41,11 +40,11 @@ final class JacksonReflection {
 
     /** {@code @JsonProperty("...")}'s value, or {@code fallback} if the annotation is absent. */
     static String jsonPropertyName(final Element element, final String fallback) {
-        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+        for (final AnnotationMirror mirror : element.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().toString().equals(JSON_PROPERTY)) {
                 continue;
             }
-            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+            for (final Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
                     mirror.getElementValues().entrySet()) {
                 if (entry.getKey().getSimpleName().contentEquals("value")) {
                     return String.valueOf(entry.getValue().getValue());
@@ -57,17 +56,17 @@ final class JacksonReflection {
 
     /** {@code @JsonAlias({"..."})}'s values, or empty list if the annotation is absent. */
     static java.util.List<String> jsonAliases(final Element element) {
-        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+        for (final AnnotationMirror mirror : element.getAnnotationMirrors()) {
             if (!mirror.getAnnotationType().toString().equals(JSON_ALIAS)) {
                 continue;
             }
-            for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+            for (final Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
                     mirror.getElementValues().entrySet()) {
                 if (entry.getKey().getSimpleName().contentEquals("value")) {
                     final Object val = entry.getValue().getValue();
                     if (val instanceof java.util.List<?> list) {
                         final java.util.List<String> aliases = new java.util.ArrayList<>();
-                        for (Object item : list) {
+                        for (final Object item : list) {
                             if (item instanceof AnnotationValue av) {
                                 aliases.add(String.valueOf(av.getValue()));
                             } else {

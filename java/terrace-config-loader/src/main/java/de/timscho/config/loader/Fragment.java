@@ -12,10 +12,10 @@ public sealed interface Fragment {
     record Read(int keys) implements Fragment {
         @Override
         public String toString() {
-            return switch (keys) {
+            return switch (this.keys) {
                 case 0 -> "no keys";
                 case 1 -> "1 key";
-                default -> keys + " keys";
+                default -> this.keys + " keys";
             };
         }
     }

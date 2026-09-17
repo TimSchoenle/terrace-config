@@ -2,7 +2,6 @@ package de.timscho.config.loader;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -38,14 +37,14 @@ public final class Origin {
 
     /** Every layer that supplied this key, lowest precedence first, ending with {@link #effective()}. */
     public List<Layer> sources() {
-        final List<Layer> all = new ArrayList<>(shadowed);
-        all.add(effective);
+        final List<Layer> all = new ArrayList<>(this.shadowed);
+        all.add(this.effective);
         return all;
     }
 
     /** Whether more than one layer supplied this key. */
     public boolean isContested() {
-        return !shadowed.isEmpty();
+        return !this.shadowed.isEmpty();
     }
 
     /**

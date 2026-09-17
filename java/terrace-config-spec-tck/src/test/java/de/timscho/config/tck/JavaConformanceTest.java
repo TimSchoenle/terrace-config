@@ -2,6 +2,12 @@ package de.timscho.config.tck;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.timscho.config.core.io.ContractCodec;
+import de.timscho.config.core.model.Contract;
+import de.timscho.config.core.model.Producer;
+import de.timscho.config.tck.fixtures.FixtureContracts;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -9,16 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Supplier;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import de.timscho.config.core.io.ContractCodec;
-import de.timscho.config.core.model.Contract;
-import de.timscho.config.core.model.Producer;
-import de.timscho.config.tck.fixtures.FixtureContracts;
 
 /**
  * Checks the Java-side rendering of the three named spec cases against every level {@code

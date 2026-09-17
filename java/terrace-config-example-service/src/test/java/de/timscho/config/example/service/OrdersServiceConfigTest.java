@@ -3,17 +3,15 @@ package de.timscho.config.example.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.timscho.config.loader.LoaderException;
+import de.timscho.config.loader.TerraceLoader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
-import de.timscho.config.loader.LoaderException;
-import de.timscho.config.loader.TerraceLoader;
 
 /**
  * The example's own {@link Config}, exercised through {@link TerraceLoader} exactly as {@link

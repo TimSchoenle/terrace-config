@@ -1,11 +1,10 @@
 package de.timscho.config.core.model;
 
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import java.util.List;
+import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
@@ -20,6 +19,10 @@ import org.jspecify.annotations.Nullable;
 @Value
 @Builder(toBuilder = true)
 @Jacksonized
+// CHECKSTYLE.OFF: Indentation -- palantirJavaFormat wraps this array's elements at 4 spaces; the
+// fetched ruleset's Indentation check wants 8. Reformatting by hand would just be undone by the
+// next spotlessApply, so this scoped disable defers to the formatter that actually governs this
+// file (see terrace-config.java-conventions.gradle.kts' checkstyle block).
 @JsonPropertyOrder({
     "name",
     "owner",
@@ -33,6 +36,7 @@ import org.jspecify.annotations.Nullable;
     "required",
     "secret"
 })
+// CHECKSTYLE.ON: Indentation
 public class ExternalVar {
 
     String name;

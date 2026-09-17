@@ -36,29 +36,29 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
      * Jackson 2's {@code writeObjectFieldValueSeparator}, field -&gt; name).
      */
     @Override
-    public void writeObjectNameValueSeparator(final JsonGenerator g) {
-        g.writeRaw(": ");
+    public void writeObjectNameValueSeparator(final JsonGenerator generator) {
+        generator.writeRaw(": ");
     }
 
     @Override
-    public void writeEndArray(final JsonGenerator g, final int nrOfEntries) {
+    public void writeEndArray(final JsonGenerator generator, final int nrOfEntries) {
         if (!_arrayIndenter.isInline()) {
             --_nesting;
         }
         if (nrOfEntries > 0) {
-            _arrayIndenter.writeIndentation(g, _nesting);
+            _arrayIndenter.writeIndentation(generator, _nesting);
         }
-        g.writeRaw(']');
+        generator.writeRaw(']');
     }
 
     @Override
-    public void writeEndObject(final JsonGenerator g, final int nrOfEntries) {
+    public void writeEndObject(final JsonGenerator generator, final int nrOfEntries) {
         if (!_objectIndenter.isInline()) {
             --_nesting;
         }
         if (nrOfEntries > 0) {
-            _objectIndenter.writeIndentation(g, _nesting);
+            _objectIndenter.writeIndentation(generator, _nesting);
         }
-        g.writeRaw('}');
+        generator.writeRaw('}');
     }
 }

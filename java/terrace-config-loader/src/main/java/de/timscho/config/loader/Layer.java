@@ -16,7 +16,7 @@ public sealed interface Layer {
     record Toml(Path path) implements Layer {
         @Override
         public String toString() {
-            return "TOML " + path;
+            return "TOML " + this.path;
         }
     }
 
@@ -24,7 +24,7 @@ public sealed interface Layer {
     record Env(String var) implements Layer {
         @Override
         public String toString() {
-            return "environment " + var;
+            return "environment " + this.var;
         }
     }
 
@@ -32,7 +32,7 @@ public sealed interface Layer {
     record SecretsFile(Path path) implements Layer {
         @Override
         public String toString() {
-            return "secrets file " + path;
+            return "secrets file " + this.path;
         }
     }
 
@@ -40,7 +40,7 @@ public sealed interface Layer {
     record Indirection(String var, Path path) implements Layer {
         @Override
         public String toString() {
-            return "indirection " + var + " -> " + path;
+            return "indirection " + this.var + " -> " + this.path;
         }
     }
 }

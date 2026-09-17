@@ -1,7 +1,6 @@
 package de.timscho.config.example.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import de.timscho.config.annotations.TerraceConfig;
 
 /**

@@ -1,14 +1,12 @@
 package de.timscho.config.core.schema;
 
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.Schema;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
-
-import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.Schema;
 
 /**
  * Fills in each key's observed default from an already-assembled value — a port of the Rust
@@ -29,7 +27,7 @@ public class Defaults {
 
     public static Schema withDefaultsFromValue(final Schema schema, final Map<String, Object> root) {
         final List<Key> keys = new ArrayList<>(schema.getKeys().size());
-        for (Key key : schema.getKeys()) {
+        for (final Key key : schema.getKeys()) {
             // A required key has no default by definition: loading fails until something
             // supplies it, and whatever `root` happens to hold is an artefact of building the
             // value at all, not something worth publishing as a default.
@@ -66,7 +64,7 @@ public class Defaults {
     /** The value at a dotted path, or {@code null} for one {@code root} does not carry — see {@link #containsPath}. */
     private static @Nullable Object find(final Map<String, Object> root, final String path) {
         Object current = root;
-        for (String segment : path.split("\\.")) {
+        for (final String segment : path.split("\\.")) {
             if (!(current instanceof Map<?, ?> map) || !map.containsKey(segment)) {
                 return null;
             }
@@ -94,7 +92,7 @@ public class Defaults {
      */
     private static @Nullable String renderValue(@Nullable final Object value, final int depth) {
         if (depth > MAX_DEPTH) {
-            return "\u2026";
+            return "…";
         }
         if (value == null) {
             return null;
@@ -107,23 +105,31 @@ public class Defaults {
             return value.toString();
         }
         if (value instanceof List<?> items) {
-            final List<String> rendered = new ArrayList<>(items.size());
-            for (Object item : items) {
-                final String literal = renderValue(item, depth + 1);
-                rendered.add(literal == null ? "unset" : literal);
-            }
-            return "[" + String.join(", ", rendered) + "]";
+            return renderList(items, depth);
         }
         if (value instanceof Map<?, ?> dict) {
-            // A dict at a leaf means the field wanted `@Nested`. Rendered as an inline table
-            // rather than dropped, so the output shows what is actually there.
-            final List<String> rendered = new ArrayList<>();
-            for (Map.Entry<?, ?> entry : dict.entrySet()) {
-                final String literal = renderValue(entry.getValue(), depth + 1);
-                rendered.add(entry.getKey() + " = " + (literal == null ? "unset" : literal));
-            }
-            return "{ " + String.join(", ", rendered) + " }";
+            return renderMap(dict, depth);
         }
         return value.toString();
+    }
+
+    private static String renderList(final List<?> items, final int depth) {
+        final List<String> rendered = new ArrayList<>(items.size());
+        for (final Object item : items) {
+            final String literal = renderValue(item, depth + 1);
+            rendered.add(literal == null ? "unset" : literal);
+        }
+        return "[" + String.join(", ", rendered) + "]";
+    }
+
+    // A dict at a leaf means the field wanted `@Nested`. Rendered as an inline table rather than
+    // dropped, so the output shows what is actually there.
+    private static String renderMap(final Map<?, ?> dict, final int depth) {
+        final List<String> rendered = new ArrayList<>();
+        for (final Map.Entry<?, ?> entry : dict.entrySet()) {
+            final String literal = renderValue(entry.getValue(), depth + 1);
+            rendered.add(entry.getKey() + " = " + (literal == null ? "unset" : literal));
+        }
+        return "{ " + String.join(", ", rendered) + " }";
     }
 }

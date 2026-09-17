@@ -2,11 +2,10 @@ package de.timscho.config.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.timscho.config.core.model.Contract;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-
-import de.timscho.config.core.model.Contract;
 
 /**
  * {@link TerraceContractAutoConfiguration} through Spring's own {@link ApplicationContextRunner},

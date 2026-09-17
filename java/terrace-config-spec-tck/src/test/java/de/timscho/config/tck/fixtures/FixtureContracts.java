@@ -1,12 +1,7 @@
 package de.timscho.config.tck.fixtures;
 
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import de.timscho.config.core.contract.ContractAssembler;
 import de.timscho.config.core.contract.ProducerIdentity;
 import de.timscho.config.core.model.App;
@@ -18,6 +13,9 @@ import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
 import de.timscho.config.loader.TerraceLoader;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Assembles the three named spec cases ({@code minimal}, {@code full-surface},

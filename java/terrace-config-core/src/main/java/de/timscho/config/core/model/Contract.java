@@ -1,12 +1,11 @@
 package de.timscho.config.core.model;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
@@ -71,24 +70,28 @@ public class Contract {
      * The image labels that make this contract discoverable, given where it was embedded. All
      * three are constants for a given service, so a build needs no argument to interpolate and
      * no host-side generator run to feed {@code --label}.
+     *
+     * @param path where this contract was embedded, e.g. the Dockerfile path
      */
     @JsonIgnore
     public List<Map.Entry<String, String>> labels(final String path) {
         final List<Map.Entry<String, String>> labels = new ArrayList<>();
-        labels.add(Map.entry(LABEL_VERSION, Integer.toString(terraceContract)));
+        labels.add(Map.entry(LABEL_VERSION, Integer.toString(this.terraceContract)));
         labels.add(Map.entry(LABEL_PATH, path));
-        labels.add(Map.entry(LABEL_PREFIX, schema.getDialect().getPrefix()));
+        labels.add(Map.entry(LABEL_PREFIX, this.schema.getDialect().getPrefix()));
         return labels;
     }
 
     /**
      * {@link #labels} as a {@code LABEL} instruction, ready to paste into a Dockerfile. Ends with
      * a newline; no trailing backslash, so a following instruction needs no separator.
+     *
+     * @param path where this contract was embedded, e.g. the Dockerfile path
      */
     @JsonIgnore
     public String toDockerfileLabels(final String path) {
         final StringBuilder rendered = new StringBuilder("LABEL ");
-        final List<Map.Entry<String, String>> labels = labels(path);
+        final List<Map.Entry<String, String>> labels = this.labels(path);
         for (int index = 0; index < labels.size(); index++) {
             if (index > 0) {
                 rendered.append(" \\\n      ");
@@ -108,20 +111,26 @@ public class Contract {
         return rendered.toString();
     }
 
-    /** {@link #toDockerfileLabels} wrapped in {@link #MARKER_BEGIN} and {@link #MARKER_END}. */
+    /** {@link #toDockerfileLabels} wrapped in {@link #MARKER_BEGIN} and {@link #MARKER_END}.
+     *
+     * @param path where this contract was embedded, e.g. the Dockerfile path
+     */
     @JsonIgnore
     public String toDockerfileBlock(final String path) {
-        return MARKER_BEGIN + "\n" + toDockerfileLabels(path) + MARKER_END + "\n";
+        return MARKER_BEGIN + "\n" + this.toDockerfileLabels(path) + MARKER_END + "\n";
     }
 
     /**
      * Every label of this contract a built image gets wrong, in declaration order. Empty means
      * the image carries them all; extra labels are ignored.
+     *
+     * @param path        where this contract was embedded, e.g. the Dockerfile path
+     * @param imageLabels the labels a built image actually carries
      */
     @JsonIgnore
     public List<LabelFault> checkLabels(final String path, final Map<String, String> imageLabels) {
         final List<LabelFault> faults = new ArrayList<>();
-        for (Map.Entry<String, String> expected : labels(path)) {
+        for (final Map.Entry<String, String> expected : this.labels(path)) {
             final String found = imageLabels.get(expected.getKey());
             if (found == null) {
                 faults.add(LabelFault.missing(expected.getKey()));
@@ -135,12 +144,14 @@ public class Contract {
     /**
      * Check that a built image carries these labels.
      *
+     * @param path        where this contract was embedded, e.g. the Dockerfile path
+     * @param imageLabels the labels a built image actually carries
      * @throws ContractLabelException naming every label that is missing or wrong, all of them,
      *                                not the first
      */
     @JsonIgnore
     public void verifyLabels(final String path, final Map<String, String> imageLabels) {
-        final List<LabelFault> faults = checkLabels(path, imageLabels);
+        final List<LabelFault> faults = this.checkLabels(path, imageLabels);
         if (!faults.isEmpty()) {
             throw new ContractLabelException(faults);
         }

@@ -1,10 +1,8 @@
 package de.timscho.config.core.schema;
 
-import java.util.List;
-
-import org.jspecify.annotations.Nullable;
-
 import de.timscho.config.core.model.Key;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One column of the Markdown key table — ported from the Rust crate's {@code schema::markdown::Column}.
@@ -92,7 +90,7 @@ public enum Column {
             return optionalCode(ty);
         }
         final StringBuilder choices = new StringBuilder();
-        for (String value : values) {
+        for (final String value : values) {
             if (!choices.isEmpty()) {
                 choices.append(" \\| ");
             }
@@ -107,7 +105,7 @@ public enum Column {
             return "—";
         }
         final StringBuilder out = new StringBuilder();
-        for (String alias : aliases) {
+        for (final String alias : aliases) {
             if (!out.isEmpty()) {
                 out.append(", ");
             }

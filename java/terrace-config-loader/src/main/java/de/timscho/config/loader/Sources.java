@@ -3,7 +3,6 @@ package de.timscho.config.loader;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -36,7 +35,7 @@ public final class Sources {
      * second time.
      */
     public List<Path> watchPaths() {
-        return watch;
+        return this.watch;
     }
 
     /**
@@ -49,49 +48,59 @@ public final class Sources {
      * relation reflexive — the cost is that {@code 0.0} and {@code -0.0} compare unequal, which
      * is the safe direction: a needless reload of a value nobody actually writes, against a
      * reload loop that never ends.
+     *
+     * @param previous the previously loaded {@link Sources} to compare against
      */
     public boolean differsFrom(final Sources previous) {
-        return !sameValue(fingerprint, previous.fingerprint);
+        return !sameValue(this.fingerprint, previous.fingerprint);
     }
 
-    private static boolean sameValue(@Nullable final Object a, @Nullable final Object b) {
-        if (a instanceof Double left && b instanceof Double right) {
+    private static boolean sameValue(@Nullable final Object first, @Nullable final Object second) {
+        if (first instanceof Double left && second instanceof Double right) {
             return Double.doubleToLongBits(left) == Double.doubleToLongBits(right);
         }
-        if (a instanceof Float left && b instanceof Float right) {
+        if (first instanceof Float left && second instanceof Float right) {
             return Float.floatToIntBits(left) == Float.floatToIntBits(right);
         }
-        if (a instanceof Map<?, ?> left && b instanceof Map<?, ?> right) {
-            if (left.size() != right.size()) {
+        if (first instanceof Map<?, ?> left && second instanceof Map<?, ?> right) {
+            return sameMap(left, right);
+        }
+        if (first instanceof List<?> left && second instanceof List<?> right) {
+            return sameList(left, right);
+        }
+        return java.util.Objects.equals(first, second);
+    }
+
+    private static boolean sameMap(final Map<?, ?> left, final Map<?, ?> right) {
+        if (left.size() != right.size()) {
+            return false;
+        }
+        for (final Map.Entry<?, ?> entry : left.entrySet()) {
+            if (!right.containsKey(entry.getKey())) {
                 return false;
             }
-            for (Map.Entry<?, ?> entry : left.entrySet()) {
-                if (!right.containsKey(entry.getKey())) {
-                    return false;
-                }
-                if (!sameValue(entry.getValue(), right.get(entry.getKey()))) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        if (a instanceof List<?> left && b instanceof List<?> right) {
-            if (left.size() != right.size()) {
+            if (!sameValue(entry.getValue(), right.get(entry.getKey()))) {
                 return false;
             }
-            for (int i = 0; i < left.size(); i++) {
-                if (!sameValue(left.get(i), right.get(i))) {
-                    return false;
-                }
-            }
-            return true;
         }
-        return java.util.Objects.equals(a, b);
+        return true;
+    }
+
+    private static boolean sameList(final List<?> left, final List<?> right) {
+        if (left.size() != right.size()) {
+            return false;
+        }
+        for (int i = 0; i < left.size(); i++) {
+            if (!sameValue(left.get(i), right.get(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The watch paths, never the fingerprint. See the type's own documentation. */
     @Override
     public String toString() {
-        return "Sources{watch=" + watch + ", fingerprint=<redacted>}";
+        return "Sources{watch=" + this.watch + ", fingerprint=<redacted>}";
     }
 }

@@ -1,7 +1,6 @@
 package de.timscho.config.tck.fixtures;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import de.timscho.config.annotations.TerraceConfig;
 
 /**

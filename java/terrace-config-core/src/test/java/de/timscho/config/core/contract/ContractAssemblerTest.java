@@ -3,11 +3,6 @@ package de.timscho.config.core.contract;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.List;
-import java.util.Map;
-
-import org.junit.jupiter.api.Test;
-
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Dialect;
@@ -23,6 +18,9 @@ import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
 import de.timscho.config.core.refusal.EmptyPrefixException;
 import de.timscho.config.core.refusal.ExternalVariableInPrefixException;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
 
 /** Assembling a full {@link Contract} from a built {@link Schema}, an {@link App} and a {@link Producer}. */
 class ContractAssemblerTest {

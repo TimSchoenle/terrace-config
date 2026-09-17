@@ -2,17 +2,15 @@ package de.timscho.config.core.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
-import java.util.Map;
-
-import org.junit.jupiter.api.Test;
-
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderRole;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
 
 class TomlExampleRendererTest {
 

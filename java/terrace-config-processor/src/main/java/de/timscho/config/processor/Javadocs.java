@@ -16,7 +16,7 @@ final class Javadocs {
         }
         final String[] lines = docs.split("\\R", -1);
         final StringBuilder summary = new StringBuilder();
-        for (String line : lines) {
+        for (final String line : lines) {
             final String trimmed = line.trim();
             if (trimmed.isEmpty()) {
                 break;

@@ -1,11 +1,11 @@
 package de.timscho.config.processor;
 
+import de.timscho.config.annotations.TerraceConfig;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
@@ -21,8 +21,6 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.util.Elements;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
-
-import de.timscho.config.annotations.TerraceConfig;
 
 /**
  * Generates, for each type annotated {@link TerraceConfig}, a sibling {@code <Type>Descriptor}
@@ -53,41 +51,42 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(final Set<? extends TypeElement> annotations, final RoundEnvironment roundEnv) {
-        for (Element element : roundEnv.getElementsAnnotatedWith(TerraceConfig.class)) {
+        for (final Element element : roundEnv.getElementsAnnotatedWith(TerraceConfig.class)) {
             if (!(element instanceof TypeElement)) {
                 continue;
             }
-            generate((TypeElement) element);
+            this.generate((TypeElement) element);
         }
         return true;
     }
 
     private void generate(final TypeElement type) {
         final List<DescriptorException> errors = new ArrayList<>();
-        final String source = type.getKind() == ElementKind.ENUM ? renderEnum(type) : renderStruct(type, errors);
+        final String source =
+                type.getKind() == ElementKind.ENUM ? this.renderEnum(type) : this.renderStruct(type, errors);
 
-        for (DescriptorException error : errors) {
-            messager.printMessage(Diagnostic.Kind.ERROR, error.getMessage(), error.element());
+        for (final DescriptorException error : errors) {
+            this.messager.printMessage(Diagnostic.Kind.ERROR, error.getMessage(), error.element());
         }
         if (!errors.isEmpty()) {
             return;
         }
 
-        final String descriptorName = DescriptorNaming.qualifiedName(type, elements);
+        final String descriptorName = DescriptorNaming.qualifiedName(type, this.elements);
         try {
-            final JavaFileObject file = filer.createSourceFile(descriptorName, type);
+            final JavaFileObject file = this.filer.createSourceFile(descriptorName, type);
             try (Writer writer = file.openWriter()) {
                 writer.write(source);
             }
         } catch (IOException e) {
-            messager.printMessage(
+            this.messager.printMessage(
                     Diagnostic.Kind.ERROR, "failed to write " + descriptorName + ": " + e.getMessage(), type);
         }
     }
 
     private String renderStruct(final TypeElement type, final List<DescriptorException> errors) {
         final List<String> keyExpressions = new ArrayList<>();
-        for (Element enclosed : type.getEnclosedElements()) {
+        for (final Element enclosed : type.getEnclosedElements()) {
             if (enclosed.getKind() != ElementKind.FIELD) {
                 continue;
             }
@@ -96,7 +95,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
                 continue;
             }
             try {
-                final String keyExpression = fieldResolver.resolve(field);
+                final String keyExpression = this.fieldResolver.resolve(field);
                 if (keyExpression != null) {
                     keyExpressions.add(keyExpression);
                 }
@@ -108,7 +107,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
             return "";
         }
         final boolean closed = JacksonReflection.isClosed(type);
-        return renderClass(
+        return this.renderClass(
                 type,
                 "de.timscho.config.core.descriptor.TypeDescriptor.Kind.STRUCT",
                 listOf(keyExpressions),
@@ -118,14 +117,14 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
 
     private String renderEnum(final TypeElement type) {
         final List<String> values = new ArrayList<>();
-        for (Element enclosed : type.getEnclosedElements()) {
+        for (final Element enclosed : type.getEnclosedElements()) {
             if (enclosed.getKind() != ElementKind.ENUM_CONSTANT) {
                 continue;
             }
             final String fallback = enclosed.getSimpleName().toString();
             values.add(JacksonReflection.jsonPropertyName(enclosed, fallback));
         }
-        return renderClass(
+        return this.renderClass(
                 type,
                 "de.timscho.config.core.descriptor.TypeDescriptor.Kind.ENUM",
                 "java.util.List.of()",
@@ -139,7 +138,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
             final String keysExpression,
             final String valuesExpression,
             final boolean closed) {
-        final String pkg = elements.getPackageOf(type).getQualifiedName().toString();
+        final String pkg = this.elements.getPackageOf(type).getQualifiedName().toString();
         final String simpleName = DescriptorNaming.simpleName(type);
         final StringBuilder out = new StringBuilder();
         if (!pkg.isEmpty()) {

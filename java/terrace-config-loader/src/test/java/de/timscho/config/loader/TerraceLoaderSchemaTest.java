@@ -2,14 +2,13 @@ package de.timscho.config.loader;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.api.Test;
-
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderRole;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
 import de.timscho.config.core.model.UnreachableReason;
+import org.junit.jupiter.api.Test;
 
 /**
  * Proves {@link TerraceLoader#schema} against a real generated descriptor

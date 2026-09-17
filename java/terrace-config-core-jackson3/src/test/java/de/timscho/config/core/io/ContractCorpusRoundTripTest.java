@@ -2,6 +2,7 @@ package de.timscho.config.core.io;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.timscho.config.core.model.Contract;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
@@ -10,12 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-
-import de.timscho.config.core.model.Contract;
 
 /**
  * The Jackson-3 twin of {@code terrace-config-core-jackson2}'s test of the same name: every

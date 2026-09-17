@@ -54,7 +54,8 @@ public abstract sealed class LabelFault {
 
         @Override
         public String toString() {
-            return "the image's `" + getName() + "` is `" + found + "`, and this contract's is `" + expected + "`.";
+            return "the image's `" + getName() + "` is `" + this.found + "`, and this contract's is `" + this.expected
+                    + "`.";
         }
     }
 }

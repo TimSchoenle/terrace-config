@@ -2,7 +2,6 @@ package de.timscho.config.tck.fixtures;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import de.timscho.config.annotations.Note;
 import de.timscho.config.annotations.Range;
 import de.timscho.config.annotations.Secret;

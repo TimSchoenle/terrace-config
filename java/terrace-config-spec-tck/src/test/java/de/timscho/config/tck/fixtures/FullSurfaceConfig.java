@@ -1,14 +1,12 @@
 package de.timscho.config.tck.fixtures;
 
-import java.util.List;
-
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import de.timscho.config.annotations.ElementValues;
 import de.timscho.config.annotations.Nested;
 import de.timscho.config.annotations.Range;
 import de.timscho.config.annotations.TerraceConfig;
 import de.timscho.config.annotations.Values;
+import java.util.List;
 
 /**
  * The {@code full-surface} spec case ({@code spec/v1/conformance/full-surface/}): every field

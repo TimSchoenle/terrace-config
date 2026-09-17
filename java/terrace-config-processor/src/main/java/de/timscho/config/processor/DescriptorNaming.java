@@ -2,7 +2,6 @@ package de.timscho.config.processor;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
-
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.util.Elements;
@@ -31,7 +30,7 @@ final class DescriptorNaming {
             current = current.getEnclosingElement();
         }
         final StringBuilder out = new StringBuilder();
-        for (String segment : segments) {
+        for (final String segment : segments) {
             if (!out.isEmpty()) {
                 out.append('$');
             }
