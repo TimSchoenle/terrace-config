@@ -1,8 +1,5 @@
 package de.timscho.config.core.refusal;
 
-import java.util.HashSet;
-import java.util.Set;
-
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.External;
@@ -10,6 +7,8 @@ import de.timscho.config.core.model.ExternalVar;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Runs {@code spec/v1/FORMAT.md}'s "What a producer MUST refuse" against a built {@link Contract},
@@ -26,6 +25,9 @@ public final class ContractValidator {
     private ContractValidator() {}
 
     /**
+     * Throws on the first refusal found in the contract.
+     *
+     * @param contract the contract to validate
      * @throws ContractRefusalException the first refusal found, checked in the order
      *                                   {@code FORMAT.md} lists them
      */
@@ -53,7 +55,7 @@ public final class ContractValidator {
 
     /** Refusal 1. */
     private static void checkExternalVariablesInPrefix(final External external, final Dialect dialect) {
-        for (ExternalVar var : external.getEnv()) {
+        for (final ExternalVar var : external.getEnv()) {
             if (var.getName().startsWith(dialect.getPrefix())) {
                 throw new ExternalVariableInPrefixException(var.getName(), dialect.getPrefix());
             }
@@ -63,7 +65,7 @@ public final class ContractValidator {
     /** Refusal 2. */
     private static void checkIgnorePatternsInPrefix(final External external, final Dialect dialect) {
         final String prefix = dialect.getPrefix();
-        for (String pattern : external.getIgnore()) {
+        for (final String pattern : external.getIgnore()) {
             final String literal = literalPart(pattern);
             final boolean namesInsideNamespace = literal.startsWith(prefix);
             final boolean wildcardSubsumesNamespace = isWildcard(pattern) && prefix.startsWith(literal);
@@ -75,8 +77,8 @@ public final class ContractValidator {
 
     /** Refusal 3. */
     private static void checkExternalVariableCollisions(final External external, final Schema schema) {
-        for (ExternalVar var : external.getEnv()) {
-            for (LoaderVar loaderVar : schema.getLoader()) {
+        for (final ExternalVar var : external.getEnv()) {
+            for (final LoaderVar loaderVar : schema.getLoader()) {
                 if (var.getName().equals(loaderVar.getEnv())) {
                     throw new ExternalVariableCollisionException(var.getName());
                 }
@@ -86,8 +88,8 @@ public final class ContractValidator {
 
     /** Refusal 4. */
     private static void checkIgnorePatternCollisions(final External external, final Schema schema) {
-        for (String pattern : external.getIgnore()) {
-            for (LoaderVar loaderVar : schema.getLoader()) {
+        for (final String pattern : external.getIgnore()) {
+            for (final LoaderVar loaderVar : schema.getLoader()) {
                 if (matches(pattern, loaderVar.getEnv())) {
                     throw new IgnorePatternCollisionException(pattern, loaderVar.getEnv());
                 }
@@ -98,7 +100,7 @@ public final class ContractValidator {
     /** Refusal 5. */
     private static void checkDuplicateExternalVariables(final External external) {
         final Set<String> seen = new HashSet<>();
-        for (ExternalVar var : external.getEnv()) {
+        for (final ExternalVar var : external.getEnv()) {
             if (!seen.add(var.getName())) {
                 throw new DuplicateExternalVariableException(var.getName());
             }
@@ -107,12 +109,12 @@ public final class ContractValidator {
 
     /** Refusal 6, over both keys and external variables. */
     private static void checkSecretsWithDefaults(final Schema schema, final External external) {
-        for (Key key : schema.getKeys()) {
+        for (final Key key : schema.getKeys()) {
             if (key.isSecret() && (key.getDefaultText() != null || key.getDefaultValue() != null)) {
                 throw new SecretWithDefaultException(key.getPath());
             }
         }
-        for (ExternalVar var : external.getEnv()) {
+        for (final ExternalVar var : external.getEnv()) {
             if (var.isSecret() && var.getDefaultText() != null) {
                 throw new SecretWithDefaultException(var.getName());
             }
@@ -121,11 +123,11 @@ public final class ContractValidator {
 
     /** Refusal 8. */
     private static void checkIndirectionCollisions(final Schema schema) {
-        for (Key key : schema.getKeys()) {
+        for (final Key key : schema.getKeys()) {
             if (key.getEnv() == null) {
                 continue;
             }
-            for (Key other : schema.getKeys()) {
+            for (final Key other : schema.getKeys()) {
                 if (other == key) {
                     continue;
                 }

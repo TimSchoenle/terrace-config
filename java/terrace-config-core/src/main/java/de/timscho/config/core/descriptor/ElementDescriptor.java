@@ -1,7 +1,6 @@
 package de.timscho.config.core.descriptor;
 
 import java.util.List;
-
 import org.jspecify.annotations.Nullable;
 
 /**

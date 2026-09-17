@@ -1,8 +1,7 @@
 package de.timscho.config.core.model;
 
-import java.util.List;
-
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import java.util.List;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;

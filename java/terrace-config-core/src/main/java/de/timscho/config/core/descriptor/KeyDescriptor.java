@@ -1,7 +1,6 @@
 package de.timscho.config.core.descriptor;
 
 import java.util.List;
-
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -40,6 +39,7 @@ import org.jspecify.annotations.Nullable;
  *                   binder leaves an omitted key at exactly the value written here, so this is
  *                   what actually determines {@code required} — {@code container ==
  *                   ContainerKind.OPTIONAL} is a second, independent way for a key to be optional
+ * @param aliases    alternative names the field accepts, from {@code @JsonAlias}; empty if none
  */
 public record KeyDescriptor(
         String name,
@@ -54,7 +54,8 @@ public record KeyDescriptor(
         List<KeyDescriptor> nestedKeys,
         @Nullable ElementDescriptor element,
         boolean closed,
-        boolean hasDefault) {
+        boolean hasDefault,
+        List<String> aliases) {
 
     /** Which container, if any, wraps a field's declared type. */
     public enum ContainerKind {

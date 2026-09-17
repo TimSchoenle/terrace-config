@@ -10,7 +10,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -59,7 +58,7 @@ final class TomlLayers {
 
         final List<Path> found = new ArrayList<>();
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(path)) {
-            for (Path entry : entries) {
+            for (final Path entry : entries) {
                 final String name = entry.getFileName().toString();
                 if (name.startsWith(".")) {
                     continue;
@@ -89,10 +88,10 @@ final class TomlLayers {
      * {@code root} names one, otherwise its parent (unless it names a bare file name with none).
      */
     java.util.Optional<Path> watchDir() {
-        if (Files.isDirectory(root)) {
-            return java.util.Optional.of(root);
+        if (Files.isDirectory(this.root)) {
+            return java.util.Optional.of(this.root);
         }
-        final Path parent = root.toAbsolutePath().getParent();
+        final Path parent = this.root.toAbsolutePath().getParent();
         return java.util.Optional.ofNullable(parent);
     }
 
@@ -119,7 +118,7 @@ final class TomlLayers {
     /** Push the dotted path of every leaf in {@code table} into {@code keys}. */
     private static void pushLeaves(
             final TomlTable table, final String prefix, final List<String> keys, final int depth) {
-        for (String segment : table.keySet()) {
+        for (final String segment : table.keySet()) {
             final String path = prefix.isEmpty() ? segment : prefix + "." + segment;
             final Object value = table.get(segment);
             // An empty table is a leaf: it is a path the file really does mention, and a
@@ -135,7 +134,7 @@ final class TomlLayers {
     /** Every file, parsed and deep-merged in order into one nested map. */
     Map<String, Object> merged() {
         final Map<String, Object> merged = new LinkedHashMap<>();
-        for (Path file : files) {
+        for (final Path file : this.files) {
             if (!Files.isRegularFile(file)) {
                 continue;
             }
@@ -147,7 +146,7 @@ final class TomlLayers {
             }
             if (result.hasErrors()) {
                 final StringBuilder message = new StringBuilder();
-                for (Object error : result.errors()) {
+                for (final Object error : result.errors()) {
                     if (message.length() > 0) {
                         message.append("; ");
                     }
@@ -168,7 +167,7 @@ final class TomlLayers {
      */
     private static Map<String, Object> convertTable(final TomlTable table) {
         final Map<String, Object> map = new LinkedHashMap<>();
-        for (String key : table.keySet()) {
+        for (final String key : table.keySet()) {
             map.put(key, convertValue(table.get(key)));
         }
         return map;

@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-
 import org.jetbrains.annotations.Blocking;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
@@ -69,7 +68,7 @@ public final class FileIndirectionEnvironmentPostProcessor implements Environmen
 
         final SpringDialect dialect = SpringDialect.standard();
         final Map<String, Object> resolved = new LinkedHashMap<>();
-        for (String name : enumerable.getPropertyNames()) {
+        for (final String name : enumerable.getPropertyNames()) {
             final Optional<String> target = dialect.indirectionTarget(name);
             if (target.isEmpty()) {
                 continue;

@@ -68,8 +68,11 @@ public class JsonSchemaOptions {
         return standard().withMetaSchema(DRAFT_07).withRequirePresent(false);
     }
 
-    /** The document's {@code title}, unless one was already chosen. */
-    public JsonSchemaOptions orTitle(final String title) {
-        return this.title != null ? this : withTitle(title);
+    /** The document's {@code title}, unless one was already chosen.
+     *
+     * @param fallbackTitle the title to use if none was already chosen
+     */
+    public JsonSchemaOptions orTitle(final String fallbackTitle) {
+        return this.title != null ? this : withTitle(fallbackTitle);
     }
 }

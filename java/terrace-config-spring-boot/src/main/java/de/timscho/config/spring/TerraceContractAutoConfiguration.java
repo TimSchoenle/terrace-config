@@ -1,16 +1,14 @@
 package de.timscho.config.spring;
 
+import de.timscho.config.core.descriptor.TypeDescriptor;
+import de.timscho.config.core.model.App;
+import de.timscho.config.core.model.Contract;
 import java.lang.reflect.Field;
-
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
-
-import de.timscho.config.core.descriptor.TypeDescriptor;
-import de.timscho.config.core.model.App;
-import de.timscho.config.core.model.Contract;
 
 /**
  * Publishes a {@link Contract} bean for a service that only states two things through {@link
@@ -47,6 +45,9 @@ public class TerraceContractAutoConfiguration {
      * class does not attempt to reconstruct from a plain class name. Declare the annotated type
      * at the top level, or call {@link SpringContractProducer#produce} directly.
      *
+     * @param properties  binds {@code terrace.contract.*} — the annotated type, env prefix, and app metadata
+     * @param environment falls back to {@code spring.application.name} when
+     *                    {@code terrace.contract.app-name} is unset
      * @throws IllegalStateException {@code terrace.contract.type} does not resolve to a class
      *                                with a generated {@code Descriptor} sibling carrying a
      *                                {@code public static final TypeDescriptor DESCRIPTOR} field

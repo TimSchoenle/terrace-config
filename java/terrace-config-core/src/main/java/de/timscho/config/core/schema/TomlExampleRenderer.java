@@ -1,16 +1,14 @@
 package de.timscho.config.core.schema;
 
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.LoaderVar;
+import de.timscho.config.core.model.Schema;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
-
-import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.LoaderVar;
-import de.timscho.config.core.model.Schema;
 
 /**
  * The {@code config.example.toml} rendering: the file an operator edits, generated rather than
@@ -32,12 +30,19 @@ public class TomlExampleRenderer {
 
     private static final int MAX_DEPTH = 32;
 
-    /** The schema as a commented {@code config.toml}, ready to be copied and edited. */
+    /** The schema as a commented {@code config.toml}, ready to be copied and edited.
+     *
+     * @param schema the schema to render
+     */
     public static String toTomlExample(final Schema schema) {
         return toTomlExampleWith(schema, TomlExampleOptions.defaults());
     }
 
-    /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}. */
+    /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}.
+     *
+     * @param schema  the schema to render
+     * @param options which parts of the file to render
+     */
     public static String toTomlExampleWith(final Schema schema, final TomlExampleOptions options) {
         final List<String> blocks = new ArrayList<>();
         if (options.header()) {
@@ -75,7 +80,7 @@ public class TomlExampleRenderer {
         if (!loader.isEmpty()) {
             comment(out, "");
             comment(out, "Read before this file exists:");
-            for (LoaderVar var : loader) {
+            for (final LoaderVar var : loader) {
                 comment(out, "");
                 final String defaultSuffix =
                         var.getDefaultValue() != null ? ", default `" + var.getDefaultValue() + "`" : "";
@@ -96,7 +101,7 @@ public class TomlExampleRenderer {
             block.append('[').append(header).append("]\n");
         }
         final List<String> keyBlocks = new ArrayList<>();
-        for (Key key : node.keys) {
+        for (final Key key : node.keys) {
             keyBlocks.add(keyBlock(key, node, options));
         }
         block.append(String.join("\n", keyBlocks));
@@ -105,7 +110,7 @@ public class TomlExampleRenderer {
             blocks.add(block.toString());
         }
 
-        for (Node child : node.children) {
+        for (final Node child : node.children) {
             final String segment = tomlKey(child.segment);
             final String childHeader = header.isEmpty() ? segment : header + "." + segment;
             collect(blocks, child, childHeader, options);
@@ -116,42 +121,11 @@ public class TomlExampleRenderer {
     private static String keyBlock(final Key key, final Node parent, final TomlExampleOptions options) {
         final StringBuilder out = new StringBuilder();
 
-        final String docs = options.docs().of(key.getDocs());
-        if (docs != null) {
-            for (String line : docs.split("\n", -1)) {
-                comment(out, line);
-            }
-        }
-
-        final List<String> values = key.getValues();
-        if (key.getTy() != null && values.isEmpty()) {
-            comment(out, "Type: " + key.getTy());
-        } else if (key.getTy() != null) {
-            comment(out, "Type: " + key.getTy() + " -- one of: " + String.join(", ", values));
-        } else if (!values.isEmpty()) {
-            comment(out, "One of: " + String.join(", ", values));
-        }
-
-        if (!key.getAliases().isEmpty()) {
-            comment(out, "Also accepted as: " + String.join(", ", key.getAliases()));
-        }
-
-        if (key.isReserved()) {
-            final String keyEnv = key.getEnv();
-            final String env = keyEnv != null ? keyEnv : "the environment";
-            wrapped(out, "Reserved: only " + env + " supplies this key; a file may not.");
-        } else if (options.spellings()) {
-            wrapped(out, spellings(key));
-        }
-
-        if (key.isRequired() && !key.isReserved()) {
-            comment(out, "Required: nothing loads until this key is supplied.");
-        }
-        if (key.isSecret()) {
-            comment(out, "Secret: the value below is a placeholder.");
-        } else if (!key.isRequired() && key.getDefaultValue() == null) {
-            comment(out, "Unset by default: the value below is only the shape.");
-        }
+        appendDocsComment(out, key, options);
+        appendTypeComment(out, key);
+        appendAliasesComment(out, key);
+        appendSpellingComment(out, key, options);
+        appendRequirementComment(out, key);
 
         final String name = Node.name(key.getPath());
         final boolean shadowed = parent.opens(name);
@@ -165,6 +139,54 @@ public class TomlExampleRenderer {
         out.append(tomlKey(name)).append(" = ").append(literal(key, options)).append('\n');
 
         return out.toString();
+    }
+
+    private static void appendDocsComment(final StringBuilder out, final Key key, final TomlExampleOptions options) {
+        final String docs = options.docs().of(key.getDocs());
+        if (docs != null) {
+            for (final String line : docs.split("\n", -1)) {
+                comment(out, line);
+            }
+        }
+    }
+
+    private static void appendTypeComment(final StringBuilder out, final Key key) {
+        final List<String> values = key.getValues();
+        if (key.getTy() != null && values.isEmpty()) {
+            comment(out, "Type: " + key.getTy());
+        } else if (key.getTy() != null) {
+            comment(out, "Type: " + key.getTy() + " -- one of: " + String.join(", ", values));
+        } else if (!values.isEmpty()) {
+            comment(out, "One of: " + String.join(", ", values));
+        }
+    }
+
+    private static void appendAliasesComment(final StringBuilder out, final Key key) {
+        if (!key.getAliases().isEmpty()) {
+            comment(out, "Also accepted as: " + String.join(", ", key.getAliases()));
+        }
+    }
+
+    private static void appendSpellingComment(
+            final StringBuilder out, final Key key, final TomlExampleOptions options) {
+        if (key.isReserved()) {
+            final String keyEnv = key.getEnv();
+            final String env = keyEnv != null ? keyEnv : "the environment";
+            wrapped(out, "Reserved: only " + env + " supplies this key; a file may not.");
+        } else if (options.spellings()) {
+            wrapped(out, spellings(key));
+        }
+    }
+
+    private static void appendRequirementComment(final StringBuilder out, final Key key) {
+        if (key.isRequired() && !key.isReserved()) {
+            comment(out, "Required: nothing loads until this key is supplied.");
+        }
+        if (key.isSecret()) {
+            comment(out, "Secret: the value below is a placeholder.");
+        } else if (!key.isRequired() && key.getDefaultValue() == null) {
+            comment(out, "Unset by default: the value below is only the shape.");
+        }
     }
 
     /** The other ways this key can be supplied, as one comment line. */
@@ -232,39 +254,55 @@ public class TomlExampleRenderer {
         if (value instanceof Boolean bool) {
             return bool.toString();
         }
-        if (value instanceof BigInteger
-                || value instanceof Long
-                || value instanceof Integer
-                || value instanceof Short
-                || value instanceof Byte) {
-            return tomlInteger(((Number) value));
+        if (isIntegerType(value)) {
+            return tomlInteger((Number) value);
         }
-        if (value instanceof Double || value instanceof Float) {
+        if (isFloatingPointType(value)) {
             return tomlFloat(((Number) value).doubleValue());
         }
         if (value instanceof List<?> items) {
-            final List<String> rendered = new ArrayList<>(items.size());
-            for (Object item : items) {
-                final String literal = tomlLiteral(item, depth + 1);
-                if (literal == null) {
-                    // An array element cannot be left out the way a table entry can.
-                    return null;
-                }
-                rendered.add(literal);
-            }
-            return "[" + String.join(", ", rendered) + "]";
+            return tomlLiteralList(items, depth);
         }
         if (value instanceof Map<?, ?> dict) {
-            final List<String> rendered = new ArrayList<>();
-            for (Map.Entry<?, ?> entry : dict.entrySet()) {
-                final String literal = tomlLiteral(entry.getValue(), depth + 1);
-                if (literal != null) {
-                    rendered.add(tomlKey(String.valueOf(entry.getKey())) + " = " + literal);
-                }
-            }
-            return rendered.isEmpty() ? "{}" : "{ " + String.join(", ", rendered) + " }";
+            return tomlLiteralMap(dict, depth);
         }
         return null;
+    }
+
+    private static boolean isIntegerType(final Object value) {
+        return value instanceof BigInteger
+                || value instanceof Long
+                || value instanceof Integer
+                || value instanceof Short
+                || value instanceof Byte;
+    }
+
+    private static boolean isFloatingPointType(final Object value) {
+        return value instanceof Double || value instanceof Float;
+    }
+
+    private static @Nullable String tomlLiteralList(final List<?> items, final int depth) {
+        final List<String> rendered = new ArrayList<>(items.size());
+        for (final Object item : items) {
+            final String literal = tomlLiteral(item, depth + 1);
+            if (literal == null) {
+                // An array element cannot be left out the way a table entry can.
+                return null;
+            }
+            rendered.add(literal);
+        }
+        return "[" + String.join(", ", rendered) + "]";
+    }
+
+    private static String tomlLiteralMap(final Map<?, ?> dict, final int depth) {
+        final List<String> rendered = new ArrayList<>();
+        for (final Map.Entry<?, ?> entry : dict.entrySet()) {
+            final String literal = tomlLiteral(entry.getValue(), depth + 1);
+            if (literal != null) {
+                rendered.add(tomlKey(String.valueOf(entry.getKey())) + " = " + literal);
+            }
+        }
+        return rendered.isEmpty() ? "{}" : "{ " + String.join(", ", rendered) + " }";
     }
 
     /** A whole number as TOML, or {@code null} for one TOML's signed 64 bits cannot hold. */
@@ -365,7 +403,7 @@ public class TomlExampleRenderer {
     private static void flowed(final StringBuilder out, final String first, final String rest, final String text) {
         final StringBuilder line = new StringBuilder();
         String indent = first;
-        for (String word : text.split("\\s+")) {
+        for (final String word : text.split("\\s+")) {
             if (word.isEmpty()) {
                 continue;
             }

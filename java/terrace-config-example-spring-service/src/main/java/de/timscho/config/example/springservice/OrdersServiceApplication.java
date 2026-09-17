@@ -37,10 +37,19 @@ import org.springframework.context.ConfigurableApplicationContext;
 // `proxyBeanMethods` defaulting to `true`, so Spring CGLIB-subclasses this class at startup to
 // enforce singleton semantics on its own `@Bean` methods -- a final class here fails with
 // "Cannot subclass final class" the moment the context refreshes.
+// HideUtilityClassConstructor sees only static members and no declared constructor, and asks for
+// a hand-written private one — but Spring instantiates and CGLIB-subclasses this class (see the
+// "Deliberately not final" note above), so it needs the implicit public constructor left alone.
+@SuppressWarnings("checkstyle:HideUtilityClassConstructor")
 @SpringBootApplication
 @EnableConfigurationProperties(OrdersProperties.class)
 public class OrdersServiceApplication {
 
+    // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
+    // binary's actual terminal output for a human running it by hand (the rendered contract, or
+    // the config values it booted with) -- there is no SLF4J-worthy log event to attribute it to,
+    // and no other consumer for it to reach.
+    @SuppressWarnings("checkstyle:BanSystemOut")
     static void main(final String[] args) {
         if (args.length > 0 && "--contract".equals(args[0])) {
             System.out.println(ContractGenerator.toJson(ContractGenerator.generate()));
@@ -52,6 +61,7 @@ public class OrdersServiceApplication {
         }
     }
 
+    @SuppressWarnings("checkstyle:BanSystemOut")
     static void report(final OrdersProperties properties) {
         System.out.println("listening on " + properties.getBindAddr() + ":" + properties.getPort());
         System.out.println("log level: " + properties.getLogLevel());

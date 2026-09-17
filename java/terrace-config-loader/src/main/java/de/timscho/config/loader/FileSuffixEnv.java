@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -36,7 +35,7 @@ final class FileSuffixEnv {
         final Map<String, FileValue> values = new LinkedHashMap<>();
         final Map<String, String> origins = new LinkedHashMap<>();
 
-        for (Map.Entry<String, String> entry : environment.entrySet()) {
+        for (final Map.Entry<String, String> entry : environment.entrySet()) {
             final String name = entry.getKey();
             final Optional<String> target = dialect.indirectionTarget(name);
             if (target.isEmpty()) {
@@ -68,12 +67,12 @@ final class FileSuffixEnv {
 
     /** The variable that named the file supplying {@code key}, in the spelling it was set in. */
     Optional<String> origin(final String key) {
-        return Optional.ofNullable(origins.get(key));
+        return Optional.ofNullable(this.origins.get(key));
     }
 
     /** Whether the environment declared no indirection variables. */
     boolean isEmpty() {
-        return values.isEmpty();
+        return this.values.isEmpty();
     }
 
     /**
@@ -85,7 +84,7 @@ final class FileSuffixEnv {
      */
     List<Path> watchPaths() {
         final List<Path> paths = new ArrayList<>();
-        for (FileValue value : values.values()) {
+        for (final FileValue value : this.values.values()) {
             final Path parent = value.path().toAbsolutePath().getParent();
             if (parent != null) {
                 paths.add(parent);

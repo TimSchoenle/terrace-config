@@ -1,7 +1,6 @@
 package de.timscho.config.core.model;
 
 import java.util.List;
-
 import lombok.Getter;
 
 /**

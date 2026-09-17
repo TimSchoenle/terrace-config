@@ -2,7 +2,6 @@ package de.timscho.config.spring;
 
 import java.util.Locale;
 import java.util.Optional;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -49,25 +48,33 @@ public final class SpringDialect {
         return new SpringDialect(DEFAULT_SEPARATOR, DEFAULT_INDIRECTION_SUFFIX);
     }
 
-    /** Replace the nesting separator. Defaults to {@code _}, matching Spring's own binder. */
-    public SpringDialect withNestingSeparator(final String separator) {
-        return new SpringDialect(separator, indirectionSuffix);
+    /** Replace the nesting separator. Defaults to {@code _}, matching Spring's own binder.
+     *
+     * @param newSeparator what separates nesting levels in an environment variable name
+     */
+    public SpringDialect withNestingSeparator(final String newSeparator) {
+        return new SpringDialect(newSeparator, this.indirectionSuffix);
     }
 
-    /** Whether {@code envName} is a {@code _FILE}-suffixed indirection, with a non-empty target. */
+    /** Whether {@code envName} is a {@code _FILE}-suffixed indirection, with a non-empty target.
+     *
+     * @param envName the full environment variable name to check
+     */
     public boolean isIndirection(final String envName) {
-        return indirectionTarget(envName).isPresent();
+        return this.indirectionTarget(envName).isPresent();
     }
 
     /**
      * The environment variable name {@code envName} points a file's contents at, if {@code
      * envName} is a well-formed indirection — non-empty, and not itself all suffix.
+     *
+     * @param envName the full environment variable name to check
      */
     public Optional<String> indirectionTarget(final String envName) {
-        if (!envName.endsWith(indirectionSuffix)) {
+        if (!envName.endsWith(this.indirectionSuffix)) {
             return Optional.empty();
         }
-        final String target = envName.substring(0, envName.length() - indirectionSuffix.length());
+        final String target = envName.substring(0, envName.length() - this.indirectionSuffix.length());
         return target.isEmpty() ? Optional.empty() : Optional.of(target);
     }
 
@@ -77,8 +84,10 @@ public final class SpringDialect {
      * relaxed binding Spring's own {@code Binder} already applies to a real environment variable,
      * so a value this class publishes under this name binds exactly where the equivalent
      * environment variable would have.
+     *
+     * @param envName the full environment variable name to translate
      */
     public String propertyName(final String envName) {
-        return envName.toLowerCase(Locale.ROOT).replace(separator, ".");
+        return envName.toLowerCase(Locale.ROOT).replace(this.separator, ".");
     }
 }

@@ -1,13 +1,12 @@
 package de.timscho.config.example.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Getter;
-import lombok.Setter;
-
 import de.timscho.config.annotations.Nested;
 import de.timscho.config.annotations.TerraceConfig;
 import de.timscho.config.annotations.Values;
 import de.timscho.config.loader.TerraceLoader;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * The root configuration a small "orders" service reads at boot, through {@link TerraceLoader}.

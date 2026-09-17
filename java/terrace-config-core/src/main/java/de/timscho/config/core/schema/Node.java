@@ -1,9 +1,8 @@
 package de.timscho.config.core.schema;
 
+import de.timscho.config.core.model.Key;
 import java.util.ArrayList;
 import java.util.List;
-
-import de.timscho.config.core.model.Key;
 
 /**
  * One level of the configuration: the keys directly under a path, and the levels below it —
@@ -14,12 +13,15 @@ import de.timscho.config.core.model.Key;
  * <p>Order is first-appearance order at every level, which is declaration order for a schema
  * built from one type. Package-private: only {@link JsonSchemaRenderer} builds and walks one.
  */
+@SuppressWarnings("checkstyle:VisibilityModifier")
 final class Node {
 
     // Explicit `public` rather than the no-modifier default: `Node` itself is package-private, so
     // visibility is already confined to `de.timscho.config.core.schema`; an explicit modifier is
     // needed only because `java/lombok.config`'s `lombok.fieldDefaults.defaultPrivate` would
     // otherwise make a no-modifier field private, which `JsonSchemaRenderer` cannot then read.
+    // VisibilityModifier cannot tell that apart from a genuine encapsulation lapse, hence the
+    // suppression above.
 
     /** This level's own path segment. Empty at the root. */
     public final String segment;
@@ -40,7 +42,7 @@ final class Node {
      */
     static Node of(final List<Key> keys) {
         final Node root = new Node("");
-        for (Key key : keys) {
+        for (final Key key : keys) {
             root.insert(key.getPath().split("\\.", -1), 0, key);
         }
         return root;
@@ -48,12 +50,12 @@ final class Node {
 
     private void insert(final String[] segments, final int index, final Key key) {
         if (index == segments.length - 1) {
-            keys.add(key);
+            this.keys.add(key);
             return;
         }
         final String head = segments[index];
         Node child = null;
-        for (Node candidate : children) {
+        for (final Node candidate : this.children) {
             if (candidate.segment.equals(head)) {
                 child = candidate;
                 break;
@@ -61,7 +63,7 @@ final class Node {
         }
         if (child == null) {
             child = new Node(head);
-            children.add(child);
+            this.children.add(child);
         }
         child.insert(segments, index + 1, key);
     }
@@ -71,12 +73,12 @@ final class Node {
      * when it holds a required key, however deep.
      */
     boolean required() {
-        for (Key key : keys) {
+        for (final Key key : this.keys) {
             if (key.isRequired()) {
                 return true;
             }
         }
-        for (Node child : children) {
+        for (final Node child : this.children) {
             if (child.required()) {
                 return true;
             }
@@ -91,9 +93,9 @@ final class Node {
      * nested struct beside it -- a field that wanted {@code @Nested} and did not get it. TOML
      * cannot express both, so a renderer has to know.
      */
-    boolean opens(final String segment) {
-        for (Node child : children) {
-            if (child.segment.equals(segment)) {
+    boolean opens(final String childSegment) {
+        for (final Node child : this.children) {
+            if (child.segment.equals(childSegment)) {
                 return true;
             }
         }

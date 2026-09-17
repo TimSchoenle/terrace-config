@@ -1,18 +1,16 @@
 package de.timscho.config.core.io;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import de.timscho.config.core.model.Contract;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import org.jetbrains.annotations.Blocking;
-
-import de.timscho.config.core.model.Contract;
 
 /**
  * Reads and writes a {@link Contract} as the {@code json} rendering — {@code
@@ -38,7 +36,10 @@ public final class ContractCodec {
         return mapper;
     }
 
-    /** Renders {@code contract} as {@code json}, terminated with one trailing newline. */
+    /** Renders {@code contract} as {@code json}, terminated with one trailing newline.
+     *
+     * @param contract the contract to render
+     */
     public static byte[] write(final Contract contract) {
         try {
             final String rendered = MAPPER.writeValueAsString(contract);

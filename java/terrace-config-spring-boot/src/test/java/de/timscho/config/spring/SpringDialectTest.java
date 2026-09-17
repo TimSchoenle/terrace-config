@@ -3,7 +3,6 @@ package de.timscho.config.spring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Optional;
-
 import org.junit.jupiter.api.Test;
 
 class SpringDialectTest {

@@ -1,5 +1,9 @@
 package de.timscho.config.core.descriptor;
 
+import de.timscho.config.core.model.Dialect;
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.Schema;
+import de.timscho.config.core.model.UnreachableReason;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -8,15 +12,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-
 import lombok.AllArgsConstructor;
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
-
-import de.timscho.config.core.model.Dialect;
-import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.Schema;
-import de.timscho.config.core.model.UnreachableReason;
 
 /**
  * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link
@@ -43,7 +41,14 @@ public class SchemaAssembler {
     /** The version of this document's shape. Matches the Rust crate's {@code SCHEMA_VERSION}. */
     public static final int SCHEMA_VERSION = 2;
 
-    /** The keys of {@code descriptor}, spelled according to {@code dialect}. */
+    /** The keys of {@code descriptor}, spelled according to {@code dialect}.
+     *
+     * @param descriptor       the configuration type's own field-level descriptor
+     * @param dialect          the nesting-separator and indirection-suffix conventions to spell keys with
+     * @param reservedEnvNames every environment name (full spelling, e.g. {@code MYAPP_CONFIG})
+     *                         the loader itself reads before the layers exist; matched
+     *                         case-insensitively, mirroring {@code Dialect::is_reserved}
+     */
     public static Schema assemble(
             final TypeDescriptor descriptor, final Dialect dialect, final Set<String> reservedEnvNames) {
         return assemble(descriptor, dialect, reservedEnvNames, "");
@@ -55,9 +60,12 @@ public class SchemaAssembler {
      * cloudflare.turnstile} produces {@code csp.cloudflare.turnstile}. An empty {@code root} is
      * {@link #assemble(TypeDescriptor, Dialect, Set)}.
      *
+     * @param descriptor       the configuration type's own field-level descriptor
+     * @param dialect          the nesting-separator and indirection-suffix conventions to spell keys with
      * @param reservedEnvNames every environment name (full spelling, e.g. {@code MYAPP_CONFIG})
      *                         the loader itself reads before the layers exist; matched
      *                         case-insensitively, mirroring {@code Dialect::is_reserved}
+     * @param root             where {@code descriptor} sits in the larger configuration, dotted, empty at the root
      */
     public static Schema assemble(
             final TypeDescriptor descriptor,
@@ -65,7 +73,7 @@ public class SchemaAssembler {
             final Set<String> reservedEnvNames,
             final String root) {
         final Set<String> reservedUpper = new HashSet<>();
-        for (String reserved : reservedEnvNames) {
+        for (final String reserved : reservedEnvNames) {
             reservedUpper.add(reserved.toUpperCase(Locale.ROOT));
         }
 
@@ -86,7 +94,7 @@ public class SchemaAssembler {
             final List<Key> out,
             final Dialect dialect,
             final Set<String> reservedUpper) {
-        for (KeyDescriptor field : fields) {
+        for (final KeyDescriptor field : fields) {
             final String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
             final boolean isNestedStruct = !field.nestedKeys().isEmpty()
                     && (field.container() == KeyDescriptor.ContainerKind.NONE
@@ -97,14 +105,18 @@ public class SchemaAssembler {
                 // either, since a struct field has no scalar value to bind directly.
                 walk(field.nestedKeys(), path, out, dialect, reservedUpper);
             } else {
-                out.add(leaf(field, path, dialect, reservedUpper));
+                out.add(leaf(field, prefix, path, dialect, reservedUpper));
             }
         }
     }
 
     /** One field as a leaf {@link Key} — the whole of a container field, structured or not. */
     private static Key leaf(
-            final KeyDescriptor field, final String path, final Dialect dialect, final Set<String> reservedUpper) {
+            final KeyDescriptor field,
+            final String prefix,
+            final String path,
+            final Dialect dialect,
+            final Set<String> reservedUpper) {
         final boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
                 && field.container() != KeyDescriptor.ContainerKind.OPTIONAL;
 
@@ -113,6 +125,10 @@ public class SchemaAssembler {
                 : field.element() != null ? field.element().values() : List.of();
         final TextForm textForm = textForm(field, container, values);
 
+        final AliasSet aliasSet = resolveAliases(field, prefix, dialect);
+
+        final Map<String, Object> textConstraint = textConstraint(field, container, textForm, values);
+
         final Key.KeyBuilder builder = Key.builder()
                 .path(path)
                 .docs(field.docs() != null ? field.docs() : "")
@@ -120,26 +136,132 @@ public class SchemaAssembler {
                 .values(values)
                 .constraint(constraint(field, container, textForm, values))
                 .textForm(textForm.model)
+                .aliases(aliasSet.paths())
+                .envAliases(aliasSet.env())
+                .envFileAliases(aliasSet.envFile())
+                .secretsFileAliases(aliasSet.secretsFile())
                 .secret(field.secret())
                 .note(field.note())
                 // Syntactic, matching the Rust derive macro exactly — see the class-level note.
                 .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
 
+        if (textConstraint != null) {
+            builder.textConstraint(textConstraint);
+        }
+
+        applyEnvSpelling(builder, dialect, path, reservedUpper);
+        return builder.build();
+    }
+
+    /** {@code field}'s own aliases, spelled as an env var / env-indirection-file / secrets-file
+     * name wherever the dialect can express them — {@code null} exactly where {@link #envSpelling}
+     * and friends already say a plain alias has no such spelling. */
+    private static AliasSet resolveAliases(final KeyDescriptor field, final String prefix, final Dialect dialect) {
+        final List<String> aliases = new ArrayList<>();
+        final List<String> envAliases = new ArrayList<>();
+        final List<String> envFileAliases = new ArrayList<>();
+        final List<String> secretsFileAliases = new ArrayList<>();
+        for (final String alias : field.aliases()) {
+            final String aliasPath = prefix.isEmpty() ? alias : prefix + "." + alias;
+            aliases.add(aliasPath);
+            final Spelling aliasSpelling = envSpelling(dialect, aliasPath);
+            if (aliasSpelling.env != null) {
+                envAliases.add(aliasSpelling.env);
+                final String envFile = indirectionName(dialect, aliasSpelling.env);
+                if (envFile != null) {
+                    envFileAliases.add(envFile);
+                }
+            }
+            final String secretFile = secretsFileName(dialect, aliasPath);
+            if (secretFile != null) {
+                secretsFileAliases.add(secretFile);
+            }
+        }
+        return new AliasSet(aliases, envAliases, envFileAliases, secretsFileAliases);
+    }
+
+    /** {@link #leaf}'s four alias lists, bundled so {@link #resolveAliases} has one return value. */
+    private record AliasSet(List<String> paths, List<String> env, List<String> envFile, List<String> secretsFile) {}
+
+    /** Sets {@code builder}'s {@code env}/{@code reserved}/{@code envFile}/{@code secretsFile}/
+     * {@code unreachable} from {@code path}'s own env spelling — reserved names are read straight
+     * from the environment, so neither file mechanism can supply them. */
+    private static void applyEnvSpelling(
+            final Key.KeyBuilder builder, final Dialect dialect, final String path, final Set<String> reservedUpper) {
         final Spelling spelling = envSpelling(dialect, path);
         builder.env(spelling.env);
         final boolean reserved = spelling.env != null && reservedUpper.contains(spelling.env.toUpperCase(Locale.ROOT));
         builder.reserved(reserved);
         if (reserved) {
-            // Read straight from the environment, so neither file mechanism can supply it.
             builder.envFile(null);
             builder.secretsFile(null);
-            builder.unreachable(spelling.unreachable);
         } else {
             builder.envFile(spelling.env != null ? indirectionName(dialect, spelling.env) : null);
             builder.secretsFile(secretsFileName(dialect, path));
-            builder.unreachable(spelling.unreachable);
         }
-        return builder.build();
+        builder.unreachable(spelling.unreachable);
+    }
+
+    private static @Nullable Map<String, Object> textConstraint(
+            final KeyDescriptor field, final boolean container, final TextForm textForm, final List<String> values) {
+        if (container) {
+            final Map<String, Object> schema = new TreeMap<>();
+            schema.put("pattern", "^\\s*[\\[\\{][\\s\\S]*[\\]\\}]\\s*$");
+            schema.put("type", "string");
+            return schema;
+        }
+        return switch (textForm) {
+            case CHOICE -> choiceTextConstraint(values);
+            case BOOLEAN -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                schema.put("pattern", "^\\s*(true|false)\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case INTEGER -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                final boolean signed =
+                        !field.typeName().startsWith("u") && !field.typeName().startsWith("NonZeroU");
+                final String sign = signed ? "[-+]?" : "\\+?";
+                schema.put("pattern", "^\\s*" + sign + "[0-9]+\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case STRUCTURED -> {
+                final Map<String, Object> schema = new TreeMap<>();
+                schema.put("pattern", "^\\s*[\\[\\{][\\s\\S]*[\\]\\}]\\s*$");
+                schema.put("type", "string");
+                yield schema;
+            }
+            case TEXT, NUMBER, UNKNOWN -> null;
+        };
+    }
+
+    private static Map<String, Object> choiceTextConstraint(final List<String> values) {
+        final Map<String, Object> schema = new TreeMap<>();
+        final StringBuilder alternatives = new StringBuilder();
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) {
+                alternatives.append("|");
+            }
+            alternatives.append(escapeRegex(values.get(i)));
+        }
+        schema.put("pattern", "^\\s*(" + alternatives + ")\\s*$");
+        schema.put("type", "string");
+        return schema;
+    }
+
+    private static String escapeRegex(final String value) {
+        final StringBuilder escaped = new StringBuilder(value.length());
+        final String special = "\\^$.|?*+()[]{}";
+        for (int i = 0; i < value.length(); i++) {
+            final char c = value.charAt(i);
+            if (special.indexOf(c) >= 0) {
+                escaped.append('\\');
+            }
+            escaped.append(c);
+        }
+        return escaped.toString();
     }
 
     /** How to read the field's own value, before {@link Key#getConstraint()} checks it. */
@@ -258,7 +380,7 @@ public class SchemaAssembler {
         }
         final String suffix = trimmed.substring(dialect.getPrefix().length());
         final String mapped = suffix.replace(dialect.getNestingSeparator(), ".").trim();
-        for (String segment : mapped.split("\\.", -1)) {
+        for (final String segment : mapped.split("\\.", -1)) {
             if (segment.isEmpty()) {
                 return null;
             }
@@ -307,6 +429,11 @@ public class SchemaAssembler {
         return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('/') < 0 && name.indexOf('\\') < 0;
     }
 
+    // VisibilityModifier flags both fields below: they carry no access modifier in source, relying
+    // on java/lombok.config's project-wide `lombok.fieldDefaults.defaultPrivate = true` to become
+    // private once Lombok processes them — a transform Checkstyle, which reads plain source before
+    // Lombok runs, cannot see. See Node.java for the same shape.
+    @SuppressWarnings("checkstyle:VisibilityModifier")
     @AllArgsConstructor
     private static final class Spelling {
         final @Nullable String env;
@@ -317,6 +444,9 @@ public class SchemaAssembler {
      * assembler uses internally for a floating-point range before folding it into the model's
      * {@link de.timscho.config.core.model.TextForm#UNKNOWN} — a float's own value is still
      * {@code Unknown} in the published document, matching the Rust crate. */
+    // VisibilityModifier: same lombok.config `defaultPrivate` gap as Spelling above — `model`
+    // carries no access modifier in source and relies on Lombok's project-wide default.
+    @SuppressWarnings("checkstyle:VisibilityModifier")
     @AllArgsConstructor
     private enum TextForm {
         TEXT(de.timscho.config.core.model.TextForm.TEXT),
@@ -329,6 +459,11 @@ public class SchemaAssembler {
 
         final de.timscho.config.core.model.TextForm model;
 
+        // CHECKSTYLE.OFF: Indentation -- palantirJavaFormat wraps this arrow-case body at 4 spaces
+        // past `case`; the fetched ruleset's Indentation check wants 8. Reformatting by hand would
+        // just be undone by the next spotlessApply, so this scoped disable defers to the formatter
+        // that actually governs this file (see terrace-config.java-conventions.gradle.kts'
+        // checkstyle block).
         static TextForm of(final String typeName) {
             return switch (typeName) {
                 case "String", "CharSequence", "char", "Character" -> TEXT;
@@ -341,5 +476,6 @@ public class SchemaAssembler {
                 default -> UNKNOWN;
             };
         }
+        // CHECKSTYLE.ON: Indentation
     }
 }

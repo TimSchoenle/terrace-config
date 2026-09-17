@@ -1,14 +1,12 @@
 package de.timscho.config.example.springservice;
 
-import java.util.Map;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import de.timscho.config.core.io.ContractCodec;
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.spring.SpringContractProducer;
+import java.util.Map;
 
 /**
  * Renders this service's configuration as a contract document through {@link

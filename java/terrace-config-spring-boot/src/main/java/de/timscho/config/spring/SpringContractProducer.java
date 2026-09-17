@@ -1,8 +1,5 @@
 package de.timscho.config.spring;
 
-import java.util.Map;
-import java.util.Set;
-
 import de.timscho.config.core.contract.ContractAssembler;
 import de.timscho.config.core.contract.ProducerIdentity;
 import de.timscho.config.core.descriptor.SchemaAssembler;
@@ -13,6 +10,8 @@ import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.External;
 import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Assembles a full {@link Contract} for a Spring service — the tier-1 producer this module ships,
@@ -40,7 +39,12 @@ public final class SpringContractProducer {
     private SpringContractProducer() {}
 
     /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External)} using {@link SpringDialect#standard()}
-     * and no declared external surface. */
+     * and no declared external surface.
+     *
+     * @param descriptor the configuration type's own field-level descriptor
+     * @param prefix     the environment prefix keys are reachable under
+     * @param app        the published contract's {@code app} metadata
+     */
     public static Contract produce(final TypeDescriptor descriptor, final String prefix, final App app) {
         return produce(descriptor, prefix, SpringDialect.standard(), app, ContractAssembler.noExternalSurface());
     }
@@ -50,6 +54,11 @@ public final class SpringContractProducer {
      * described by {@code descriptor}, reachable under {@code prefix} through {@code
      * springDialect}'s nesting and {@code _FILE} indirection conventions.
      *
+     * @param descriptor    the configuration type's own field-level descriptor
+     * @param prefix        the environment prefix keys are reachable under
+     * @param springDialect the nesting-separator and indirection-suffix conventions to spell keys with
+     * @param app           the published contract's {@code app} metadata
+     * @param external      the service's declared external variable surface
      * @throws de.timscho.config.core.refusal.ContractRefusalException the first of {@code
      *                                                                  spec/v1/FORMAT.md}'s eight
      *                                                                  refusals this contract
@@ -65,7 +74,13 @@ public final class SpringContractProducer {
     }
 
     /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External, Map)} using {@link
-     * SpringDialect#standard()} and no declared external surface. */
+     * SpringDialect#standard()} and no declared external surface.
+     *
+     * @param descriptor the configuration type's own field-level descriptor
+     * @param prefix     the environment prefix keys are reachable under
+     * @param app        the published contract's {@code app} metadata
+     * @param defaults   each non-required key's observed default, already nested as a {@code Map}
+     */
     public static Contract produce(
             final TypeDescriptor descriptor, final String prefix, final App app, final Map<String, Object> defaults) {
         return produce(
@@ -81,6 +96,12 @@ public final class SpringContractProducer {
      * four-argument overload above passes) leaves every key's default unset, the same as never
      * calling this method at all.
      *
+     * @param descriptor    the configuration type's own field-level descriptor
+     * @param prefix        the environment prefix keys are reachable under
+     * @param springDialect the nesting-separator and indirection-suffix conventions to spell keys with
+     * @param app           the published contract's {@code app} metadata
+     * @param external      the service's declared external variable surface
+     * @param defaults      each non-required key's observed default, already nested as a {@code Map}
      * @throws de.timscho.config.core.refusal.ContractRefusalException the first of {@code
      *                                                                  spec/v1/FORMAT.md}'s eight
      *                                                                  refusals this contract

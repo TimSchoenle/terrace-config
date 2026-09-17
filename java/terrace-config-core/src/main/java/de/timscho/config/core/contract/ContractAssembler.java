@@ -1,13 +1,5 @@
 package de.timscho.config.core.contract;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
-import lombok.experimental.UtilityClass;
-import org.jspecify.annotations.Nullable;
-
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.External;
@@ -18,6 +10,12 @@ import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.refusal.ContractValidator;
 import de.timscho.config.core.schema.JsonSchemaOptions;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import lombok.experimental.UtilityClass;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Combines a built {@link Schema} with an {@link App} and a {@link Producer} into a full
@@ -32,7 +30,12 @@ import de.timscho.config.core.schema.JsonSchemaOptions;
 @UtilityClass
 public class ContractAssembler {
 
-    /** {@link #assemble(Schema, App, Producer, External)} with nothing declared external. */
+    /** {@link #assemble(Schema, App, Producer, External)} with nothing declared external.
+     *
+     * @param schema   the assembled schema this contract publishes
+     * @param app      this contract's {@code app} metadata
+     * @param producer identifies the loader that assembled this contract
+     */
     public static Contract assemble(final Schema schema, final App app, final Producer producer) {
         return assemble(schema, app, producer, noExternalSurface());
     }
@@ -48,6 +51,10 @@ public class ContractAssembler {
      * unlike the Rust crate, {@link ExternalVar} has no default for {@code text_form}, so a
      * caller always states one explicitly.
      *
+     * @param schema   the assembled schema this contract publishes
+     * @param app      this contract's {@code app} metadata
+     * @param producer identifies the loader that assembled this contract
+     * @param external the service's declared external variable surface
      * @throws de.timscho.config.core.refusal.ContractRefusalException the first of
      *                                                                  {@code spec/v1/FORMAT.md}'s
      *                                                                  eight refusals this
@@ -79,7 +86,7 @@ public class ContractAssembler {
 
     private static External deriveExternalConstraints(final External external) {
         final List<ExternalVar> derived = new ArrayList<>();
-        for (ExternalVar var : external.getEnv()) {
+        for (final ExternalVar var : external.getEnv()) {
             if (var.getConstraint() == null) {
                 final Map<String, Object> constraint = deriveConstraint(var.getTy(), var.getValues());
                 derived.add(

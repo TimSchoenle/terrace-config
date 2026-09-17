@@ -1,8 +1,7 @@
 package de.timscho.config.core.contract;
 
-import lombok.experimental.UtilityClass;
-
 import de.timscho.config.core.model.Producer;
+import lombok.experimental.UtilityClass;
 
 /**
  * What this module writes into every {@link Producer} it builds — the Java equivalent of the
@@ -32,6 +31,8 @@ public class ProducerIdentity {
     /**
      * A {@link Producer} identifying this module, naming {@code loader} as the library whose
      * environment reads a document's {@code text_constraint}s were measured against.
+     *
+     * @param loader the name of the library assembling the contract, e.g. {@code "spring-boot"}
      */
     public static Producer forLoader(final String loader) {
         return Producer.builder().name(NAME).version(version()).loader(loader).build();

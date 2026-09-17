@@ -3,12 +3,11 @@ package de.timscho.config.spring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import org.junit.jupiter.api.Test;
-
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.refusal.EmptyPrefixException;
+import org.junit.jupiter.api.Test;
 
 /**
  * {@link SpringContractProducer#produce} against a real generated descriptor

@@ -1,17 +1,15 @@
 package de.timscho.config.core.schema;
 
+import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.Schema;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-
 import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
-
-import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.Schema;
 
 /**
  * The JSON Schema rendering: what an editor or a Helm chart validates a rendered document
@@ -29,10 +27,14 @@ import de.timscho.config.core.model.Schema;
 @UtilityClass
 public class JsonSchemaRenderer {
 
-    /** The schema as a JSON Schema document, nested {@code properties} object per path level. */
+    /** The schema as a JSON Schema document, nested {@code properties} object per path level.
+     *
+     * @param schema  the schema to render
+     * @param options which dialect, title, and strictness to render with
+     */
     public static Map<String, Object> document(final Schema schema, final JsonSchemaOptions options) {
         final List<Key> reachable = new ArrayList<>();
-        for (Key key : schema.getKeys()) {
+        for (final Key key : schema.getKeys()) {
             if (!key.isReserved()) {
                 reachable.add(key);
             }
@@ -63,42 +65,10 @@ public class JsonSchemaRenderer {
         // `required` cannot say that, so those collect here under one `allOf` instead.
         final List<Object> either = new ArrayList<>();
 
-        for (Key key : node.keys) {
-            final String name = Node.name(key.getPath());
-            final Map<String, Object> keySchema = leaf(key, options);
-
-            for (String alias : key.getAliases()) {
-                final Map<String, Object> spelling = new TreeMap<>(keySchema);
-                spelling.put("description", "Another spelling of `" + key.getPath() + "`.");
-                properties.put(Node.name(alias), spelling);
-            }
-
-            properties.put(name, keySchema);
-
-            if (key.isRequired() && options.requirePresent()) {
-                if (key.getAliases().isEmpty()) {
-                    required.add(name);
-                } else {
-                    final List<Object> spellings = new ArrayList<>();
-                    spellings.add(requiredOne(name));
-                    for (String alias : key.getAliases()) {
-                        spellings.add(requiredOne(Node.name(alias)));
-                    }
-                    final Map<String, Object> anyOf = new TreeMap<>();
-                    anyOf.put("anyOf", spellings);
-                    either.add(anyOf);
-                }
-            }
-        }
+        addKeyProperties(node, options, properties, required, either);
         // After the leaves, so the one shape neither format can carry — a key and a table of the
         // same name in one parent — resolves to the table.
-        for (Node child : node.children) {
-            final String childPath = path.isEmpty() ? child.segment : path + "." + child.segment;
-            properties.put(child.segment, object(child, childPath, options, closed));
-            if (child.required() && options.requirePresent()) {
-                required.add(child.segment);
-            }
-        }
+        addChildProperties(node, path, options, closed, properties, required);
 
         final Map<String, Object> objectSchema = new TreeMap<>();
         objectSchema.put("type", "object");
@@ -113,6 +83,61 @@ public class JsonSchemaRenderer {
             objectSchema.put("additionalProperties", false);
         }
         return objectSchema;
+    }
+
+    /** This level's own keys, each as a {@code properties} entry — plus its aliases (each their
+     * own entry, cross-referencing the same schema) and, for a required key, either a plain
+     * {@code required} name or an {@code anyOf} of every spelling. */
+    private static void addKeyProperties(
+            final Node node,
+            final JsonSchemaOptions options,
+            final Map<String, Object> properties,
+            final List<Object> required,
+            final List<Object> either) {
+        for (final Key key : node.keys) {
+            final String name = Node.name(key.getPath());
+            final Map<String, Object> keySchema = leaf(key, options);
+
+            for (final String alias : key.getAliases()) {
+                final Map<String, Object> spelling = new TreeMap<>(keySchema);
+                spelling.put("description", "Another spelling of `" + key.getPath() + "`.");
+                properties.put(Node.name(alias), spelling);
+            }
+
+            properties.put(name, keySchema);
+
+            if (key.isRequired() && options.requirePresent()) {
+                if (key.getAliases().isEmpty()) {
+                    required.add(name);
+                } else {
+                    final List<Object> spellings = new ArrayList<>();
+                    spellings.add(requiredOne(name));
+                    for (final String alias : key.getAliases()) {
+                        spellings.add(requiredOne(Node.name(alias)));
+                    }
+                    final Map<String, Object> anyOf = new TreeMap<>();
+                    anyOf.put("anyOf", spellings);
+                    either.add(anyOf);
+                }
+            }
+        }
+    }
+
+    /** This level's own nested tables, each rendered recursively as a {@code properties} entry. */
+    private static void addChildProperties(
+            final Node node,
+            final String path,
+            final JsonSchemaOptions options,
+            final Set<String> closed,
+            final Map<String, Object> properties,
+            final List<Object> required) {
+        for (final Node child : node.children) {
+            final String childPath = path.isEmpty() ? child.segment : path + "." + child.segment;
+            properties.put(child.segment, object(child, childPath, options, closed));
+            if (child.required() && options.requirePresent()) {
+                required.add(child.segment);
+            }
+        }
     }
 
     private static Map<String, Object> requiredOne(final String name) {
@@ -166,7 +191,7 @@ public class JsonSchemaRenderer {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> deepCopy(final Map<String, Object> source) {
         final Map<String, Object> copy = new TreeMap<>();
-        for (Map.Entry<String, Object> entry : source.entrySet()) {
+        for (final Map.Entry<String, Object> entry : source.entrySet()) {
             copy.put(entry.getKey(), deepCopyValue(entry.getValue()));
         }
         return copy;
@@ -204,7 +229,7 @@ public class JsonSchemaRenderer {
         if (!(properties instanceof Map)) {
             return;
         }
-        for (Object property : ((Map<String, Object>) properties).values()) {
+        for (final Object property : ((Map<String, Object>) properties).values()) {
             if (property instanceof Map) {
                 close((Map<String, Object>) property);
             }

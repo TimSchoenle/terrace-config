@@ -1,10 +1,9 @@
 package de.timscho.config.core.io;
 
-import java.io.IOException;
-
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.util.DefaultIndenter;
 import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import java.io.IOException;
 
 /**
  * {@link DefaultPrettyPrinter} indented with two spaces, except that an empty array or object is
@@ -35,29 +34,29 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
 
     /** {@code "key": value}, not {@code "key" : value} — the corpus never has a space before the colon. */
     @Override
-    public void writeObjectFieldValueSeparator(final JsonGenerator g) throws IOException {
-        g.writeRaw(": ");
+    public void writeObjectFieldValueSeparator(final JsonGenerator generator) throws IOException {
+        generator.writeRaw(": ");
     }
 
     @Override
-    public void writeEndArray(final JsonGenerator g, final int nrOfEntries) throws IOException {
+    public void writeEndArray(final JsonGenerator generator, final int nrOfEntries) throws IOException {
         if (!_arrayIndenter.isInline()) {
             --_nesting;
         }
         if (nrOfEntries > 0) {
-            _arrayIndenter.writeIndentation(g, _nesting);
+            _arrayIndenter.writeIndentation(generator, _nesting);
         }
-        g.writeRaw(']');
+        generator.writeRaw(']');
     }
 
     @Override
-    public void writeEndObject(final JsonGenerator g, final int nrOfEntries) throws IOException {
+    public void writeEndObject(final JsonGenerator generator, final int nrOfEntries) throws IOException {
         if (!_objectIndenter.isInline()) {
             --_nesting;
         }
         if (nrOfEntries > 0) {
-            _objectIndenter.writeIndentation(g, _nesting);
+            _objectIndenter.writeIndentation(generator, _nesting);
         }
-        g.writeRaw('}');
+        generator.writeRaw('}');
     }
 }

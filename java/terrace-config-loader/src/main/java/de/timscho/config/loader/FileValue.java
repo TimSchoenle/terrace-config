@@ -1,7 +1,6 @@
 package de.timscho.config.loader;
 
 import java.nio.file.Path;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -28,6 +27,6 @@ public final class FileValue {
 
     @Override
     public String toString() {
-        return "FileValue{path=" + path + ", value=<redacted>}";
+        return "FileValue{path=" + this.path + ", value=<redacted>}";
     }
 }

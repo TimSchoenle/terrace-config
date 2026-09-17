@@ -1,15 +1,8 @@
 package de.timscho.config.core.model;
 
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import lombok.Builder;
-import lombok.Value;
-import lombok.extern.jackson.Jacksonized;
-
 import de.timscho.config.core.schema.Column;
 import de.timscho.config.core.schema.Defaults;
 import de.timscho.config.core.schema.JsonSchemaOptions;
@@ -17,6 +10,11 @@ import de.timscho.config.core.schema.JsonSchemaRenderer;
 import de.timscho.config.core.schema.MarkdownRenderer;
 import de.timscho.config.core.schema.TomlExampleOptions;
 import de.timscho.config.core.schema.TomlExampleRenderer;
+import java.util.List;
+import java.util.Map;
+import lombok.Builder;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 
 /**
  * Every key the loader can carry, in every spelling that can supply it — {@code
@@ -52,10 +50,13 @@ public class Schema {
      */
     @JsonIgnore
     public Map<String, Object> toJsonSchema() {
-        return toJsonSchemaWith(JsonSchemaOptions.standard());
+        return this.toJsonSchemaWith(JsonSchemaOptions.standard());
     }
 
-    /** The same document, with a chosen dialect and set of annotations. See {@link JsonSchemaOptions}. */
+    /** The same document, with a chosen dialect and set of annotations. See {@link JsonSchemaOptions}.
+     *
+     * @param options which dialect, title, and strictness to render with
+     */
     @JsonIgnore
     public Map<String, Object> toJsonSchemaWith(final JsonSchemaOptions options) {
         return JsonSchemaRenderer.document(this, options);
@@ -71,7 +72,10 @@ public class Schema {
         return MarkdownRenderer.toMarkdown(this);
     }
 
-    /** Both tables, with a chosen set of key columns. See {@link Column}. */
+    /** Both tables, with a chosen set of key columns. See {@link Column}.
+     *
+     * @param columns which columns the configuration-key table shows, and in what order
+     */
     @JsonIgnore
     public String toMarkdownWith(final List<Column> columns) {
         return MarkdownRenderer.toMarkdownWith(this, columns);
@@ -83,7 +87,10 @@ public class Schema {
         return MarkdownRenderer.toMarkdownLoader(this);
     }
 
-    /** The configuration-key table alone, with a chosen set of columns. */
+    /** The configuration-key table alone, with a chosen set of columns.
+     *
+     * @param columns which columns the table shows, and in what order
+     */
     @JsonIgnore
     public String toMarkdownKeys(final List<Column> columns) {
         return MarkdownRenderer.toMarkdownKeys(this, columns);
@@ -98,7 +105,10 @@ public class Schema {
         return TomlExampleRenderer.toTomlExample(this);
     }
 
-    /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}. */
+    /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}.
+     *
+     * @param options which parts of the file to render
+     */
     @JsonIgnore
     public String toTomlExampleWith(final TomlExampleOptions options) {
         return TomlExampleRenderer.toTomlExampleWith(this, options);
@@ -113,6 +123,8 @@ public class Schema {
      * rather than serialising a live instance for the caller. A required key keeps no default —
      * loading fails until something supplies it — and a {@link Key#isSecret()} key's real value
      * is never carried, only the redaction {@code <redacted>}.
+     *
+     * @param root the already-assembled default value, nested as a {@code Map}
      */
     @JsonIgnore
     public Schema withDefaultsFromValue(final Map<String, Object> root) {

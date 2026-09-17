@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -50,18 +49,19 @@ final class FileLayers {
 
     /** Whether any file-backed value was found. */
     boolean isEmpty() {
-        return (secrets == null || secrets.isEmpty()) && files.isEmpty();
+        return (this.secrets == null || this.secrets.isEmpty()) && this.files.isEmpty();
     }
 
     /** The merged values from both file-backed layers: secrets directory, then indirection. */
     Map<String, Object> merged() {
         final Map<String, Object> dict = new LinkedHashMap<>();
-        if (secrets != null) {
-            for (Map.Entry<String, FileValue> entry : secrets.values().entrySet()) {
+        if (this.secrets != null) {
+            for (final Map.Entry<String, FileValue> entry :
+                    this.secrets.values().entrySet()) {
                 LayerValues.insertNested(dict, entry.getKey(), entry.getValue().value());
             }
         }
-        for (Map.Entry<String, FileValue> entry : files.values().entrySet()) {
+        for (final Map.Entry<String, FileValue> entry : this.files.values().entrySet()) {
             LayerValues.insertNested(dict, entry.getKey(), entry.getValue().value());
         }
         return dict;
@@ -73,10 +73,10 @@ final class FileLayers {
      */
     private void rejectShadowedKeys(final Dialect dialect, final Map<String, String> environment) {
         final Set<String> env = dialect.plainEnvKeys(environment);
-        final Map<String, FileValue> secretValues = secrets == null ? Map.of() : secrets.values();
-        final Map<String, FileValue> fileValues = files.values();
+        final Map<String, FileValue> secretValues = this.secrets == null ? Map.of() : this.secrets.values();
+        final Map<String, FileValue> fileValues = this.files.values();
 
-        for (Map.Entry<String, FileValue> entry : secretValues.entrySet()) {
+        for (final Map.Entry<String, FileValue> entry : secretValues.entrySet()) {
             final String key = entry.getKey();
             if (fileValues.containsKey(key)) {
                 throw shadowed(key, entry.getValue().path(), fileValues.get(key).path());
@@ -85,7 +85,7 @@ final class FileLayers {
                 throw shadowed(key, entry.getValue().path(), dialect.envSpelling(key));
             }
         }
-        for (Map.Entry<String, FileValue> entry : fileValues.entrySet()) {
+        for (final Map.Entry<String, FileValue> entry : fileValues.entrySet()) {
             final String key = entry.getKey();
             if (env.contains(key)) {
                 throw shadowed(key, entry.getValue().path(), dialect.envSpelling(key));
@@ -101,7 +101,7 @@ final class FileLayers {
 
     /** The indirection layer — {@link Explanation}'s own use. */
     FileSuffixEnv indirections() {
-        return files;
+        return this.files;
     }
 
     /**
@@ -111,20 +111,20 @@ final class FileLayers {
      */
     Set<Path> watchPaths() {
         final Set<Path> paths = new TreeSet<>();
-        if (secrets != null) {
-            paths.add(secrets.dir().toAbsolutePath());
+        if (this.secrets != null) {
+            paths.add(this.secrets.dir().toAbsolutePath());
         }
-        paths.addAll(files.watchPaths());
+        paths.addAll(this.files.watchPaths());
         return paths;
     }
 
     /** Every key path collected by either file-backed layer, for tests and diagnostics. */
     Set<String> keys() {
         final Set<String> keys = new TreeSet<>();
-        if (secrets != null) {
-            keys.addAll(secrets.values().keySet());
+        if (this.secrets != null) {
+            keys.addAll(this.secrets.values().keySet());
         }
-        keys.addAll(files.values().keySet());
+        keys.addAll(this.files.values().keySet());
         return keys;
     }
 }

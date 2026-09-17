@@ -3,18 +3,16 @@ package de.timscho.config.processor;
 import static com.google.testing.compile.CompilationSubject.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.testing.compile.Compilation;
+import com.google.testing.compile.Compiler;
+import com.google.testing.compile.JavaFileObjects;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import javax.annotation.processing.Processor;
 import javax.tools.JavaFileObject;
-
-import com.google.testing.compile.Compilation;
-import com.google.testing.compile.Compiler;
-import com.google.testing.compile.JavaFileObjects;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -89,15 +87,15 @@ class LombokInteropTest {
     }
 
     /**
-     * {@code KeyDescriptor}'s last constructor argument (its {@code hasDefault} parameter) for
-     * the field named {@code fieldName}'s own generated call — the two trailing {@code boolean}
-     * parameters ({@code closed}, then {@code hasDefault}) are the only place a bare {@code
-     * , true)} or {@code , false)} can appear in a generated call, since every other {@code
-     * boolean}/{@code null}/{@code List.of()} argument before them is always followed by a comma
-     * and a space, never directly by the argument list's closing parenthesis.
+     * {@code KeyDescriptor}'s {@code hasDefault} argument for the field named {@code fieldName}'s
+     * own generated call. {@code hasDefault} is the second-to-last constructor argument, followed
+     * only by the trailing {@code aliases} list — anchoring on that fixed {@code
+     * , java.util.List.of(...))} suffix finds it regardless of the (possibly non-empty) alias
+     * list's own contents.
      */
     private static boolean lastBooleanArgumentFor(String content, String fieldName) {
-        Pattern pattern = Pattern.compile("KeyDescriptor\\(\"" + fieldName + "\".*?, (true|false)\\)");
+        Pattern pattern = Pattern.compile(
+                "KeyDescriptor\\(\"" + fieldName + "\".*?, (true|false), java\\.util\\.List\\.of\\([^()]*\\)\\)");
         Matcher matcher = pattern.matcher(content);
         assertTrue(matcher.find(), "no generated KeyDescriptor call found for field '" + fieldName + "':\n" + content);
         return Boolean.parseBoolean(matcher.group(1));

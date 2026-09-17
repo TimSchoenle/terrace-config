@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -91,64 +90,11 @@ public final class Explanation {
         // below is `TerraceLoader.assemble`'s own, and has to stay it.
         final Map<String, List<Layer>> sources = new TreeMap<>();
 
-        final List<Map.Entry<Path, Fragment>> fragments = new ArrayList<>();
-        for (Path path : layers.toml().files()) {
-            final Fragment fragment;
-            if (!Files.isRegularFile(path)) {
-                fragment = new Fragment.Missing();
-            } else {
-                final List<String> keys = TomlLayers.fragmentKeys(path);
-                if (keys == null) {
-                    fragment = new Fragment.Unreadable();
-                } else {
-                    fragment = new Fragment.Read(keys.size());
-                    for (String key : keys) {
-                        sources.computeIfAbsent(key, k -> new ArrayList<>()).add(new Layer.Toml(path));
-                    }
-                }
-            }
-            fragments.add(Map.entry(path, fragment));
-        }
-
-        final Map<String, Set<String>> env = layers.dialect().plainEnvEntries(environment);
-        final int envKeys = env.size();
-        for (Map.Entry<String, Set<String>> entry : env.entrySet()) {
-            for (String var : entry.getValue()) {
-                sources.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(new Layer.Env(var));
-            }
-        }
-
-        final SecretsDir secrets = layers.files().secrets();
-        final int secretsKeys = secrets == null ? 0 : secrets.values().size();
-        if (secrets != null) {
-            for (Map.Entry<String, FileValue> entry : secrets.values().entrySet()) {
-                sources.computeIfAbsent(entry.getKey(), k -> new ArrayList<>())
-                        .add(new Layer.SecretsFile(entry.getValue().path()));
-            }
-        }
-
-        final FileSuffixEnv indirections = layers.files().indirections();
-        final int indirectionKeys = indirections.values().size();
-        for (Map.Entry<String, FileValue> entry : indirections.values().entrySet()) {
-            final String key = entry.getKey();
-            // Recorded alongside the value, so this is the spelling the operator used. The
-            // fallback reconstructs the documented one and cannot really be reached: it is the
-            // last code that should throw to say so.
-            final String var = indirections
-                    .origin(key)
-                    .orElseGet(() ->
-                            layers.dialect().envSpelling(key) + layers.dialect().indirectionSuffix());
-            sources.computeIfAbsent(key, k -> new ArrayList<>())
-                    .add(new Layer.Indirection(var, entry.getValue().path()));
-        }
-
-        final List<Origin> origins = new ArrayList<>();
-        for (Map.Entry<String, List<Layer>> entry : sources.entrySet()) {
-            final Origin origin = Origin.fromSources(entry.getKey(), entry.getValue());
-            if (origin != null) {
-                origins.add(origin);
-            }
-        }
+        final List<Map.Entry<Path, Fragment>> fragments = collectTomlFragments(layers, sources);
+        final int envKeys = collectEnvSources(layers, environment, sources);
+        final int secretsKeys = collectSecretsSources(layers, sources);
+        final int indirectionKeys = collectIndirectionSources(layers, sources);
+        final List<Origin> origins = collectOrigins(sources);
 
         return new Explanation(
                 layers.dialect().prefix(),
@@ -165,9 +111,96 @@ public final class Explanation {
                 origins);
     }
 
-    /** One key's origin, by key path ({@code auth.jwt_secret}). */
+    /** Every TOML layer's own read result, recording each key it supplied into {@code sources}. */
+    private static List<Map.Entry<Path, Fragment>> collectTomlFragments(
+            final TerraceLoader.Layers layers, final Map<String, List<Layer>> sources) {
+        final List<Map.Entry<Path, Fragment>> fragments = new ArrayList<>();
+        for (final Path path : layers.toml().files()) {
+            final Fragment fragment;
+            if (!Files.isRegularFile(path)) {
+                fragment = new Fragment.Missing();
+            } else {
+                final List<String> keys = TomlLayers.fragmentKeys(path);
+                if (keys == null) {
+                    fragment = new Fragment.Unreadable();
+                } else {
+                    fragment = new Fragment.Read(keys.size());
+                    for (final String key : keys) {
+                        sources.computeIfAbsent(key, k -> new ArrayList<>()).add(new Layer.Toml(path));
+                    }
+                }
+            }
+            fragments.add(Map.entry(path, fragment));
+        }
+        return fragments;
+    }
+
+    /** The plain (non-file) environment variables that supplied a key, recorded into {@code sources}. */
+    private static int collectEnvSources(
+            final TerraceLoader.Layers layers,
+            final Map<String, String> environment,
+            final Map<String, List<Layer>> sources) {
+        final Map<String, Set<String>> env = layers.dialect().plainEnvEntries(environment);
+        for (final Map.Entry<String, Set<String>> entry : env.entrySet()) {
+            for (final String var : entry.getValue()) {
+                sources.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(new Layer.Env(var));
+            }
+        }
+        return env.size();
+    }
+
+    /** The secrets directory's own values, recorded into {@code sources}. */
+    private static int collectSecretsSources(
+            final TerraceLoader.Layers layers, final Map<String, List<Layer>> sources) {
+        final SecretsDir secrets = layers.files().secrets();
+        if (secrets == null) {
+            return 0;
+        }
+        for (final Map.Entry<String, FileValue> entry : secrets.values().entrySet()) {
+            sources.computeIfAbsent(entry.getKey(), k -> new ArrayList<>())
+                    .add(new Layer.SecretsFile(entry.getValue().path()));
+        }
+        return secrets.values().size();
+    }
+
+    /** Every indirection (a {@code _FILE}-suffixed variable) that supplied a key, recorded into
+     * {@code sources}. */
+    private static int collectIndirectionSources(
+            final TerraceLoader.Layers layers, final Map<String, List<Layer>> sources) {
+        final FileSuffixEnv indirections = layers.files().indirections();
+        for (final Map.Entry<String, FileValue> entry : indirections.values().entrySet()) {
+            final String key = entry.getKey();
+            // Recorded alongside the value, so this is the spelling the operator used. The
+            // fallback reconstructs the documented one and cannot really be reached: it is the
+            // last code that should throw to say so.
+            final String var = indirections
+                    .origin(key)
+                    .orElseGet(() ->
+                            layers.dialect().envSpelling(key) + layers.dialect().indirectionSuffix());
+            sources.computeIfAbsent(key, k -> new ArrayList<>())
+                    .add(new Layer.Indirection(var, entry.getValue().path()));
+        }
+        return indirections.values().size();
+    }
+
+    /** Every key that has at least one source, as its own {@link Origin}. */
+    private static List<Origin> collectOrigins(final Map<String, List<Layer>> sources) {
+        final List<Origin> origins = new ArrayList<>();
+        for (final Map.Entry<String, List<Layer>> entry : sources.entrySet()) {
+            final Origin origin = Origin.fromSources(entry.getKey(), entry.getValue());
+            if (origin != null) {
+                origins.add(origin);
+            }
+        }
+        return origins;
+    }
+
+    /** One key's origin, by key path ({@code auth.jwt_secret}).
+     *
+     * @param key the key path to look up, dotted
+     */
     public Optional<Origin> origin(final String key) {
-        for (Origin origin : origins) {
+        for (final Origin origin : this.origins) {
             if (origin.key().equals(key)) {
                 return Optional.of(origin);
             }
@@ -178,7 +211,7 @@ public final class Explanation {
     /** The keys more than one layer supplied, in key-path order. */
     public List<Origin> contested() {
         final List<Origin> contested = new ArrayList<>();
-        for (Origin origin : origins) {
+        for (final Origin origin : this.origins) {
             if (origin.isContested()) {
                 contested.add(origin);
             }
@@ -188,7 +221,7 @@ public final class Explanation {
 
     /** The secrets directory in use, if one was configured. */
     public Optional<Path> secretsDir() {
-        return Optional.ofNullable(secretsDir);
+        return Optional.ofNullable(this.secretsDir);
     }
 
     /**
@@ -200,21 +233,24 @@ public final class Explanation {
     @Override
     public String toString() {
         final StringBuilder out = new StringBuilder();
-        final int contestedCount = contested().size();
-        out.append("terrace-config: prefix `").append(prefix).append("`, ").append(plural(origins.size(), "key"));
+        final int contestedCount = this.contested().size();
+        out.append("terrace-config: prefix `")
+                .append(this.prefix)
+                .append("`, ")
+                .append(plural(this.origins.size(), "key"));
         if (contestedCount > 0) {
             out.append(", ").append(contestedCount).append(" supplied by more than one layer");
         }
 
         out.append("\nlayers, lowest precedence first:\n  TOML          ");
-        if (configFromEnv) {
-            out.append(configVar).append('=').append(configPath);
+        if (this.configFromEnv) {
+            out.append(this.configVar).append('=').append(this.configPath);
         } else {
             // The path alone would read as though the variable were set to it, and "the
             // variable is not set" is a different thing to check than "the file is not there".
-            out.append(configVar).append(" unset, default ").append(configPath);
+            out.append(this.configVar).append(" unset, default ").append(this.configPath);
         }
-        for (Map.Entry<Path, Fragment> fragment : fragments) {
+        for (final Map.Entry<Path, Fragment> fragment : this.fragments) {
             out.append("\n                  ")
                     .append(fragment.getKey())
                     .append(" (")
@@ -223,47 +259,47 @@ public final class Explanation {
         }
 
         out.append("\n  environment   ")
-                .append(prefix)
+                .append(this.prefix)
                 .append("* (")
-                .append(count(envKeys))
+                .append(count(this.envKeys))
                 .append(')');
 
         out.append("\n  secrets dir   ");
-        if (secretsDir != null) {
-            out.append(secretsVar)
+        if (this.secretsDir != null) {
+            out.append(this.secretsVar)
                     .append('=')
-                    .append(secretsDir)
+                    .append(this.secretsDir)
                     .append(" (")
-                    .append(count(secretsKeys))
+                    .append(count(this.secretsKeys))
                     .append(')');
         } else {
-            out.append(secretsVar).append(" unset");
+            out.append(this.secretsVar).append(" unset");
         }
 
         out.append("\n  indirection   ")
-                .append(prefix)
+                .append(this.prefix)
                 .append('*')
-                .append(indirectionSuffix)
+                .append(this.indirectionSuffix)
                 .append(" (")
-                .append(count(indirectionKeys))
+                .append(count(this.indirectionKeys))
                 .append(')');
 
         out.append("\nkeys:");
-        if (origins.isEmpty()) {
+        if (this.origins.isEmpty()) {
             // An empty section reads as a rendering bug; this reads as the finding it is.
             return out.append("\n  none — every value in this configuration is a default")
                     .toString();
         }
 
         int longest = 0;
-        for (Origin origin : origins) {
+        for (final Origin origin : this.origins) {
             longest = Math.max(longest, origin.key().length());
         }
         final int width = Math.min(longest, MAX_KEY_WIDTH);
 
-        for (Origin origin : origins) {
+        for (final Origin origin : this.origins) {
             out.append("\n  ").append(pad(origin.key(), width)).append("  <- ").append(origin.effective());
-            for (Layer shadowed : origin.shadowed()) {
+            for (final Layer shadowed : origin.shadowed()) {
                 out.append("\n  ")
                         .append(pad("", width))
                         .append("     shadowing ")

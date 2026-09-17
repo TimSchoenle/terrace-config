@@ -4,10 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.List;
-
-import org.junit.jupiter.api.Test;
-
 import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Dialect;
@@ -20,6 +16,8 @@ import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 /**
  * One test per {@code spec/v1/FORMAT.md} refusal, numbered as that section numbers them, plus one

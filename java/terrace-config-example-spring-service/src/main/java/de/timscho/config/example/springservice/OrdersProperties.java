@@ -1,12 +1,11 @@
 package de.timscho.config.example.springservice;
 
-import lombok.Getter;
-import lombok.Setter;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import de.timscho.config.annotations.Nested;
 import de.timscho.config.annotations.TerraceConfig;
 import de.timscho.config.annotations.Values;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * The root configuration a small "orders" service reads at boot, bound by Spring's own {@code

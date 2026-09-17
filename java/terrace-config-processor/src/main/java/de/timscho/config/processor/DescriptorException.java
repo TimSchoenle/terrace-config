@@ -17,6 +17,6 @@ final class DescriptorException extends RuntimeException {
     }
 
     Element element() {
-        return element;
+        return this.element;
     }
 }

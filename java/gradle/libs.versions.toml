@@ -17,7 +17,8 @@ compile-testing = "0.23.0"
 tomlj = "1.1.1"
 jspecify = "1.0.1"
 jetbrains-annotations = "26.1.0"
-checkstyle = "10.26.1"
+checkstyle = "14.1.0"
+checkstyle-library-ruleset = "configs-checkstyle-library-v1.0.2"
 vanniktech-publish-plugin = "0.37.0"
 
 [libraries]
@@ -33,3 +34,4 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
+checkstyle-library-ruleset = { module = "com.github.TimSchoenle.actions:checkstyle-library", version.ref = "checkstyle-library-ruleset" }

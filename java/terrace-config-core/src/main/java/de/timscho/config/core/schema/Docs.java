@@ -18,7 +18,10 @@ public enum Docs {
     /** The whole comment, its paragraphs and line breaks intact. */
     FULL;
 
-    /** The text this setting takes from {@code docs}, or {@code null} when there is nothing to take. */
+    /** The text this setting takes from {@code docs}, or {@code null} when there is nothing to take.
+     *
+     * @param docs the raw doc comment to extract from
+     */
     public @Nullable String of(final String docs) {
         final String text;
         switch (this) {
@@ -38,7 +41,7 @@ public enum Docs {
     /** The first paragraph of {@code docs}, on one line, soft wraps turned into spaces. */
     private static String summary(final String docs) {
         final StringBuilder summary = new StringBuilder();
-        for (String line : docs.split("\n", -1)) {
+        for (final String line : docs.split("\n", -1)) {
             if (line.trim().isEmpty()) {
                 break;
             }

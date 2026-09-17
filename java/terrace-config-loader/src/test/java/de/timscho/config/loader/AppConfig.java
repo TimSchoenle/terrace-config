@@ -1,7 +1,6 @@
 package de.timscho.config.loader;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import de.timscho.config.annotations.Nested;
 import de.timscho.config.annotations.Range;
 import de.timscho.config.annotations.Secret;

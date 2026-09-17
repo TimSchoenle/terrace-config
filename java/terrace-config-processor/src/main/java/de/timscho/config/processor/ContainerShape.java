@@ -1,13 +1,10 @@
 package de.timscho.config.processor;
 
+import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 import java.util.List;
-
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
-
 import org.jspecify.annotations.Nullable;
-
-import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 
 /**
  * The result of asking whether a field's declared type is one of the containers this processor
@@ -29,11 +26,11 @@ final class ContainerShape {
     }
 
     ContainerKind kind() {
-        return kind;
+        return this.kind;
     }
 
     @Nullable TypeMirror element() {
-        return element;
+        return this.element;
     }
 
     static ContainerShape of(final TypeMirror type) {
@@ -42,6 +39,11 @@ final class ContainerShape {
         }
         final String erasedName = declared.asElement().toString();
         final List<? extends TypeMirror> args = declared.getTypeArguments();
+        // CHECKSTYLE.OFF: Indentation -- palantirJavaFormat wraps each arrow-case body at 4 spaces
+        // past `case`; the fetched ruleset's Indentation check wants 8. Reformatting by hand would
+        // just be undone by the next spotlessApply, so this scoped disable defers to the formatter
+        // that actually governs this file (see terrace-config.java-conventions.gradle.kts'
+        // checkstyle block).
         return switch (erasedName) {
             case "java.util.Optional" ->
                 args.size() == 1 ? new ContainerShape(ContainerKind.OPTIONAL, args.get(0)) : NONE;
@@ -54,5 +56,6 @@ final class ContainerShape {
                 args.size() == 2 ? new ContainerShape(ContainerKind.MAP, args.get(1)) : NONE;
             default -> NONE;
         };
+        // CHECKSTYLE.ON: Indentation
     }
 }
