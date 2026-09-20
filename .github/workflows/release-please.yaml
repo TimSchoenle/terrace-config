@@ -104,6 +104,6 @@ jobs:
       contents: write # to attach the assets to the release it just created
       packages: write # to push the image
       id-token: write # for keyless signing of both
-    uses: ./.github/workflows/release-cli.yml
+    uses: $/.github/workflows/release-cli.yml
     with:
       tag: ${{ needs.release-please.outputs.cli_tag }}
