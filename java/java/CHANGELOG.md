@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.2.0...terrace-config-java-v0.3.0) (2026-09-21)
+
+
+### Features
+
+* **Java:** improve java conformance level ([#164](https://github.com/TimSchoenle/terrace-config/issues/164)) ([dbd94cd](https://github.com/TimSchoenle/terrace-config/commit/dbd94cd07cfd6f5e06f42bcc0d0169e272648996))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.google.testing.compile:compile-testing to v0.23.0 ([#146](https://github.com/TimSchoenle/terrace-config/issues/146)) ([97dbdd0](https://github.com/TimSchoenle/terrace-config/commit/97dbdd0c3a69fbe33cd265ed441029f3f3592145))
+* **deps:** update dependency com.networknt:json-schema-validator to v1.5.9 ([#140](https://github.com/TimSchoenle/terrace-config/issues/140)) ([957f5b9](https://github.com/TimSchoenle/terrace-config/commit/957f5b949405184f59f05d9e6177e5312f022386))
+* **deps:** update dependency org.junit:junit-bom to v5.14.4 ([#149](https://github.com/TimSchoenle/terrace-config/issues/149)) ([c386ec1](https://github.com/TimSchoenle/terrace-config/commit/c386ec13b30921f9756bdf42ccbf65628ce122ae))
+* **deps:** update dependency org.projectlombok:lombok to v1.18.48 ([#141](https://github.com/TimSchoenle/terrace-config/issues/141)) ([d605e03](https://github.com/TimSchoenle/terrace-config/commit/d605e03abf39b077f12142c42c66272fa4ccec66))
+* **deps:** update dependency org.tomlj:tomlj to v1.3.0 ([#171](https://github.com/TimSchoenle/terrace-config/issues/171)) ([0891049](https://github.com/TimSchoenle/terrace-config/commit/0891049071153785cd09f416b2c2320de1c1b174))
+* **deps:** update jackson monorepo ([677816a](https://github.com/TimSchoenle/terrace-config/commit/677816a1738505c7ae1b2d779035ae4d7aa080ef))
+* **deps:** update jackson monorepo ([#143](https://github.com/TimSchoenle/terrace-config/issues/143)) ([677816a](https://github.com/TimSchoenle/terrace-config/commit/677816a1738505c7ae1b2d779035ae4d7aa080ef))
+
 ## [0.2.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.1.0...terrace-config-java-v0.2.0) (2026-09-13)
 
 
