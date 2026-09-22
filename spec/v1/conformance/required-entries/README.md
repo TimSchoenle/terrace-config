@@ -93,4 +93,7 @@ hand-written for [`minimal`](../minimal/)'s reason. The doc comments' second par
 above and present in the fixture.
 
 `terrace-config-java` — `JavaConformanceTest`, fixture `RequiredEntriesConfig`, refined through
-`ContractAssembler.refineWith("legal", …)` with the same two refinements.
+`Schema#refineWith("legal", …)` with the same two refinements. Its maps are `Map<String, String>`,
+so its element schemas differ from the Rust document's; tier 2 does not compare those, and
+`publishesTheSameRefinementsAsTheSharedSpecCorpus` holds the refinement's own effects — `required`,
+`constraint.required`, which defaults survive — to this document key by key.

@@ -213,6 +213,68 @@ class ContractValidatorTest {
     }
 
     @Test
+    void refusal9_aDefaultItsOwnConstraintRejects() {
+        java.util.Map<String, Object> constraint = new java.util.TreeMap<>();
+        constraint.put("type", "object");
+        constraint.put("required", List.of("imprint", "privacy"));
+        Key documents = key("legal.documents", "PORTFOLIO_LEGAL__DOCUMENTS", null).toBuilder()
+                .constraint(constraint)
+                .defaultText("{  }")
+                .defaultValue(java.util.Map.of())
+                .build();
+        Contract contract = validContract()
+                .schema(validContract().build().getSchema().toBuilder()
+                        .keys(List.of(documents))
+                        .build())
+                .build();
+
+        assertThatThrownBy(() -> ContractValidator.validate(contract))
+                .isInstanceOf(DefaultViolatesConstraintException.class)
+                .hasMessageContaining("`legal.documents` publishes the default {}")
+                .hasMessageContaining("it is missing the required entries `imprint`, `privacy`");
+    }
+
+    @Test
+    void refusal9_aBoundTheDefaultFallsOutsideOf() {
+        java.util.Map<String, Object> constraint = new java.util.TreeMap<>();
+        constraint.put("type", "integer");
+        constraint.put("minimum", 1);
+        Key workers = key("workers", "PORTFOLIO_WORKERS", null).toBuilder()
+                .constraint(constraint)
+                .defaultText("0")
+                .defaultValue(0)
+                .build();
+        Contract contract = validContract()
+                .schema(validContract().build().getSchema().toBuilder()
+                        .keys(List.of(workers))
+                        .build())
+                .build();
+
+        assertThatThrownBy(() -> ContractValidator.validate(contract))
+                .isInstanceOf(DefaultViolatesConstraintException.class)
+                .hasMessageContaining("below the minimum 1");
+    }
+
+    @Test
+    void refusal9_aKeywordTheEvaluatorCannotDecideIsPublishedRatherThanRefused() {
+        java.util.Map<String, Object> constraint = new java.util.TreeMap<>();
+        constraint.put("type", "string");
+        constraint.put("pattern", "^never$");
+        Key text = key("name", "PORTFOLIO_NAME", null).toBuilder()
+                .constraint(constraint)
+                .defaultText("x")
+                .defaultValue("x")
+                .build();
+        Contract contract = validContract()
+                .schema(validContract().build().getSchema().toBuilder()
+                        .keys(List.of(text))
+                        .build())
+                .build();
+
+        assertThatCode(() -> ContractValidator.validate(contract)).doesNotThrowAnyException();
+    }
+
+    @Test
     void exceptionMessagesNameTheOffendingField() {
         assertThat(new EmptyPrefixException()).hasMessageContaining("prefix");
     }

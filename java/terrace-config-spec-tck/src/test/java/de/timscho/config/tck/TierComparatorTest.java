@@ -23,7 +23,7 @@ class TierComparatorTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
     void a_document_compared_with_itself_satisfies_every_tier(String name) throws IOException {
         JsonNode contract = readCase(name);
 

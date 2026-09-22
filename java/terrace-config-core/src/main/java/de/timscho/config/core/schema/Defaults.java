@@ -52,7 +52,16 @@ public class Defaults {
             // secret worth hiding, and `<redacted>` in place of "unset" would read as though the
             // service ships with a credential baked in.
             if (key.isSecret()) {
+                // No refinement check here: the value is withheld, so a refinement applied later
+                // could never see it either, and checking it on this path alone would make the
+                // result depend on which ran first. A secret with a default is refused anyway.
                 keys.add(key.toBuilder().defaultText("<redacted>").build());
+                continue;
+            }
+            // A default the refined constraint rejects supplies nothing: the image refuses it at
+            // boot. The rule `Refiner` applies when the default arrived first, so the two commute.
+            if (Refiner.lacksRequiredEntries(key, observed)) {
+                keys.add(key.toBuilder().required(true).build());
                 continue;
             }
             keys.add(

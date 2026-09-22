@@ -29,7 +29,7 @@ class MetaSchemaValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
     void every_stored_case_satisfies_the_meta_schema(String name) throws IOException {
         MetaSchemaValidator validator = MetaSchemaValidator.load();
         JsonNode contract = readCase(name);
@@ -41,7 +41,7 @@ class MetaSchemaValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
     void the_schema_half_of_each_case_satisfies_the_meta_schema_on_its_own(String name) throws IOException {
         // The `json` rendering is published as an artefact of its own, so the subschema has to be
         // reachable and correct without the envelope around it.

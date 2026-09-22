@@ -84,6 +84,27 @@ public enum Column {
     }
 
     private static String renderType(final Key key) {
+        final String shape = renderShape(key);
+        // Part of what the value has to be, so beside the type. Read off the constraint, which is
+        // what a validator reads too.
+        final List<String> entries = Refiner.requiredEntries(key);
+        if (entries.isEmpty()) {
+            return shape;
+        }
+        final StringBuilder required = new StringBuilder();
+        for (final String entry : entries) {
+            if (!required.isEmpty()) {
+                required.append(", ");
+            }
+            required.append('`').append(escape(entry)).append('`');
+        }
+        if (key.getTy() == null && key.getValues().isEmpty()) {
+            return "must contain: " + required;
+        }
+        return shape + ", must contain: " + required;
+    }
+
+    private static String renderShape(final Key key) {
         final List<String> values = key.getValues();
         final String ty = key.getTy();
         if (values.isEmpty()) {

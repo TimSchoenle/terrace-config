@@ -157,7 +157,8 @@ cd java
 ./gradlew :terrace-config-spec-tck:test
 ```
 
-Three checks per case (`minimal`, `full-surface`, `unnameable-key`), for a different reason each:
+Three checks per case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`), for a
+different reason each:
 the rendering validates against the meta-schema (tier 1); every dialect spelling — `env`, both file
 forms, every alias list, `unreachable` — agrees with this same shared corpus (tier 2); and the
 rendering is byte-identical, `producer.version` substituted, against a Java-only golden this module
