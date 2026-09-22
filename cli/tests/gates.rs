@@ -136,6 +136,40 @@ fn a_structured_key_without_brackets_is_reported() {
     assert!(findings[0].message.contains("brackets"), "{findings:?}");
 }
 
+/// The `required-entries` corpus case, whose `legal.documents` map must hold `imprint` and
+/// `privacy` — a constraint its producer supplied at build time rather than read off a type.
+fn refined() -> Union {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("spec/v1/conformance/required-entries/contract.json");
+    let text = std::fs::read_to_string(&path).expect("the corpus case is there");
+    union_contracts(&[(
+        "site".to_owned(),
+        serde_json::from_str(&text).expect("the case is JSON"),
+    )])
+    .expect("one contract merges")
+}
+
+#[test]
+fn a_map_missing_required_entries_names_the_key_and_every_entry() {
+    let merged = refined();
+    let findings = check(&[("SITE_LEGAL__DOCUMENTS", "{}")], &merged);
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    let message = &findings[0].message;
+    assert!(message.contains("SITE_LEGAL__DOCUMENTS"), "{message}");
+    assert!(
+        message.contains(r#"is missing the required keys "imprint", "privacy""#),
+        "{message}"
+    );
+
+    let complete = r#"{ imprint = { title = "Imprint" }, privacy = { title = "Privacy" }, terms = { title = "Terms" } }"#;
+    assert_eq!(
+        check(&[("SITE_LEGAL__DOCUMENTS", complete)], &merged),
+        Vec::new(),
+        "every required entry present, and an extra one: the map stays open"
+    );
+}
+
 #[test]
 fn a_structured_key_with_brackets_is_silent() {
     let merged = union(&["api"]);

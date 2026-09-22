@@ -44,7 +44,7 @@
 use serde_json::{Map, Value as Json};
 
 use crate::classify::matches_ignore;
-use crate::document::SCHEMA_VERSION;
+use crate::document::{SCHEMA_VERSION, required_entries};
 use crate::text::{quoted, short};
 
 /// The smallest chart version bump a finding justifies.
@@ -932,7 +932,14 @@ fn diff_entry(
     let mut changes = Vec::new();
 
     for (name, severity) in fields {
-        if old.get(name) != new.get(name) {
+        // A map's required entries are graded by direction below, so a constraint differing in
+        // nothing else is not a second, flat-graded finding about the same edit.
+        let differs = if *name == "constraint" {
+            without_entries(old.get(name)) != without_entries(new.get(name))
+        } else {
+            old.get(name) != new.get(name)
+        };
+        if differs {
             changes.push(Change {
                 severity: *severity,
                 area,
@@ -951,6 +958,7 @@ fn diff_entry(
     }
 
     changes.extend(diff_required(area, subject, old, new));
+    changes.extend(diff_required_entries(area, subject, old, new));
     changes.extend(diff_text_form(area, subject, old, new));
     changes.extend(diff_default(area, subject, old, new));
 
@@ -1018,6 +1026,76 @@ fn diff_required(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Chang
             format!("{subject} is no longer required")
         },
     }]
+}
+
+/// A map's required entries are graded by direction, as `required` is.
+///
+/// An entry the map must now contain is a tightening: a chart rendering the map without it renders
+/// a document the image refuses, so gaining one is major for the same reason gaining `required` is.
+/// Losing one is a relaxation — a value that was refused may now be accepted, and nothing that
+/// worked stops working.
+fn diff_required_entries(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Change> {
+    let before = required_entries(old.get("constraint"));
+    let after = required_entries(new.get("constraint"));
+    let gained: Vec<&str> = after
+        .iter()
+        .filter(|entry| !before.contains(entry))
+        .copied()
+        .collect();
+    let lost: Vec<&str> = before
+        .iter()
+        .filter(|entry| !after.contains(entry))
+        .copied()
+        .collect();
+
+    let entries = |names: &[&str]| -> Json {
+        Json::Array(
+            names
+                .iter()
+                .map(|name| Json::String((*name).to_owned()))
+                .collect(),
+        )
+    };
+    let mut changes = Vec::new();
+    if !gained.is_empty() {
+        changes.push(Change {
+            severity: Severity::Major,
+            area,
+            kind: Kind::Changed,
+            subject: subject.to_owned(),
+            field: Some("constraint.required".to_owned()),
+            old: Some(entries(&before)),
+            new: Some(entries(&after)),
+            message: format!(
+                "{subject} must now contain {}; a chart rendering the map without them will not start",
+                gained.join(", ")
+            ),
+        });
+    }
+    if !lost.is_empty() {
+        changes.push(Change {
+            severity: Severity::Minor,
+            area,
+            kind: Kind::Changed,
+            subject: subject.to_owned(),
+            field: Some("constraint.required".to_owned()),
+            old: Some(entries(&before)),
+            new: Some(entries(&after)),
+            message: format!("{subject} no longer has to contain {}", lost.join(", ")),
+        });
+    }
+    changes
+}
+
+/// A constraint with a map's required entries taken out, for comparing everything else about it.
+fn without_entries(constraint: Option<&Json>) -> Option<Json> {
+    let mut held = constraint.cloned()?;
+    if !required_entries(constraint).is_empty()
+        && let Some(fields) = held.as_object_mut()
+    {
+        fields.remove("required");
+    }
+    Some(held)
 }
 
 /// `text_form` decides the read, and with it whether a file can supply the setting at all.
@@ -1403,6 +1481,89 @@ mod tests {
             &document(&one("a.b", &json!({})), &none()),
         );
         assert_eq!(lost[0].severity, Severity::Minor);
+    }
+
+    #[test]
+    fn gaining_a_required_entry_is_major_and_losing_one_is_a_relaxation() {
+        let map = |required: &[&str]| {
+            let mut constraint =
+                json!({"type": "object", "additionalProperties": {"type": "string"}});
+            if !required.is_empty() {
+                constraint["required"] = json!(required);
+            }
+            document(
+                &one("legal.documents", &json!({"constraint": constraint})),
+                &none(),
+            )
+        };
+
+        let gained = changes(&map(&[]), &map(&["imprint", "privacy"]));
+        assert_eq!(
+            gained.len(),
+            1,
+            "one finding, not a flat constraint line beside it: {gained:?}"
+        );
+        assert_eq!(gained[0].severity, Severity::Major);
+        assert_eq!(gained[0].field.as_deref(), Some("constraint.required"));
+        assert!(
+            gained[0]
+                .message
+                .contains("must now contain imprint, privacy"),
+            "{gained:?}"
+        );
+
+        let lost = changes(&map(&["imprint", "privacy"]), &map(&["imprint"]));
+        assert_eq!(lost.len(), 1, "{lost:?}");
+        assert_eq!(lost[0].severity, Severity::Minor);
+        assert!(
+            lost[0].message.contains("no longer has to contain privacy"),
+            "{lost:?}"
+        );
+
+        // Anything else about the constraint moving is still its own finding.
+        let mut widened = map(&["imprint"]);
+        widened["schema"]["keys"][0]["constraint"]["additionalProperties"] =
+            json!({"type": "integer"});
+        let moved = changes(&map(&["imprint"]), &widened);
+        assert!(
+            moved
+                .iter()
+                .any(|change| change.field.as_deref() == Some("constraint")),
+            "{moved:?}"
+        );
+    }
+
+    #[test]
+    fn a_refinement_that_turns_a_default_into_a_requirement_is_major() {
+        let before = document(
+            &one(
+                "legal.documents",
+                &json!({"constraint": {"type": "object"}, "default": "{}", "default_value": {}}),
+            ),
+            &none(),
+        );
+        let after = document(
+            &one(
+                "legal.documents",
+                &json!({"constraint": {"type": "object", "required": ["imprint"]}, "required": true}),
+            ),
+            &none(),
+        );
+        let found = changes(&before, &after);
+        assert_eq!(
+            super::worst(found.iter().map(|change| change.severity)),
+            Severity::Major
+        );
+        assert!(
+            found
+                .iter()
+                .any(|change| change.field.as_deref() == Some("required"))
+        );
+        assert!(
+            found
+                .iter()
+                .any(|change| change.field.as_deref() == Some("constraint.required"))
+        );
     }
 
     #[test]

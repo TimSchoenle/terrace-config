@@ -596,14 +596,28 @@ fn container(schema: &Map<String, Json>, value: &Json, at: &str) -> Result<Optio
     }
 
     if let Json::Object(fields) = value {
+        // Every missing name in one message, not the first: a map refined to hold `imprint` and
+        // `privacy` that holds neither is one finding naming both, rather than a fix-and-rerun
+        // loop that discovers the second after the first is supplied.
         if let Some(Json::Array(required)) = schema.get("required") {
-            for name in required {
-                if let Some(name) = name.as_str()
-                    && !fields.contains_key(name)
-                {
+            let missing: Vec<String> = required
+                .iter()
+                .filter_map(Json::as_str)
+                .filter(|name| !fields.contains_key(*name))
+                .map(json_text)
+                .collect();
+            match missing.as_slice() {
+                [] => {}
+                [one] => {
                     return Ok(Some(position(
                         at,
-                        &format!("is missing the required key {}", json_text(name)),
+                        &format!("is missing the required key {one}"),
+                    )));
+                }
+                many => {
+                    return Ok(Some(position(
+                        at,
+                        &format!("is missing the required keys {}", many.join(", ")),
                     )));
                 }
             }
@@ -811,6 +825,39 @@ mod tests {
             .expect("the vocabulary is implemented")
             .expect("`put` is not one of the choices");
         assert!(failure.starts_with("[1]: "), "{failure}");
+    }
+
+    #[test]
+    fn a_map_missing_required_entries_names_every_one() {
+        // A map-typed key refined with the entries its host requires: the environment spelling is
+        // a TOML literal, and the range step reads it and holds it to `required`.
+        let map = entry(&json!({
+            "path": "legal.documents",
+            "text_form": "structured",
+            "constraint": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "required": ["imprint", "privacy"],
+            },
+        }));
+        assert_eq!(
+            range(Entry(&map), "figment", "{}").expect("a known vocabulary"),
+            Range::Wrong(r#"is missing the required keys "imprint", "privacy""#.to_owned())
+        );
+        assert_eq!(
+            range(Entry(&map), "figment", r#"{ privacy = "p" }"#).expect("a known vocabulary"),
+            Range::Wrong(r#"is missing the required key "imprint""#.to_owned())
+        );
+        // Open: an entry nobody required is not a finding.
+        assert_eq!(
+            range(
+                Entry(&map),
+                "figment",
+                r#"{ imprint = "i", privacy = "p", terms = "t" }"#
+            )
+            .expect("a known vocabulary"),
+            Range::Ok
+        );
     }
 
     #[test]

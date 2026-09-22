@@ -711,6 +711,13 @@ pub fn describe_constraint(constraint: Option<&Json>) -> String {
         }
     }
 
+    // A map's required entries — `required` beside no `properties`, which a producer's refinement
+    // puts there. A struct's `required` stays folded into its fields line, which marks each one.
+    let entries = crate::document::required_entries_of(schema);
+    if !entries.is_empty() {
+        parts.push(format!("must contain: {}", entries.join(", ")));
+    }
+
     for (keyword, value) in schema {
         if !CONSTRAINT_ORDER.contains(&keyword.as_str())
             && !CONSTRAINT_FOLDED.contains(&keyword.as_str())
@@ -1927,6 +1934,26 @@ mod tests {
                 .contains("contentEncoding=\"base64\""),
             "{}",
             described(&json!({"type": "string", "contentEncoding": "base64"}))
+        );
+    }
+
+    #[test]
+    fn a_maps_required_entries_are_said_and_a_structs_stay_with_its_fields() {
+        assert_eq!(
+            described(&json!({
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "required": ["imprint", "privacy"],
+            })),
+            "object, of string, must contain: imprint, privacy"
+        );
+        assert!(
+            !described(&json!({
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+            }))
+            .contains("must contain"),
         );
     }
 

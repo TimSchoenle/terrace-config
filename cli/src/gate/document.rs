@@ -171,10 +171,31 @@ pub fn check_document(
             ))
         })?;
 
+    Ok(Some(findings(&validator, &instance, source, union)))
+}
+
+/// Every way `instance` fails the merged schema, as findings a reader can act on.
+fn findings(
+    validator: &jsonschema::Validator,
+    instance: &Json,
+    source: &DocumentSource,
+    union: &Union,
+) -> Vec<Finding> {
     let mut findings = Vec::new();
-    for failure in validator.iter_errors(&instance) {
+    // Every name one object is missing, gathered into one finding per object: the engine reports
+    // each separately, and a map refined to hold `imprint` and `privacy` that holds neither is one
+    // defect in one place, not two lines a reader has to put back together.
+    let mut missing: Vec<(String, Vec<String>)> = Vec::new();
+    for failure in validator.iter_errors(instance) {
         let path = dotted(&failure.instance_path().to_string());
         match failure.kind() {
+            jsonschema::error::ValidationErrorKind::Required { property } => {
+                let name = property.to_string();
+                match missing.iter_mut().find(|(held, _)| *held == path) {
+                    Some((_, names)) => names.push(name),
+                    None => missing.push((path, vec![name])),
+                }
+            }
             // An unknown key is the rename case, and the union already holds every key path — so
             // the answer to "what was it called instead" costs an edit-distance pass and turns the
             // most common failure here from a puzzle into a one-line answer.
@@ -199,7 +220,20 @@ pub fn check_document(
             ))),
         }
     }
-    Ok(Some(findings))
+    for (path, names) in missing {
+        let what = if names.len() == 1 {
+            "the required key"
+        } else {
+            "the required keys"
+        };
+        findings.push(error(format!(
+            "{}: {}: is missing {what} {}",
+            source.key,
+            if path.is_empty() { "(root)" } else { &path },
+            names.join(", ")
+        )));
+    }
+    findings
 }
 
 /// Drop every `additionalProperties: false` the union added, for a `closed` exemption.
@@ -397,6 +431,44 @@ mod tests {
             findings[0].message,
             "ConfigMap 'app-config' has no key 'config.toml' (did you mean config.tml?)"
         );
+    }
+
+    #[test]
+    fn a_map_missing_required_entries_is_one_finding_naming_the_key_and_every_entry() {
+        // A map-typed key whose constraint was refined with the entries its host requires. The
+        // contract's own `json_schema` carries them inside the key's property schema, which is
+        // where the gate reads them.
+        let merged = union(
+            &json!({"properties": {"legal": {"type": "object", "properties": {"documents": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "required": ["imprint", "privacy"],
+            }}}}}),
+            &json!([{"path": "legal.documents", "text_form": "structured"}]),
+        );
+        let findings = check_document(
+            &config_map("[legal.documents]\n"),
+            &source(),
+            &merged,
+            Relaxed::default(),
+        )
+        .expect("the schema compiles")
+        .expect("the document was rendered");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(
+            findings[0].message,
+            r#"config.toml: legal.documents: is missing the required keys "imprint", "privacy""#
+        );
+
+        let complete = check_document(
+            &config_map("[legal.documents]\nimprint = \"i\"\nprivacy = \"p\"\nterms = \"t\"\n"),
+            &source(),
+            &merged,
+            Relaxed::default(),
+        )
+        .expect("the schema compiles")
+        .expect("the document was rendered");
+        assert!(complete.is_empty(), "the map stays open: {complete:?}");
     }
 
     #[test]

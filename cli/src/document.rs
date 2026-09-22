@@ -278,6 +278,44 @@ pub struct Key {
     pub reserved: bool,
 }
 
+impl Key {
+    /// The entries this key's map must contain, as its constraint publishes them.
+    ///
+    /// See [`required_entries`]. A method so that every renderer reads the one source the
+    /// validators read, rather than a field of its own that could drift from it.
+    pub fn required_entries(&self) -> Vec<&str> {
+        required_entries(self.constraint.as_ref())
+    }
+}
+
+/// The entries a map-typed constraint requires: `required` at the top of an object that declares
+/// no `properties`.
+///
+/// `FORMAT.md` (*Refinements*): a producer MAY tighten a map-typed key's constraint with the entry
+/// names the map must contain, and a consumer showing them reads them from here. An object that
+/// *does* declare `properties` is a struct, whose `required` names its fields rather than a map's
+/// entries, and yields nothing — as does anything that is not an object at all.
+pub fn required_entries(constraint: Option<&Json>) -> Vec<&str> {
+    match constraint {
+        Some(Json::Object(constraint)) => required_entries_of(constraint),
+        _ => Vec::new(),
+    }
+}
+
+/// [`required_entries`], over a constraint already known to be an object.
+pub fn required_entries_of(constraint: &serde_json::Map<String, Json>) -> Vec<&str> {
+    if constraint.get("type").and_then(Json::as_str) != Some("object")
+        || constraint.contains_key("properties")
+    {
+        return Vec::new();
+    }
+    constraint
+        .get("required")
+        .and_then(Json::as_array)
+        .map(|names| names.iter().filter_map(Json::as_str).collect())
+        .unwrap_or_default()
+}
+
 /// Why the environment cannot name a key.
 ///
 /// The two differ in whether the environment can reach the key at all, and a consumer meeting a

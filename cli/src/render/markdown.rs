@@ -189,20 +189,39 @@ impl Column {
             // The choices when there are any, because a type name tells an operator nothing they
             // can act on and `trace | debug | info` tells them exactly what to type. The type name
             // stays in front of them, since it is what they will see in the source.
-            Self::Type => match (&key.ty, key.values.as_slice()) {
-                (_, []) => optional_code(key.ty.as_deref()),
-                (ty, values) => {
-                    let choices = values
+            Self::Type => {
+                let shape = match (&key.ty, key.values.as_slice()) {
+                    (_, []) => optional_code(key.ty.as_deref()),
+                    (ty, values) => {
+                        let choices = values
+                            .iter()
+                            .map(|value| format!("`{}`", escape(value)))
+                            .collect::<Vec<_>>()
+                            .join(r" \| ");
+                        match ty {
+                            Some(ty) => format!("`{}`: {choices}", escape(ty)),
+                            None => choices,
+                        }
+                    }
+                };
+                // Part of what the value has to be, so beside the type: a map type says "a map",
+                // and this says which map. Read off `constraint`, which a validator reads too.
+                let entries = key.required_entries();
+                if entries.is_empty() {
+                    shape
+                } else {
+                    let entries = entries
                         .iter()
-                        .map(|value| format!("`{}`", escape(value)))
+                        .map(|entry| format!("`{}`", escape(entry)))
                         .collect::<Vec<_>>()
-                        .join(r" \| ");
-                    match ty {
-                        Some(ty) => format!("`{}`: {choices}", escape(ty)),
-                        None => choices,
+                        .join(", ");
+                    if key.ty.is_none() && key.values.is_empty() {
+                        format!("must contain: {entries}")
+                    } else {
+                        format!("{shape}, must contain: {entries}")
                     }
                 }
-            },
+            }
             Self::Aliases => {
                 if key.aliases.is_empty() {
                     EM_DASH.to_owned()

@@ -127,6 +127,9 @@ pub struct Declared {
     pub text_form: String,
     /// Whether the image refuses to start without it.
     pub required: bool,
+    /// The entries the key's map must contain, read from its `constraint` — empty for anything but
+    /// a map a producer refined.
+    pub entries: Vec<String>,
     /// The contract's own first line about the key.
     ///
     /// Carried into the report because it is what turns a triage question into an answered one: a
@@ -155,6 +158,8 @@ pub struct Credential {
     pub env_file: String,
     /// Whether any reader requires it.
     pub required: bool,
+    /// Every entry any reader requires its map to contain, sorted.
+    pub entries: Vec<String>,
     /// The contract's first line about it.
     pub summary: String,
     /// The declared documents it appears in.
@@ -207,6 +212,10 @@ pub fn declared_secrets(
                     env_file: text(key, "env_file"),
                     text_form: text(key, "text_form"),
                     required: key.get("required").and_then(Json::as_bool) == Some(true),
+                    entries: crate::document::required_entries(key.get("constraint"))
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect(),
                     summary: first_line(key.get("docs")),
                 });
             }
@@ -252,6 +261,13 @@ pub fn credentials(declared: &[Declared]) -> Vec<Credential> {
                 // Unioned exactly as the contract merge unions it: a key any reader requires is a key
                 // the deployment must carry.
                 required: entries.iter().any(|entry| entry.required),
+                // The same union one level down: an entry any reader requires is one the Secret
+                // must carry.
+                entries: sorted(
+                    entries
+                        .iter()
+                        .flat_map(|entry| entry.entries.iter().cloned()),
+                ),
                 // The merge refuses two contracts that document one key differently, so every entry
                 // here carries the same line and the first will do.
                 summary: entries[0].summary.clone(),
@@ -1387,6 +1403,7 @@ mod tests {
             env_file: "FIXTURE_DATABASE__URL_FILE".to_owned(),
             text_form: "text".to_owned(),
             required,
+            entries: Vec::new(),
             summary: "The connection string.".to_owned(),
         }
     }
@@ -1433,6 +1450,7 @@ mod tests {
             env: "TANKOVAULT_INTERNAL__TOKEN".to_owned(),
             env_file: "TANKOVAULT_INTERNAL__TOKEN_FILE".to_owned(),
             required: false,
+            entries: Vec::new(),
             summary: String::new(),
             documents: vec!["d".to_owned()],
             images: vec!["a".to_owned()],

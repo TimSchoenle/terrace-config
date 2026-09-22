@@ -207,6 +207,12 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
         (None, values) => comment(&mut out, &format!("One of: {}", values.join(", "))),
     }
 
+    // The entries a map has to hold, said where the operator is about to write the map.
+    let entries = key.required_entries();
+    if !entries.is_empty() {
+        comment(&mut out, &format!("Must contain: {}", entries.join(", ")));
+    }
+
     if !key.aliases.is_empty() {
         comment(
             &mut out,

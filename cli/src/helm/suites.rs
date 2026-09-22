@@ -60,7 +60,9 @@ use super::declaration::{
     Declaration, Document, chart_dirs, load_declaration, read_yaml, reject_unknown, vendored_for,
 };
 use super::markers::Class;
-use super::testgen::{Plan, Route, Target, VALUES_ROOT, plan, prerequisite_conflict, render_suite};
+use super::testgen::{
+    Plan, Route, Target, VALUES_ROOT, plan, prerequisite_conflict, render_suite, unsupplied_entries,
+};
 use super::{dig, shapes};
 
 /// The file that enrols a chart.
@@ -786,6 +788,15 @@ pub fn build(
             &enrolment.unrouted,
         )?;
         let keys: Vec<&crate::union::Merged> = union.keys.iter().collect();
+        unsupplied_entries(&keys, &enrolment.baseline.values, &values, &enrolment.probe).map_err(
+            |gap| {
+                Error::Invalid(format!(
+                    "{}: {}: {gap}",
+                    chart_dir.join(ENROLMENT).display(),
+                    document.name
+                ))
+            },
+        )?;
         let held: Plan = plan(
             &keys,
             &enrolment.baseline.values,

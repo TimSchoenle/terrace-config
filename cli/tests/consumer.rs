@@ -25,7 +25,12 @@ use terrace_contract::value::{Range, form, range, reads_for};
 use terrace_contract::{Contract, Tier, conform, validate};
 
 /// The cases a producer here can emit, which carry blessed renderings.
-const PRODUCER_CASES: &[&str] = &["minimal", "full-surface", "unnameable-key"];
+const PRODUCER_CASES: &[&str] = &[
+    "minimal",
+    "full-surface",
+    "unnameable-key",
+    "required-entries",
+];
 
 /// The cases only a consumer meets, which carry none and are held by this file.
 const CONSUMER_CASES: &[&str] = &[

@@ -39,7 +39,7 @@ Phase 0 and most of phase 1 are built, in `cli/`. What exists and is under test:
 |---|---|
 | `document` | the envelope, read tolerantly, gating on `terrace_contract` before believing anything |
 | `render` | **all seven renderings**, each byte-identical to the Rust implementation's over the whole corpus |
-| `conform` | the eight refusals, and tier 2's spelling derivation |
+| `conform` | the nine refusals, and tier 2's spelling derivation |
 | `validate` | any document against the embedded `spec/v1/contract.schema.json` |
 | `image` | the label comparison and the Dockerfile block reader |
 | `stamp` | build identity onto a document, with the round trip that makes it safe |
@@ -137,7 +137,7 @@ per language, once                    the binary, for everyone
 ───────────────────────────────       ────────────────────────────────────────────────
 types ──> Schema ──> Contract ──JSON──> render   --format markdown|toml|json-schema|…
                                         stamp    build identity onto a document
-                                        conform  the eight refusals, and a tier
+                                        conform  the nine refusals, and a tier
                                         image    labels and Dockerfile block, read back
                                         check    a rendered chart, against the document
                                         diff     what changed, and what it costs
@@ -160,7 +160,7 @@ new producer what to emit, and this makes emitting it sufficient.
 | descriptors → `Contract` | `Schema::into_contract` | `ContractAssembler` | its own |
 | `Contract` → JSON | `Contract::to_json` | `ContractCodec` | its own |
 | the nine renderings | **library keeps them** (§5) | **never written** | never written |
-| the eight refusals | fast path, better messages | fast path, better messages | optional |
+| the nine refusals | fast path, better messages | fast path, better messages | optional |
 | a TCK | — | wraps the binary | wraps the binary |
 
 The one asymmetry is Rust's, and it is deliberate. `rust/`'s `schema` feature has a *runtime*
@@ -201,7 +201,7 @@ cli/
     document.rs      the envelope, read tolerantly
     render/          markdown, markdown-loader, markdown-keys, toml, json-schema,
                      labels, dockerfile — one module each, all from a document
-    conform.rs       the eight refusals, and tier 1/2/3
+    conform.rs       the nine refusals, and tier 1/2/3
     stamp.rs         build identity onto a document
     image.rs         labels_from_json, dockerfile_block, check_labels
     union.rs         several images, one document
