@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.3.0...terrace-contract-v0.4.0) (2026-09-22)
+
+
+### Features
+
+* schema refinements — constraints a type cannot state, supplied at schema-build time ([#174](https://github.com/TimSchoenle/terrace-config/issues/174)) ([5812492](https://github.com/TimSchoenle/terrace-config/commit/581249281f8ecb0736827de07d2d5ad192ae6472))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate saphyr-parser to 0.1.0 ([#177](https://github.com/TimSchoenle/terrace-config/issues/177)) ([b4bf142](https://github.com/TimSchoenle/terrace-config/commit/b4bf1420d3692e4cf3de33eb4a87c44dec6ec58d))
+
 ## [0.3.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.2.2...terrace-contract-v0.3.0) (2026-09-22)
 
 
