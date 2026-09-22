@@ -3,13 +3,14 @@
 # It exists so that a build integration is language-agnostic: a build stage needs no toolchain, no
 # download step and no platform detection, only a `COPY --from`.
 #
-#     FROM ghcr.io/timschoenle/terrace-contract:1 AS contract
+#     FROM ghcr.io/timschoenle/terrace-contract:0.4 AS contract
 #     COPY --from=contract-builder /out/contract.json /in/contract.json
 #     RUN terrace-contract conform --tier 2 /in/contract.json \
 #      && terrace-contract render --format labels /in/contract.json > /out/labels
 #
-# Every release publishes three tag precisions — `1`, `0.2` and `0.2.2` — and a Dockerfile pins
+# Every release publishes three tag precisions — `0`, `0.4` and `0.4.0` — and a Dockerfile pins
 # the one it wants: the major to take every fix without an edit, the exact version to take none.
+# Below `1.0` a minor release may break, so the minor is what plays the major's role until then.
 #
 # Built from binaries the release workflow already cross-compiled and signed, rather than compiling
 # inside the image. Two reasons, and the second is the load-bearing one: a `cargo build` per

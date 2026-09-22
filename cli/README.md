@@ -74,11 +74,14 @@ the last two cannot tell a failing gate from a broken one.
 The contract-producing stage is the only language-specific part:
 
 ```dockerfile
-FROM ghcr.io/timschoenle/terrace-contract:1 AS contract
+FROM ghcr.io/timschoenle/terrace-contract:0.4 AS contract
 COPY --from=contract-builder /out/contract.json /in/contract.json
 RUN terrace-contract conform --tier 2 /in/contract.json \
  && terrace-contract render --format labels /in/contract.json > /out/labels
 ```
+
+Pin the minor while the version is below `1.0`: a minor release may break, so `0.4` takes every fix
+and nothing else, where `0` would take the breaking releases too.
 
 A Spring Boot service's Dockerfile is that same file with a different `contract-builder` stage.
 
