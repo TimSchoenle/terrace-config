@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.4.0...terrace-contract-v0.4.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* **cli:** pin the container image by a tag that exists ([#185](https://github.com/TimSchoenle/terrace-config/issues/185)) ([f1825bd](https://github.com/TimSchoenle/terrace-config/commit/f1825bd83f0730b4a46ea5c386608f45fb0c82c6))
+
 ## [0.4.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.3.0...terrace-contract-v0.4.0) (2026-09-22)
 
 
