@@ -20,6 +20,12 @@ name: release-please
 # `.github/templates/README.md.hbs` on every pull request from the version in `Cargo.toml`, so
 # the release pull request — which is the commit that changes that version — carries the updated
 # `README.md` with it, rather than leaving the install snippet pointing at the previous tag.
+#
+# Each package gets its own release pull request, and every one of them rewrites a line of the
+# three-line `.release-please-manifest.json`, so merging one conflicts any other open release
+# pull request that edits an adjacent line. `release-please` only re-pushes a release branch when
+# the pull request's title or notes change, so without `always-update` in the config a release
+# pull request whose notes are unchanged stays cut from a stale `main` and cannot be merged.
 
 on:
   push:
