@@ -87,7 +87,7 @@ serde_norway = { version = "0.9", optional = true }
 # half: every event carries a span, so a value's dotted path comes from the document's own
 # structure rather than from indentation. That removes both exceptions a line reader needs, since a
 # `port: 1` inside a block scalar is one scalar event and not a mapping key.
-saphyr-parser = { version = "0.0.12", optional = true }
+saphyr-parser = { version = "0.1.0", optional = true }
 # A real dependency now rather than only a dev one. It was here so that the TOML rendering's claim —
 # that the file it writes *loads* — was held by something that actually parses it; it is here as
 # well because a rendered configuration document is usually TOML and gate 1 has to read one, and
