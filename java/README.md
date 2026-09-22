@@ -120,21 +120,14 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   properties list don't coincide (e.g. `constraint` is optional, `ty` is required-but-nullable),
   so the inclusion rule has to be decided field by field rather than once per class.
 - **`ContractValidator.validate(Contract)`** runs `spec/v1/FORMAT.md`'s "What a producer MUST
-  refuse" — all nine ways a contract could quietly stop being one — and throws the first
+  refuse" — all eight ways a contract could quietly stop being one — and throws the first
   violation as its own `ContractRefusalException` subclass. It lives here, once, rather than in
   each of `-loader` and `-spring-boot`, because both build the same `Contract` shape and must
-  refuse the same nine things.
+  refuse the same eight things.
 - **`ContractValidatorTest`** has one test per refusal (plus one proving a well-formed contract
-  passes all nine), each built with a minimal `Contract` rather than a full corpus case, to keep
-  the refusal under test isolated from the other eight. The byte-stable round-trip test lives in
+  passes all eight), each built with a minimal `Contract` rather than a full corpus case, to keep
+  the refusal under test isolated from the other seven. The byte-stable round-trip test lives in
   each codec module instead (see below), since it needs an actual `ObjectMapper` to run.
-- **`Schema.refine(path, Refinement)` / `refineWith(at, Refine)`** (`de.timscho.config.core.schema`)
-  publish a constraint a type cannot state — a map's required entries, via
-  `Refinement.requiredEntries(…)` — with the Rust crate's rules and messages: an unknown path, a
-  key that is not an open map, or an entry name some layer could not spell is a
-  `RefinementException`; a default the refinement rejects makes the key required with no default,
-  whichever of `refine` and `withDefaultsFromValue` ran first. A library implements `Refine` with
-  paths relative to wherever a host mounts it.
 - **`Schema.toJsonSchema()` / `toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`)
   render a `Schema` as the JSON Schema document an editor or a Helm chart validates a rendered
   configuration against — a straight port of the Rust crate's `schema::json_schema` module.
