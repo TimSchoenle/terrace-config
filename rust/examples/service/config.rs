@@ -57,13 +57,19 @@ pub(crate) fn load() -> Result<Config, Error> {
 /// # Errors
 /// Returns [`Error`] if two fields of [`Config`] resolve to one key path, or if building the
 /// contract document itself is refused.
+/// The service's own release, stamped into the contract as `app.version`. Deliberately not
+/// `CARGO_PKG_VERSION`: that is terrace-config's version, which the contract already records as
+/// `producer.version`, and borrowing it would make every library release a change to this example.
+#[cfg(feature = "schema")]
+const SERVICE_VERSION: &str = "v1.0.0";
+
 #[cfg(feature = "schema")]
 pub(crate) fn contract() -> Result<String, Error> {
     let schema = loader()
         .schema::<Config>()
         .with_defaults_from(&Config::default())?;
     let contract = schema
-        .into_contract(App::new("orders-service").version(concat!("v", env!("CARGO_PKG_VERSION"))))
+        .into_contract(App::new("orders-service").version(SERVICE_VERSION))
         .build()?;
     contract.to_json()
 }

@@ -7,7 +7,7 @@
   },
   "app": {
     "name": "orders-service",
-    "version": "v0.12.0"
+    "version": "v1.0.0"
   },
   "schema": {
     "schema_version": 2,
