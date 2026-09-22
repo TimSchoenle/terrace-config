@@ -92,11 +92,72 @@
           "type": "array",
           "items": { "$ref": "#/$defs/loader_var" }
         },
+        "reload": { "$ref": "#/$defs/reload" },
         "keys": {
           "type": "array",
           "items": { "$ref": "#/$defs/key" }
         }
-      }
+      },
+      "allOf": [
+        {
+          "title": "A key is live only in an image that rebuilds",
+          "description": "A key published `live` claims a rebuild applies it, and `reload` absent or `mode: none` says the image never rebuilds. The two cannot both be true, so a producer refuses to build the document.",
+          "if": {
+            "properties": {
+              "reload": {
+                "properties": { "mode": { "const": "rebuild" } },
+                "required": ["mode"]
+              }
+            },
+            "required": ["reload"]
+          },
+          "else": {
+            "properties": {
+              "keys": {
+                "items": {
+                  "not": {
+                    "properties": { "reload": { "const": "live" } },
+                    "required": ["reload"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "reload": {
+      "$anchor": "reload",
+      "title": "Whether this image applies a configuration change without restarting, and through which layers",
+      "description": "A property of the binary, not of the loader library: a service can link a loader that supports reloading and never run its supervisor. Absent means undeclared, which a consumer treats as `mode: none` and reports as undeclared rather than as none.",
+      "type": "object",
+      "required": ["mode", "layers"],
+      "properties": {
+        "mode": {
+          "description": "`none`: no change is applied after the process starts. `rebuild`: a debounced change re-reads every layer and rebuilds the runtime, keeping every `restart` key at its boot value. A reader meeting a mode it does not know treats it as `none` and says so.",
+          "enum": ["none", "rebuild"]
+        },
+        "layers": {
+          "description": "The file layers the image watches. `document` is the TOML layer, `secrets_dir` the directory of key-named files, `env_file` the targets of indirection variables. The environment is never one: a process's environment is fixed for its lifetime.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["document", "secrets_dir", "env_file"] }
+        }
+      },
+      "allOf": [
+        {
+          "title": "A rebuilding image watches something",
+          "description": "`rebuild` with no layers is `none` spelled so that it looks like support.",
+          "if": {
+            "properties": { "mode": { "const": "rebuild" } },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": { "layers": { "minItems": 1 } }
+          }
+        }
+      ]
     },
 
     "dialect": {
@@ -253,6 +314,10 @@
         "reserved": {
           "description": "Whether the loader reads it directly from the environment, before the layers exist. No file may supply it.",
           "type": "boolean"
+        },
+        "reload": {
+          "description": "Whether a rebuild applies a change to this key. `live`: the value is consumed inside the rebuilt runtime. `restart`: it is applied only at process start, because it is consumed before the supervisor runs or because changing it under live traffic is unsafe. Absent means undeclared and is read as `restart`, as is a value a reader does not know.",
+          "enum": ["live", "restart"]
         }
       },
       "allOf": [
@@ -277,6 +342,17 @@
               "default": { "type": "null" },
               "default_value": { "type": "null" }
             }
+          }
+        },
+        {
+          "title": "A reserved key is never live",
+          "description": "It is read from the environment before the layers exist, and a process's environment is fixed for its lifetime.",
+          "if": {
+            "properties": { "reserved": { "const": true } },
+            "required": ["reserved"]
+          },
+          "then": {
+            "properties": { "reload": { "const": "restart" } }
           }
         }
       ]

@@ -1,0 +1,61 @@
+# Configuration for a service reading RELAY_-prefixed keys.
+#
+# Generated from the configuration type, so it lists every key that type can carry and nothing
+# else. Each key shows the value it already has, commented out: a commented key and a deleted key
+# mean the same thing to the loader, so uncomment one only to change it. A key that is not
+# commented out has no default, and nothing loads until something supplies it.
+#
+# Three layers can supply any key below, and all three win over this file: the environment
+# variable named above the key, a file named by that variable plus `_FILE`, and a key-named file
+# in the secrets directory. A secret belongs in one of those — this file is usually committed.
+#
+# Read before this file exists:
+#
+#   RELAY_CONFIG — config, default `config.toml`
+#     Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name
+#     order.
+#
+#   RELAY_SECRETS_DIR — secrets dir
+#     Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file
+#     supplies the key its name spells.
+#
+#   RELAY_PROFILE — reserved
+#     Read directly from the environment before the layered config exists, so no file may supply
+#     it.
+
+# Seconds a rendered page stays cached. Applied by the next rebuild.
+# Type: u64
+# Also from: RELAY_TTL_SECS, RELAY_TTL_SECS_FILE=/path/to/file, ttl_secs in the secrets directory
+# ttl_secs = 60
+
+# Read by the `tracing` subscriber, which is installed before the supervisor starts.
+# Type: String
+# Also from: RELAY_LOG_FILTER, RELAY_LOG_FILTER_FILE=/path/to/file, log_filter in the secrets
+#   directory
+# log_filter = "info"
+
+# Read directly from the environment before the layers exist.
+# Type: String
+# Reserved: only RELAY_PROFILE supplies this key; a file may not.
+# profile = ""
+
+[storage]
+# Directory the data is kept in.
+# Type: String
+# Also from: RELAY_STORAGE__DIR, RELAY_STORAGE__DIR_FILE=/path/to/file, storage__dir in the
+#   secrets directory
+# dir = ""
+
+[upstream]
+# Where requests are forwarded.
+# Type: String
+# Also from: RELAY_UPSTREAM__URL, RELAY_UPSTREAM__URL_FILE=/path/to/file, upstream__url in the
+#   secrets directory
+# url = ""
+
+# Bearer token for the upstream, rotated by replacing the mounted file.
+# Type: String
+# Also from: RELAY_UPSTREAM__TOKEN, RELAY_UPSTREAM__TOKEN_FILE=/path/to/file, upstream__token in
+#   the secrets directory
+# Secret: the value below is a placeholder.
+# token = "<secret>"

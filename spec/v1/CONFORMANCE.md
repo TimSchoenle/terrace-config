@@ -16,7 +16,7 @@ reading the producer's source.
 Every document the implementation emits:
 
 - validates against [`contract.schema.json`](contract.schema.json);
-- satisfies every **MUST** in [`FORMAT.md`](FORMAT.md), including the nine refusals — a producer
+- satisfies every **MUST** in [`FORMAT.md`](FORMAT.md), including the twelve refusals — a producer
   that emits a secret with a default is not tier 1 however well-formed the JSON is;
 - carries a `producer` block naming the implementation and the library whose environment reads its
   `text_constraint` patterns were measured against;
@@ -106,6 +106,7 @@ renderers that can each rewrite the expectation agree by construction and prove 
 | [`full-surface`](conformance/full-surface/) | Every key field a producer can be asked to fill — secret, note, alias, choice, bounded number, container-of-choice, nested struct, required key, reserved loader variable, declared and ignored externals. |
 | [`unnameable-key`](conformance/unnameable-key/) | A key no variable can name, and the `unreachable` reason that says which kind. |
 | [`required-entries`](conformance/required-entries/) | A map's required entries supplied at build time rather than by its type: `required` inside `constraint`, a default the refinement rejects turned into a required key, and the tables above it made required in the rendered schema. |
+| [`reload`](conformance/reload/) | A binary that rebuilds on a change: `schema.reload`, a `reload` class on every key, `restart` winning wherever it is written, and a reserved key that is `restart` whatever it was annotated. |
 
 ### Consumer cases
 

@@ -1,0 +1,250 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config",
+    "version": "0.0.0-conformance",
+    "loader": "figment"
+  },
+  "app": {
+    "name": "relay",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "RELAY_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "RELAY_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "RELAY_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file supplies the key its name spells.",
+        "default": null
+      },
+      {
+        "env": "RELAY_PROFILE",
+        "role": "reserved",
+        "docs": "Read directly from the environment before the layered config exists, so no file may supply it.",
+        "default": null
+      }
+    ],
+    "reload": {
+      "mode": "rebuild",
+      "layers": [
+        "document",
+        "secrets_dir",
+        "env_file"
+      ]
+    },
+    "keys": [
+      {
+        "path": "ttl_secs",
+        "env": "RELAY_TTL_SECS",
+        "env_file": "RELAY_TTL_SECS_FILE",
+        "secrets_file": "ttl_secs",
+        "docs": "Seconds a rendered page stays cached. Applied by the next rebuild.",
+        "ty": "u64",
+        "values": [],
+        "constraint": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "60",
+        "default_value": 60,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false,
+        "reload": "live"
+      },
+      {
+        "path": "log_filter",
+        "env": "RELAY_LOG_FILTER",
+        "env_file": "RELAY_LOG_FILTER_FILE",
+        "secrets_file": "log_filter",
+        "docs": "Read by the `tracing` subscriber, which is installed before the supervisor starts.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "info",
+        "default_value": "info",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false,
+        "reload": "restart"
+      },
+      {
+        "path": "profile",
+        "env": "RELAY_PROFILE",
+        "env_file": null,
+        "secrets_file": null,
+        "docs": "Read directly from the environment before the layers exist.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "\"\"",
+        "default_value": "",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": true,
+        "reload": "restart"
+      },
+      {
+        "path": "storage.dir",
+        "env": "RELAY_STORAGE__DIR",
+        "env_file": "RELAY_STORAGE__DIR_FILE",
+        "secrets_file": "storage__dir",
+        "docs": "Directory the data is kept in.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "\"\"",
+        "default_value": "",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false,
+        "reload": "restart"
+      },
+      {
+        "path": "upstream.url",
+        "env": "RELAY_UPSTREAM__URL",
+        "env_file": "RELAY_UPSTREAM__URL_FILE",
+        "secrets_file": "upstream__url",
+        "docs": "Where requests are forwarded.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "\"\"",
+        "default_value": "",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false,
+        "reload": "live"
+      },
+      {
+        "path": "upstream.token",
+        "env": "RELAY_UPSTREAM__TOKEN",
+        "env_file": "RELAY_UPSTREAM__TOKEN_FILE",
+        "secrets_file": "upstream__token",
+        "docs": "Bearer token for the upstream, rotated by replacing the mounted file.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": true,
+        "reserved": false,
+        "reload": "live"
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "log_filter": {
+        "default": "info",
+        "description": "Read by the `tracing` subscriber, which is installed before the supervisor starts.",
+        "type": "string"
+      },
+      "storage": {
+        "additionalProperties": false,
+        "properties": {
+          "dir": {
+            "default": "",
+            "description": "Directory the data is kept in.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ttl_secs": {
+        "default": 60,
+        "description": "Seconds a rendered page stays cached. Applied by the next rebuild.",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "upstream": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "description": "Bearer token for the upstream, rotated by replacing the mounted file.",
+            "type": "string",
+            "writeOnly": true
+          },
+          "url": {
+            "default": "",
+            "description": "Where requests are forwarded.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "title": "relay configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}
