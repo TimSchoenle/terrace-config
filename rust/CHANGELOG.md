@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.0](https://github.com/TimSchoenle/terrace-config/compare/v0.12.0...v0.13.0) (2026-09-22)
+
+
+### Features
+
+* implement experimental java implementation ([#98](https://github.com/TimSchoenle/terrace-config/issues/98)) ([26ffc70](https://github.com/TimSchoenle/terrace-config/commit/26ffc70d67d286964688f03d651fe51977e5df4f))
+* **Java:** improve java conformance level ([#164](https://github.com/TimSchoenle/terrace-config/issues/164)) ([dbd94cd](https://github.com/TimSchoenle/terrace-config/commit/dbd94cd07cfd6f5e06f42bcc0d0169e272648996))
+* schema refinements — constraints a type cannot state, supplied at schema-build time ([#174](https://github.com/TimSchoenle/terrace-config/issues/174)) ([5812492](https://github.com/TimSchoenle/terrace-config/commit/581249281f8ecb0736827de07d2d5ad192ae6472))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.56.0 ([#131](https://github.com/TimSchoenle/terrace-config/issues/131)) ([14b5729](https://github.com/TimSchoenle/terrace-config/commit/14b5729ab582f721dae9eab80d3d18fed9ae0484))
+* **example:** keep the service contract in step with release bumps ([#179](https://github.com/TimSchoenle/terrace-config/issues/179)) ([b7a87ea](https://github.com/TimSchoenle/terrace-config/commit/b7a87eaf908a0b44bcfac0ff644586454f100482))
+
 ## [0.12.0](https://github.com/TimSchoenle/terrace-config/compare/v0.11.0...v0.12.0) (2026-09-10)
 
 
