@@ -296,7 +296,7 @@ jobs:
       # `build-root-directory` was a v2/v3 input; this action version has no such input (cache
       # scoping is inferred from the wrapper's own location), and passing it just emits an
       # "unexpected input" warning. The build directory is set on the run step below instead.
-      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       - run: ./gradlew clean spotlessCheck checkstyleMain checkstyleTest test --console=plain
         working-directory: java
 
