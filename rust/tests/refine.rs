@@ -7,7 +7,6 @@
 //! renders exactly that, passes every gate, and fails at boot.
 
 #![cfg(feature = "schema")]
-#![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
 
 use std::collections::BTreeMap;
 
