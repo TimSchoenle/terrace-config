@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.3.0...terrace-config-java-v0.4.0) (2026-09-22)
+
+
+### Features
+
+* schema refinements — constraints a type cannot state, supplied at schema-build time ([#174](https://github.com/TimSchoenle/terrace-config/issues/174)) ([5812492](https://github.com/TimSchoenle/terrace-config/commit/581249281f8ecb0736827de07d2d5ad192ae6472))
+
+
+### Bug Fixes
+
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.5.0 ([#148](https://github.com/TimSchoenle/terrace-config/issues/148)) ([d0737aa](https://github.com/TimSchoenle/terrace-config/commit/d0737aa5f1a1bb7d9e9573cd611eb412aab4ab4c))
+* **deps:** update dependency org.junit:junit-bom to v6 ([#155](https://github.com/TimSchoenle/terrace-config/issues/155)) ([fbee87e](https://github.com/TimSchoenle/terrace-config/commit/fbee87e8ff778a9d1440fca3f13fa3a33d9533ef))
+* **deps:** update jackson monorepo (minor) ([#150](https://github.com/TimSchoenle/terrace-config/issues/150)) ([3a89cba](https://github.com/TimSchoenle/terrace-config/commit/3a89cbad24db0295ae3fdf481ad6703e868dd85a))
+* **deps:** update spring boot to v4 ([#156](https://github.com/TimSchoenle/terrace-config/issues/156)) ([d6823ef](https://github.com/TimSchoenle/terrace-config/commit/d6823ef42362e6688bac5fe7423136b0195df5ce))
+
 ## [0.3.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.2.0...terrace-config-java-v0.3.0) (2026-09-21)
 
 
