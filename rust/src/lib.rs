@@ -218,6 +218,18 @@ to the values already running, leaves the running service exactly as it is. See 
 [`reload`] module for the failure posture in full.
 "
 )]
+#![cfg_attr(
+    all(feature = "reload", feature = "schema"),
+    doc = r#"
+Not every value a rebuild re-reads is one it should apply. A key consumed before the supervisor
+runs — a `tracing` filter, a metrics endpoint — is not applied by any rebuild, and one whose change
+under live traffic is unsafe should not be. Mark the rest `#[config(reload = "live")]`, declare
+the rebuild on the loader with [`Terrace::reloads`], and load through [`Terrace::reloader`]: every
+other key then keeps its boot value across rebuilds, is reported as a pending restart when it
+changes on disk, and is published as `restart` in the contract, so a deployment knows to roll the
+process for it.
+"#
+)]
 
 #[cfg(feature = "loader")]
 mod dialect;
@@ -235,6 +247,8 @@ mod terrace;
 #[cfg(feature = "explain")]
 pub mod explain;
 
+#[cfg(feature = "schema")]
+mod reloader;
 #[cfg(feature = "schema")]
 pub mod schema;
 
@@ -256,6 +270,8 @@ pub use error::Error;
 pub use layers::ShadowPolicy;
 #[cfg(feature = "loader")]
 pub use loaded::{Loaded, Sources};
+#[cfg(feature = "schema")]
+pub use reloader::Reloader;
 #[cfg(feature = "loader")]
 pub use terrace::Terrace;
 

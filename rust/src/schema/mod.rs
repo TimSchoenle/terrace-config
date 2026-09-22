@@ -97,6 +97,7 @@ mod contract;
 mod json_schema;
 mod markdown;
 mod refine;
+mod reload;
 mod rust_type;
 mod toml_example;
 mod tree;
@@ -109,6 +110,7 @@ pub use contract::{
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;
 pub use refine::{Refine, Refinement};
+pub use reload::{Reload, ReloadLayer, ReloadMode, ReloadSupport};
 pub use terrace_config_macros::Describe;
 pub use toml_example::TomlExample;
 
@@ -322,6 +324,9 @@ pub struct Sink {
     /// so a type whose elements contain itself would reset the count every turn and recurse until
     /// the stack ran out, which is the failure [`MAX_DEPTH`] exists to turn into a message.
     depth: usize,
+    /// The [`Self::reload`] scopes currently open, which decide [`Key::reload`] for every key
+    /// recorded inside them.
+    reload: reload::Scopes,
 }
 
 /// What one element of a container-typed key holds.
@@ -391,6 +396,7 @@ impl Sink {
             bounds: BTreeMap::new(),
             closed: BTreeSet::new(),
             depth,
+            reload: reload::Scopes::default(),
         }
     }
 
@@ -470,6 +476,7 @@ impl Sink {
             required: leaf.required,
             secret: leaf.secret,
             reserved: false,
+            reload: self.reload.resolve(),
         });
 
         // Beside the key rather than in it, and only when there is something to hold: an
@@ -497,6 +504,50 @@ impl Sink {
     /// configuration type has heard of.
     pub fn deny_unknown_fields(&mut self) {
         self.closed.insert(self.prefix.join("."));
+    }
+
+    /// Record every key `describe` reports as taking `class` when the configuration is reloaded.
+    ///
+    /// What `#[config(reload = "…")]` becomes: the derive wraps a container's whole body in one
+    /// of these, and an annotated field's `leaf` or `nested` call in another. Scopes nest, and
+    /// **an explicit [`Reload::Restart`] anywhere on the path wins** — over a `live` opened before
+    /// it and one opened after it alike. Nearest-wins was the alternative, and it has no answer
+    /// for a field marked `restart` holding a type that calls itself `live`: either order lets one
+    /// `live` silently override a `restart`, which is the direction in which a change is never
+    /// applied. A key that must be `live` inside a `restart` parent is expressed by moving the
+    /// `restart` down to the fields that need it.
+    ///
+    /// A key no scope covers is left undeclared. [`Schema::with_reload`] turns that into
+    /// [`Reload::Restart`] once the binary declares what it supports, so `live` is always
+    /// something an author wrote.
+    ///
+    /// ```
+    /// use terrace_config::schema::{Describe, Leaf, Reload, Schema, Sink};
+    /// # use terrace_config::Dialect;
+    ///
+    /// struct Config;
+    /// impl Describe for Config {
+    ///     fn describe(sink: &mut Sink) {
+    ///         sink.reload(Reload::Live, |sink| {
+    ///             sink.leaf(Leaf { name: "ttl_secs", docs: "", ty: Some("u64"), values: None,
+    ///                 bounds: None, aliases: &[], note: None, required: false, secret: false });
+    ///             sink.reload(Reload::Restart, |sink| {
+    ///                 sink.leaf(Leaf { name: "log_level", docs: "", ty: Some("String"),
+    ///                     values: None, bounds: None, aliases: &[], note: None,
+    ///                     required: false, secret: false });
+    ///             });
+    ///         });
+    ///     }
+    /// }
+    ///
+    /// let schema = Schema::describe::<Config>(&Dialect::new("MYAPP_"));
+    /// assert_eq!(schema.keys[0].reload, Some(Reload::Live));
+    /// assert_eq!(schema.keys[1].reload, Some(Reload::Restart));
+    /// ```
+    pub fn reload(&mut self, class: Reload, describe: impl FnOnce(&mut Self)) {
+        self.reload.open(class);
+        describe(self);
+        self.reload.close(class);
     }
 
     /// Record a subtree under `segment`.
@@ -816,6 +867,15 @@ pub struct Key {
     pub secret: bool,
     /// Whether the loader reserves this key, so only the environment may supply it.
     pub reserved: bool,
+    /// Whether a rebuild applies a change to this key, from `#[config(reload = "…")]`.
+    ///
+    /// [`None`] means undeclared, which a consumer reads as [`Reload::Restart`]. Omitted from the
+    /// document when unset, so a schema that says nothing about reloading serialises byte for
+    /// byte as it did before this field existed. [`Schema::with_reload`] fills it in on every key
+    /// once the binary declares what it supports, and forces [`Reload::Restart`] where the binary
+    /// or the key rules `live` out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<Reload>,
 }
 
 /// What form the text supplying a key takes, and so how to read it.
@@ -982,6 +1042,12 @@ pub struct Schema {
     pub dialect: DialectInfo,
     /// The variables the loader reads before the layers exist.
     pub loader: Vec<LoaderVar>,
+    /// Whether the binary applies a change without restarting. See [`ReloadSupport`].
+    ///
+    /// [`None`] means undeclared and is omitted from the document, so a schema that says nothing
+    /// about reloading serialises byte for byte as it did before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<ReloadSupport>,
     /// Every key the configuration type can carry, in declaration order.
     pub keys: Vec<Key>,
 }
@@ -1122,8 +1188,51 @@ impl Schema {
                 indirection_suffix: dialect.indirection_suffix().to_owned(),
             },
             loader: Vec::new(),
+            reload: None,
             keys,
         }
+    }
+
+    /// Declare what this binary supports, and settle every key's [`Key::reload`] against it.
+    ///
+    /// [`Terrace::reloads`](crate::Terrace::reloads) is the usual way in:
+    /// [`Terrace::schema`](crate::Terrace::schema) calls this with whatever was declared there.
+    ///
+    /// After it, every key carries a class, because a document that declares support should state
+    /// `restart` rather than leave a reader to default to it:
+    ///
+    /// - a key no `#[config(reload = "…")]` covered becomes [`Reload::Restart`] — `live` is always
+    ///   something an author wrote;
+    /// - a [`reserved`](Key::reserved) key becomes [`Reload::Restart`] whatever it was annotated,
+    ///   because it is read from an environment that cannot change;
+    /// - under a `support` that does not [rebuild](ReloadSupport::rebuilds), every key becomes
+    ///   [`Reload::Restart`]. A type annotated `live` is legitimately shared with a binary that does
+    ///   not reload, and this document describes that binary.
+    #[must_use]
+    pub fn with_reload(mut self, support: ReloadSupport) -> Self {
+        let rebuilds = support.rebuilds();
+        for key in &mut self.keys {
+            let live = rebuilds && !key.reserved && key.reload.is_some_and(Reload::is_live);
+            key.reload = Some(if live { Reload::Live } else { Reload::Restart });
+        }
+        self.reload = Some(support);
+        self
+    }
+
+    /// Every path whose value a rebuild must keep at its boot value, aliases included.
+    ///
+    /// The keys not published [`Reload::Live`] — undeclared ones among them, which a reader treats
+    /// as `restart` — and each of their [`aliases`](Key::aliases), since a key answers to every
+    /// spelling and a value supplied under an alias is the same value.
+    #[must_use]
+    pub fn restart_paths(&self) -> Vec<&str> {
+        self.keys
+            .iter()
+            .filter(|key| !key.reload.is_some_and(Reload::is_live))
+            .flat_map(|key| {
+                std::iter::once(key.path.as_str()).chain(key.aliases.iter().map(String::as_str))
+            })
+            .collect()
     }
 
     /// The part of this schema under `prefix`, spellings and all.
@@ -1315,6 +1424,11 @@ impl Schema {
             self.dialect, other.dialect,
             "two schemas of different dialects cannot be merged: every environment spelling in \
              the result would have to be read under two different sets of rules."
+        );
+        assert_eq!(
+            self.reload, other.reload,
+            "two schemas declaring different reload support cannot be merged: the result would \
+             describe one binary that both does and does not apply a change after start."
         );
 
         for var in other.loader {

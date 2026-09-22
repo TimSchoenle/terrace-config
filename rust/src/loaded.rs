@@ -11,6 +11,13 @@ pub struct Loaded<T> {
     pub sources: Sources,
 }
 
+impl<T> From<Loaded<T>> for (T, Sources) {
+    /// The pair [`reload::run`](crate::reload) takes as its boot value and its reload result.
+    fn from(loaded: Loaded<T>) -> Self {
+        (loaded.value, loaded.sources)
+    }
+}
+
 /// The filesystem inputs a config was assembled from, and a fingerprint of the result.
 ///
 /// The fingerprint is the fully merged figment value rather than the typed config: config
@@ -29,9 +36,47 @@ pub struct Sources {
     pub(crate) watch: Vec<PathBuf>,
     /// The fully merged value, for change detection only.
     pub(crate) fingerprint: figment::value::Value,
+    /// The restart-class paths whose value on disk differs from the one the process was started
+    /// with. Always empty outside a pinning reload.
+    pub(crate) pending: Vec<String>,
 }
 
 impl Sources {
+    /// Sources with nothing pending.
+    pub(crate) fn new(watch: Vec<PathBuf>, fingerprint: figment::value::Value) -> Self {
+        Self {
+            watch,
+            fingerprint,
+            pending: Vec::new(),
+        }
+    }
+
+    /// These sources, recording `pending` as the restart-class paths changed on disk.
+    #[cfg_attr(
+        not(feature = "schema"),
+        expect(
+            dead_code,
+            reason = "only the pinning reloader records a pending restart"
+        )
+    )]
+    pub(crate) fn with_pending(mut self, pending: Vec<String>) -> Self {
+        self.pending = pending;
+        self
+    }
+
+    /// The keys whose value on disk differs from the one the process is running with, because a
+    /// rebuild does not apply them.
+    ///
+    /// Filled in only by [`Terrace::reloader`](crate::Terrace::reloader)'s reloads, which keep
+    /// every restart-class key at its boot value; empty everywhere else. Paths, never values, and
+    /// sorted. A non-empty list is real state an operator needs to see — the file says one thing
+    /// and the process does another until it restarts — which is why
+    /// [`reload::run`](crate::reload) logs every change to it.
+    #[must_use]
+    pub fn pending_restart(&self) -> &[String] {
+        &self.pending
+    }
+
     /// Directories to watch for changes.
     ///
     /// Directories, not files: a Kubernetes volume update renames a whole new `..data`
@@ -67,6 +112,7 @@ impl std::fmt::Debug for Sources {
         f.debug_struct("Sources")
             .field("watch", &self.watch)
             .field("fingerprint", &"<redacted>")
+            .field("pending", &self.pending)
             .finish()
     }
 }
@@ -80,6 +126,10 @@ impl crate::reload::Source for Sources {
     fn differs_from(&self, previous: &Self) -> bool {
         Self::differs_from(self, previous)
     }
+
+    fn pending_restart(&self) -> &[String] {
+        Self::pending_restart(self)
+    }
 }
 
 /// Structural equality over a merged configuration value, with floats compared by their bits.
@@ -90,7 +140,7 @@ impl crate::reload::Source for Sources {
 /// [`Sources::differs_from`].
 ///
 /// [`Tag`]: figment::value::Tag
-fn same_value(a: &figment::value::Value, b: &figment::value::Value) -> bool {
+pub(crate) fn same_value(a: &figment::value::Value, b: &figment::value::Value) -> bool {
     use figment::value::Value;
 
     match (a, b) {
