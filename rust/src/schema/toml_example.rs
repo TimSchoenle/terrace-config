@@ -21,6 +21,7 @@
 
 use std::fmt::Write as _;
 
+use super::refine::required_entries;
 use super::tree::{self, Node};
 use super::{Docs, Key, Schema};
 
@@ -296,6 +297,13 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
         ),
         (None, []) => {}
         (None, values) => comment(&mut out, &format!("One of: {}", values.join(", "))),
+    }
+
+    // The entries a map has to hold, said where the operator is about to write the map. From the
+    // constraint, which is what a validator will hold the file to.
+    let entries = required_entries(key);
+    if !entries.is_empty() {
+        comment(&mut out, &format!("Must contain: {}", entries.join(", ")));
     }
 
     if !key.aliases.is_empty() {

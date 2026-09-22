@@ -202,7 +202,7 @@
           "items": { "type": "string" }
         },
         "constraint": {
-          "description": "What the value must be once it is in the document, as JSON Schema keywords. Absent means no check is possible — a type the producer could not interpret — and a consumer must not invent one. Nests under `items` and `additionalProperties` from schema_version 2.",
+          "description": "What the value must be once it is in the document, as JSON Schema keywords. Absent means no check is possible — a type the producer could not interpret — and a consumer must not invent one. Nests under `items` and `additionalProperties` from schema_version 2. May be tighter than the type states and never looser: a map-typed key may carry `required`, the entries the map must contain. A `default_value` must satisfy it.",
           "type": "object"
         },
         "text_constraint": {

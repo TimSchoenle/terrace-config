@@ -88,6 +88,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
+use super::check::{self, Verdict};
 use super::json_schema::{self, DRAFT_07, JsonSchema};
 use super::{Error, Schema, TextForm, Unreachable};
 
@@ -884,7 +885,9 @@ impl ContractBuilder {
     /// - an empty [`prefix`](super::DialectInfo::prefix), which would make the ordered list's step
     ///   4 fire for every variable on the container;
     /// - a key whose environment spelling is another key's `_FILE` variable, which is an effect
-    ///   this document cannot describe.
+    ///   this document cannot describe;
+    /// - a key whose [`default_value`](super::Key::default_value) fails its own
+    ///   [`constraint`](super::Key::constraint) — a default the document itself calls invalid.
     pub fn build(self) -> Result<Contract, Error> {
         let Self {
             schema,
@@ -897,6 +900,7 @@ impl ContractBuilder {
         validate_reachable(&schema)?;
         validate_external(&schema, &external)?;
         validate_secrets(&schema, &external)?;
+        validate_defaults(&schema)?;
 
         // Derived where the caller said nothing, never over the top of what they did say:
         // `ExternalVar::constraint` is the only way to describe a type this crate cannot
@@ -1436,6 +1440,45 @@ fn validate_secrets(schema: &Schema, external: &External) -> Result<(), Error> {
             return Err(Error::Invalid(format!(
                 "`{}` is marked secret but carries a default, and a contract is published.",
                 var.name
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Refuse a default the document says is invalid.
+///
+/// A key publishing `default_value: {}` beside a constraint requiring an `imprint` entry tells a
+/// chart that leaving the key out is fine and that the value it gets is not — and a consumer
+/// generating fixtures from the default builds a deployment that fails at boot. [`Schema::refine`]
+/// keeps the two consistent, and [`Schema::with_defaults_from`] applies the same rule; this is the
+/// invariant both maintain, checked once at the boundary where the document is published, so a
+/// schema assembled or edited by hand cannot get past it either.
+///
+/// Refuses only a failure it can prove. The evaluator reads the vocabulary a producer here emits;
+/// a keyword outside it leaves the answer undecided, and an undecided default is published — a
+/// refusal resting on a keyword nobody evaluated would stop a correct build. A default JSON cannot
+/// hold is skipped for the same reason [`JsonSchema`] leaves it out of `default`.
+fn validate_defaults(schema: &Schema) -> Result<(), Error> {
+    for key in &schema.keys {
+        let (Some(constraint), Some(default)) = (&key.constraint, &key.default_value) else {
+            continue;
+        };
+        let Ok(value) = serde_json::to_value(default) else {
+            continue;
+        };
+        if let Verdict::Fails(reason) = check::verdict(constraint, &value) {
+            let reason = if reason.starts_with('`') {
+                reason
+            } else {
+                format!("it {reason}")
+            };
+            return Err(Error::Invalid(format!(
+                "`{}` publishes the default {value}, which fails its own constraint: {reason}. \
+                 A contract cannot say a key may be left out and that what it falls back to is \
+                 invalid. Fix the default or the annotation; a refined key loses its default \
+                 through `Schema::refine`.",
+                key.path
             )));
         }
     }

@@ -1,0 +1,41 @@
+# Configuration for a service reading SITE_-prefixed keys.
+#
+# Generated from the configuration type, so it lists every key that type can carry and nothing
+# else. Each key shows the value it already has, commented out: a commented key and a deleted key
+# mean the same thing to the loader, so uncomment one only to change it. A key that is not
+# commented out has no default, and nothing loads until something supplies it.
+#
+# Three layers can supply any key below, and all three win over this file: the environment
+# variable named above the key, a file named by that variable plus `_FILE`, and a key-named file
+# in the secrets directory. A secret belongs in one of those — this file is usually committed.
+#
+# Read before this file exists:
+#
+#   SITE_CONFIG — config, default `config.toml`
+#     Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name
+#     order.
+#
+#   SITE_SECRETS_DIR — secrets dir
+#     Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file
+#     supplies the key its name spells.
+
+# Bundle directory the readiness probe checks.
+# Type: String
+# Also from: SITE_DIST_DIR, SITE_DIST_DIR_FILE=/path/to/file, dist_dir in the secrets directory
+# dist_dir = "public"
+
+[legal]
+# Legal documents, by the name the site links them under.
+# Type: BTreeMap<String, LegalDocument>
+# Must contain: imprint, privacy
+# Also from: SITE_LEGAL__DOCUMENTS, SITE_LEGAL__DOCUMENTS_FILE=/path/to/file, legal__documents in
+#   the secrets directory
+# Required: nothing loads until this key is supplied.
+documents = {}
+
+# Footer links, by label.
+# Type: BTreeMap<String, String>
+# Must contain: home
+# Also from: SITE_LEGAL__LINKS, SITE_LEGAL__LINKS_FILE=/path/to/file, legal__links in the secrets
+#   directory
+# links = { home = "/" }

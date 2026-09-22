@@ -97,6 +97,12 @@ against rather than read it optimistically.
 consumer gates its keyword allowlist on this: refuse a version you were not written against, widen,
 then accept it.
 
+The allowlist is of keywords, not of positions. A constraint is one JSON Schema, and a keyword a
+version permits anywhere in it is permitted everywhere in it — so `required` at the top of a
+map-typed key's constraint (see [Refinements](#refinements)) is an addition within version 2: the
+keyword has been in version 2's vocabulary from the start, inside every element schema with a
+mandatory field.
+
 Within a version the format evolves **by addition only**. A consumer that ignores fields it does
 not recognise stays correct across every such addition, and `contract.schema.json` is deliberately
 open at every object level for that reason: it checks that what is present is well-formed, not that
@@ -208,6 +214,13 @@ wrong for the second, which is why the reason is published rather than inferred.
 **`default_value: null` is ambiguous on its own** — it is what both "no default" and "the default
 is null" render to. Read `default` and `required` alongside it.
 
+**A `default_value` MUST satisfy the key's own `constraint`.** A key publishing a default says
+leaving it out is fine and names what it falls back to; a constraint rejecting that value says the
+fallback is invalid. The two cannot both be true, and a consumer generating fixtures or values from
+the default builds a deployment that fails at boot. Where the two would disagree because a
+[refinement](#refinements) tightened the constraint, the default is not a default: the key is
+`required: true` and carries none. A producer MUST refuse to build any other disagreement.
+
 ## The two spaces
 
 A configuration value exists in two forms and a validator meets both. In a TOML file `ttl_secs = 0`
@@ -242,6 +255,37 @@ an array index is not a key segment and no variable names one.
 An element schema is **open unless the element type closed it**. A deserialiser that accepts an
 undeclared field unless told otherwise means open is the only safe default; a type that did say
 otherwise carries `additionalProperties: false` at that level and no other.
+
+### Refinements
+
+A producer MAY publish a `constraint` **tighter than the type states**, and MUST NOT publish one
+looser. Some constraints are real without being in any type — a host that refuses to start unless a
+map holds an `imprint` entry — and a contract that cannot carry them publishes `{}` as a valid value
+for a map the image rejects. Tightening is safe for the reason every rule in this section is: the
+value the loader would accept and the service would then refuse is not a correct deployment, so a
+gate refusing it is right. Loosening is never safe, because the type's own constraint is what the
+loader enforces.
+
+One tightening is defined: **required entries of a map.** A key whose `constraint` is an object
+with no `properties` — a map, its element schema if any under `additionalProperties` — MAY carry
+`required`, a sorted list of entry names the map must contain. It means exactly what JSON Schema's
+`required` means at that position: a document supplying the map must supply those entries. The map
+stays open; other entries are accepted as the type accepts them. It is carried inside `constraint`
+and therefore inside `json_schema` at the key's position, and nowhere else: a consumer showing a
+map's required entries reads them from `constraint.required`.
+
+That `required` and the key's own `required` field answer different questions, as the field and JSON
+Schema's keyword always have: the field says whether some layer must supply the key, the keyword
+what the map must hold once supplied. They meet only through the default: a refined map whose
+observed default lacks a required entry is published `required: true` with no default, under the
+rule on `default_value` above. A refined map with no default at all keeps whatever `required` its
+type gave it — absence is the type's statement, and a refinement of the value does not reach it.
+
+An entry name MUST be spellable wherever the key is: nested one level under the key's `env`, and
+under its `secrets_file`, by the same derivation the key's own spellings use. A producer MUST refuse
+a refinement naming an entry some layer reaching the key could not spell — `Imprint` under a
+lower-casing environment layer, a name carrying the nesting separator or a `.`, one whose spelling
+ends in `indirection_suffix`.
 
 ### `text_form`
 
@@ -415,6 +459,11 @@ could quietly stop being one.
    `token` from the file it names *and* fills `token_file` with the path: one variable, two keys,
    and a validator classifying it stops at the first. Publishing a contract that cannot describe an
    effect is worse than publishing none, because every gate downstream would pass.
+9. A key whose **`default_value` fails its own `constraint`** — a default the document itself calls
+   invalid. The refusal is for a failure the producer can prove: a keyword its evaluator does not
+   implement leaves the answer undecided, and an undecided default is published rather than refused
+   on a guess. A refinement MUST NOT be how a producer reaches this; see
+   [Refinements](#refinements).
 
 A producer MUST NOT emit a document describing a configuration surface wider than the binary in the
 image actually loads. A workspace with several aggregates has a generator that naturally reaches for

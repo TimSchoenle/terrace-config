@@ -53,6 +53,13 @@
 //! see [`Contract`] for what that reader needs that no single rendering above supplies, and
 //! [`External`] for the variables an image reads that no derive can find.
 //!
+//! # What the type cannot say
+//!
+//! A constraint the application decides at runtime — a map it refuses to start without an
+//! `imprint` entry in — is in no type for the derive to read. [`Schema::refine`] states one after
+//! the walk, and [`Refine`] lets a library that owns such a check publish it wherever the host
+//! mounts it. A refinement only ever tightens, and is checked before anything is published.
+//!
 //! # More than one root
 //!
 //! A workspace whose binaries read different parts of one configuration has no single root type
@@ -83,11 +90,13 @@
 //! # Ok::<(), terrace_config::Error>(())
 //! ```
 
+mod check;
 #[cfg(feature = "schema-cli")]
 pub mod cli;
 mod contract;
 mod json_schema;
 mod markdown;
+mod refine;
 mod rust_type;
 mod toml_example;
 mod tree;
@@ -99,6 +108,7 @@ pub use contract::{
 };
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;
+pub use refine::{Refine, Refinement};
 pub use terrace_config_macros::Describe;
 pub use toml_example::TomlExample;
 
@@ -141,6 +151,16 @@ use crate::error::Error;
 /// does not recognise needs no change at all. [`Key::text_form`] and [`Key::text_constraint`] are
 /// untouched: an element lives in document space, and an environment variable still carries the
 /// whole container as one TOML literal.
+///
+/// # What did not bump it: `required` on a map-typed key
+///
+/// [`Schema::refine`] can put `required` at the top of a map-typed key's constraint, where no type
+/// ever put it. That is an addition within version 2, not a version 3. The version gates a
+/// *keyword allowlist*, and `required` has been in version 2's since version 2 existed — every
+/// element struct with a mandatory field publishes it one level down, and a constraint is one JSON
+/// Schema, not a set of positions each with a vocabulary of its own. A version-2 consumer that
+/// walks the constraint recursively, which the nesting already obliged it to, meets `required` at
+/// the top exactly as it meets it under `additionalProperties`.
 pub const SCHEMA_VERSION: u32 = 2;
 
 /// How deep [`Sink::nested`] and [`Sink::repeated`] will recurse before deciding the type is
@@ -646,6 +666,11 @@ pub struct Key {
     /// and their exclusive spellings, at the same position an element lands: the key itself for a
     /// scalar, and inside the containers for a bounded element. See [`Bounds`], which never lets
     /// one widen a bound the type already justified.
+    ///
+    /// **It carries what the application decided at runtime**, where [`Schema::refine`] put it: a
+    /// map-typed key's `required` entries, for a map the host refuses to start without. That is the
+    /// only source of a `required` at the top of a key's constraint, and every rendering that shows
+    /// a key's required entries reads them from here rather than from a field of their own.
     ///
     /// [`None`] means unconstrained, and says exactly as much as [`Self::ty`] does about a domain
     /// newtype: the key exists and nothing here can check its value.
@@ -1184,6 +1209,11 @@ impl Schema {
     /// The rules are [`Self::with_defaults_from`]'s, because that is a thin wrapper over this: a
     /// required key keeps no default, a [`secret`](Key::secret) one renders `<redacted>`, and a
     /// path `root` does not carry stays unset.
+    ///
+    /// One more, for a key a [`Refinement`] has tightened: an observed map lacking an entry the
+    /// refinement requires is not a default, because the image would refuse it at boot. The key
+    /// becomes [`required`](Key::required) with no default — what [`Self::refine`] does to a
+    /// default it finds already observed, so the two may run in either order.
     #[must_use]
     pub fn with_defaults_from_value(mut self, root: &figment::value::Value) -> Self {
         for key in &mut self.keys {
@@ -1209,7 +1239,18 @@ impl Schema {
             // a secret worth hiding, and `<redacted>` in place of "unset" would read as though
             // the service ships with a credential baked in.
             if key.secret {
+                // No refinement check here, on purpose: the value is withheld, so
+                // `Schema::refine` could never see it either, and checking it on this path alone
+                // would make the result depend on which of the two ran first. A secret with a
+                // default is refused by `ContractBuilder::build` whatever it holds.
                 key.default = Some("<redacted>".to_owned());
+                continue;
+            }
+            // A default the refined constraint rejects supplies nothing: the image refuses it at
+            // boot. The same rule `Schema::refine` applies when the default arrived first, so the
+            // two orders produce one schema.
+            if refine::lacks_required_entries(key, observed) {
+                key.required = true;
                 continue;
             }
             key.default = Some(rendered);
