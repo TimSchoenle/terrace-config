@@ -14,6 +14,8 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderRole;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Producer;
+import de.timscho.config.core.model.Reload;
+import de.timscho.config.core.model.ReloadSupport;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
 import java.util.List;
@@ -272,6 +274,62 @@ class ContractValidatorTest {
                 .build();
 
         assertThatCode(() -> ContractValidator.validate(contract)).doesNotThrowAnyException();
+    }
+
+    /** A contract whose one key is published with {@code reload}, under {@code support}. */
+    private static Contract reloading(final ReloadSupport support, final Key key) {
+        return validContract()
+                .schema(validContract().build().getSchema().toBuilder()
+                        .reload(support)
+                        .keys(List.of(key))
+                        .build())
+                .build();
+    }
+
+    @Test
+    void aLiveKeyInAnImageThatRebuildsPasses() {
+        Key live = key("ttl", "PORTFOLIO_TTL", null).toBuilder()
+                .reload(Reload.LIVE)
+                .build();
+        assertThatCode(() -> ContractValidator.validate(reloading(ReloadSupport.rebuild(), live)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void refusal10_aLiveKeyInAnImageThatDoesNotRebuildIsRefused() {
+        Key live = key("ttl", "PORTFOLIO_TTL", null).toBuilder()
+                .reload(Reload.LIVE)
+                .build();
+
+        assertThatThrownBy(() -> ContractValidator.validate(reloading(ReloadSupport.none(), live)))
+                .isInstanceOf(LiveWithoutRebuildException.class)
+                .hasMessageContaining("ttl");
+        assertThatThrownBy(() -> ContractValidator.validate(reloading(null, live)))
+                .isInstanceOf(LiveWithoutRebuildException.class);
+    }
+
+    @Test
+    void refusal11_aReservedKeyPublishedLiveIsRefused() {
+        Key reserved = key("profile", "PORTFOLIO_PROFILE", null).toBuilder()
+                .reserved(true)
+                .reload(Reload.LIVE)
+                .build();
+
+        assertThatThrownBy(() -> ContractValidator.validate(reloading(ReloadSupport.rebuild(), reserved)))
+                .isInstanceOf(ReservedLiveException.class)
+                .hasMessageContaining("profile");
+    }
+
+    @Test
+    void refusal12_aRebuildWatchingNothingIsRefused() {
+        ReloadSupport empty =
+                ReloadSupport.rebuild().toBuilder().layers(List.of()).build();
+        Key restart = key("ttl", "PORTFOLIO_TTL", null).toBuilder()
+                .reload(Reload.RESTART)
+                .build();
+
+        assertThatThrownBy(() -> ContractValidator.validate(reloading(empty, restart)))
+                .isInstanceOf(RebuildWithoutLayersException.class);
     }
 
     @Test

@@ -30,7 +30,7 @@ shows up as a failing test rather than a document nobody noticed had drifted.
 | Module | What it is | Status |
 |---|---|---|
 | `terrace-config-annotations` | `@TerraceConfig` and the rest of the vocabulary a service's own types carry. Depends on nothing but the JDK. | **implemented** |
-| `terrace-config-core` | The envelope model, the nine build-time refusals, and the `json-schema` rendering. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the `json` codecs. | **implemented** — validation, a Jackson-version-agnostic model, and `Schema.toJsonSchema()`; the remaining renderings (markdown, toml, contract, labels, dockerfile, ...) are open |
+| `terrace-config-core` | The envelope model, the twelve build-time refusals, and the `json-schema` rendering. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the `json` codecs. | **implemented** — validation, a Jackson-version-agnostic model, and `Schema.toJsonSchema()`; the remaining renderings (markdown, toml, contract, labels, dockerfile, ...) are open |
 | `terrace-config-core-jackson2` | The byte-stable `json` codec for the `-core` model, built on Jackson 2.x. | **implemented** |
 | `terrace-config-core-jackson3` | The same codec, built on Jackson 3.x instead. | **implemented** |
 | `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. A field's key path follows its `@JsonProperty` rename when present, matching whichever binder actually reads that name (`FieldResolver.resolve`), the same way it already follows one for an enum constant. | **implemented** |
@@ -103,7 +103,7 @@ than relying on incidental iteration order. Comments explain why, not what.
 ## `terrace-config-core`
 
 The document model — `Contract` and everything it's built from (`de.timscho.config.core.model`)
-— and the nine build-time refusals (`de.timscho.config.core.refusal`), all mirroring
+— and the twelve build-time refusals (`de.timscho.config.core.refusal`), all mirroring
 [`spec/v1/contract.schema.json`](../spec/v1/contract.schema.json) field for field and property for
 property. Deliberately builds no `ObjectMapper` of either Jackson major itself — see
 `terrace-config-core-jackson2`/`-jackson3` below for the two codecs that do, and "Dual Jackson 2 /
@@ -120,13 +120,13 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   properties list don't coincide (e.g. `constraint` is optional, `ty` is required-but-nullable),
   so the inclusion rule has to be decided field by field rather than once per class.
 - **`ContractValidator.validate(Contract)`** runs `spec/v1/FORMAT.md`'s "What a producer MUST
-  refuse" — all nine ways a contract could quietly stop being one — and throws the first
+  refuse" — all twelve ways a contract could quietly stop being one — and throws the first
   violation as its own `ContractRefusalException` subclass. It lives here, once, rather than in
   each of `-loader` and `-spring-boot`, because both build the same `Contract` shape and must
-  refuse the same nine things.
+  refuse the same twelve things.
 - **`ContractValidatorTest`** has one test per refusal (plus one proving a well-formed contract
-  passes all nine), each built with a minimal `Contract` rather than a full corpus case, to keep
-  the refusal under test isolated from the other eight. The byte-stable round-trip test lives in
+  passes all twelve), each built with a minimal `Contract` rather than a full corpus case, to keep
+  the refusal under test isolated from the other eleven. The byte-stable round-trip test lives in
   each codec module instead (see below), since it needs an actual `ObjectMapper` to run.
 - **`Schema.refine(path, Refinement)` / `refineWith(at, Refine)`** (`de.timscho.config.core.schema`)
   publish a constraint a type cannot state — a map's required entries, via

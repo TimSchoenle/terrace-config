@@ -18,8 +18,8 @@ import org.jspecify.annotations.Nullable;
  * {@link #reserved}, minus {@link #unreachable}) are marked {@link JsonInclude.Include#ALWAYS}
  * below so that, for example, a {@code null} {@link #ty} is still rendered rather than omitted —
  * the meta-schema's own {@code "type": ["string", "null"]} depends on the field being present.
- * {@link #constraint}, {@link #textConstraint} and {@link #unreachable} are the three genuinely
- * optional fields and are omitted, not null-valued, when absent.
+ * {@link #constraint}, {@link #textConstraint}, {@link #unreachable} and {@link #reload} are the
+ * genuinely optional fields and are omitted, not null-valued, when absent.
  */
 @Value
 @Builder(toBuilder = true)
@@ -49,7 +49,8 @@ import org.jspecify.annotations.Nullable;
     "note",
     "required",
     "secret",
-    "reserved"
+    "reserved",
+    "reload"
 })
 // CHECKSTYLE.ON: Indentation
 public class Key {
@@ -152,4 +153,12 @@ public class Key {
 
     /** Whether the loader reads it directly from the environment, before the layers exist. */
     boolean reserved;
+
+    /**
+     * Whether a rebuild applies a change to it. Null means undeclared, which a consumer reads as
+     * {@link Reload#RESTART}; omitted rather than null-valued, so a document that says nothing
+     * about reloading is byte-identical to one written before the field existed.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Nullable Reload reload;
 }
