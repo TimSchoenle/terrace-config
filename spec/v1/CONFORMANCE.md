@@ -16,7 +16,7 @@ reading the producer's source.
 Every document the implementation emits:
 
 - validates against [`contract.schema.json`](contract.schema.json);
-- satisfies every **MUST** in [`FORMAT.md`](FORMAT.md), including the eight refusals — a producer
+- satisfies every **MUST** in [`FORMAT.md`](FORMAT.md), including the nine refusals — a producer
   that emits a secret with a default is not tier 1 however well-formed the JSON is;
 - carries a `producer` block naming the implementation and the library whose environment reads its
   `text_constraint` patterns were measured against;
@@ -105,6 +105,7 @@ renderers that can each rewrite the expectation agree by construction and prove 
 | [`minimal`](conformance/minimal/) | The smallest document that is still a contract: one key, no annotations, no external surface. |
 | [`full-surface`](conformance/full-surface/) | Every key field a producer can be asked to fill — secret, note, alias, choice, bounded number, container-of-choice, nested struct, required key, reserved loader variable, declared and ignored externals. |
 | [`unnameable-key`](conformance/unnameable-key/) | A key no variable can name, and the `unreachable` reason that says which kind. |
+| [`required-entries`](conformance/required-entries/) | A map's required entries supplied at build time rather than by its type: `required` inside `constraint`, a default the refinement rejects turned into a required key, and the tables above it made required in the rendered schema. |
 
 ### Consumer cases
 
@@ -156,7 +157,8 @@ cd java
 ./gradlew :terrace-config-spec-tck:test
 ```
 
-Three checks per case (`minimal`, `full-surface`, `unnameable-key`), for a different reason each:
+Three checks per case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`), for a
+different reason each:
 the rendering validates against the meta-schema (tier 1); every dialect spelling — `env`, both file
 forms, every alias list, `unreachable` — agrees with this same shared corpus (tier 2); and the
 rendering is byte-identical, `producer.version` substituted, against a Java-only golden this module

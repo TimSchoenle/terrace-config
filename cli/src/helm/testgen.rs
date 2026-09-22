@@ -69,6 +69,18 @@
 //! lives here, in the model, and not only in the loader that reads the enrolment — a caller reaching
 //! past the loader would otherwise reach past the rule with it.
 //!
+//! **A map the contract requires to hold entries is supplied by the enrolment, or nothing is
+//! generated.** A `structured` key still carries no probe. But a map a producer refined — `required:
+//! true`, with the entries its image refuses to start without inside its `constraint` — is not a key
+//! a suite may leave out: every case renders the chart, and a render lacking those entries is a
+//! document the image rejects, so each case would be proving a round trip through a configuration
+//! that cannot boot. Generation therefore fails, naming the path and the entries, unless the chart's
+//! own values or the enrolment's `baseline` supply every one of them under the probe root. A
+//! placeholder was the alternative and is refused on purpose: written into a file nobody may edit,
+//! it would either fail the document gate on every case or, shaped to pass it, be a fabricated value
+//! presented as a fixture. The baseline already carries a mandatory reason, which is where an
+//! operator states what those entries hold and why.
+//!
 //! # Two limits, stated rather than papered over
 //!
 //! The probe is chosen to differ from the *contract's* default, which is the image's compiled-in
@@ -692,6 +704,62 @@ fn occupied(values_path: &str, prerequisites: &[(String, Json)]) -> bool {
     })
 }
 
+/// Refuse a suite in which a map the contract requires to hold entries is supplied by nothing.
+///
+/// `values` is the chart's own `values.yaml`, and `baseline` the enrolment's; an entry is supplied
+/// when either carries it — or anything beneath it — at `<root>.<path>.<entry>`. Every unsupplied
+/// entry of every such key is named at once, so one run says the whole of what the enrolment has to
+/// state.
+///
+/// A key whose default already holds its entries is published `required: false` and is skipped: the
+/// image supplies it when the chart does not.
+///
+/// # Errors
+/// [`Error::Invalid`] naming each key and its unsupplied entries.
+pub fn unsupplied_entries(
+    keys: &[&Merged],
+    baseline: &[(String, Json)],
+    values: &Json,
+    root: &str,
+) -> Result<(), Error> {
+    let mut gaps = Vec::new();
+    for key in keys {
+        if key.fields.get("required").and_then(Json::as_bool) != Some(true) {
+            continue;
+        }
+        let Some(path) = key.text("path") else {
+            continue;
+        };
+        let at = values_path(path, root);
+        let missing: Vec<&str> = crate::document::required_entries(key.fields.get("constraint"))
+            .into_iter()
+            .filter(|entry| {
+                let entry_path = format!("{at}.{entry}");
+                let in_baseline = baseline.iter().any(|(name, _)| {
+                    name == &entry_path || name.starts_with(&format!("{entry_path}."))
+                });
+                !in_baseline && super::dig(values, &entry_path).is_none_or(Json::is_null)
+            })
+            .collect();
+        if !missing.is_empty() {
+            gaps.push(format!(
+                "operator must supply fixture for {path}: must contain {} (unsupplied: {}). The \
+                 contract marks the key required and its image refuses to start without those \
+                 entries, so every case would render a document that cannot boot. State them \
+                 under `{at}` in the enrolment's `baseline`, one leaf per line, or in the chart's \
+                 values",
+                crate::document::required_entries(key.fields.get("constraint")).join(", "),
+                missing.join(", ")
+            ));
+        }
+    }
+    if gaps.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Invalid(gaps.join("\n")))
+    }
+}
+
 /// Turn a union's keys into the cases and the skips of one suite.
 ///
 /// `baseline` is carried by every case except the one probing the key it sets. A chart may refuse to
@@ -1310,7 +1378,7 @@ mod tests {
     use super::{
         Case, DISTINCTIVE_INTEGER, Plan, Probe, Route, Target, VALUES_ROOT, document_pattern,
         escape, plan, prerequisite_conflict, probe_for, render_suite, selector_path, toml_key,
-        toml_scalar, values_path,
+        toml_scalar, unsupplied_entries, values_path,
     };
     use crate::union::{Merged, Ordered, Union, union_contracts};
 
@@ -1907,6 +1975,66 @@ mod tests {
         for case in planned(&keys(), &collides, &held, VALUES_ROOT, &BTreeMap::new()).cases {
             assert!(case.set_values.contains(&held[0]), "{}", case.path);
         }
+    }
+
+    fn refined_map(required: bool) -> Merged {
+        key(
+            "legal.documents",
+            &json!({
+                "text_form": "structured",
+                "required": required,
+                "constraint": {
+                    "type": "object",
+                    "additionalProperties": {"type": "object"},
+                    "required": ["imprint", "privacy"],
+                },
+            }),
+        )
+    }
+
+    #[test]
+    fn a_required_map_nothing_supplies_fails_generation_naming_every_entry() {
+        let map = refined_map(true);
+        let failure = unsupplied_entries(&[&map], &[], &json!({"config": {}}), VALUES_ROOT)
+            .expect_err("nothing supplies the entries");
+        let message = failure.to_string();
+        assert!(
+            message.contains(
+                "operator must supply fixture for legal.documents: must contain imprint, privacy"
+            ),
+            "{message}"
+        );
+        assert!(
+            message.contains("unsupplied: imprint, privacy"),
+            "{message}"
+        );
+
+        // The structured key still carries no probe: the refusal is about the fixture, not a case.
+        assert!(simple(std::slice::from_ref(&map)).cases.is_empty());
+    }
+
+    #[test]
+    fn a_required_map_is_supplied_by_a_baseline_leaf_or_the_charts_own_values() {
+        let map = refined_map(true);
+        let baseline = vec![(
+            format!("{VALUES_ROOT}.legal.documents.imprint.title"),
+            json!("Imprint"),
+        )];
+        let values = json!({"config": {"legal": {"documents": {"privacy": {"title": "Privacy"}}}}});
+        unsupplied_entries(&[&map], &baseline, &values, VALUES_ROOT)
+            .expect("one entry from each source is every entry");
+
+        let half = unsupplied_entries(&[&map], &baseline, &json!({}), VALUES_ROOT)
+            .expect_err("privacy is still unsupplied")
+            .to_string();
+        assert!(half.contains("unsupplied: privacy"), "{half}");
+    }
+
+    #[test]
+    fn a_refined_map_whose_default_holds_its_entries_asks_nothing() {
+        // Published `required: false`: the image's own default supplies what the chart does not.
+        unsupplied_entries(&[&refined_map(false)], &[], &json!({}), VALUES_ROOT)
+            .expect("a default the image supplies needs no fixture");
     }
 
     #[test]

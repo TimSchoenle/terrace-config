@@ -258,7 +258,7 @@ owner — an operator's `TZ`, the platform's `KUBERNETES_*` — and note that on
 wildcard, because every consumer of this document implements the matching itself and a pattern
 language is a place for two implementations to disagree about what is exempt from a check.
 
-`build` refuses eight things outright, all of them ways a contract could quietly stop being one:
+`build` refuses nine things outright, all of them ways a contract could quietly stop being one:
 
 - an external variable **carrying the loader's prefix** — everything in that namespace is a
   configuration key, and declaring one external would leave it governed and exempt at once;
@@ -291,7 +291,33 @@ language is a place for two implementations to disagree about what is exempt fro
   *and* fills `token_file` with the path — one variable, two keys — and a validator classifying
   that variable stops at the first. Publishing a contract that cannot describe an effect is worse
   than publishing none, because every gate downstream would pass. The application renames the
-  field.
+  field;
+- a key whose **default fails its own constraint** — a `#[config(range(min = 1))]` field defaulting
+  to `0`, or a map whose constraint requires an entry its default lacks. The contract would say the
+  key may be left out and that what it falls back to is invalid, and a chart generating values from
+  the default deploys something that fails at boot. Only a failure the crate can prove is refused:
+  a keyword its evaluator does not implement leaves the default published.
+
+### Constraints the type cannot state
+
+`Describe` reads a key's constraint off its Rust type, and some constraints are decided at runtime
+by the application or by a library it mounts — a map the host refuses to start without an `imprint`
+entry in. `Schema::refine` states one after the walk, validated and never loosening:
+
+```rust
+let schema = Terrace::new("PORTFOLIO_")
+    .schema::<Config>()
+    .with_defaults_from(&Config::default())?
+    .refine("legal.documents", Refinement::required_entries(["imprint", "privacy"]))?;
+```
+
+A library owning the check implements `schema::Refine` with paths relative to wherever it is
+mounted, and the host calls `schema.refine_with("legal", &legal_config)`. The published key carries
+`required: ["imprint", "privacy"]` inside its `constraint`, so the JSON Schema half rejects `{}`; a
+default lacking an entry is dropped and the key published `required: true`, whichever order the
+refinement and the defaults were applied in. See [FORMAT.md, *Refinements*][refinements].
+
+[refinements]: ../../spec/v1/FORMAT.md#refinements
 
 ## How a validator reads it
 

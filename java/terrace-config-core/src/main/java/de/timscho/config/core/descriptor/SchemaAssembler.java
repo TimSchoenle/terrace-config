@@ -3,7 +3,7 @@ package de.timscho.config.core.descriptor;
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
-import de.timscho.config.core.model.UnreachableReason;
+import de.timscho.config.core.schema.Spellings;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -154,7 +154,7 @@ public class SchemaAssembler {
     }
 
     /** {@code field}'s own aliases, spelled as an env var / env-indirection-file / secrets-file
-     * name wherever the dialect can express them — {@code null} exactly where {@link #envSpelling}
+     * name wherever the dialect can express them — {@code null} exactly where {@link Spellings#envSpelling}
      * and friends already say a plain alias has no such spelling. */
     private static AliasSet resolveAliases(final KeyDescriptor field, final String prefix, final Dialect dialect) {
         final List<String> aliases = new ArrayList<>();
@@ -164,15 +164,15 @@ public class SchemaAssembler {
         for (final String alias : field.aliases()) {
             final String aliasPath = prefix.isEmpty() ? alias : prefix + "." + alias;
             aliases.add(aliasPath);
-            final Spelling aliasSpelling = envSpelling(dialect, aliasPath);
-            if (aliasSpelling.env != null) {
-                envAliases.add(aliasSpelling.env);
-                final String envFile = indirectionName(dialect, aliasSpelling.env);
+            final Spellings.Spelling aliasSpelling = Spellings.envSpelling(dialect, aliasPath);
+            if (aliasSpelling.getEnv() != null) {
+                envAliases.add(aliasSpelling.getEnv());
+                final String envFile = Spellings.indirectionName(dialect, aliasSpelling.getEnv());
                 if (envFile != null) {
                     envFileAliases.add(envFile);
                 }
             }
-            final String secretFile = secretsFileName(dialect, aliasPath);
+            final String secretFile = Spellings.secretsFileName(dialect, aliasPath);
             if (secretFile != null) {
                 secretsFileAliases.add(secretFile);
             }
@@ -188,18 +188,19 @@ public class SchemaAssembler {
      * from the environment, so neither file mechanism can supply them. */
     private static void applyEnvSpelling(
             final Key.KeyBuilder builder, final Dialect dialect, final String path, final Set<String> reservedUpper) {
-        final Spelling spelling = envSpelling(dialect, path);
-        builder.env(spelling.env);
-        final boolean reserved = spelling.env != null && reservedUpper.contains(spelling.env.toUpperCase(Locale.ROOT));
+        final Spellings.Spelling spelling = Spellings.envSpelling(dialect, path);
+        builder.env(spelling.getEnv());
+        final boolean reserved = spelling.getEnv() != null
+                && reservedUpper.contains(spelling.getEnv().toUpperCase(Locale.ROOT));
         builder.reserved(reserved);
         if (reserved) {
             builder.envFile(null);
             builder.secretsFile(null);
         } else {
-            builder.envFile(spelling.env != null ? indirectionName(dialect, spelling.env) : null);
-            builder.secretsFile(secretsFileName(dialect, path));
+            builder.envFile(spelling.getEnv() != null ? Spellings.indirectionName(dialect, spelling.getEnv()) : null);
+            builder.secretsFile(Spellings.secretsFileName(dialect, path));
         }
-        builder.unreachable(spelling.unreachable);
+        builder.unreachable(spelling.getUnreachable());
     }
 
     private static @Nullable Map<String, Object> textConstraint(
@@ -355,97 +356,13 @@ public class SchemaAssembler {
         }
     }
 
-    /** The environment spelling of {@code path}, when the environment can actually name it. */
-    private static Spelling envSpelling(final Dialect dialect, final String path) {
-        final String name =
-                dialect.getPrefix() + path.toUpperCase(Locale.ROOT).replace(".", dialect.getNestingSeparator());
-        if (!isSettableEnvName(name)) {
-            return new Spelling(null, UnreachableReason.UNNAMEABLE);
-        }
-        if (indirectionTarget(dialect, name) != null) {
-            return new Spelling(null, UnreachableReason.INDIRECTION);
-        }
-        final String mapped = envLayerKey(dialect, name);
-        if (path.equals(mapped)) {
-            return new Spelling(name, null);
-        }
-        return new Spelling(null, UnreachableReason.UNNAMEABLE);
-    }
-
-    /** The key a case-folding, separator-splitting environment reader makes of {@code name}. */
-    private static @Nullable String envLayerKey(final Dialect dialect, final String name) {
-        final String trimmed = name.trim();
-        if (!trimmed.startsWith(dialect.getPrefix())) {
-            return null;
-        }
-        final String suffix = trimmed.substring(dialect.getPrefix().length());
-        final String mapped = suffix.replace(dialect.getNestingSeparator(), ".").trim();
-        for (final String segment : mapped.split("\\.", -1)) {
-            if (segment.isEmpty()) {
-                return null;
-            }
-        }
-        return mapped.toLowerCase(Locale.ROOT);
-    }
-
-    /** The key an indirection variable names, if {@code name} is one, or {@code null}. */
-    private static @Nullable String indirectionTarget(final Dialect dialect, final String name) {
-        if (!name.startsWith(dialect.getPrefix())) {
-            return null;
-        }
-        final String rest = name.substring(dialect.getPrefix().length());
-        if (!rest.endsWith(dialect.getIndirectionSuffix())) {
-            return null;
-        }
-        final String key =
-                rest.substring(0, rest.length() - dialect.getIndirectionSuffix().length());
-        return key.isEmpty() ? null : key;
-    }
-
-    private static @Nullable String indirectionName(final Dialect dialect, final String env) {
-        final String candidate = env + dialect.getIndirectionSuffix();
-        return isSettableEnvName(candidate) ? candidate : null;
-    }
-
-    /** The secrets-directory file name for {@code path}, when one can name it. */
-    private static @Nullable String secretsFileName(final Dialect dialect, final String path) {
-        final String name = path.replace(".", dialect.getNestingSeparator());
-        if (name.contains(".") || !isNameableFile(name)) {
-            return null;
-        }
-        final String[] parts = name.toLowerCase(Locale.ROOT)
-                .split(
-                        java.util.regex.Pattern.quote(
-                                dialect.getNestingSeparator().toLowerCase(Locale.ROOT)),
-                        -1);
-        return String.join(".", parts).equals(path) ? name : null;
-    }
-
-    private static boolean isSettableEnvName(final String name) {
-        return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('=') < 0;
-    }
-
-    private static boolean isNameableFile(final String name) {
-        return !name.isEmpty() && name.indexOf('\0') < 0 && name.indexOf('/') < 0 && name.indexOf('\\') < 0;
-    }
-
-    // VisibilityModifier flags both fields below: they carry no access modifier in source, relying
-    // on java/lombok.config's project-wide `lombok.fieldDefaults.defaultPrivate = true` to become
-    // private once Lombok processes them — a transform Checkstyle, which reads plain source before
-    // Lombok runs, cannot see. See Node.java for the same shape.
-    @SuppressWarnings("checkstyle:VisibilityModifier")
-    @AllArgsConstructor
-    private static final class Spelling {
-        final @Nullable String env;
-        final @Nullable UnreachableReason unreachable;
-    }
-
     /** The leaf shapes {@link Key#getTextForm()} distinguishes, plus a {@code NUMBER} form this
      * assembler uses internally for a floating-point range before folding it into the model's
      * {@link de.timscho.config.core.model.TextForm#UNKNOWN} — a float's own value is still
      * {@code Unknown} in the published document, matching the Rust crate. */
-    // VisibilityModifier: same lombok.config `defaultPrivate` gap as Spelling above — `model`
-    // carries no access modifier in source and relies on Lombok's project-wide default.
+    // VisibilityModifier: `model` carries no access modifier in source and relies on
+    // java/lombok.config's project-wide `lombok.fieldDefaults.defaultPrivate = true`, a transform
+    // Checkstyle cannot see because it reads source before Lombok runs.
     @SuppressWarnings("checkstyle:VisibilityModifier")
     @AllArgsConstructor
     private enum TextForm {

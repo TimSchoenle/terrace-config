@@ -219,10 +219,7 @@ pub fn block_for(
 
     for row in rows {
         let entry = notes.get(&row.path);
-        let mut cells = vec![
-            format!("`{}`", row.secrets_file),
-            if row.required { "yes" } else { "no" }.to_owned(),
-        ];
+        let mut cells = vec![format!("`{}`", row.secrets_file), required_cell(row)];
         if has_chart_values {
             cells.push(
                 entry
@@ -260,6 +257,25 @@ pub fn block_for(
     }
 
     Ok(lines)
+}
+
+/// The `Required` cell: whether the image needs the credential, and which entries its map must
+/// hold when a producer refined it.
+///
+/// The entries are named as the contract names them, never respelt as file names. `FORMAT.md`
+/// forbids a consumer deriving a spelling from the dialect, and the chart's own prose already says
+/// how a path becomes a file.
+fn required_cell(row: &Credential) -> String {
+    let required = if row.required { "yes" } else { "no" };
+    if row.entries.is_empty() {
+        return required.to_owned();
+    }
+    let entries: Vec<String> = row
+        .entries
+        .iter()
+        .map(|entry| format!("`{entry}`"))
+        .collect();
+    format!("{required}; must contain {}", entries.join(", "))
 }
 
 /// Refuse a hand-written note that has outlived what it described.
@@ -428,10 +444,34 @@ fn difference(before: &str, after: &str, at: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CLOSE, OPEN, carries_markers, splice};
+    use super::{CLOSE, OPEN, carries_markers, required_cell, splice};
+    use crate::helm::secrets::Credential;
 
     fn block() -> Vec<String> {
         vec!["one".to_owned(), String::new(), "two".to_owned()]
+    }
+
+    #[test]
+    fn a_refined_credential_map_names_the_entries_it_must_contain() {
+        let row = Credential {
+            chart: "c".to_owned(),
+            path: "tokens".to_owned(),
+            secrets_file: "tokens".to_owned(),
+            env: "P_TOKENS".to_owned(),
+            env_file: "P_TOKENS_FILE".to_owned(),
+            required: true,
+            entries: vec!["github".to_owned(), "gitlab".to_owned()],
+            summary: String::new(),
+            documents: vec!["d".to_owned()],
+            images: vec!["a".to_owned()],
+            contracts: vec!["c/contracts/a.json".to_owned()],
+        };
+        assert_eq!(required_cell(&row), "yes; must contain `github`, `gitlab`");
+        let plain = Credential {
+            entries: Vec::new(),
+            ..row
+        };
+        assert_eq!(required_cell(&plain), "yes");
     }
 
     #[test]

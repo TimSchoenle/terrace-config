@@ -159,6 +159,10 @@ public class TomlExampleRenderer {
         } else if (!values.isEmpty()) {
             comment(out, "One of: " + String.join(", ", values));
         }
+        final List<String> entries = Refiner.requiredEntries(key);
+        if (!entries.isEmpty()) {
+            comment(out, "Must contain: " + String.join(", ", entries));
+        }
     }
 
     private static void appendAliasesComment(final StringBuilder out, final Key key) {

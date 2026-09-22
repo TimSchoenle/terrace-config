@@ -19,7 +19,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Checks the Java-side rendering of the three named spec cases against every level {@code
+ * Checks the Java-side rendering of the four named spec cases against every level {@code
  * spec/v1/CONFORMANCE.md} describes, from a real {@code @TerraceConfig} fixture (see {@code
  * fixtures/}) through the real loader and Jackson 2 codec — never a hand-written JSON literal
  * standing in for what the pipeline actually renders.
@@ -52,10 +52,11 @@ class JavaConformanceTest {
     private static final Map<String, Supplier<Contract>> CASES = Map.of(
             "minimal", FixtureContracts::minimal,
             "full-surface", FixtureContracts::fullSurface,
-            "unnameable-key", FixtureContracts::unnameableKey);
+            "unnameable-key", FixtureContracts::unnameableKey,
+            "required-entries", FixtureContracts::requiredEntries);
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
     void rendersAValidEnvelope(final String caseName) {
         final MetaSchemaValidator validator = MetaSchemaValidator.load();
         final JsonNode produced = producedNode(caseName);
@@ -69,7 +70,7 @@ class JavaConformanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
     void meetsTier2AgainstTheSharedSpecCorpus(final String caseName) throws IOException {
         final JsonNode produced = producedNode(caseName);
         final JsonNode expected = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase(caseName)));
@@ -80,7 +81,7 @@ class JavaConformanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
     void meetsTier3AgainstItsOwnJavaGolden(final String caseName) throws IOException {
         final byte[] rendered =
                 ContractCodec.write(withConformanceVersion(CASES.get(caseName).get()));
@@ -103,6 +104,36 @@ class JavaConformanceTest {
                                 + "./gradlew :terrace-config-spec-tck:blessJavaConformance",
                         caseName)
                 .isEqualTo(Files.readString(golden, StandardCharsets.UTF_8));
+    }
+
+    /**
+     * {@code required-entries} pins semantics tier 2's spellings do not reach: which keys a
+     * refinement made required, which entries their constraints require, and which defaults it
+     * dropped. Every producer has to agree on those, whatever its type vocabulary, or a chart gets a
+     * different answer to "may I leave this out" depending on the language the image was written in.
+     */
+    @org.junit.jupiter.api.Test
+    void publishesTheSameRefinementsAsTheSharedSpecCorpus() throws IOException {
+        final JsonNode produced =
+                producedNode("required-entries").path("schema").path("keys");
+        final JsonNode expected = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase("required-entries")))
+                .path("schema")
+                .path("keys");
+
+        assertThat(produced.size()).isEqualTo(expected.size());
+        for (int i = 0; i < expected.size(); i++) {
+            final JsonNode want = expected.get(i);
+            final JsonNode got = produced.get(i);
+            final String path = want.path("path").asText();
+            assertThat(got.path("path").asText()).isEqualTo(path);
+            assertThat(got.path("required")).as("`%s` required", path).isEqualTo(want.path("required"));
+            assertThat(got.path("constraint").path("required"))
+                    .as("`%s` constraint.required", path)
+                    .isEqualTo(want.path("constraint").path("required"));
+            assertThat(got.path("default_value").isNull())
+                    .as("`%s` has a default exactly when the corpus does", path)
+                    .isEqualTo(want.path("default_value").isNull());
+        }
     }
 
     private static JsonNode producedNode(final String caseName) {

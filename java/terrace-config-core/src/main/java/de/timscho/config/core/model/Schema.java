@@ -8,6 +8,9 @@ import de.timscho.config.core.schema.Defaults;
 import de.timscho.config.core.schema.JsonSchemaOptions;
 import de.timscho.config.core.schema.JsonSchemaRenderer;
 import de.timscho.config.core.schema.MarkdownRenderer;
+import de.timscho.config.core.schema.Refine;
+import de.timscho.config.core.schema.Refinement;
+import de.timscho.config.core.schema.Refiner;
 import de.timscho.config.core.schema.TomlExampleOptions;
 import de.timscho.config.core.schema.TomlExampleRenderer;
 import java.util.List;
@@ -129,5 +132,36 @@ public class Schema {
     @JsonIgnore
     public Schema withDefaultsFromValue(final Map<String, Object> root) {
         return Defaults.withDefaultsFromValue(this, root);
+    }
+
+    /**
+     * This schema with the key at {@code path} tightened beyond what its type states — the port of
+     * the Rust crate's {@code Schema::refine}. See {@link Refiner} for every rule.
+     *
+     * <p>A default the refined constraint rejects makes the key required with no default, and
+     * {@link #withDefaultsFromValue} applies the same rule, so the two may run in either order.
+     *
+     * @param path       the key's canonical dotted path
+     * @param refinement the tightening
+     * @throws de.timscho.config.core.schema.RefinementException for an unknown path, a key that is
+     *                                                            not an open map, or an entry name
+     *                                                            some layer could not spell
+     */
+    @JsonIgnore
+    public Schema refine(final String path, final Refinement refinement) {
+        return Refiner.refine(this, path, refinement);
+    }
+
+    /**
+     * This schema with every refinement {@code source} publishes applied, its paths read relative
+     * to {@code at} — the port of the Rust crate's {@code Schema::refine_with}.
+     *
+     * @param at     where the source's configuration is mounted, e.g. {@code legal}; empty for the root
+     * @param source the library publishing the refinements
+     * @throws de.timscho.config.core.schema.RefinementException as {@link #refine}
+     */
+    @JsonIgnore
+    public Schema refineWith(final String at, final Refine source) {
+        return Refiner.refineWith(this, at, source);
     }
 }

@@ -33,7 +33,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
-    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, Unknown,
+    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, Refine, Refinement,
+    Unknown,
 };
 
 /// The version string every corpus document carries in place of the real one.
@@ -169,6 +170,83 @@ impl Default for Unnameable {
     }
 }
 
+/// A host mounting a legal-pages library whose runtime check the types cannot state.
+///
+/// The library refuses to start without an `imprint` and a `privacy` document, and its footer
+/// without a `home` link. Neither is in any type: both maps are `BTreeMap`s, and the derive
+/// publishes an open object. [`LegalPagesRefinements`] is where the library says so.
+#[derive(Deserialize, Serialize, Describe)]
+struct Site {
+    /// Bundle directory the readiness probe checks.
+    #[serde(default = "default_dist")]
+    dist_dir: String,
+    #[config(nested)]
+    legal: LegalPages,
+}
+
+impl Default for Site {
+    fn default() -> Self {
+        Self {
+            dist_dir: default_dist(),
+            legal: LegalPages::default(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Describe)]
+struct LegalPages {
+    /// Legal documents, by the name the site links them under.
+    ///
+    /// Defaults to none, which the library refuses at boot — so the refined contract publishes the
+    /// key as required, with no default.
+    #[config(element)]
+    #[serde(default)]
+    documents: BTreeMap<String, LegalDocument>,
+    /// Footer links, by label.
+    ///
+    /// Defaults to a `home` link, which is the one the refinement requires — so this default
+    /// survives it.
+    #[serde(default = "default_links")]
+    links: BTreeMap<String, String>,
+}
+
+impl Default for LegalPages {
+    fn default() -> Self {
+        Self {
+            documents: BTreeMap::new(),
+            links: default_links(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct LegalDocument {
+    /// Heading of the page.
+    title: String,
+    /// Markdown body.
+    #[serde(default)]
+    body: String,
+}
+
+fn default_links() -> BTreeMap<String, String> {
+    BTreeMap::from([("home".to_owned(), "/".to_owned())])
+}
+
+/// What the legal-pages library publishes, relative to wherever a host mounts it.
+struct LegalPagesRefinements;
+
+impl Refine for LegalPagesRefinements {
+    fn refinements(&self) -> Vec<(String, Refinement)> {
+        vec![
+            (
+                "documents".to_owned(),
+                Refinement::required_entries(["imprint", "privacy"]),
+            ),
+            ("links".to_owned(), Refinement::required_entries(["home"])),
+        ]
+    }
+}
+
 #[derive(Deserialize, Serialize, Default, Describe)]
 #[serde(rename_all = "lowercase")]
 enum LogLevel {
@@ -204,6 +282,7 @@ fn cases() -> Vec<(&'static str, Contract)> {
         ("minimal", minimal()),
         ("full-surface", full_surface()),
         ("unnameable-key", unnameable_key()),
+        ("required-entries", required_entries()),
     ]
 }
 
@@ -248,6 +327,18 @@ fn unnameable_key() -> Contract {
         .with_defaults_from(&Unnameable::default())
         .expect("the default config serialises")
         .into_contract(App::new("edge").version("1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+fn required_entries() -> Contract {
+    Terrace::new("SITE_")
+        .schema::<Site>()
+        .with_defaults_from(&Site::default())
+        .expect("the default config serialises")
+        .refine_with("legal", &LegalPagesRefinements)
+        .expect("both maps accept their entries")
+        .into_contract(App::new("site").version("1.0.0"))
         .build()
         .expect("the contract has nothing to refuse")
 }

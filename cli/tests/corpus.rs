@@ -24,7 +24,12 @@ use terrace_contract::render::{self, Format, Options};
 use terrace_contract::{Contract, DEFAULT_PATH, Tier};
 
 /// Every stored case, by directory name.
-const CASES: &[&str] = &["minimal", "full-surface", "unnameable-key"];
+const CASES: &[&str] = &[
+    "minimal",
+    "full-surface",
+    "unnameable-key",
+    "required-entries",
+];
 
 /// The file each format is stored under.
 const RENDERINGS: &[(Format, &str)] = &[

@@ -12,14 +12,16 @@ import de.timscho.config.core.model.ExternalVar;
 import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.TextForm;
+import de.timscho.config.core.schema.Refine;
+import de.timscho.config.core.schema.Refinement;
 import de.timscho.config.loader.TerraceLoader;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Assembles the three named spec cases ({@code minimal}, {@code full-surface},
- * {@code unnameable-key}) as real {@link Contract}s, each from its own fixture type in this
+ * Assembles the four named spec cases ({@code minimal}, {@code full-surface},
+ * {@code unnameable-key}, {@code required-entries}) as real {@link Contract}s, each from its own fixture type in this
  * package, run through the real {@code terrace-config-loader} and the real Jackson 2 codec —
  * exactly the pipeline a consuming service runs, not a hand-maintained restatement of what one
  * would render. Mirrors {@code terrace-config-example-service}'s {@code ContractGenerator},
@@ -57,6 +59,28 @@ public final class FixtureContracts {
                 .withDefaultsFromValue(defaultsAsMap(new FullSurfaceConfig()));
         final App app = App.builder().name("portfolio").version("2.5.0").build();
         return ContractAssembler.assemble(schema, app, producer(), fullSurfaceExternal());
+    }
+
+    /**
+     * The {@code required-entries} case, reachable under {@code SITE_}: the legal-pages library's
+     * two refinements applied relative to where this host mounts it, after the defaults were
+     * observed — so {@code legal.documents}' empty default becomes a requirement and {@code
+     * legal.links}' default, which already holds {@code home}, survives.
+     */
+    public static Contract requiredEntries() {
+        final Schema schema = TerraceLoader.of("SITE_")
+                .schema(RequiredEntriesConfigDescriptor.DESCRIPTOR)
+                .withDefaultsFromValue(defaultsAsMap(new RequiredEntriesConfig()))
+                .refineWith("legal", legalPagesRefinements());
+        final App app = App.builder().name("site").version("1.0.0").build();
+        return ContractAssembler.assemble(schema, app, producer());
+    }
+
+    /** What the legal-pages library publishes, relative to its mount. */
+    private static Refine legalPagesRefinements() {
+        return () -> List.of(
+                new Refine.At("documents", Refinement.requiredEntries(List.of("imprint", "privacy"))),
+                new Refine.At("links", Refinement.requiredEntries(List.of("home"))));
     }
 
     private static Producer producer() {

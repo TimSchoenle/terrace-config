@@ -1772,6 +1772,26 @@ mod tests {
     }
 
     #[test]
+    fn a_map_keeps_the_entries_its_contract_requires() {
+        // A refined map: the entries its host refuses to start without travel into the chart's
+        // values schema, so an operator's editor and `helm lint` flag the omission before any
+        // gate runs. Both the structured path and the plain one carry them.
+        let constraint = json!({
+            "type": "object",
+            "additionalProperties": {"type": "object", "properties": {"title": {"type": "string"}}},
+            "required": ["imprint", "privacy"],
+        });
+        for structured in [true, false] {
+            let held = expected(Some(&constraint), true, structured);
+            assert_eq!(held["required"], json!(["imprint", "privacy"]), "{held}");
+            assert_eq!(
+                held["additionalProperties"]["properties"]["title"],
+                json!({"type": "string"})
+            );
+        }
+    }
+
+    #[test]
     fn a_structured_key_whose_constraint_names_an_array_is_neither() {
         // Describing it as an object made a chart reject its own defaults the moment its schema
         // was generated.

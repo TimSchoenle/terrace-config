@@ -8,6 +8,7 @@ import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Schema;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -15,7 +16,7 @@ import java.util.Set;
  * throwing the first {@link ContractRefusalException} it finds.
  *
  * <p>This belongs beside the model rather than inside a loader: both {@code -loader} and
- * {@code -spring-boot} build the same {@link Contract} shape and must refuse the same eight
+ * {@code -spring-boot} build the same {@link Contract} shape and must refuse the same nine
  * things, so the check is written once here rather than twice downstream.
  *
  * <p>No streams, per the project's convention — every scan below is a plain loop.
@@ -44,6 +45,7 @@ public final class ContractValidator {
         checkDuplicateExternalVariables(external);
         checkSecretsWithDefaults(schema, external);
         checkIndirectionCollisions(schema);
+        checkDefaultsAgainstConstraints(schema);
     }
 
     /** Refusal 7. Checked first: every other check assumes a namespace actually exists. */
@@ -134,6 +136,25 @@ public final class ContractValidator {
                 if (key.getEnv().equals(other.getEnvFile())) {
                     throw new IndirectionCollisionException(key.getPath(), other.getPath(), key.getEnv());
                 }
+            }
+        }
+    }
+
+    /**
+     * Refusal 9: a key's {@code default_value} fails its own {@code constraint}. Only a failure
+     * {@link ConstraintEvaluator} can prove is refused; a keyword it does not evaluate leaves the
+     * default published rather than refused on a guess.
+     */
+    private static void checkDefaultsAgainstConstraints(final Schema schema) {
+        for (final Key key : schema.getKeys()) {
+            final Map<String, Object> constraint = key.getConstraint();
+            final Object defaultValue = key.getDefaultValue();
+            if (constraint == null || defaultValue == null) {
+                continue;
+            }
+            if (ConstraintEvaluator.verdict(constraint, defaultValue) instanceof ConstraintEvaluator.Fails failed) {
+                throw new DefaultViolatesConstraintException(
+                        key.getPath(), ConstraintEvaluator.show(defaultValue), failed.reason());
             }
         }
     }

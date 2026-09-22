@@ -6,7 +6,7 @@
 //!
 //! # Why this exists even though producers already refuse
 //!
-//! `FORMAT.md` requires a *producer* to fail rather than emit a document carrying any of the eight
+//! `FORMAT.md` requires a *producer* to fail rather than emit a document carrying any of the nine
 //! refusals below, and both existing implementations do. That duplication is deliberate and the
 //! roles are not symmetric:
 //!
@@ -127,7 +127,7 @@ pub fn conform(contract: &Contract, tier: Tier) -> Vec<Violation> {
     violations
 }
 
-/// The eight refusals: every way a contract could quietly stop being one.
+/// The nine refusals: every way a contract could quietly stop being one.
 ///
 /// Numbered as `FORMAT.md` numbers them, because a producer's author reading a failure here is
 /// going to go and read that section, and a rule that has a number in one place and a name in the
@@ -302,7 +302,7 @@ fn key_refusals(contract: &Contract) -> Vec<Violation> {
         if key.unreachable == Some(Unreachable::Indirection) {
             violations.push(Violation {
                 rule: "refusal 8",
-                at,
+                at: at.clone(),
                 detail: format!(
                     "`{}` is unreachable through another key's indirection variable, which is a \
                      shape a producer must refuse rather than publish",
@@ -310,9 +310,58 @@ fn key_refusals(contract: &Contract) -> Vec<Violation> {
                 ),
             });
         }
+
+        // 9
+        if let Some(detail) = default_violation(key) {
+            violations.push(Violation {
+                rule: "refusal 9",
+                at,
+                detail,
+            });
+        }
     }
 
     violations
+}
+
+/// Why a key's `default_value` fails its own `constraint`, when it does.
+///
+/// Checked with a real JSON Schema engine rather than this crate's own value checks, which refuse
+/// a keyword they do not implement: a producer's constraint is JSON Schema, and a conformance check
+/// that could not read one would be skipping it. A constraint the engine cannot compile is reported
+/// here too — under this rule, because it is the rule that could not be checked, and silently
+/// passing a check that was never performed is what `FORMAT.md` forbids.
+///
+/// `default_value: null` is not a default to check: it is what "no default" renders to.
+fn default_violation(key: &Key) -> Option<String> {
+    let (Some(constraint), Some(default)) = (&key.constraint, &key.default_value) else {
+        return None;
+    };
+    if default.is_null() {
+        return None;
+    }
+    let validator = match jsonschema::draft7::options().build(constraint) {
+        Ok(validator) => validator,
+        Err(failure) => {
+            return Some(format!(
+                "`{}` carries a default, and its constraint does not compile as JSON Schema, so \
+                 whether the default satisfies it cannot be checked: {failure}",
+                key.path
+            ));
+        }
+    };
+    let failure = validator.iter_errors(default).next()?;
+    let inside = failure.instance_path().to_string();
+    let position = if inside.is_empty() {
+        String::new()
+    } else {
+        format!(" at {inside}")
+    };
+    Some(format!(
+        "`{}` publishes the default {default}, which fails its own constraint{position}: \
+         {failure}. A key cannot be both safe to leave out and invalid when it is",
+        key.path
+    ))
 }
 
 /// Tier 2: every spelling the document states is the one the dialect derives.
@@ -423,7 +472,8 @@ pub fn required_keys(contract: &Contract) -> impl Iterator<Item = &Key> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Tier, derive_env, ignore_covers};
+    use super::{Tier, default_violation, derive_env, ignore_covers};
+    use crate::document::Key;
 
     #[test]
     fn a_pattern_subsuming_the_prefix_is_caught_and_an_exact_name_is_not() {
@@ -444,6 +494,32 @@ mod tests {
         assert_eq!(derive_env("distDir", "P_", "__"), None);
         // Already carrying the separator.
         assert_eq!(derive_env("a__b", "P_", "__"), None);
+    }
+
+    #[test]
+    fn a_default_its_own_constraint_rejects_is_refusal_9() {
+        let key = |default: serde_json::Value| -> Key {
+            serde_json::from_value(serde_json::json!({
+                "path": "legal.documents",
+                "constraint": {"type": "object", "required": ["imprint", "privacy"]},
+                "default_value": default,
+                "text_form": "structured",
+            }))
+            .expect("a key")
+        };
+        let detail = default_violation(&key(serde_json::json!({}))).expect("a violation");
+        assert!(
+            detail.contains("`legal.documents` publishes the default {}"),
+            "{detail}"
+        );
+        assert!(detail.contains("imprint"), "{detail}");
+
+        assert_eq!(
+            default_violation(&key(serde_json::json!({"imprint": 1, "privacy": 2}))),
+            None
+        );
+        // No default at all is not a default to hold to anything.
+        assert_eq!(default_violation(&key(serde_json::Value::Null)), None);
     }
 
     #[test]
