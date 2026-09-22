@@ -262,6 +262,10 @@ fn check_pair(
                     seen.push(found);
                 }
             }
+            report.extend(
+                &at,
+                super::rollout::check_workload(&manifests, workload, consumer, document, binding),
+            );
         }
     }
 

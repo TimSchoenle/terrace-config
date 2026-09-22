@@ -89,6 +89,8 @@ pub enum Area {
     Key,
     /// A declared external variable.
     External,
+    /// Whether a change reaches the running process: `schema.reload`, and each key's class.
+    Reload,
 }
 
 impl Area {
@@ -99,6 +101,7 @@ impl Area {
             Self::Loader => "loader",
             Self::Key => "key",
             Self::External => "external",
+            Self::Reload => "reload",
         }
     }
 }
@@ -410,6 +413,7 @@ pub fn diff_contract(
     let keys_moved = !key_changes.is_empty();
     changes.extend(key_changes);
     changes.extend(diff_external(&before, &after));
+    changes.extend(diff_reload(&before, &after));
 
     // The published JSON Schema is derived from the keys, so it moves whenever they do and saying
     // so again would be noise. It is worth a line in exactly one case: it moved and the keys did
@@ -967,7 +971,16 @@ fn diff_entry(
     // does not recognise is the failure this whole toolchain exists to remove.
     let mut known: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
     known.extend(DEFAULT_FIELDS);
-    known.extend(["path", "name", "required", "text_form", "unreachable"]);
+    // `reload` is graded by `diff_reload`, by the class a consumer derives rather than by the
+    // bytes, because the same class can be spelled two ways.
+    known.extend([
+        "path",
+        "name",
+        "required",
+        "text_form",
+        "unreachable",
+        "reload",
+    ]);
     let mut unknown: Vec<&String> = old
         .as_object()
         .into_iter()
@@ -1193,6 +1206,111 @@ fn diff_default(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Change
 }
 
 // ------------------------------------------------------------------------------------------
+// Reloading
+// ------------------------------------------------------------------------------------------
+
+/// What moved in whether a change reaches the running process.
+///
+/// **Graded by the effective class, not by the bytes**, for the reason removals are graded by what
+/// the loader does next: the same deployment behaviour has more than one spelling. A key going from
+/// undeclared to `restart` is the same restart it always was, and an image declaring `none` where
+/// it declared nothing before rolls the same pods. Neither is a finding.
+///
+/// What is a finding is a key whose class a consumer derives differently — a chart's generated
+/// restart set has to follow it, and the gates fail until it does — and a change to the image's
+/// own declaration, which can move every key at once. Both are minor: the chart's values still
+/// load either way, and what changes is which edits roll its pods.
+fn diff_reload(old: &Map<String, Json>, new: &Map<String, Json>) -> Vec<Change> {
+    let old_schema = nested(old, "schema");
+    let new_schema = nested(new, "schema");
+    let mut changes = Vec::new();
+
+    let old_declared = old_schema.get("reload").filter(|held| !held.is_null());
+    let new_declared = new_schema.get("reload").filter(|held| !held.is_null());
+    let old_rebuilds = rebuilds(old_declared);
+    let new_rebuilds = rebuilds(new_declared);
+    if old_rebuilds != new_rebuilds || (old_rebuilds && old_declared != new_declared) {
+        changes.push(Change {
+            severity: Severity::Minor,
+            area: Area::Reload,
+            kind: Kind::Changed,
+            subject: "schema.reload".to_owned(),
+            field: None,
+            old: old_declared.cloned(),
+            new: new_declared.cloned(),
+            message: match (old_rebuilds, new_rebuilds) {
+                (false, true) => "the image now applies a change without restarting; keys it \
+                                  publishes `live` stop rolling the pods once the chart \
+                                  regenerates its restart set"
+                    .to_owned(),
+                (true, false) => "the image no longer applies a change without restarting; every \
+                                  key rolls the pods again, and the chart's restart set has to \
+                                  follow"
+                    .to_owned(),
+                _ => format!(
+                    "the image changed what it watches: {} -> {}",
+                    short(old_declared),
+                    short(new_declared)
+                ),
+            },
+        });
+    }
+
+    let old_keys = indexed(old.get("schema"), "keys", "path");
+    let new_keys = indexed(new.get("schema"), "keys", "path");
+    for (path, before) in &old_keys {
+        let Some(after) = new_keys.get(path) else {
+            continue;
+        };
+        let was_live = old_rebuilds && live(before);
+        let is_live = new_rebuilds && live(after);
+        // Only a key whose own class moved. One that moved because the declaration did is covered
+        // by the finding above, and listing every key again would bury it.
+        if was_live == is_live || (old_rebuilds != new_rebuilds && live(before) == live(after)) {
+            continue;
+        }
+        changes.push(Change {
+            severity: Severity::Minor,
+            area: Area::Reload,
+            kind: Kind::Changed,
+            subject: path.clone(),
+            field: Some("reload".to_owned()),
+            old: before.get("reload").cloned(),
+            new: after.get("reload").cloned(),
+            message: if is_live {
+                format!(
+                    "{path} is now applied by a rebuild; a change to it no longer needs to roll the \
+                     pods, and gets no readiness gating or rollback when it does not"
+                )
+            } else {
+                format!(
+                    "{path} now needs a restart; a chart that leaves it out of its restart set \
+                     reports a change to it as applied and never applies it"
+                )
+            },
+        });
+    }
+    changes
+}
+
+/// Whether a raw `schema.reload` declares a rebuild over at least one layer.
+fn rebuilds(declared: Option<&Json>) -> bool {
+    declared.is_some_and(|held| {
+        held.get("mode").and_then(Json::as_str) == Some("rebuild")
+            && held
+                .get("layers")
+                .and_then(Json::as_array)
+                .is_some_and(|layers| !layers.is_empty())
+    })
+}
+
+/// Whether a raw key is published `live`. Anything else — absent, `restart`, a class this build
+/// does not know — is a restart.
+fn live(entry: &Json) -> bool {
+    entry.get("reload").and_then(Json::as_str) == Some("live")
+}
+
+// ------------------------------------------------------------------------------------------
 // Small shared helpers
 // ------------------------------------------------------------------------------------------
 
@@ -1377,6 +1495,73 @@ mod tests {
         let lost = diff_contract("c", "app", "p", Some(&new), None);
         assert_eq!(lost.status, Status::Removed);
         assert_eq!(lost.impact(), Severity::Major);
+    }
+
+    /// A document whose image declares `reload`, or nothing when `reload` is null.
+    fn reloading(keys: &Json, reload: &Json) -> Json {
+        let mut held = document(keys, &none());
+        if !reload.is_null() {
+            held["schema"]["reload"] = reload.clone();
+        }
+        held
+    }
+
+    fn rebuild() -> Json {
+        json!({"mode": "rebuild", "layers": ["document", "secrets_dir", "env_file"]})
+    }
+
+    fn reload_changes(old: &Json, new: &Json) -> Vec<super::Change> {
+        changes(old, new)
+            .into_iter()
+            .filter(|change| change.area == Area::Reload)
+            .collect()
+    }
+
+    #[test]
+    fn a_class_spelled_differently_but_meaning_the_same_is_not_a_finding() {
+        // Undeclared and `restart` roll the same pods, and so do no declaration and `none`.
+        let undeclared = reloading(&one("a", &json!({})), &Json::Null);
+        let stated = reloading(
+            &one("a", &json!({"reload": "restart"})),
+            &json!({"mode": "none", "layers": []}),
+        );
+        assert!(reload_changes(&undeclared, &stated).is_empty());
+        assert!(
+            changes(&undeclared, &stated)
+                .iter()
+                .all(|change| { change.field.as_deref() != Some("reload") })
+        );
+    }
+
+    #[test]
+    fn a_key_changing_class_is_minor_in_both_directions() {
+        let restart = reloading(&one("a", &json!({"reload": "restart"})), &rebuild());
+        let live = reloading(&one("a", &json!({"reload": "live"})), &rebuild());
+
+        for (old, new, says) in [
+            (&restart, &live, "applied by a rebuild"),
+            (&live, &restart, "now needs a restart"),
+        ] {
+            let found = reload_changes(old, new);
+            assert_eq!(found.len(), 1, "{found:?}");
+            assert_eq!(found[0].severity, Severity::Minor);
+            assert_eq!(found[0].subject, "a");
+            assert!(found[0].message.contains(says), "{found:?}");
+        }
+    }
+
+    #[test]
+    fn a_declaration_change_is_one_finding_rather_than_one_per_key() {
+        let keys = json!([
+            key("a", &json!({"reload": "live"})),
+            key("b", &json!({"reload": "live"}))
+        ]);
+        let before = reloading(&keys, &rebuild());
+        let after = reloading(&keys, &json!({"mode": "none", "layers": []}));
+        let found = reload_changes(&before, &after);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].subject, "schema.reload");
+        assert!(found[0].message.contains("no longer"), "{found:?}");
     }
 
     #[test]

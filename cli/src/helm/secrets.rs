@@ -1760,6 +1760,7 @@ mod tests {
                 containers: vec![container.to_owned()],
             }],
             exempt: Vec::new(),
+            restart: Vec::new(),
         }])
     }
 

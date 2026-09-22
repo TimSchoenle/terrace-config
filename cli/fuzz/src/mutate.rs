@@ -33,6 +33,10 @@ const CASES: &[(&str, &str)] = &[
         "unnameable-key",
         include_str!("../../../spec/v1/conformance/unnameable-key/contract.json"),
     ),
+    (
+        "reload",
+        include_str!("../../../spec/v1/conformance/reload/contract.json"),
+    ),
 ];
 
 /// One stored case as a mutable JSON tree, chosen by name.
@@ -67,7 +71,7 @@ pub fn document(input: &str) -> Json {
 /// Every arm is a rule some oracle has an opinion about. `p=` and `g=` reach the ignore-pattern
 /// refusals; `k=<n>:secret=true` reaches the secret-with-a-default one; `V=` and `S=` reach the
 /// envelope gate; `L=` reaches the loader registry that decides whether a text read may happen at
-/// all.
+/// all; `R=`, `Y=` and `k=<n>:reload=` reach the reload refusals and the degradation to `restart`.
 fn apply(value: &mut Json, line: &str) {
     let Some((kind, rest)) = line.split_once('=') else {
         // `r` is the one directive with no argument.
@@ -116,7 +120,37 @@ fn apply(value: &mut Json, line: &str) {
         "u" => set(value, &["external", "unknown"], json!(rest)),
         "K" => push(value, &["schema", "keys"], key(rest)),
         "k" => mutate_key(value, rest),
+        "R" => set_reload_mode(value, rest),
+        "Y" => set(
+            value,
+            &["schema", "reload", "layers"],
+            json!(
+                rest.split(',')
+                    .filter(|layer| !layer.is_empty())
+                    .collect::<Vec<_>>()
+            ),
+        ),
         _ => {}
+    }
+}
+
+/// `R=<mode>` — the image's reload mode, or `R=` to drop the declaration entirely.
+///
+/// Creates the declaration where the case had none, over all three layers, so a mode can be
+/// reached from every stored case and not only from the one that already declares.
+fn set_reload_mode(value: &mut Json, mode: &str) {
+    let Some(Json::Object(schema)) = value.get_mut("schema") else {
+        return;
+    };
+    if mode.is_empty() {
+        schema.remove("reload");
+        return;
+    }
+    let declaration = schema.entry("reload").or_insert_with(|| {
+        json!({ "mode": "none", "layers": ["document", "secrets_dir", "env_file"] })
+    });
+    if let Json::Object(declaration) = declaration {
+        declaration.insert("mode".to_owned(), json!(mode));
     }
 }
 
@@ -178,7 +212,7 @@ fn mutate_key(value: &mut Json, rest: &str) {
     let parsed = match field {
         "secret" | "required" | "reserved" => json!(raw == "true"),
         "env" | "env_file" | "secrets_file" | "default" | "path" | "ty" | "unreachable"
-        | "text_form" => {
+        | "text_form" | "reload" => {
             if raw == "null" {
                 Json::Null
             } else {

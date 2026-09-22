@@ -1112,6 +1112,7 @@ mod tests {
                     }],
                     consumers: Vec::new(),
                     exempt: Vec::new(),
+                    restart: Vec::new(),
                 })
                 .collect(),
             reason: None,

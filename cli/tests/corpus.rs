@@ -29,6 +29,7 @@ const CASES: &[&str] = &[
     "full-surface",
     "unnameable-key",
     "required-entries",
+    "reload",
 ];
 
 /// The file each format is stored under.
