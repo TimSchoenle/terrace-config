@@ -230,9 +230,11 @@ jobs:
           # `SHA256SUMS` alone, and that is the whole chain: a tampered archive fails the
           # checksum, and a tampered checksum file fails this signature. Signing each archive
           # as well would be four more files saying what one already says.
-          cosign sign-blob SHA256SUMS \
-            --output-signature SHA256SUMS.sig \
-            --output-certificate SHA256SUMS.pem
+          #
+          # One bundle rather than a `.sig` and a `.pem`: cosign 3 writes the new bundle format
+          # by default, ignores `--output-signature` and `--output-certificate` under it, and
+          # fails outright when no `--bundle` path is given.
+          cosign sign-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json
 
       - name: Attach
         env:
@@ -256,7 +258,7 @@ jobs:
             echo '| asset | verify |'
             echo '|---|---|'
             for file in dist/*; do
-              case "$file" in *.sig|*.pem) continue;; esac
+              case "$file" in *.sigstore.json) continue;; esac
               echo "| \`$(basename "$file")\` | \`sha256sum -c SHA256SUMS\` |"
             done
             echo
@@ -264,7 +266,7 @@ jobs:
             echo
             echo '```'
             echo "cosign verify-blob SHA256SUMS \\"
-            echo "  --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \\"
+            echo "  --bundle SHA256SUMS.sigstore.json \\"
             echo "  --certificate-identity-regexp '^https://github.com/${REPOSITORY}/' \\"
             echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo '```'
@@ -357,9 +359,13 @@ jobs:
 
       # The digest, not a tag: a tag moves and a signature over one says nothing about the bytes a
       # consumer pulled. This is the same argument the contract refresh makes about vendoring.
+      #
+      # Lowercased because a reference must be, and `repository_owner` is not: `metadata-action`
+      # lowercases the name it pushes under, so the raw owner names a repository that does not
+      # exist and cosign refuses to parse it.
       - name: Sign
         env:
           COSIGN_YES: "true"
           DIGEST: ${{ steps.push.outputs.digest }}
           IMAGE: ghcr.io/${{ github.repository_owner }}/terrace-contract
-        run: cosign sign "${IMAGE}@${DIGEST}"
+        run: cosign sign "${IMAGE,,}@${DIGEST}"
