@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.4.1...terrace-contract-v0.5.0) (2026-09-23)
+
+
+### Features
+
+* publish and enforce whether a configuration change needs a restart ([#187](https://github.com/TimSchoenle/terrace-config/issues/187)) ([e0fd0de](https://github.com/TimSchoenle/terrace-config/commit/e0fd0de5c4992adecb1162063436b4ca95f7c411))
+
 ## [0.4.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.4.0...terrace-contract-v0.4.1) (2026-09-22)
 
 
