@@ -34,7 +34,7 @@ pub use bindings::{Bindings, check as check_bindings};
 pub use check::{Checked, check};
 pub use coverage::{Coverage, coverage};
 pub use declaration::{
-    Binding, Bound, Consumer, Declaration, Document, ImageRef, Vendored, bind, declared,
+    Binding, Bound, Consumer, Declaration, Document, ImageRef, Selection, Vendored, bind, declared,
     load_declaration, resolve_image,
 };
 pub use diff::{ChartDiff, Committed, Diffed, Revision, collect};

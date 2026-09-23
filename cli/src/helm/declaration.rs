@@ -828,6 +828,99 @@ pub fn chart_dirs(charts: &Path) -> Result<Vec<PathBuf>, Error> {
     Ok(found)
 }
 
+/// Which of a tree's charts a gate reads: every one, or the ones named.
+///
+/// A gate over the whole tree fails a pull request for a chart it never touched, so a consumer that
+/// knows what changed narrows it here. The narrowing is by directory name, which is the chart's
+/// name in every tree this reads, and it is applied to the walk rather than to the findings: a chart
+/// outside the selection is not read at all, so a chart that cannot even be parsed does not fail a
+/// change elsewhere either.
+///
+/// A name matching no chart is refused rather than read as a selection of nothing. A gate that
+/// checked nothing exits clean, and a typo in a pipeline would otherwise turn a gate green for good.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Selection {
+    names: BTreeSet<String>,
+}
+
+impl Selection {
+    /// Every chart in the tree.
+    #[must_use]
+    pub fn all() -> Self {
+        Self::default()
+    }
+
+    /// Only the named charts, or every chart when none is named.
+    #[must_use]
+    pub fn of<I, S>(names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            names: names.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// Whether this is the whole tree.
+    #[must_use]
+    pub fn is_all(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// Whether the chart named `name` is read.
+    #[must_use]
+    pub fn admits(&self, name: &str) -> bool {
+        self.is_all() || self.names.contains(name)
+    }
+
+    /// The selected chart directories under `charts`, sorted as [`chart_dirs`] sorts them.
+    ///
+    /// # Errors
+    /// [`Error::Io`] when the directory cannot be listed, and [`Error::Invalid`] naming every
+    /// selected chart the tree does not hold.
+    pub fn dirs(&self, charts: &Path) -> Result<Vec<PathBuf>, Error> {
+        let every = chart_dirs(charts)?;
+        let present: BTreeSet<&str> = every.iter().filter_map(|dir| chart_name(dir)).collect();
+        let unknown: Vec<&str> = self
+            .names
+            .iter()
+            .map(String::as_str)
+            .filter(|name| !present.contains(name))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(Error::Invalid(format!(
+                "{}: holds no chart named {}; a selection naming a chart that is not there would \
+                 check nothing and pass",
+                charts.display(),
+                unknown.join(", ")
+            )));
+        }
+        Ok(every
+            .into_iter()
+            .filter(|dir| chart_name(dir).is_some_and(|name| self.admits(name)))
+            .collect())
+    }
+
+    /// [`declared`], over the selected charts only.
+    ///
+    /// # Errors
+    /// As [`Selection::dirs`], and [`Error::Invalid`] when a selected chart's declaration cannot be
+    /// read as one.
+    pub fn declared(
+        &self,
+        charts: &Path,
+        documents_only: bool,
+    ) -> Result<Vec<(PathBuf, Declaration)>, Error> {
+        declared_in(self.dirs(charts)?, documents_only)
+    }
+}
+
+/// A chart directory's name, which is the chart's name.
+fn chart_name(chart_dir: &Path) -> Option<&str> {
+    chart_dir.file_name().and_then(std::ffi::OsStr::to_str)
+}
+
 /// Every chart carrying a declaration, paired with it.
 ///
 /// `documents_only` is a real distinction rather than a convenience. A chart with `documents: []`
@@ -838,8 +931,16 @@ pub fn chart_dirs(charts: &Path) -> Result<Vec<PathBuf>, Error> {
 /// # Errors
 /// [`Error::Invalid`] when any declaration cannot be read as one.
 pub fn declared(charts: &Path, documents_only: bool) -> Result<Vec<(PathBuf, Declaration)>, Error> {
+    declared_in(chart_dirs(charts)?, documents_only)
+}
+
+/// [`declared`], over the given chart directories.
+fn declared_in(
+    chart_dirs: Vec<PathBuf>,
+    documents_only: bool,
+) -> Result<Vec<(PathBuf, Declaration)>, Error> {
     let mut found = Vec::new();
-    for chart_dir in chart_dirs(charts)? {
+    for chart_dir in chart_dirs {
         let Some(declaration) = load_declaration(&chart_dir)? else {
             continue;
         };
@@ -1275,7 +1376,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{load_declaration, read_yaml, resolve_image};
+    use super::{Selection, load_declaration, read_yaml, resolve_image};
 
     fn write(body: &str) -> tempdir::Dir {
         let dir = tempdir::Dir::new();
@@ -1314,6 +1415,77 @@ mod tests {
                 let _ = std::fs::remove_dir_all(&self.0);
             }
         }
+    }
+
+    /// A chart tree holding `alpha`, `beta` and `gamma`, and a directory that is not a chart.
+    fn three_charts() -> tempdir::Dir {
+        let tree = tempdir::Dir::new();
+        for name in ["alpha", "beta", "gamma"] {
+            let chart = tree.path().join(name);
+            std::fs::create_dir_all(&chart).expect("the chart directory is created");
+            std::fs::write(chart.join("Chart.yaml"), format!("name: {name}\n"))
+                .expect("the chart is written");
+        }
+        std::fs::create_dir_all(tree.path().join("scripts")).expect("the directory is created");
+        tree
+    }
+
+    fn names(dirs: &[std::path::PathBuf]) -> Vec<&str> {
+        dirs.iter()
+            .filter_map(|dir| dir.file_name().and_then(std::ffi::OsStr::to_str))
+            .collect()
+    }
+
+    #[test]
+    fn a_selection_naming_nothing_is_the_whole_tree() {
+        let tree = three_charts();
+        let dirs = Selection::all()
+            .dirs(tree.path())
+            .expect("the tree is walked");
+        assert_eq!(names(&dirs), ["alpha", "beta", "gamma"]);
+        assert_eq!(Selection::of(Vec::<String>::new()), Selection::all());
+    }
+
+    #[test]
+    fn a_selection_reads_only_the_charts_it_names_in_tree_order() {
+        let tree = three_charts();
+        let dirs = Selection::of(["gamma", "alpha"])
+            .dirs(tree.path())
+            .expect("both charts exist");
+        assert_eq!(names(&dirs), ["alpha", "gamma"]);
+    }
+
+    #[test]
+    fn a_selection_naming_a_chart_the_tree_lacks_is_refused_rather_than_empty() {
+        // Otherwise a typo in a pipeline selects nothing, and a gate over nothing passes.
+        let tree = three_charts();
+        let failure = Selection::of(["alpha", "delta", "scripts"])
+            .dirs(tree.path())
+            .expect_err("neither `delta` nor `scripts` is a chart")
+            .to_string();
+        assert!(
+            failure.contains("holds no chart named delta, scripts"),
+            "{failure}"
+        );
+    }
+
+    #[test]
+    fn a_selected_walk_never_reads_a_chart_outside_it() {
+        // `beta` carries a declaration that cannot be parsed; selecting around it must not fail.
+        let tree = three_charts();
+        std::fs::write(
+            tree.path().join("beta").join("config-contract.yaml"),
+            "documents: [\n",
+        )
+        .expect("the broken declaration is written");
+
+        Selection::all()
+            .declared(tree.path(), false)
+            .expect_err("the whole tree reads `beta`");
+        let found = Selection::of(["alpha", "gamma"])
+            .declared(tree.path(), false)
+            .expect("`beta` is not read");
+        assert!(found.is_empty(), "neither selected chart declares anything");
     }
 
     #[test]

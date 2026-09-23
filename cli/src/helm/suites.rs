@@ -57,7 +57,7 @@ use crate::union::union_contracts;
 
 use super::bindings::has_path;
 use super::declaration::{
-    Declaration, Document, chart_dirs, load_declaration, read_yaml, reject_unknown, vendored_for,
+    Declaration, Document, Selection, load_declaration, read_yaml, reject_unknown, vendored_for,
 };
 use super::markers::{Block, Class, Marker};
 use super::testgen::{
@@ -939,17 +939,14 @@ pub struct Generated {
 /// # Errors
 /// [`Error::Invalid`] when a chart's enrolment or declaration cannot be reconciled, [`Error::Io`]
 /// when the tree cannot be walked.
-pub fn collect(charts: &Path, only: Option<&str>) -> Result<Generated, Error> {
+pub fn collect(charts: &Path, selection: &Selection) -> Result<Generated, Error> {
     let mut generated = Generated::default();
-    for chart_dir in chart_dirs(charts)? {
+    for chart_dir in selection.dirs(charts)? {
         let name = chart_dir
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .unwrap_or_default()
             .to_owned();
-        if only.is_some_and(|wanted| wanted != name) {
-            continue;
-        }
 
         let Some(enrolments) = load_enrolment(&chart_dir)? else {
             generated.unenrolled.push(name);

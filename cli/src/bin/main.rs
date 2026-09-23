@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use terrace_contract::helm::{CHARTS_DIR, FIRST_PARTY};
+use terrace_contract::helm::{CHARTS_DIR, FIRST_PARTY, Selection};
 use terrace_contract::render::{
     self, Column, Docs, Format, JsonSchema, Options, TomlExample, image,
 };
@@ -146,6 +146,11 @@ enum Command {
     /// key, every other gate passes, the pod starts, reports healthy, and runs on a compiled default
     /// nobody chose.
     Check {
+        /// Only these charts, by directory name; every chart when none is named. A name the
+        /// tree does not hold is refused, so a typo cannot select nothing and pass.
+        #[arg(value_name = "CHART")]
+        only: Vec<String>,
+
         /// The directory a render wrote into.
         ///
         /// Read rather than produced: the manifests checked here must be byte-identical to the ones
@@ -171,6 +176,11 @@ enum Command {
     /// and no gate notices that the new key is reached by no chart value. `check` cannot see it
     /// either: a key nothing renders is not a key rendered wrongly.
     Bindings {
+        /// Only these charts, by directory name; every chart when none is named. A name the
+        /// tree does not hold is refused, so a typo cannot select nothing and pass.
+        #[arg(value_name = "CHART")]
+        only: Vec<String>,
+
         /// The chart tree.
         #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
         charts: PathBuf,
@@ -191,6 +201,11 @@ enum Command {
     /// was read at, which is the one thing the writer cannot repair: re-reading a struct somebody
     /// else owns is a person's job.
     Shapes {
+        /// Only these charts, by directory name; every chart when none is named. A name the
+        /// tree does not hold is refused, so a typo cannot select nothing and pass.
+        #[arg(value_name = "CHART")]
+        only: Vec<String>,
+
         /// The chart tree.
         #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
         charts: PathBuf,
@@ -300,6 +315,11 @@ enum Command {
     /// no contract can fill — *when* this chart needs the credential — stays hand-written, in the
     /// declaration beside the keys it describes.
     Readme {
+        /// Only these charts, by directory name; every chart when none is named. A name the
+        /// tree does not hold is refused, so a typo cannot select nothing and pass.
+        #[arg(value_name = "CHART")]
+        only: Vec<String>,
+
         /// The chart tree.
         #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
         charts: PathBuf,
@@ -336,9 +356,10 @@ enum Command {
     /// A chart is generated for when it carries `contract-tests.yaml`, so the rollout is a property
     /// of the tree rather than of a list somebody edits.
     Tests {
-        /// One chart, or every enrolled chart.
+        /// Only these charts, by directory name; every chart when none is named. A name the
+        /// tree does not hold is refused, so a typo cannot select nothing and pass.
         #[arg(value_name = "CHART")]
-        chart: Option<String>,
+        only: Vec<String>,
 
         /// The chart tree.
         #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
@@ -536,36 +557,24 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
         }
 
         Command::Check {
+            only,
             manifests,
             charts,
             format,
-        } => check_command(&charts, &manifests, format),
+        } => check_command(&charts, &Selection::of(only), &manifests, format),
 
-        Command::Bindings { charts, format } => {
-            let found = helm::check_bindings(&charts)?;
-            if format == Output::Text || format == Output::Github {
-                for (chart, keys, external) in &found.enrolled {
-                    println!(
-                        "bound: {chart} ({keys} contract key(s), {external} declared external variable(s))"
-                    );
-                }
-                if found.enrolled.is_empty() {
-                    println!("==> no chart carries a `@config` marker; nothing to check");
-                }
-            }
-            Ok(write_report(
-                &found.report,
-                format,
-                "Configuration bindings",
-                "Every contract key of every enrolled chart is bound by a value, or written off with a reason.",
-            ))
-        }
+        Command::Bindings {
+            only,
+            charts,
+            format,
+        } => bindings_command(&charts, &Selection::of(only), format),
 
         Command::Shapes {
+            only,
             charts,
             check,
             format,
-        } => shapes_command(&charts, check, format),
+        } => shapes_command(&charts, &Selection::of(only), check, format),
 
         Command::Diff {
             chart,
@@ -582,14 +591,18 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             exit_code,
         } => secrets_command(&charts, reconcile.as_deref(), json, exit_code),
 
-        Command::Readme { charts, check } => readme_command(&charts, check),
+        Command::Readme {
+            only,
+            charts,
+            check,
+        } => readme_command(&charts, &Selection::of(only), check),
         Command::Reload { charts, check } => reload_command(&charts, check),
 
         Command::Tests {
-            chart,
+            only,
             charts,
             check,
-        } => tests_command(&charts, chart.as_deref(), check),
+        } => tests_command(&charts, &Selection::of(only), check),
 
         Command::Explain {
             chart,
@@ -670,19 +683,49 @@ fn write_report(report: &Report, format: Output, headline: &str, clean: &str) ->
     ExitCode::FAILURE
 }
 
+/// Hold every selected chart's `@config` markers against the contracts they name.
+fn bindings_command(
+    charts: &Path,
+    selection: &Selection,
+    format: Output,
+) -> Result<ExitCode, Error> {
+    let found = helm::check_bindings(charts, selection)?;
+    if format == Output::Text || format == Output::Github {
+        for (chart, keys, external) in &found.enrolled {
+            println!(
+                "bound: {chart} ({keys} contract key(s), {external} declared external variable(s))"
+            );
+        }
+        if found.enrolled.is_empty() {
+            println!("==> no chart carries a `@config` marker; nothing to check");
+        }
+    }
+    Ok(write_report(
+        &found.report,
+        format,
+        "Configuration bindings",
+        "Every contract key of every enrolled chart is bound by a value, or written off with a reason.",
+    ))
+}
+
 /// Write or check every generated `@schema` block.
 ///
 /// One walk, two endings. The writer replaces a block that does not match; the checker reports it
 /// and adds the one assertion the writer deliberately does not make — that a hand transcription is
 /// still current — because a writer that refused over it would turn the job that repairs the tree
 /// into a gate over the one thing in it no repair reaches.
-fn shapes_command(charts: &Path, check: bool, format: Output) -> Result<ExitCode, Error> {
+fn shapes_command(
+    charts: &Path,
+    selection: &Selection,
+    check: bool,
+    format: Output,
+) -> Result<ExitCode, Error> {
     let mut report = Report::new();
     let mut written = 0;
     let mut derived = 0;
     let mut transcriptions = 0;
 
-    for chart_dir in helm::declaration::chart_dirs(charts)? {
+    for chart_dir in selection.dirs(charts)? {
         if !chart_dir.join("values.yaml").is_file() {
             continue;
         }
@@ -910,14 +953,19 @@ fn version_line(chart: &helm::ChartDiff, reference: &str) -> String {
 }
 
 /// Hold every rendered document, container environment and secret mount against its contract.
-fn check_command(charts: &Path, manifests: &Path, format: Output) -> Result<ExitCode, Error> {
+fn check_command(
+    charts: &Path,
+    selection: &Selection,
+    manifests: &Path,
+    format: Output,
+) -> Result<ExitCode, Error> {
     if !manifests.is_dir() {
         return Err(Error::Invalid(format!(
             "{}: no rendered manifests; render the charts into it first",
             manifests.display()
         )));
     }
-    let checked = helm::check(charts, manifests)?;
+    let checked = helm::check(charts, selection, manifests)?;
     if checked.charts == 0 {
         // Worth saying out loud: a run that validated nothing looks exactly like a clean one from
         // the outside.
@@ -1190,8 +1238,8 @@ fn surface_json(surface: &helm::secrets::Surface) -> serde_json::Value {
 }
 
 /// Write, or compare, every chart's generated credential reference.
-fn readme_command(charts: &Path, check: bool) -> Result<ExitCode, Error> {
-    let written = helm::readme::walk(charts, check)?;
+fn readme_command(charts: &Path, selection: &Selection, check: bool) -> Result<ExitCode, Error> {
+    let written = helm::readme::walk(charts, selection, check)?;
 
     for problem in &written.problems {
         eprintln!("{problem}");
@@ -1237,8 +1285,8 @@ fn reload_command(charts: &Path, check: bool) -> Result<ExitCode, Error> {
 }
 
 /// Write, or compare, every enrolled chart's generated round-trip suites.
-fn tests_command(charts: &Path, only: Option<&str>, check: bool) -> Result<ExitCode, Error> {
-    let generated = helm::suites::collect(charts, only)?;
+fn tests_command(charts: &Path, selection: &Selection, check: bool) -> Result<ExitCode, Error> {
+    let generated = helm::suites::collect(charts, selection)?;
     for chart in &generated.unenrolled {
         println!("==> {chart}: not enrolled, skipping");
     }
