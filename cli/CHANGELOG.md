@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.5.0...terrace-contract-v0.6.0) (2026-09-23)
+
+
+### Features
+
+* **cli:** narrow the chart gates to named charts ([#192](https://github.com/TimSchoenle/terrace-config/issues/192)) ([97772da](https://github.com/TimSchoenle/terrace-config/commit/97772daee08af7b4575fa879017883f47ab6836a))
+
+
+### Bug Fixes
+
+* **cli:** count render prerequisites a chart value carries into a required map ([#191](https://github.com/TimSchoenle/terrace-config/issues/191)) ([a86180d](https://github.com/TimSchoenle/terrace-config/commit/a86180dc353a2c5079502383956651cde052befc))
+
 ## [0.5.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.4.1...terrace-contract-v0.5.0) (2026-09-23)
 
 
