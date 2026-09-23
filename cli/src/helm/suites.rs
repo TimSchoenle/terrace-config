@@ -59,9 +59,10 @@ use super::bindings::has_path;
 use super::declaration::{
     Declaration, Document, chart_dirs, load_declaration, read_yaml, reject_unknown, vendored_for,
 };
-use super::markers::Class;
+use super::markers::{Block, Class, Marker};
 use super::testgen::{
-    Plan, Route, Target, VALUES_ROOT, plan, prerequisite_conflict, render_suite, unsupplied_entries,
+    Carrier, Plan, Route, Target, VALUES_ROOT, plan, prerequisite_conflict, render_suite,
+    unsupplied_entries,
 };
 use super::{dig, shapes};
 
@@ -610,43 +611,19 @@ fn repository_path(chart_dir: &Path, tail: &str) -> String {
 /// into a probe the templating engine silently creates and nothing renders.
 fn routes_for(
     chart_dir: &Path,
-    declaration: &Declaration,
+    markers: &[Marker],
+    blocks: &[Block],
     document: &Document,
     values: &Json,
     root: &str,
     unrouted: &[(String, String)],
 ) -> Result<BTreeMap<String, Route>, Error> {
-    if !declaration.bindings {
-        return Ok(BTreeMap::new());
-    }
-
-    let path = chart_dir.join("values.yaml");
-    let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
-    let chart = chart_dir
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or_default();
-    let (markers, blocks) = super::markers::read(&text, chart)?;
-
-    let by_path: BTreeMap<&str, &super::markers::Block> = blocks
+    let by_path: BTreeMap<&str, &Block> = blocks
         .iter()
         .map(|block| (block.values_path.as_str(), block))
         .collect();
 
-    let mut by_key: BTreeMap<&str, Vec<&super::markers::Marker>> = BTreeMap::new();
-    for marker in &markers {
-        if marker.class != Class::Projection {
-            continue;
-        }
-        if marker
-            .documents
-            .as_ref()
-            .is_some_and(|scope| !scope.contains(&document.name))
-        {
-            continue;
-        }
-        by_key.entry(&marker.target).or_default().push(marker);
-    }
+    let by_key = by_key(markers, document, &[Class::Projection]);
 
     let declined: BTreeSet<&str> = unrouted.iter().map(|(key, _)| key.as_str()).collect();
     let stale: Vec<&&str> = declined
@@ -706,6 +683,107 @@ fn routes_for(
     Ok(routes)
 }
 
+/// The chart value each of this document's keys is written from unchanged, where there is one.
+///
+/// What [`unsupplied_entries`] reads a render prerequisite through: a chart whose own schema demands
+/// a required map's entries states them once, as the chart value, and the key holds them because
+/// the template copies that value across. A `projection` or `structured` marker is such a copy; a
+/// `composed` one is not. A key several values feed is left out, since which of them the template
+/// writes is not something a marker says, and so is a chart value under the probe root, which the
+/// check already reads as the tree itself.
+fn carriers_for(markers: &[Marker], document: &Document, root: &str) -> BTreeMap<String, Carrier> {
+    by_key(markers, document, &[Class::Projection, Class::Structured])
+        .into_iter()
+        .filter_map(|(target, markers)| match markers.as_slice() {
+            [marker] => Some((target, *marker)),
+            _ => None,
+        })
+        .filter(|(_, marker)| {
+            let path = &marker.values_path;
+            path != root && !path.starts_with(&format!("{root}."))
+        })
+        .map(|(target, marker)| {
+            (
+                target.to_owned(),
+                Carrier {
+                    values_path: marker.values_path.clone(),
+                    condition: marker.condition.clone(),
+                },
+            )
+        })
+        .collect()
+}
+
+/// [`unsupplied_entries`] over one document, with the enrolment's file named on the refusal.
+fn refuse_unsupplied(
+    chart_dir: &Path,
+    document: &Document,
+    enrolment: &Enrolment,
+    keys: &[&crate::union::Merged],
+    values: &Json,
+    markers: &[Marker],
+) -> Result<(), Error> {
+    unsupplied_entries(
+        keys,
+        &enrolment.baseline.values,
+        &enrolment.prerequisites.values,
+        values,
+        &enrolment.probe,
+        &carriers_for(markers, document, &enrolment.probe),
+    )
+    .map_err(|gap| {
+        Error::Invalid(format!(
+            "{}: {}: {gap}",
+            chart_dir.join(ENROLMENT).display(),
+            document.name
+        ))
+    })
+}
+
+/// The chart's `@config` markers and the values blocks they annotate, read from `values.yaml` once.
+///
+/// None for a chart the declaration leaves out of the bindings gate: its markers are unchecked, so
+/// neither a route nor a carrier may be read from them.
+fn markers_of(
+    chart_dir: &Path,
+    declaration: &Declaration,
+    text: &str,
+) -> Result<(Vec<Marker>, Vec<Block>), Error> {
+    if !declaration.bindings {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let chart = chart_dir
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or_default();
+    super::markers::read(text, chart)
+}
+
+/// This document's markers of the given classes, grouped by the contract key each one feeds.
+///
+/// A marker scoped to other documents does not bind its key here, so it is left out.
+fn by_key<'a>(
+    markers: &'a [Marker],
+    document: &Document,
+    classes: &[Class],
+) -> BTreeMap<&'a str, Vec<&'a Marker>> {
+    let mut grouped: BTreeMap<&str, Vec<&Marker>> = BTreeMap::new();
+    for marker in markers {
+        if !classes.contains(&marker.class) {
+            continue;
+        }
+        if marker
+            .documents
+            .as_ref()
+            .is_some_and(|scope| !scope.contains(&document.name))
+        {
+            continue;
+        }
+        grouped.entry(&marker.target).or_default().push(marker);
+    }
+    grouped
+}
+
 /// Every suite one chart owns, as a path to text mapping.
 ///
 /// # Errors
@@ -738,6 +816,7 @@ pub fn build(
     let path = chart_dir.join("values.yaml");
     let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
     let values = read_yaml(&text, &path)?;
+    let (markers, blocks) = markers_of(chart_dir, declaration, &text)?;
 
     let default = Enrolment::default();
     let mut suites = BTreeMap::new();
@@ -781,22 +860,15 @@ pub fn build(
 
         let routes = routes_for(
             chart_dir,
-            declaration,
+            &markers,
+            &blocks,
             document,
             &values,
             &enrolment.probe,
             &enrolment.unrouted,
         )?;
         let keys: Vec<&crate::union::Merged> = union.keys.iter().collect();
-        unsupplied_entries(&keys, &enrolment.baseline.values, &values, &enrolment.probe).map_err(
-            |gap| {
-                Error::Invalid(format!(
-                    "{}: {}: {gap}",
-                    chart_dir.join(ENROLMENT).display(),
-                    document.name
-                ))
-            },
-        )?;
+        refuse_unsupplied(chart_dir, document, enrolment, &keys, &values, &markers)?;
         let held: Plan = plan(
             &keys,
             &enrolment.baseline.values,
