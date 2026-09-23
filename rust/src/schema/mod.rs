@@ -1108,11 +1108,8 @@ impl Schema {
             key.env = env;
             key.env_file = key
                 .env
-                .as_ref()
-                .map(|env| format!("{env}{}", dialect.indirection_suffix()))
-                // The suffix is a parameter too, so a usable `env` does not make the indirection
-                // variable usable — `_FILE` could just as easily be `=`.
-                .filter(|name| is_settable_env_name(name));
+                .as_deref()
+                .and_then(|env| indirection_name(dialect, env, &key.path));
             key.secrets_file = secrets_file_name(dialect, &key.path);
 
             // The same three derivations over the aliases, because the loader answers to all of
@@ -1154,10 +1151,10 @@ impl Schema {
                 None
             };
             key.env_file_aliases = key
-                .env_aliases
+                .aliases
                 .iter()
-                .map(|env| format!("{env}{}", dialect.indirection_suffix()))
-                .filter(|name| is_settable_env_name(name))
+                .zip(&alias_spellings)
+                .filter_map(|(alias, (env, _))| indirection_name(dialect, env.as_deref()?, alias))
                 .collect();
             key.secrets_file_aliases = key
                 .aliases
@@ -1651,6 +1648,25 @@ fn env_spelling(dialect: &Dialect, path: &str) -> (Option<String>, Option<Unreac
     }
 }
 
+/// The indirection variable for the key at `path` whose plain spelling is `env`, when setting it
+/// reaches that key.
+///
+/// A usable `env` does not make its indirection variable usable, for two reasons. The suffix is a
+/// parameter, so `_FILE` could just as easily be `=`. And the two layers map a name differently:
+/// figment's environment layer splits on the separator *before* it folds case, while the
+/// indirection layer goes through [`Dialect::key_path`], which folds first. A separator of `e`
+/// leaves `TEST_FILENAMEeFILE` as `filename.file` in the former and splits every `E` of it in the
+/// latter. Found by the `schema` fuzz target, which set the published variable and found the
+/// value at `fil.nam..fil.`.
+fn indirection_name(dialect: &Dialect, env: &str, path: &str) -> Option<String> {
+    let name = format!("{env}{}", dialect.indirection_suffix());
+    if !is_settable_env_name(&name) {
+        return None;
+    }
+    let target = dialect.indirection_target(&name)?;
+    (dialect.key_path(target) == path).then_some(name)
+}
+
 /// The key figment's environment layer makes of `name`, or [`None`] if it drops it.
 ///
 /// Modelled on `Env::iter` rather than on [`Dialect::key_path`], because the environment layer is
@@ -1691,7 +1707,9 @@ fn secrets_file_name(dialect: &Dialect, path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Dialect, Unreachable, env_spelling, render_value, secrets_file_name};
+    use super::{
+        Dialect, Unreachable, env_spelling, indirection_name, render_value, secrets_file_name,
+    };
 
     #[test]
     fn a_lower_case_path_gets_all_three_spellings() {
@@ -1733,6 +1751,31 @@ mod tests {
         assert_eq!(
             env_spelling(&dialect, "unit.filename"),
             (Some("TEST_UNIT__FILENAME".to_owned()), None)
+        );
+    }
+
+    /// The environment layer splits on the separator before folding case and the indirection
+    /// layer folds first, so a separator that is a letter of the key reaches the key through the
+    /// plain variable and somewhere else through its `_FILE` twin. Found by the `schema` fuzz
+    /// target.
+    #[test]
+    fn an_indirection_variable_the_indirection_layer_misreads_is_not_published() {
+        let dialect = Dialect::new("TEST_").nesting_separator("e");
+        assert_eq!(
+            env_spelling(&dialect, "filename.file"),
+            (Some("TEST_FILENAMEeFILE".to_owned()), None)
+        );
+        assert_eq!(
+            indirection_name(&dialect, "TEST_FILENAMEeFILE", "filename.file"),
+            None
+        );
+        assert_eq!(
+            indirection_name(
+                &Dialect::new("TEST_"),
+                "TEST_UNIT__FILENAME",
+                "unit.filename"
+            ),
+            Some("TEST_UNIT__FILENAME_FILE".to_owned())
         );
     }
 
