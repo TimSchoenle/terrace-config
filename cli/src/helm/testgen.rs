@@ -643,6 +643,21 @@ pub struct Route {
     pub schema: Option<Json>,
 }
 
+/// The one chart value a template writes into a contract key unchanged.
+///
+/// Written from a `projection` or `structured` marker. Both hand the value to the key as it is, so
+/// whatever a render holds at this path — a prerequisite, or the chart's own default — is what the
+/// key holds in the document. A `composed` marker is not a carrier: the template builds the key's
+/// value from several inputs, and no one of them is the value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Carrier {
+    /// The chart value.
+    pub values_path: String,
+    /// The marker's `when` clause: a values path the chart tests before writing the key at all, so
+    /// the value reaches the document only while the render has it switched on.
+    pub condition: Option<String>,
+}
+
 /// One key carrying no case, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
@@ -704,23 +719,79 @@ fn occupied(values_path: &str, prerequisites: &[(String, Json)]) -> bool {
     })
 }
 
+/// What a render holds at one values path, given flat `set` entries layered over the chart's values.
+///
+/// A `set` entry at the path, or at a map around it, wins over the chart's own values; one nested
+/// beneath the path means the render holds a map there with at least that entry in it.
+fn rendered(path: &str, set: &[(String, Json)], values: &Json) -> Rendered {
+    for (name, value) in set {
+        if name == path {
+            return Rendered::from(Some(value));
+        }
+        if let Some(rest) = path.strip_prefix(&format!("{name}.")) {
+            return Rendered::from(super::dig(value, rest));
+        }
+    }
+    if set
+        .iter()
+        .any(|(name, _)| name.starts_with(&format!("{path}.")))
+    {
+        return Rendered::Filled;
+    }
+    Rendered::from(super::dig(values, path))
+}
+
+/// How much [`rendered`] found, in the terms the two callers ask about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Rendered {
+    /// Nothing, or an explicit null.
+    Absent,
+    /// A value Helm's `if` treats as off: `false`, zero, an empty string, map or list.
+    Empty,
+    /// Anything else.
+    Filled,
+}
+
+impl From<Option<&Json>> for Rendered {
+    fn from(value: Option<&Json>) -> Self {
+        match value {
+            None | Some(Json::Null) => Self::Absent,
+            Some(Json::Bool(false)) => Self::Empty,
+            Some(Json::Number(number)) if number.as_f64() == Some(0.0) => Self::Empty,
+            Some(Json::String(text)) if text.is_empty() => Self::Empty,
+            Some(Json::Array(items)) if items.is_empty() => Self::Empty,
+            Some(Json::Object(fields)) if fields.is_empty() => Self::Empty,
+            Some(_) => Self::Filled,
+        }
+    }
+}
+
 /// Refuse a suite in which a map the contract requires to hold entries is supplied by nothing.
 ///
-/// `values` is the chart's own `values.yaml`, and `baseline` the enrolment's; an entry is supplied
-/// when either carries it — or anything beneath it — at `<root>.<path>.<entry>`. Every unsupplied
-/// entry of every such key is named at once, so one run says the whole of what the enrolment has to
-/// state.
+/// An entry is supplied in either of two places, each of which every case renders:
 ///
-/// A key whose default already holds its entries is published `required: false` and is skipped: the
-/// image supplies it when the chart does not.
+/// - at `<root>.<path>.<entry>`, by the enrolment's `baseline` or the chart's own `values.yaml`;
+/// - at `<carrier>.<entry>`, by the render `prerequisites` or `values.yaml`, where `carriers` names
+///   the chart value the template writes into the key unchanged. A carrier behind a `when` clause
+///   counts only while the same two sources switch that clause on, because otherwise the chart never
+///   writes the key.
+///
+/// The second is what lets a chart whose own schema already demands the entries state them once, as
+/// the chart value an operator writes, rather than a second time under the escape hatch.
+///
+/// Every unsupplied entry of every such key is named at once, so one run says the whole of what the
+/// enrolment has to state. A key whose default already holds its entries is published
+/// `required: false` and is skipped: the image supplies it when the chart does not.
 ///
 /// # Errors
 /// [`Error::Invalid`] naming each key and its unsupplied entries.
 pub fn unsupplied_entries(
     keys: &[&Merged],
     baseline: &[(String, Json)],
+    prerequisites: &[(String, Json)],
     values: &Json,
     root: &str,
+    carriers: &BTreeMap<String, Carrier>,
 ) -> Result<(), Error> {
     let mut gaps = Vec::new();
     for key in keys {
@@ -731,23 +802,39 @@ pub fn unsupplied_entries(
             continue;
         };
         let at = values_path(path, root);
+        let carrier = carriers.get(path).filter(|carrier| {
+            carrier
+                .condition
+                .as_deref()
+                .is_none_or(|gate| rendered(gate, prerequisites, values) == Rendered::Filled)
+        });
         let missing: Vec<&str> = crate::document::required_entries(key.fields.get("constraint"))
             .into_iter()
             .filter(|entry| {
-                let entry_path = format!("{at}.{entry}");
-                let in_baseline = baseline.iter().any(|(name, _)| {
-                    name == &entry_path || name.starts_with(&format!("{entry_path}."))
+                let in_tree = rendered(&format!("{at}.{entry}"), baseline, values);
+                let delivered = carrier.map_or(Rendered::Absent, |held| {
+                    rendered(
+                        &format!("{}.{entry}", held.values_path),
+                        prerequisites,
+                        values,
+                    )
                 });
-                !in_baseline && super::dig(values, &entry_path).is_none_or(Json::is_null)
+                in_tree == Rendered::Absent && delivered == Rendered::Absent
             })
             .collect();
         if !missing.is_empty() {
+            let chart_value = carriers.get(path).map_or_else(String::new, |carrier| {
+                format!(
+                    ", or under `{}` in its `prerequisites.values`",
+                    carrier.values_path
+                )
+            });
             gaps.push(format!(
                 "operator must supply fixture for {path}: must contain {} (unsupplied: {}). The \
                  contract marks the key required and its image refuses to start without those \
                  entries, so every case would render a document that cannot boot. State them \
-                 under `{at}` in the enrolment's `baseline`, one leaf per line, or in the chart's \
-                 values",
+                 under `{at}` in the enrolment's `baseline`, one leaf per line{chart_value}, or in \
+                 the chart's values",
                 crate::document::required_entries(key.fields.get("constraint")).join(", "),
                 missing.join(", ")
             ));
@@ -1376,9 +1463,9 @@ mod tests {
     use serde_json::{Value as Json, json};
 
     use super::{
-        Case, DISTINCTIVE_INTEGER, Plan, Probe, Route, Target, VALUES_ROOT, document_pattern,
-        escape, plan, prerequisite_conflict, probe_for, render_suite, selector_path, toml_key,
-        toml_scalar, unsupplied_entries, values_path,
+        Carrier, Case, DISTINCTIVE_INTEGER, Plan, Probe, Route, Target, VALUES_ROOT,
+        document_pattern, escape, plan, prerequisite_conflict, probe_for, render_suite,
+        selector_path, toml_key, toml_scalar, unsupplied_entries, values_path,
     };
     use crate::union::{Merged, Ordered, Union, union_contracts};
 
@@ -1992,10 +2079,44 @@ mod tests {
         )
     }
 
+    /// [`unsupplied_entries`] with no prerequisites and no carriers: the tree is the only source.
+    fn unsupplied_in_tree(
+        keys: &[&Merged],
+        baseline: &[(String, Json)],
+        values: &Json,
+    ) -> Result<(), crate::error::Error> {
+        unsupplied_entries(keys, baseline, &[], values, VALUES_ROOT, &BTreeMap::new())
+    }
+
+    /// `legal.documents` carried by the chart value `legal.documents`, as a `structured` marker
+    /// binding the two would state it.
+    fn legal_carrier(condition: Option<&str>) -> BTreeMap<String, Carrier> {
+        BTreeMap::from([(
+            "legal.documents".to_owned(),
+            Carrier {
+                values_path: "legal.documents".to_owned(),
+                condition: condition.map(str::to_owned),
+            },
+        )])
+    }
+
+    fn both_documents() -> Vec<(String, Json)> {
+        vec![
+            (
+                "legal.documents.imprint.title.en".to_owned(),
+                json!("Imprint"),
+            ),
+            (
+                "legal.documents.privacy.title.en".to_owned(),
+                json!("Privacy"),
+            ),
+        ]
+    }
+
     #[test]
     fn a_required_map_nothing_supplies_fails_generation_naming_every_entry() {
         let map = refined_map(true);
-        let failure = unsupplied_entries(&[&map], &[], &json!({"config": {}}), VALUES_ROOT)
+        let failure = unsupplied_in_tree(&[&map], &[], &json!({"config": {}}))
             .expect_err("nothing supplies the entries");
         let message = failure.to_string();
         assert!(
@@ -2021,19 +2142,139 @@ mod tests {
             json!("Imprint"),
         )];
         let values = json!({"config": {"legal": {"documents": {"privacy": {"title": "Privacy"}}}}});
-        unsupplied_entries(&[&map], &baseline, &values, VALUES_ROOT)
+        unsupplied_in_tree(&[&map], &baseline, &values)
             .expect("one entry from each source is every entry");
 
-        let half = unsupplied_entries(&[&map], &baseline, &json!({}), VALUES_ROOT)
+        let half = unsupplied_in_tree(&[&map], &baseline, &json!({}))
             .expect_err("privacy is still unsupplied")
             .to_string();
         assert!(half.contains("unsupplied: privacy"), "{half}");
     }
 
     #[test]
+    fn a_required_map_is_supplied_by_the_prerequisites_through_the_chart_value_carrying_it() {
+        // The chart's own schema demands both documents, so the enrolment states them once, as the
+        // chart value, and the template copies that value into the key.
+        let map = refined_map(true);
+        unsupplied_entries(
+            &[&map],
+            &[],
+            &both_documents(),
+            &json!({"legal": {"documents": {}}}),
+            VALUES_ROOT,
+            &legal_carrier(None),
+        )
+        .expect("the carrier delivers both entries");
+
+        // A prerequisite naming the map itself, rather than one leaf per line, carries them too.
+        let whole = vec![(
+            "legal.documents".to_owned(),
+            json!({"imprint": {"title": {"en": "I"}}, "privacy": {"title": {"en": "P"}}}),
+        )];
+        unsupplied_entries(
+            &[&map],
+            &[],
+            &whole,
+            &json!({}),
+            VALUES_ROOT,
+            &legal_carrier(None),
+        )
+        .expect("a map-valued prerequisite holds its entries");
+
+        // So does the chart's own default for the value.
+        let defaulted = json!({"legal": {"documents": {"imprint": {}, "privacy": {}}}});
+        unsupplied_entries(
+            &[&map],
+            &[],
+            &[],
+            &defaulted,
+            VALUES_ROOT,
+            &legal_carrier(None),
+        )
+        .expect("a chart default carried into the key supplies it");
+    }
+
+    #[test]
+    fn a_prerequisite_reaches_the_key_only_through_a_carrier() {
+        // Without a marker binding the value to the key, nothing says the template copies it.
+        let failure = unsupplied_entries(
+            &[&refined_map(true)],
+            &[],
+            &both_documents(),
+            &json!({}),
+            VALUES_ROOT,
+            &BTreeMap::new(),
+        )
+        .expect_err("an unbound chart value supplies nothing")
+        .to_string();
+        assert!(
+            failure.contains("unsupplied: imprint, privacy"),
+            "{failure}"
+        );
+        assert!(!failure.contains("prerequisites.values"), "{failure}");
+    }
+
+    #[test]
+    fn a_carrier_behind_a_when_clause_counts_only_while_the_render_switches_it_on() {
+        let map = refined_map(true);
+        let gated = legal_carrier(Some("legal.enabled"));
+
+        let off = unsupplied_entries(
+            &[&map],
+            &[],
+            &both_documents(),
+            &json!({"legal": {"enabled": false}}),
+            VALUES_ROOT,
+            &gated,
+        )
+        .expect_err("the chart never writes the key while the gate is off")
+        .to_string();
+        assert!(off.contains("unsupplied: imprint, privacy"), "{off}");
+        assert!(
+            off.contains("or under `legal.documents` in its `prerequisites.values`"),
+            "{off}"
+        );
+
+        let mut on = both_documents();
+        on.push(("legal.enabled".to_owned(), json!(true)));
+        unsupplied_entries(&[&map], &[], &on, &json!({}), VALUES_ROOT, &gated)
+            .expect("a prerequisite switching the gate on lets the carrier count");
+
+        unsupplied_entries(
+            &[&map],
+            &[],
+            &both_documents(),
+            &json!({"legal": {"enabled": true}}),
+            VALUES_ROOT,
+            &gated,
+        )
+        .expect("so does the chart's own default");
+    }
+
+    #[test]
+    fn a_null_prerequisite_supplies_nothing() {
+        // `--set x=null` deletes a value in Helm; it cannot be what holds an entry.
+        let nulled = vec![("legal.documents.imprint".to_owned(), Json::Null)];
+        let failure = unsupplied_entries(
+            &[&refined_map(true)],
+            &[],
+            &nulled,
+            &json!({}),
+            VALUES_ROOT,
+            &legal_carrier(None),
+        )
+        .expect_err("a null entry is no entry")
+        .to_string();
+        assert!(
+            failure.contains("unsupplied: imprint, privacy"),
+            "{failure}"
+        );
+    }
+
+    #[test]
     fn a_refined_map_whose_default_holds_its_entries_asks_nothing() {
         // Published `required: false`: the image's own default supplies what the chart does not.
-        unsupplied_entries(&[&refined_map(false)], &[], &json!({}), VALUES_ROOT)
+        unsupplied_in_tree(&[&refined_map(false)], &[], &json!({}))
             .expect("a default the image supplies needs no fixture");
     }
 
