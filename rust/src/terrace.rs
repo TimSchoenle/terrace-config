@@ -332,9 +332,9 @@ impl Terrace {
     /// Load a typed config and everything needed to load it again later.
     ///
     /// Every rebuild applies every key. A binary that declared
-    /// [`ReloadSupport::rebuild`](crate::schema::ReloadSupport::rebuild) has published that some
+    /// `schema::ReloadSupport::rebuild` has published that some
     /// keys are *not* applied by a rebuild, so it loads through
-    /// [`Self::reloader`](Self::reloader) instead, and this refuses on its loader.
+    /// `Terrace::reloader` instead, and this refuses on its loader.
     ///
     /// # Errors
     /// As [`Self::load`], and [`Error::Invalid`] on a loader that declared a rebuild.
@@ -346,7 +346,9 @@ impl Terrace {
             .is_some_and(crate::schema::ReloadSupport::rebuilds)
         {
             return Err(Error::Invalid(
-                "this loader declares a rebuild, and `load_watched` would rebuild with every key                  — including the ones the published contract says only a restart applies. Load                  through `Terrace::reloader`, which keeps those at their boot values."
+                "this loader declares a rebuild, and `load_watched` would rebuild with every key \
+                 — including the ones the published contract says only a restart applies. Load \
+                 through `Terrace::reloader`, which keeps those at their boot values."
                     .to_owned(),
             ));
         }

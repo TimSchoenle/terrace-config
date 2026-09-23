@@ -255,7 +255,8 @@ fn report_pending(before: &[String], after: &[String]) {
     } else {
         tracing::warn!(
             keys = ?after,
-            "configuration changed for keys only a restart applies; the running service keeps              the values it started with until the process is restarted"
+            "configuration changed for keys only a restart applies; the running service keeps \
+             the values it started with until the process is restarted"
         );
     }
 }

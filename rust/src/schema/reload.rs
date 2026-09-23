@@ -8,7 +8,7 @@
 //! | Does a rebuild apply a change to this key? | [`Reload`] | `#[config(reload = "…")]`, through [`Sink::reload`](super::Sink::reload) |
 //!
 //! The first is a property of the *binary* rather than of the loader library: a service can link
-//! the [`reload`](crate::reload) supervisor and never run it. The second is a property of the
+//! the `reload` supervisor and never run it. The second is a property of the
 //! *code* consuming each value: a key read inside the runtime a rebuild reconstructs is applied by
 //! the rebuild, and one read before the supervisor starts — a `tracing` subscriber's filter, a
 //! metrics recorder's endpoint — is not.
@@ -137,7 +137,7 @@ impl ReloadSupport {
         }
     }
 
-    /// The binary runs [`reload::run`](crate::reload) over what
+    /// The binary runs `reload::run` over what
     /// [`Terrace::reloader`](crate::Terrace::reloader) loads, which watches all three file layers.
     #[must_use]
     pub fn rebuild() -> Self {

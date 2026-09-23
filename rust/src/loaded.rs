@@ -12,7 +12,7 @@ pub struct Loaded<T> {
 }
 
 impl<T> From<Loaded<T>> for (T, Sources) {
-    /// The pair [`reload::run`](crate::reload) takes as its boot value and its reload result.
+    /// The pair `reload::run` takes as its boot value and its reload result.
     fn from(loaded: Loaded<T>) -> Self {
         (loaded.value, loaded.sources)
     }
@@ -67,11 +67,11 @@ impl Sources {
     /// The keys whose value on disk differs from the one the process is running with, because a
     /// rebuild does not apply them.
     ///
-    /// Filled in only by [`Terrace::reloader`](crate::Terrace::reloader)'s reloads, which keep
+    /// Filled in only by `Terrace::reloader`'s reloads, which keep
     /// every restart-class key at its boot value; empty everywhere else. Paths, never values, and
     /// sorted. A non-empty list is real state an operator needs to see — the file says one thing
     /// and the process does another until it restarts — which is why
-    /// [`reload::run`](crate::reload) logs every change to it.
+    /// `reload::run` logs every change to it.
     #[must_use]
     pub fn pending_restart(&self) -> &[String] {
         &self.pending

@@ -1,6 +1,6 @@
 //! Loading a configuration for a supervisor that keeps restart-class keys at their boot values.
 //!
-//! [`reload::run`](crate::reload) rebuilds the whole runtime from whatever the reload closure
+//! `reload::run` rebuilds the whole runtime from whatever the reload closure
 //! returns. Left at that, every key is applied by every rebuild, and a key published
 //! [`Reload::Restart`](crate::schema::Reload::Restart) — one consumed before the supervisor runs,
 //! or one the author does not want changed under live traffic — changes the moment any `live` key
@@ -30,7 +30,7 @@ use crate::terrace::Terrace;
 /// Re-loads a configuration with every restart-class key held at its boot value.
 ///
 /// Built by [`Terrace::reloader`], alongside the boot load it captured the values from. Hand
-/// [`Self::reload`] to [`reload::run`](crate::reload) as the reload closure:
+/// [`Self::reload`] to `reload::run` as the reload closure:
 ///
 /// ```no_run
 /// # #[cfg(feature = "reload")]
@@ -105,7 +105,7 @@ impl<T: DeserializeOwned> Reloader<T> {
     ///
     /// # Errors
     /// As [`Terrace::load`]: a value that fails to parse, a file-backed source that cannot be
-    /// read, a key supplied twice. [`reload::run`](crate::reload) keeps the running service on
+    /// read, a key supplied twice. `reload::run` keeps the running service on
     /// any of them.
     pub fn reload(&self) -> Result<Loaded<T>, Error> {
         let (figment, watch) = self.terrace.assemble_watched()?;
