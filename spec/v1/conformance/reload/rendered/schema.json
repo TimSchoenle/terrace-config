@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "log_filter": {
+      "default": "info",
+      "description": "Read by the `tracing` subscriber, which is installed before the supervisor starts.",
+      "type": "string"
+    },
+    "storage": {
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "default": "",
+          "description": "Directory the data is kept in.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ttl_secs": {
+      "default": 60,
+      "description": "Seconds a rendered page stays cached. Applied by the next rebuild.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "upstream": {
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "description": "Bearer token for the upstream, rotated by replacing the mounted file.",
+          "type": "string",
+          "writeOnly": true
+        },
+        "url": {
+          "default": "",
+          "description": "Where requests are forwarded.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

@@ -139,6 +139,9 @@ pub struct Reader {
     pub version: String,
     /// The declared documents it reads.
     pub documents: Vec<String>,
+    /// Its `schema.reload`, as published: whether it applies a change without restarting.
+    /// [`None`] when it declares nothing, which is read as no reload.
+    pub reload: Option<Json>,
 }
 
 /// One setting, and every image that declared it.
@@ -374,6 +377,11 @@ fn absorb(
             .unwrap_or("?")
             .to_owned(),
         documents,
+        reload: contract
+            .get("schema")
+            .and_then(|schema| schema.get("reload"))
+            .filter(|held| !held.is_null())
+            .cloned(),
     });
 
     let dialect = contract
@@ -1042,8 +1050,16 @@ fn row(into: &mut Vec<String>, label: &str, value: &str) {
 }
 
 /// Everything one contract says about one setting.
+///
+/// `readers` is every image the chart pins, for the one fact a key entry cannot carry alone: whether
+/// the image that published it applies a change without restarting.
 #[must_use]
-pub fn full(setting: &Setting, dialect: &Map<String, Json>, total: usize) -> Vec<String> {
+pub fn full(
+    setting: &Setting,
+    readers: &[Reader],
+    dialect: &Map<String, Json>,
+    total: usize,
+) -> Vec<String> {
     let entry = setting.representative();
     let form = Entry(&entry)
         .text_form()
@@ -1063,6 +1079,7 @@ pub fn full(setting: &Setting, dialect: &Map<String, Json>, total: usize) -> Vec
             "yes — the loader claims this path; a deployment must not set it",
         );
     }
+    on_change(&mut lines, setting, readers);
     row(&mut lines, "default", &shown_default(&entry));
     // Beside the default rather than at the end with the prose, because that is what a note turns
     // out to be: it glosses the default rather than the key, and a gloss printed six lines from the
@@ -1142,6 +1159,66 @@ pub fn full(setting: &Setting, dialect: &Map<String, Json>, total: usize) -> Vec
 
     lines.push(String::new());
     lines
+}
+
+/// What a change to one setting costs the running process, as each image that reads it says.
+///
+/// Answered per image and then collapsed, because the answer is a property of the pair: one image
+/// may rebuild on a change and another may not, and a chart has to roll the pods of every workload
+/// running the second. Where they agree it is one line; where they do not, each image is named.
+///
+/// The channel is not known here — this reads contracts, not a render — so a `live` answer says
+/// what it depends on: the file being one the image watches, and the value not arriving through a
+/// variable, which changes the pod and rolls it whatever the image can do.
+fn on_change(lines: &mut Vec<String>, setting: &Setting, readers: &[Reader]) {
+    let answers: Vec<(&str, String)> = setting
+        .occurrences
+        .iter()
+        .map(|(name, entry)| {
+            let declared = readers
+                .iter()
+                .find(|reader| reader.name == *name)
+                .and_then(|reader| reader.reload.as_ref());
+            (name.as_str(), change_cost(declared, entry.get("reload")))
+        })
+        .collect();
+
+    let Some((_, first)) = answers.first() else {
+        return;
+    };
+    if answers.iter().all(|(_, answer)| answer == first) {
+        row(lines, "on change", first);
+        return;
+    }
+    row(lines, "on change", "the images disagree");
+    for (name, answer) in answers {
+        lines.push(format!("          {name}: {answer}"));
+    }
+}
+
+/// One image's answer to "what does a change to this key cost".
+fn change_cost(declared: Option<&Json>, class: Option<&Json>) -> String {
+    match crate::reload::class_of_raw(declared, class) {
+        Ok(()) => {
+            let layers: Vec<&str> = declared
+                .and_then(|held| held.get("layers"))
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Json::as_str)
+                .collect();
+            format!(
+                "applied by a rebuild when it arrives through a watched file ({}); set through a \
+                 variable, it rolls the pods",
+                layers.join(", ")
+            )
+        }
+        Err(why) if why.degraded() => format!(
+            "rolls the pods — {} (read as a restart; this build is older than the document)",
+            why.describe()
+        ),
+        Err(why) => format!("rolls the pods — {}", why.describe()),
+    }
 }
 
 /// Every name the loader will accept for one key, and whether a file can supply it.
@@ -1299,7 +1376,11 @@ variable(s)",
         let entries = show_full || pattern.is_some();
         if entries {
             for setting in &keys {
-                let _ = writeln!(out, "{}", full(setting, &surface.dialect, total).join("\n"));
+                let _ = writeln!(
+                    out,
+                    "{}",
+                    full(setting, &surface.readers, &surface.dialect, total).join("\n")
+                );
             }
         } else {
             let mut columns = "path, type, flags, default".to_owned();
@@ -1428,7 +1509,7 @@ mod tests {
     use serde_json::{Map, Value as Json, json};
 
     use super::{
-        Setting, Surface, collect, compact, describe_constraint, full, reader_list,
+        Reader, Setting, Surface, collect, compact, describe_constraint, full, reader_list,
         report_divergences, select,
     };
     use crate::helm::declaration::load_declaration;
@@ -1988,7 +2069,69 @@ mod tests {
     }
 
     fn rendered(path: &str, total: usize) -> String {
-        full(&key(path), &dialect(), total).join("\n")
+        full(&key(path), &[], &dialect(), total).join("\n")
+    }
+
+    fn reader(name: &str, reload: Option<Json>) -> Reader {
+        Reader {
+            name: name.to_owned(),
+            contract: format!("{name}.json"),
+            image: format!("ghcr.io/x/{name}"),
+            digest: "sha256:00".to_owned(),
+            app: name.to_owned(),
+            version: "1.0.0".to_owned(),
+            documents: vec!["server".to_owned()],
+            reload,
+        }
+    }
+
+    fn with_class(class: &str) -> Json {
+        let mut entry = key("database.url").occurrences[0].1.clone();
+        entry.insert("reload".to_owned(), json!(class));
+        Json::Object(entry)
+    }
+
+    fn rebuild() -> Json {
+        json!({"mode": "rebuild", "layers": ["document", "secrets_dir"]})
+    }
+
+    #[test]
+    fn a_setting_says_what_a_change_to_it_costs() {
+        let live = setting("database.url", &[("api", with_class("live"))]);
+        let text = full(&live, &[reader("api", Some(rebuild()))], &dialect(), 1).join("\n");
+        assert!(
+            text.contains("on change     applied by a rebuild"),
+            "{text}"
+        );
+        assert!(text.contains("watched file (document,"), "{text}");
+        assert!(text.contains("secrets_dir);"), "{text}");
+
+        let undeclared =
+            full(&key("database.url"), &[reader("api", None)], &dialect(), 1).join("\n");
+        assert!(
+            undeclared.contains("rolls the pods — the image declares nothing about reloading"),
+            "{undeclared}"
+        );
+    }
+
+    #[test]
+    fn two_images_that_disagree_are_each_named() {
+        let shared = setting(
+            "database.url",
+            &[("api", with_class("live")), ("worker", with_class("live"))],
+        );
+        let readers = [reader("api", Some(rebuild())), reader("worker", None)];
+        let text = full(&shared, &readers, &dialect(), 2).join("\n");
+        assert!(text.contains("on change     the images disagree"), "{text}");
+        assert!(text.contains("api: applied by a rebuild"), "{text}");
+        assert!(text.contains("worker: rolls the pods"), "{text}");
+    }
+
+    #[test]
+    fn a_class_this_build_does_not_know_is_a_restart_that_says_so() {
+        let later = setting("database.url", &[("api", with_class("eventually"))]);
+        let text = full(&later, &[reader("api", Some(rebuild()))], &dialect(), 1).join("\n");
+        assert!(text.contains("read as a restart"), "{text}");
     }
 
     #[test]

@@ -59,11 +59,37 @@ use syn::{
 /// | `#[config(element_values_from = "…")]` | Another type's variants, one level down |
 /// | `#[config(element_values("…", "…"))]` | The same literal list, one level down |
 /// | `#[config(skip)]` | Omit the key from the schema without affecting deserialisation |
+/// | `#[config(reload = "…")]` | On a struct or a field: whether a rebuild applies a change — `live` or `restart` |
 /// | `#[config(crate = "…")]` | Name the `terrace_config` crate, if it was renamed |
 ///
 /// `nested` is opt-in because no macro can tell a `PathBuf` from a nested config struct by
 /// looking at the type: both are one identifier and a module path. Guessing would mean either
 /// bare identifiers silently becoming leaves, or a bound on types that cannot satisfy it.
+///
+/// # Reloading
+///
+/// `#[config(reload = "live")]` says a rebuild applies a change to every key under it — the value
+/// is consumed inside the runtime `reload::run` reconstructs. `#[config(reload = "restart")]` says
+/// only a process start does: the value is read before the supervisor runs, or changing it under
+/// live traffic is unsafe. On a struct it covers every field, nested types included; on a field it
+/// covers that key, or everything under it for `nested`.
+///
+/// ```ignore
+/// #[derive(Deserialize, Describe)]
+/// #[config(reload = "live")]
+/// struct Config {
+///     /// Read by the `tracing` subscriber, which is installed before `reload::run`.
+///     #[config(reload = "restart")]
+///     log_level: String,
+///     /// Applied by the next rebuild.
+///     #[serde(default)]
+///     ttl_secs: u64,
+/// }
+/// ```
+///
+/// **An explicit `restart` anywhere on a key's path wins**, over a `live` above it and below it
+/// alike. A key nothing marks is undeclared, and the contract publishes it as `restart` once the
+/// loader declares what the binary supports — so `live` is always something an author wrote.
 ///
 /// # A named type has to say something
 ///
@@ -293,6 +319,7 @@ fn expand_struct(
     for field in fields {
         body.extend(field_tokens(field, container)?);
     }
+    let body = within_reload(body, container.reload, krate);
 
     let ident = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -312,6 +339,15 @@ fn expand_enum(
     container: &Container,
     data: &syn::DataEnum,
 ) -> syn::Result<TokenStream2> {
+    if container.reload.is_some() {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "`#[config(reload = \"…\")]` describes keys, and an enum deriving `Describe` is the \
+             set of values one key accepts rather than a set of keys. Put it on the field holding \
+             the enum, or on the struct containing that field.",
+        ));
+    }
+
     // Before the variants are read, because with a conversion in the way they are not what a
     // configuration file may hold and there is nothing to report.
     if let Some(attribute) = &container.foreign_deserialize {
@@ -406,7 +442,54 @@ fn field_tokens(field: &Field, container: &Container) -> syn::Result<TokenStream
     if opts.skip {
         return Ok(TokenStream2::new());
     }
+    let reload = opts.reload;
+    let body = field_body(field, container, &opts)?;
+    Ok(within_reload(body, reload, &container.krate))
+}
 
+/// `body`, inside a `Sink::reload` scope when a `#[config(reload = "…")]` asked for one.
+fn within_reload(body: TokenStream2, class: Option<ReloadClass>, krate: &Path) -> TokenStream2 {
+    let Some(class) = class else {
+        return body;
+    };
+    let class = class.tokens(krate);
+    quote! { sink.reload(#class, |sink| { #body }); }
+}
+
+/// Whether a rebuild applies a change, as `#[config(reload = "…")]` spells it.
+#[derive(Clone, Copy)]
+enum ReloadClass {
+    /// `"live"`.
+    Live,
+    /// `"restart"`.
+    Restart,
+}
+
+impl ReloadClass {
+    fn parse(value: &Expr) -> syn::Result<Self> {
+        match string_value(value)?.as_str() {
+            "live" => Ok(Self::Live),
+            "restart" => Ok(Self::Restart),
+            other => Err(syn::Error::new_spanned(
+                value,
+                format!(
+                    "`reload = \"{other}\"` names no reload class. It is `\"live\"`, for a value \
+                     a rebuild applies, or `\"restart\"`, for one only a process start applies."
+                ),
+            )),
+        }
+    }
+
+    fn tokens(self, krate: &Path) -> TokenStream2 {
+        match self {
+            Self::Live => quote! { #krate::schema::Reload::Live },
+            Self::Restart => quote! { #krate::schema::Reload::Restart },
+        }
+    }
+}
+
+/// A field's keys, before any `#[config(reload = "…")]` scope is put around them.
+fn field_body(field: &Field, container: &Container, opts: &FieldOpts) -> syn::Result<TokenStream2> {
     let krate = &container.krate;
     let ty = &field.ty;
 
@@ -821,6 +904,8 @@ struct Container {
     /// not one of them: a remote mirror's variants are matched exactly, which is what makes it the
     /// answer rather than the problem.
     foreign_deserialize: Option<String>,
+    /// The container's `#[config(reload = "…")]`, covering every field it describes.
+    reload: Option<ReloadClass>,
 }
 
 impl Container {
@@ -831,6 +916,7 @@ impl Container {
             field_default: false,
             deny_unknown_fields: false,
             foreign_deserialize: None,
+            reload: None,
         };
 
         for meta in attr_metas(&input.attrs, "serde")? {
@@ -871,11 +957,14 @@ impl Container {
                     container.krate = syn::parse_str(&path)
                         .map_err(|_| syn::Error::new_spanned(&nv.value, "not a crate path"))?;
                 }
+                Meta::NameValue(nv) if nv.path.is_ident("reload") => {
+                    container.reload = Some(ReloadClass::parse(&nv.value)?);
+                }
                 other => {
                     return Err(syn::Error::new_spanned(
                         other,
-                        "unknown `#[config(...)]` option on a struct. The only one is \
-                         `crate = \"…\"`.",
+                        "unknown `#[config(...)]` option on a struct. The options are \
+                         `crate = \"…\"` and `reload = \"…\"`.",
                     ));
                 }
             }
@@ -930,6 +1019,8 @@ struct FieldOpts {
     /// custom parse exists is the whole of what is knowable here, and it is enough to know the
     /// derived list is not it.
     custom_deserialize: Option<String>,
+    /// `#[config(reload = "…")]`, covering this field's key or everything under it.
+    reload: Option<ReloadClass>,
 }
 
 /// Which of the two things an element can be.
@@ -1301,6 +1392,9 @@ impl FieldOpts {
                 Meta::NameValue(nv) if nv.path.is_ident("note") => {
                     opts.note = Some(string_value(&nv.value)?);
                 }
+                Meta::NameValue(nv) if nv.path.is_ident("reload") => {
+                    opts.reload = Some(ReloadClass::parse(&nv.value)?);
+                }
                 Meta::NameValue(nv) if nv.path.is_ident("values_from") => {
                     let named = named_type(&nv.value, "values_from")?;
                     opts.set_values(ValueList::From(Box::new(named)), field)?;
@@ -1340,7 +1434,8 @@ impl FieldOpts {
                         "unknown `#[config(...)]` option. The field options are `nested`, \
                          `secret`, `skip`, `values`, `values(…)`, `values_from = \"…\"`, \
                          `element`, `element_values`, `element_values(…)`, \
-                         `element_values_from = \"…\"`, `note = \"…\"`, and `range(…)`.",
+                         `element_values_from = \"…\"`, `note = \"…\"`, `reload = \"…\"`, \
+                         and `range(…)`.",
                     ));
                 }
             }

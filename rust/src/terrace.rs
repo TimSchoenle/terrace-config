@@ -57,6 +57,9 @@ pub struct Terrace {
     reserved: Vec<String>,
     /// What to do when one key is supplied by two mechanisms.
     shadow_policy: ShadowPolicy,
+    /// Whether the binary applies a change after start. See [`Self::reloads`].
+    #[cfg(feature = "schema")]
+    reload: Option<crate::schema::ReloadSupport>,
 }
 
 impl Terrace {
@@ -75,6 +78,8 @@ impl Terrace {
             separator: "__".to_owned(),
             reserved: Vec::new(),
             shadow_policy: ShadowPolicy::Reject,
+            #[cfg(feature = "schema")]
+            reload: None,
         }
     }
 
@@ -142,6 +147,34 @@ impl Terrace {
     pub fn shadow_policy(mut self, policy: ShadowPolicy) -> Self {
         self.shadow_policy = policy;
         self
+    }
+
+    /// Declare whether the binary applies a configuration change without restarting.
+    ///
+    /// A fact about the *binary*, which is why it lives here: this builder is the one object both
+    /// the contract generator and `main` construct, so the declaration and the supervisor that
+    /// makes it true sit in one place. [`Self::schema`] publishes it as `schema.reload`, and
+    /// settles every key's [`Reload`](crate::schema::Reload) against it — see
+    /// [`Schema::with_reload`](crate::schema::Schema::with_reload).
+    ///
+    /// Undeclared by default, and then nothing is published: a consumer reads that as "no
+    /// reload", and every contract written before this existed stays byte-identical.
+    ///
+    /// Declaring [`ReloadSupport::rebuild`](crate::schema::ReloadSupport::rebuild) commits the
+    /// binary to loading through [`Self::reloader`], which is what keeps a restart-class key at its
+    /// boot value; [`Self::load_watched`] refuses on such a loader rather than rebuild with it.
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn reloads(mut self, support: crate::schema::ReloadSupport) -> Self {
+        self.reload = Some(support);
+        self
+    }
+
+    /// What [`Self::reloads`] declared, if anything.
+    #[cfg(feature = "schema")]
+    #[must_use]
+    pub fn reload_support(&self) -> Option<&crate::schema::ReloadSupport> {
+        self.reload.as_ref()
     }
 
     /// The variable naming the TOML layer.
@@ -238,7 +271,10 @@ impl Terrace {
                 default: None,
             });
         }
-        schema
+        match &self.reload {
+            Some(support) => schema.with_reload(support.clone()),
+            None => schema,
+        }
     }
 
     /// Where every value this loader can see would come from.
@@ -295,10 +331,29 @@ impl Terrace {
 
     /// Load a typed config and everything needed to load it again later.
     ///
+    /// Every rebuild applies every key. A binary that declared
+    /// `schema::ReloadSupport::rebuild` has published that some
+    /// keys are *not* applied by a rebuild, so it loads through
+    /// `Terrace::reloader` instead, and this refuses on its loader.
+    ///
     /// # Errors
-    /// As [`Self::load`].
+    /// As [`Self::load`], and [`Error::Invalid`] on a loader that declared a rebuild.
     pub fn load_watched<T: DeserializeOwned>(&self) -> Result<Loaded<T>, Error> {
-        let (figment, toml, files) = self.assemble()?;
+        #[cfg(feature = "schema")]
+        if self
+            .reload
+            .as_ref()
+            .is_some_and(crate::schema::ReloadSupport::rebuilds)
+        {
+            return Err(Error::Invalid(
+                "this loader declares a rebuild, and `load_watched` would rebuild with every key \
+                 — including the ones the published contract says only a restart applies. Load \
+                 through `Terrace::reloader`, which keeps those at their boot values."
+                    .to_owned(),
+            ));
+        }
+
+        let (figment, watch) = self.assemble_watched()?;
 
         // Extracted before the typed value and kept whole: it is the only comparable
         // representation of the config, because the typed struct may hold non-`PartialEq`
@@ -308,15 +363,22 @@ impl Terrace {
             .map_err(Box::new)?;
         let value = figment.extract().map_err(Box::new)?;
 
+        Ok(Loaded {
+            value,
+            sources: Sources::new(watch, fingerprint),
+        })
+    }
+
+    /// The assembled figment, and the directories a reload has to watch for it.
+    pub(crate) fn assemble_watched(&self) -> Result<(Figment, Vec<PathBuf>), Error> {
+        let (figment, toml, files) = self.assemble()?;
+
         let mut watch: Vec<PathBuf> = files.watch_paths().into_iter().collect();
         watch.extend(toml.watch_dir().map(std::path::Path::to_path_buf));
         watch.sort();
         watch.dedup();
 
-        Ok(Loaded {
-            value,
-            sources: Sources { watch, fingerprint },
-        })
+        Ok((figment, watch))
     }
 
     /// The assembled figment, plus the layers that went into it.

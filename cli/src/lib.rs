@@ -40,6 +40,7 @@ pub mod conform;
 pub mod diff;
 pub mod document;
 mod error;
+pub mod reload;
 pub mod render;
 pub mod report;
 pub mod text;
@@ -59,7 +60,8 @@ pub use conform::{Tier, Violation};
 pub use diff::{Change, ContractDiff, Severity};
 pub use document::{
     App, CONTRACT_VERSION, Contract, DEFAULT_PATH, Dialect, External, ExternalVar, Key, LoaderRole,
-    LoaderVar, Producer, SCHEMA_VERSION, Schema, TextForm, Unknown, Unreachable,
+    LoaderVar, Producer, Reload, ReloadLayer, ReloadMode, ReloadSupport, SCHEMA_VERSION, Schema,
+    TextForm, Unknown, Unreachable,
 };
 pub use error::Error;
 pub use render::{Column, Format, Options};

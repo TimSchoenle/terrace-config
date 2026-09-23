@@ -1,0 +1,3 @@
+s:e
+k:filename/file=The environment layer splits on `e` before folding case, the indirection layer after.
+k:a/b=Second key.

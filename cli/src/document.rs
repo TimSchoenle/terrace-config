@@ -142,9 +142,107 @@ pub struct Schema {
     /// The variables the loader reads before the layers exist.
     #[serde(default)]
     pub loader: Vec<LoaderVar>,
+    /// Whether the image applies a change without restarting. [`None`] is undeclared, which
+    /// [`crate::reload`] reads as "no rebuild" and reports as undeclared rather than as `none`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<ReloadSupport>,
     /// Every key, in declaration order.
     #[serde(default)]
     pub keys: Vec<Key>,
+}
+
+/// Whether an image applies a configuration change without restarting, and through which layers.
+///
+/// A fact about the binary, not about `producer.loader`. What a consumer does with it lives in
+/// [`crate::reload`]; this is the shape alone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReloadSupport {
+    /// How a change is applied.
+    pub mode: ReloadMode,
+    /// The file layers watched for one.
+    #[serde(default)]
+    pub layers: Vec<ReloadLayer>,
+}
+
+/// How an image applies a change after start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ReloadMode {
+    /// Nothing is applied after start.
+    None,
+    /// A change re-reads every layer and rebuilds the runtime, keeping `restart` keys pinned.
+    Rebuild,
+    /// A mode a later envelope names. Read as [`Self::None`], and reported as degraded.
+    #[serde(other)]
+    Other,
+}
+
+impl ReloadMode {
+    /// The spelling a contract publishes.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Rebuild => "rebuild",
+            Self::Other => "other",
+        }
+    }
+}
+
+/// One file layer a rebuilding image watches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ReloadLayer {
+    /// The TOML document layer.
+    Document,
+    /// The directory of key-named files.
+    SecretsDir,
+    /// The files indirection variables name.
+    EnvFile,
+    /// A layer a later envelope names, which no channel this build knows is delivered through.
+    #[serde(other)]
+    Other,
+}
+
+impl ReloadLayer {
+    /// The spelling a contract publishes.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Document => "document",
+            Self::SecretsDir => "secrets_dir",
+            Self::EnvFile => "env_file",
+            Self::Other => "other",
+        }
+    }
+}
+
+/// Whether a rebuild applies a change to one key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Reload {
+    /// A rebuild applies it.
+    Live,
+    /// Only a process start applies it.
+    Restart,
+    /// A class a later envelope names. Read as [`Self::Restart`], and reported as degraded.
+    #[serde(other)]
+    Other,
+}
+
+impl Reload {
+    /// The spelling a contract publishes.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Restart => "restart",
+            Self::Other => "other",
+        }
+    }
 }
 
 /// How a key path becomes an environment spelling.
@@ -276,6 +374,9 @@ pub struct Key {
     /// Whether the loader reads it before the layers exist.
     #[serde(default)]
     pub reserved: bool,
+    /// Whether a rebuild applies a change to it. [`None`] is undeclared; see [`crate::reload`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reload: Option<Reload>,
 }
 
 impl Key {

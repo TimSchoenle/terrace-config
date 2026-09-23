@@ -6,7 +6,7 @@
 //!
 //! # Why this exists even though producers already refuse
 //!
-//! `FORMAT.md` requires a *producer* to fail rather than emit a document carrying any of the nine
+//! `FORMAT.md` requires a *producer* to fail rather than emit a document carrying any of the twelve
 //! refusals below, and both existing implementations do. That duplication is deliberate and the
 //! roles are not symmetric:
 //!
@@ -21,7 +21,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use crate::document::{Contract, Key, Unreachable};
+use crate::document::{Contract, Key, Reload, ReloadMode, Unreachable};
 
 /// How much of the specification an implementation claims to meet.
 ///
@@ -127,7 +127,7 @@ pub fn conform(contract: &Contract, tier: Tier) -> Vec<Violation> {
     violations
 }
 
-/// The nine refusals: every way a contract could quietly stop being one.
+/// The twelve refusals: every way a contract could quietly stop being one.
 ///
 /// Numbered as `FORMAT.md` numbers them, because a producer's author reading a failure here is
 /// going to go and read that section, and a rule that has a number in one place and a name in the
@@ -161,6 +161,65 @@ fn refusals(contract: &Contract) -> Vec<Violation> {
     violations.extend(external_refusals(contract, prefix, &loader));
     violations.extend(ignore_refusals(contract, prefix, &loader));
     violations.extend(key_refusals(contract));
+    violations.extend(reload_refusals(contract));
+    violations
+}
+
+/// Refusals 10, 11 and 12: reload claims the rest of the same document contradicts.
+///
+/// Each is a claim a chart acts on — by leaving a `live` key out of the digest its pods roll on —
+/// that the document itself says is false. What follows is a change a deployment reports as
+/// applied and the process never applies, which is what the reload fields exist to rule out.
+fn reload_refusals(contract: &Contract) -> Vec<Violation> {
+    let mut violations = Vec::new();
+
+    // 12
+    if let Some(support) = &contract.schema.reload
+        && support.mode == ReloadMode::Rebuild
+        && support.layers.is_empty()
+    {
+        violations.push(Violation {
+            rule: "refusal 12",
+            at: "/schema/reload/layers".to_owned(),
+            detail: "`mode: rebuild` watches no layer, which is `none` spelled so that it looks                      like support"
+                .to_owned(),
+        });
+    }
+
+    let rebuilds = contract
+        .schema
+        .reload
+        .as_ref()
+        .is_some_and(|support| support.mode == ReloadMode::Rebuild);
+    for (index, key) in contract.schema.keys.iter().enumerate() {
+        if key.reload != Some(Reload::Live) {
+            continue;
+        }
+        let at = format!("/schema/keys/{index}/reload");
+        // 11
+        if key.reserved {
+            violations.push(Violation {
+                rule: "refusal 11",
+                at: at.clone(),
+                detail: format!(
+                    "`{}` is reserved and published `live`, but it is read before the layers exist                      from an environment that cannot change",
+                    key.path
+                ),
+            });
+        }
+        // 10
+        if !rebuilds {
+            violations.push(Violation {
+                rule: "refusal 10",
+                at,
+                detail: format!(
+                    "`{}` is published `live`, and `schema.reload` says the image does not rebuild",
+                    key.path
+                ),
+            });
+        }
+    }
+
     violations
 }
 

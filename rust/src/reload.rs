@@ -18,6 +18,12 @@
 //! `tracing` subscriber, a metrics recorder. Changing the configuration that drives those still
 //! needs a restart.
 //!
+//! A [`Source`] can say which keys those are and hold them at their boot values across rebuilds,
+//! so the configuration handed to `build` is always the one actually in effect. What changed on
+//! disk and was held back is its [`Source::pending_restart`], and this supervisor logs every
+//! change to that list — the file says one thing and the process does another until it restarts,
+//! which an operator has to be able to see.
+//!
 //! # Failure posture
 //! A reload that cannot be loaded, or that fails to build, leaves the running service exactly
 //! as it was. This matters more than it sounds: the reload path runs the same code that at boot
@@ -90,6 +96,15 @@ pub trait Source: Sized {
 
     /// Whether `self` resolves to different values than `previous`.
     fn differs_from(&self, previous: &Self) -> bool;
+
+    /// The keys changed on disk that no rebuild applies, because the process was started with
+    /// the value it keeps running with. Paths, never values.
+    ///
+    /// Empty unless the source pins restart-class keys, which is the default for any source that
+    /// does not know which those are.
+    fn pending_restart(&self) -> &[String] {
+        &[]
+    }
 }
 
 /// Run a service, rebuilding it whenever its configuration files change.
@@ -158,7 +173,17 @@ where
         tokio::select! {
             outcome = &mut running => return outcome,
             () = changes.changed() => {
-                let Some((next, next_sources)) = reread(&reload, &sources) else { continue };
+                let (next, next_sources) = match reread(&reload, &sources) {
+                    Reread::Failed => continue,
+                    Reread::Unchanged(next_sources) => {
+                        // The same values, so nothing is torn down — but the bookkeeping is
+                        // adopted, or every later event would report the same pending restart
+                        // again.
+                        sources = next_sources;
+                        continue;
+                    }
+                    Reread::Changed(next, next_sources) => (next, next_sources),
+                };
 
                 tracing::info!("configuration changed; rebuilding the service");
                 generation.cancel();
@@ -178,12 +203,23 @@ where
     }
 }
 
-/// Re-read the configuration, returning it only if it resolves to different values.
+/// What one re-read found.
+enum Reread<C, S> {
+    /// The reload failed; the running configuration stays, bookkeeping and all.
+    Failed,
+    /// The values are the ones already running. The sources are adopted anyway, for what they
+    /// record beside the values — see [`Source::pending_restart`].
+    Unchanged(S),
+    /// The values changed, and the runtime is rebuilt with them.
+    Changed(C, S),
+}
+
+/// Re-read the configuration, and say whether the running service has to be rebuilt.
 ///
-/// `None` covers both "nothing actually changed" and "the reload failed": neither is a reason
-/// to touch a service that is currently working, and both are the common case — a `..data` swap
-/// that moved no key, or a half-written mount caught between events.
-fn reread<C, S, R, E>(reload: &R, current: &S) -> Option<(C, S)>
+/// Neither a failure nor an unchanged result touches a service that is currently working, and
+/// both are the common case — a `..data` swap that moved no key, or a half-written mount caught
+/// between events.
+fn reread<C, S, R, E>(reload: &R, current: &S) -> Reread<C, S>
 where
     S: Source,
     R: Fn() -> Result<(C, S), E>,
@@ -195,13 +231,33 @@ where
                 error = %e,
                 "configuration reload failed; keeping the running configuration"
             );
-            None
+            Reread::Failed
         }
-        Ok((_, sources)) if !sources.differs_from(current) => {
-            tracing::debug!("configuration files changed but resolved to the same values");
-            None
+        Ok((next, sources)) => {
+            report_pending(current.pending_restart(), sources.pending_restart());
+            if sources.differs_from(current) {
+                Reread::Changed(next, sources)
+            } else {
+                tracing::debug!("configuration files changed but resolved to the same values");
+                Reread::Unchanged(sources)
+            }
         }
-        Ok(next) => Some(next),
+    }
+}
+
+/// Log a change to the keys held at their boot values, once per change rather than per event.
+fn report_pending(before: &[String], after: &[String]) {
+    if before == after {
+        return;
+    }
+    if after.is_empty() {
+        tracing::info!("no configuration change is waiting for a restart any more");
+    } else {
+        tracing::warn!(
+            keys = ?after,
+            "configuration changed for keys only a restart applies; the running service keeps \
+             the values it started with until the process is restarted"
+        );
     }
 }
 

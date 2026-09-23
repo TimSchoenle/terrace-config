@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "terrace-contract"
-version = "0.2.2"
+version = "0.4.1"
 dependencies = [
  "jsonschema",
  "regex",

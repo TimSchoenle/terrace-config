@@ -38,13 +38,14 @@ field name a consumer gets right from memory under one convention and guesses at
   "terrace_contract": 1,
   "producer": { "name": "…", "version": "…", "loader": "…" },
   "app":      { "name": "…", "version": "…" },
-  "schema":   { "schema_version": 2, "dialect": { … }, "loader": [ … ], "keys": [ … ] },
+  "schema":   { "schema_version": 2, "dialect": { … }, "loader": [ … ], "reload": { … }, "keys": [ … ] },
   "json_schema": { "$schema": "http://json-schema.org/draft-07/schema#", … },
   "external": { "env": [ … ], "ignore": [ … ], "unknown": "reject" }
 }
 ```
 
-All six fields MUST be present.
+All six fields MUST be present. Inside `schema`, `reload` is the one optional member; see
+[Reloading](#reloading).
 
 Both schema halves are there because neither is enough on its own. `json_schema` is the only one a
 stock JSON Schema validator can act on, and it carries no environment spellings at all — so it
@@ -110,7 +111,8 @@ nothing else is. Producer typos are caught by the [conformance corpus](CONFORMAN
 meta-schema.
 
 Several fields are closed enumerations with a degradation target — `text_form: unknown`,
-`unreachable: other`, `role: other`, `unknown: reject`. Degrading is still degrading: **a consumer
+`unreachable: other`, `role: other`, `unknown: reject`, `reload.mode: none`, a key's
+`reload: restart`. Degrading is still degrading: **a consumer
 that skips a check because it did not recognise a value MUST say that it did.** A silently skipped
 check is indistinguishable from a passing one, which is the failure this whole document exists to
 prevent one level up.
@@ -150,6 +152,16 @@ The variables the loader reads to decide what the layers *are*, rather than to f
 A `reserved` variable is read directly from the environment before the layers exist, so no file may
 supply it and it appears in no rendered document.
 
+### `reload`
+
+Whether the image applies a configuration change without restarting, and through which layers.
+Optional; see [Reloading](#reloading) for what its absence means.
+
+| Field | Meaning |
+|---|---|
+| `mode` | `none` or `rebuild`. |
+| `layers` | The file layers the image watches: `document`, `secrets_dir`, `env_file`. |
+
 ### `keys[]`
 
 One entry per configuration key. `path` is unique across the array.
@@ -175,6 +187,7 @@ One entry per configuration key. `path` is unique across the array.
 | `required` | Whether some layer must supply the key. |
 | `secret` | Whether the value is a credential. |
 | `reserved` | Whether the loader reads it before the layers exist. |
+| `reload` | `live` or `restart`: whether a rebuild applies a change to it. Absent when undeclared. |
 
 **`ty` is not a portable type name.** It is token text in the producer's language: a type alias
 appears as its alias, a domain newtype as itself. It is published so a person reading a table can
@@ -395,6 +408,71 @@ and the two differ for every type whose deserialisation parses a string. An addr
 `text_form: unknown` — no pattern here describes an address — and it is a string in the document and
 mounts from a secrets file perfectly well.
 
+## Reloading
+
+A process picks up a changed file only if it watches the file and rebuilds from it, and applies a
+changed value only if the value is consumed inside what it rebuilds. Neither is visible from
+outside the binary. A deployment that restarts its processes on every change throws the reload
+away, and one that restarts them on none leaves every value consumed at start changed on disk and
+never applied. So the document states both, and a consumer derives the third fact — how its own
+deployment delivers each key.
+
+### What the document states
+
+**`schema.reload` is a fact about the binary**, not about `producer.loader`: a service can link a
+loader with a supervisor and never run it. `mode: rebuild` says a debounced change to any of
+`layers` re-reads every layer and rebuilds the runtime. `mode: none` says nothing is applied after
+start. **Absent means undeclared** — a document written before this field existed — and a consumer
+treats it as `none` and reports it as undeclared rather than as none.
+
+`layers` never contains the environment. A process's environment is fixed for its lifetime, so no
+producer could truthfully publish it.
+
+**`keys[].reload` is a fact about each value.**
+
+- `live`: the value is consumed inside the rebuilt runtime, so a rebuild applies it.
+- `restart`: the value is applied only at process start. Either it is consumed before the supervisor
+  runs — a process-global installation, a `reserved` key — or changing it under live traffic is
+  unsafe and the author wants a rollout's readiness gating and rollback instead. The format does
+  not distinguish the two, because no consumer acts differently on them.
+
+Absent means undeclared and is read as `restart`. A producer that publishes `schema.reload` SHOULD
+publish `reload` on every key, so that `restart` is a statement rather than a default.
+
+**A rebuild MUST keep every `restart` key at its boot value.** A runtime that rebuilds from the
+whole re-read configuration applies a `restart` key the moment any `live` key beside it changes,
+which makes the classification a claim nothing enforces. A producer publishes `mode: rebuild` only
+for a runtime that pins.
+
+Both enumerations are closed, with a degradation target: an unknown `mode` reads as `none`, an
+unknown `reload` as `restart`, and under [Versioning](#versioning) a consumer says it degraded.
+Every degradation is toward a needless restart, never toward a change silently not applied.
+
+### Deciding whether a change needs a restart
+
+Normative, and ordered for the reason [Reading a container](#reading-a-container) is. For one key,
+delivered through one channel to a container running one image, first match winning:
+
+1. The channel is the environment — a plain variable, an alias, or an indirection variable itself
+   rather than the file it names. **Not applicable**: changing a variable changes the pod
+   specification, and the orchestrator replaces the process without being asked.
+2. The container runs once per pod — an init container. **Restart.**
+3. The image's contract has no `schema.reload`. **Restart**, reported as undeclared.
+4. `schema.reload.mode` is not `rebuild`. **Restart.**
+5. The key's `reload` is absent, unknown, or `restart`. **Restart.**
+6. The channel's layer is not in `schema.reload.layers`. **Restart.**
+7. The channel is a mount the orchestrator never updates in place — a Kubernetes `subPath` mount,
+   or an object marked immutable. **The deployment is defective**: the key is neither reloaded nor
+   restarted when it changes. A consumer MUST report it rather than classify it.
+8. Otherwise **live**.
+
+A workload needs a restart when a change touches any key that is `restart` for any of its
+containers. A key one image reads `live` and another reads `restart`, in a document both read, is
+`restart` for every workload running the second.
+
+Content a consumer cannot attribute to a key — a verbatim fragment appended to a rendered
+document — is `restart` content.
+
 ## The `json_schema` half
 
 The same keys as a JSON Schema, for validating the document a chart renders. Draft-07 by default,
@@ -464,6 +542,12 @@ could quietly stop being one.
    implement leaves the answer undecided, and an undecided default is published rather than refused
    on a guess. A refinement MUST NOT be how a producer reaches this; see
    [Refinements](#refinements).
+10. A key published **`reload: live` in an image that does not rebuild** — `schema.reload` absent or
+    its `mode` not `rebuild`. The key claims a rebuild applies it, and the same document says there
+    is no rebuild.
+11. A **`reserved` key published `reload: live`**. It is read before the layers exist, from an
+    environment that cannot change.
+12. **`mode: rebuild` with an empty `layers`** — `none`, spelled so that it looks like support.
 
 A producer MUST NOT emit a document describing a configuration surface wider than the binary in the
 image actually loads. A workspace with several aggregates has a generator that naturally reaches for

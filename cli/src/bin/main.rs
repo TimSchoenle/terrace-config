@@ -309,6 +309,23 @@ enum Command {
         check: bool,
     },
 
+    /// Write the restart sets each chart rolls its pods by, from the contracts it vendors.
+    ///
+    /// An image that applies a change without restarting publishes which keys a rebuild applies
+    /// and which only a restart does. A chart that hashes all of its configuration into a pod
+    /// annotation throws the reload away; one that hashes none of it leaves every restart-only key
+    /// changed on disk and never applied. This writes `templates/_config-reload.tpl`, naming the
+    /// restart-only part of each document, for the chart's checksum to hash and nothing else.
+    Reload {
+        /// The chart tree.
+        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
+        charts: PathBuf,
+
+        /// Fail when a chart's restart sets are behind its contracts, rather than writing them.
+        #[arg(long)]
+        check: bool,
+    },
+
     /// Generate the round-trip suites a chart's contracts imply, or report the ones that drifted.
     ///
     /// The document gate proves a rendered document satisfies the contract, and a document missing
@@ -566,6 +583,7 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
         } => secrets_command(&charts, reconcile.as_deref(), json, exit_code),
 
         Command::Readme { charts, check } => readme_command(&charts, check),
+        Command::Reload { charts, check } => reload_command(&charts, check),
 
         Command::Tests {
             chart,
@@ -1196,6 +1214,28 @@ fn readme_command(charts: &Path, check: bool) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Write, or compare, every chart's generated restart sets.
+fn reload_command(charts: &Path, check: bool) -> Result<ExitCode, Error> {
+    let written = helm::restarts::walk(charts, check)?;
+
+    for problem in &written.problems {
+        eprintln!("{problem}");
+    }
+    if !written.problems.is_empty() {
+        eprintln!("\nerror: {} restart set problem(s)", written.problems.len());
+        return Ok(ExitCode::from(1));
+    }
+
+    if check {
+        println!("==> every restart set is current");
+    } else if written.touched > 0 {
+        println!("==> rewrote {} restart set file(s)", written.touched);
+    } else {
+        println!("==> every restart set already matches its contracts");
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 /// Write, or compare, every enrolled chart's generated round-trip suites.
 fn tests_command(charts: &Path, only: Option<&str>, check: bool) -> Result<ExitCode, Error> {
     let generated = helm::suites::collect(charts, only)?;
@@ -1397,6 +1437,7 @@ fn explained_json(surface: &helm::explain::Surface, pattern: Option<&str>) -> se
                 "app": reader.app,
                 "version": reader.version,
                 "documents": reader.documents,
+                "reload": reader.reload,
             })
         })
         .collect();

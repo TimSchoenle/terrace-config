@@ -30,6 +30,7 @@ const PRODUCER_CASES: &[&str] = &[
     "full-surface",
     "unnameable-key",
     "required-entries",
+    "reload",
 ];
 
 /// The cases only a consumer meets, which carry none and are held by this file.

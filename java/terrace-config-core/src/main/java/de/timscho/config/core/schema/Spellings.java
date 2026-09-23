@@ -95,14 +95,25 @@ public class Spellings {
     }
 
     /**
-     * The indirection variable for {@code env}, when an environment could hold it.
+     * The indirection variable for the key at {@code path} whose plain spelling is {@code env}, when
+     * setting it reaches that key.
      *
-     * @param dialect the indirection suffix
+     * <p>A usable {@code env} does not make its indirection variable usable: the environment layer
+     * splits on the separator before folding case, while the indirection layer folds first. A
+     * separator of {@code e} leaves {@code TEST_FILENAMEeFILE} as {@code filename.file} in the former
+     * and splits every {@code E} of it in the latter.
+     *
+     * @param dialect the prefix, separator and indirection suffix
      * @param env     the variable naming the key directly
+     * @param path    the dotted key path {@code env} names
      */
-    public static @Nullable String indirectionName(final Dialect dialect, final String env) {
+    public static @Nullable String indirectionName(final Dialect dialect, final String env, final String path) {
         final String candidate = env + dialect.getIndirectionSuffix();
-        return isSettableEnvName(candidate) ? candidate : null;
+        if (!isSettableEnvName(candidate)) {
+            return null;
+        }
+        final String target = indirectionTarget(dialect, candidate);
+        return target != null && path.equals(foldedKeyPath(dialect, target)) ? candidate : null;
     }
 
     /**
@@ -116,9 +127,20 @@ public class Spellings {
         if (name.contains(".") || !isNameableFile(name)) {
             return null;
         }
+        return foldedKeyPath(dialect, name).equals(path) ? name : null;
+    }
+
+    /**
+     * The key the file layers make of {@code name}: folded to lower case, then split on the
+     * lower-cased separator — the loader's {@code Dialect.keyPath}.
+     *
+     * @param dialect the separator to split on
+     * @param name    an environment suffix or a secrets-directory file name
+     */
+    private static String foldedKeyPath(final Dialect dialect, final String name) {
         final String[] parts = name.toLowerCase(Locale.ROOT)
                 .split(Pattern.quote(dialect.getNestingSeparator().toLowerCase(Locale.ROOT)), -1);
-        return String.join(".", parts).equals(path) ? name : null;
+        return String.join(".", parts);
     }
 
     private static boolean isSettableEnvName(final String name) {

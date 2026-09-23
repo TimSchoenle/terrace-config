@@ -35,7 +35,8 @@ const DECLARATION_KEYS: [&str; 6] = [
     "unconfigured",
 ];
 const CREDENTIAL_KEYS: [&str; 3] = ["key", "note", "value"];
-const DOCUMENT_KEYS: [&str; 5] = ["consumers", "exempt", "images", "name", "source"];
+const DOCUMENT_KEYS: [&str; 6] = ["consumers", "exempt", "images", "name", "restart", "source"];
+const RESTART_KEYS: [&str; 2] = ["keys", "reason"];
 const SOURCE_KEYS: [&str; 4] = ["format", "key", "kind", "selector"];
 const IMAGE_KEYS: [&str; 2] = ["contract", "values"];
 const CONSUMER_KEYS: [&str; 2] = ["containers", "workload"];
@@ -104,6 +105,22 @@ pub struct CredentialNote {
     pub note: Option<String>,
 }
 
+/// Contract keys a chart rolls its pods for although an image applies them without a restart.
+///
+/// The one direction a chart may override an image in. Promoting a key to `restart` is always
+/// safe — the worst it costs is a rollout nobody needed — and it is what a chart wants for a key
+/// whose change should be canaried through readiness gating and a rollback rather than land on
+/// every replica in one kubelet sync. The inverse does not exist: a chart cannot know better than
+/// the image what the image re-reads, and a key demoted to `live` that the process only reads at
+/// start is a change reported as applied and never made.
+#[derive(Debug, Clone)]
+pub struct Restarted {
+    /// The keys, written out one by one. There is no pattern form, for [`Unbound::keys`]' reason.
+    pub keys: Vec<String>,
+    /// Why. Mandatory: a rollout nobody can explain is one somebody removes.
+    pub reason: String,
+}
+
 /// One declared configuration document.
 #[derive(Debug, Clone)]
 pub struct Document {
@@ -117,6 +134,8 @@ pub struct Document {
     pub consumers: Vec<Consumer>,
     /// The exemptions, per values file.
     pub exempt: Vec<Exemption>,
+    /// Keys this chart rolls its pods for although an image applies them live.
+    pub restart: Vec<Restarted>,
 }
 
 impl Document {
@@ -262,7 +281,72 @@ fn load_document(at: &str, entry: &Json) -> Result<Document, Error> {
         images: load_images(at, name, fields.get("images"))?,
         consumers: load_consumers(at, name, fields.get("consumers"))?,
         exempt: load_exemptions(at, name, fields.get("exempt"))?,
+        restart: load_restarted(at, name, fields.get("restart"))?,
     })
+}
+
+/// The keys a document's chart rolls its pods for although an image applies them live.
+///
+/// Whether each key exists is not decided here: that needs the contracts, and it is the reload
+/// generator that binds them and refuses a key none of them declares.
+fn load_restarted(at: &str, name: &str, entries: Option<&Json>) -> Result<Vec<Restarted>, Error> {
+    let mut loaded = Vec::new();
+    for (position, entry) in entries
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let where_ = format!("{name}.restart[{position}]");
+        if !entry.is_object() {
+            return Err(Error::Invalid(format!(
+                "{at}: {name}: every entry of `restart` must be a mapping"
+            )));
+        }
+        reject_unknown(at, &where_, entry, &RESTART_KEYS)?;
+
+        let keys = entry
+            .get("keys")
+            .and_then(Json::as_array)
+            .filter(|list| !list.is_empty())
+            .ok_or_else(|| {
+                Error::Invalid(format!(
+                    "{at}: {where_}: `keys` is missing or empty; an entry names at least one key"
+                ))
+            })?;
+        let named: Vec<String> = keys
+            .iter()
+            .map(|key| {
+                key.as_str()
+                    .filter(|key| !key.is_empty() && !key.contains('*'))
+                    .map(str::to_owned)
+                    .ok_or_else(|| {
+                        Error::Invalid(format!(
+                            "{at}: {where_}: every entry of `keys` must be one key's path; there is \
+                             no pattern form, so a key an image adds later is never covered by \
+                             something written before it existed"
+                        ))
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+
+        let reason = entry
+            .get("reason")
+            .and_then(Json::as_str)
+            .filter(|reason| !reason.is_empty())
+            .ok_or_else(|| {
+                Error::Invalid(format!(
+                    "{at}: {where_}: no `reason`; a rollout nobody can explain is one somebody \
+                     removes"
+                ))
+            })?;
+
+        loaded.push(Restarted {
+            keys: named,
+            reason: reason.to_owned(),
+        });
+    }
+    Ok(loaded)
 }
 
 /// Where the document is rendered.
@@ -1069,6 +1153,10 @@ pub struct Binding {
     pub union: Union,
     /// One image each, by the digest a container pins.
     pub by_digest: BTreeMap<String, Union>,
+    /// The same images as typed documents, by digest, for the rules a union does not carry —
+    /// whether the image applies a change without restarting is one. An image whose document this
+    /// build cannot type is absent, which every reader of this treats as declaring nothing.
+    pub contracts: BTreeMap<String, crate::document::Contract>,
 }
 
 /// Load, interlock and merge every contract this document is validated against.
@@ -1096,6 +1184,7 @@ pub fn bind(
     let mut problems: Vec<String> = Vec::new();
     let mut contracts: Vec<(String, Json)> = Vec::new();
     let mut by_digest: BTreeMap<String, Union> = BTreeMap::new();
+    let mut typed: BTreeMap<String, crate::document::Contract> = BTreeMap::new();
 
     for item in &loaded {
         let pinned = match resolve_image(values, &item.reference.values, app_version) {
@@ -1138,6 +1227,11 @@ pub fn bind(
         }
 
         contracts.push((item.label.clone(), item.vendored.contract.clone()));
+        if let Ok(contract) =
+            crate::document::Contract::from_json(&item.vendored.contract.to_string())
+        {
+            typed.insert(digest.clone(), contract);
+        }
         by_digest.insert(
             digest,
             union_contracts(&[(item.label.clone(), item.vendored.contract.clone())])?,
@@ -1165,7 +1259,14 @@ pub fn bind(
         ));
     }
 
-    Ok((Some(Binding { union, by_digest }), Vec::new()))
+    Ok((
+        Some(Binding {
+            union,
+            by_digest,
+            contracts: typed,
+        }),
+        Vec::new(),
+    ))
 }
 
 #[cfg(test)]

@@ -887,7 +887,15 @@ impl ContractBuilder {
     /// - a key whose environment spelling is another key's `_FILE` variable, which is an effect
     ///   this document cannot describe;
     /// - a key whose [`default_value`](super::Key::default_value) fails its own
-    ///   [`constraint`](super::Key::constraint) — a default the document itself calls invalid.
+    ///   [`constraint`](super::Key::constraint) — a default the document itself calls invalid;
+    /// - a key published [`Reload::Live`](super::Reload::Live) by a binary that declared no
+    ///   rebuild — the key claims a rebuild applies it and the document says there is none;
+    /// - a [`reserved`](super::Key::reserved) key published [`Reload::Live`](super::Reload::Live);
+    /// - a rebuild declared with no layers to watch.
+    ///
+    /// [`Schema::with_reload`] never produces the last three. They are refused here for a schema
+    /// assembled by hand, and because a key annotated `live` in a binary that declared nothing is
+    /// the case `with_reload` cannot settle: the answer is to declare, not to guess.
     pub fn build(self) -> Result<Contract, Error> {
         let Self {
             schema,
@@ -901,6 +909,7 @@ impl ContractBuilder {
         validate_external(&schema, &external)?;
         validate_secrets(&schema, &external)?;
         validate_defaults(&schema)?;
+        validate_reload(&schema)?;
 
         // Derived where the caller said nothing, never over the top of what they did say:
         // `ExternalVar::constraint` is the only way to describe a type this crate cannot
@@ -1192,6 +1201,53 @@ fn validate_dialect(schema: &Schema) -> Result<(), Error> {
              a prefix."
                 .to_owned(),
         ));
+    }
+    Ok(())
+}
+
+/// Refuse a document whose reload claims contradict one another.
+///
+/// `FORMAT.md`'s refusals 10 to 12. Each is a claim a consumer would act on — by leaving a key out
+/// of the restart digest a chart rolls its pods on — that the same document says is false. The
+/// consequence is a change a deployment reports as applied and the process never applies, which
+/// is the one outcome the reload fields exist to rule out.
+fn validate_reload(schema: &Schema) -> Result<(), Error> {
+    use super::{Reload, ReloadMode};
+
+    if let Some(support) = &schema.reload
+        && support.mode == ReloadMode::Rebuild
+        && support.layers.is_empty()
+    {
+        return Err(Error::Invalid(
+            "this binary declares a rebuild and watches no layer, which is a binary that never \
+             rebuilds described as one that does. Declare `ReloadSupport::none()` instead."
+                .to_owned(),
+        ));
+    }
+    let rebuilds = schema
+        .reload
+        .as_ref()
+        .is_some_and(super::ReloadSupport::rebuilds);
+    for key in &schema.keys {
+        if key.reload != Some(Reload::Live) {
+            continue;
+        }
+        if key.reserved {
+            return Err(Error::Invalid(format!(
+                "`{}` is reserved — read from the environment before the layers exist — and is \
+                 published as applied on reload. A process's environment cannot change, so no \
+                 rebuild applies it.",
+                key.path
+            )));
+        }
+        if !rebuilds {
+            return Err(Error::Invalid(format!(
+                "`{}` is published as applied on reload, and this binary declares no rebuild. \
+                 Declare what the binary supports with `Terrace::reloads`, which publishes every \
+                 key as `restart` when that is `ReloadSupport::none()`.",
+                key.path
+            )));
+        }
     }
     Ok(())
 }

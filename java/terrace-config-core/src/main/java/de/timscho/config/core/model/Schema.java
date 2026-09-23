@@ -1,6 +1,7 @@
 package de.timscho.config.core.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import de.timscho.config.core.schema.Column;
@@ -18,6 +19,7 @@ import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Every key the loader can carry, in every spelling that can supply it — {@code
@@ -27,7 +29,7 @@ import lombok.extern.jackson.Jacksonized;
 @Value
 @Builder(toBuilder = true)
 @Jacksonized
-@JsonPropertyOrder({"schema_version", "dialect", "loader", "keys"})
+@JsonPropertyOrder({"schema_version", "dialect", "loader", "reload", "keys"})
 public class Schema {
 
     /**
@@ -41,6 +43,14 @@ public class Schema {
 
     @Builder.Default
     List<LoaderVar> loader = List.of();
+
+    /**
+     * Whether the image applies a change without restarting. Null means undeclared, and is omitted
+     * rather than null-valued, so a document that says nothing about reloading is byte-identical
+     * to one written before the field existed.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Nullable ReloadSupport reload;
 
     @Builder.Default
     List<Key> keys = List.of();

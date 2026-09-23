@@ -427,7 +427,7 @@ pub fn carries_markers(text: &str) -> bool {
 /// the contract disagrees with. Deliberately not a minimal edit script: this compares two renderings
 /// of one generated block, so an aligned comparison would spend a dependency on making an already
 /// short answer marginally shorter.
-fn difference(before: &str, after: &str, at: &str) -> String {
+pub(crate) fn difference(before: &str, after: &str, at: &str) -> String {
     use std::fmt::Write as _;
 
     let (before, after): (Vec<&str>, Vec<&str>) =

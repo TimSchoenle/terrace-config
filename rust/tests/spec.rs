@@ -34,7 +34,7 @@ use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
     App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, Refine, Refinement,
-    Unknown,
+    ReloadSupport, Unknown,
 };
 
 /// The version string every corpus document carries in place of the real one.
@@ -265,6 +265,66 @@ enum Method {
     Post,
 }
 
+/// A binary that rebuilds on a change, and the keys a rebuild does and does not apply.
+///
+/// Every class the format has, and every way a key reaches one: marked `live` through its
+/// container, marked `restart` on the field, `restart` through a nested type's own attribute, a
+/// `live` secret delivered by a mounted file, and a reserved key that is `restart` whatever it was
+/// annotated.
+#[derive(Deserialize, Serialize, Describe)]
+#[config(reload = "live")]
+struct Rebuilding {
+    /// Seconds a rendered page stays cached. Applied by the next rebuild.
+    #[serde(default)]
+    ttl_secs: u64,
+    /// Read by the `tracing` subscriber, which is installed before the supervisor starts.
+    #[config(reload = "restart")]
+    #[serde(default = "default_filter")]
+    log_filter: String,
+    /// Read directly from the environment before the layers exist.
+    #[serde(default)]
+    profile: String,
+    #[config(nested)]
+    storage: Storage,
+    #[config(nested)]
+    upstream: Upstream,
+}
+
+impl Default for Rebuilding {
+    fn default() -> Self {
+        Self {
+            ttl_secs: 60,
+            log_filter: default_filter(),
+            profile: String::new(),
+            storage: Storage::default(),
+            upstream: Upstream::default(),
+        }
+    }
+}
+
+/// Where the data lives, which must not move under live traffic.
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[config(reload = "restart")]
+struct Storage {
+    /// Directory the data is kept in.
+    #[serde(default)]
+    dir: String,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Upstream {
+    /// Where requests are forwarded.
+    #[serde(default)]
+    url: String,
+    /// Bearer token for the upstream, rotated by replacing the mounted file.
+    #[config(secret)]
+    token: Option<String>,
+}
+
+fn default_filter() -> String {
+    "info".to_owned()
+}
+
 fn default_dist() -> String {
     "public".to_owned()
 }
@@ -283,6 +343,7 @@ fn cases() -> Vec<(&'static str, Contract)> {
         ("full-surface", full_surface()),
         ("unnameable-key", unnameable_key()),
         ("required-entries", required_entries()),
+        ("reload", reload()),
     ]
 }
 
@@ -339,6 +400,18 @@ fn required_entries() -> Contract {
         .refine_with("legal", &LegalPagesRefinements)
         .expect("both maps accept their entries")
         .into_contract(App::new("site").version("1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+fn reload() -> Contract {
+    Terrace::new("RELAY_")
+        .reserve("RELAY_PROFILE")
+        .reloads(ReloadSupport::rebuild())
+        .schema::<Rebuilding>()
+        .with_defaults_from(&Rebuilding::default())
+        .expect("the default config serialises")
+        .into_contract(App::new("relay").version("1.0.0"))
         .build()
         .expect("the contract has nothing to refuse")
 }

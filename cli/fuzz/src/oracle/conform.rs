@@ -18,6 +18,7 @@
 //! a reason the schema also encodes means one of the two has drifted.
 
 use terrace_contract::conform::{self, Tier};
+use terrace_contract::document::{Reload, ReloadMode};
 use terrace_contract::{Contract, validate};
 
 use crate::mutate;
@@ -99,6 +100,36 @@ pub fn check(data: &str) {
         assert!(
             !schema_errors.is_empty(),
             "a document carries a secret with a default and the meta-schema accepted it; the two halves of one gate have drifted apart"
+        );
+    }
+
+    // The reload refusals are the other place both halves have an opinion: the meta-schema encodes
+    // 10, 11 and 12 structurally. A document either of them objects to on those grounds, the other
+    // must object to as well.
+    let rebuilds = contract
+        .schema
+        .reload
+        .as_ref()
+        .is_some_and(|support| support.mode == ReloadMode::Rebuild);
+    let contradicts_its_reload = contract
+        .schema
+        .reload
+        .as_ref()
+        .is_some_and(|support| support.mode == ReloadMode::Rebuild && support.layers.is_empty())
+        || contract.schema.keys.iter().any(|key| {
+            key.reload == Some(Reload::Live) && (key.reserved || !rebuilds)
+        });
+    if contradicts_its_reload {
+        assert!(
+            tier1.iter().any(|violation| matches!(
+                violation.rule,
+                "refusal 10" | "refusal 11" | "refusal 12"
+            )),
+            "a document contradicts its own reload declaration and the rules did not say so"
+        );
+        assert!(
+            !schema_errors.is_empty(),
+            "a document contradicts its own reload declaration and the meta-schema accepted it"
         );
     }
 

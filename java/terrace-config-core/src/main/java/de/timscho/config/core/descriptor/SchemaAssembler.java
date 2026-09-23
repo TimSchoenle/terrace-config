@@ -167,7 +167,7 @@ public class SchemaAssembler {
             final Spellings.Spelling aliasSpelling = Spellings.envSpelling(dialect, aliasPath);
             if (aliasSpelling.getEnv() != null) {
                 envAliases.add(aliasSpelling.getEnv());
-                final String envFile = Spellings.indirectionName(dialect, aliasSpelling.getEnv());
+                final String envFile = Spellings.indirectionName(dialect, aliasSpelling.getEnv(), aliasPath);
                 if (envFile != null) {
                     envFileAliases.add(envFile);
                 }
@@ -197,7 +197,8 @@ public class SchemaAssembler {
             builder.envFile(null);
             builder.secretsFile(null);
         } else {
-            builder.envFile(spelling.getEnv() != null ? Spellings.indirectionName(dialect, spelling.getEnv()) : null);
+            builder.envFile(
+                    spelling.getEnv() != null ? Spellings.indirectionName(dialect, spelling.getEnv(), path) : null);
             builder.secretsFile(Spellings.secretsFileName(dialect, path));
         }
         builder.unreachable(spelling.getUnreachable());

@@ -48,6 +48,7 @@ struct Github {
 | `#[config(element_values("…", "…"))]` | The same literal list, one level down |
 | `#[config(note = "…")]` | Annotate the observed default with prose |
 | `#[config(skip)]` | Omit the key without affecting deserialisation |
+| `#[config(reload = "…")]` | On a struct or a field: `live` if a rebuild applies a change, `restart` if only a process start does — see [RELOAD.md](RELOAD.md#keys-only-a-restart-applies) |
 
 `#[serde(deny_unknown_fields)]` is read too, and is the one thing on this page that is not a
 `#[config(...)]` attribute — see [Closed structs](#closed-structs).

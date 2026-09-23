@@ -6,6 +6,9 @@ import de.timscho.config.core.model.External;
 import de.timscho.config.core.model.ExternalVar;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.LoaderVar;
+import de.timscho.config.core.model.Reload;
+import de.timscho.config.core.model.ReloadMode;
+import de.timscho.config.core.model.ReloadSupport;
 import de.timscho.config.core.model.Schema;
 import java.util.HashSet;
 import java.util.Map;
@@ -16,7 +19,7 @@ import java.util.Set;
  * throwing the first {@link ContractRefusalException} it finds.
  *
  * <p>This belongs beside the model rather than inside a loader: both {@code -loader} and
- * {@code -spring-boot} build the same {@link Contract} shape and must refuse the same nine
+ * {@code -spring-boot} build the same {@link Contract} shape and must refuse the same twelve
  * things, so the check is written once here rather than twice downstream.
  *
  * <p>No streams, per the project's convention — every scan below is a plain loop.
@@ -46,6 +49,7 @@ public final class ContractValidator {
         checkSecretsWithDefaults(schema, external);
         checkIndirectionCollisions(schema);
         checkDefaultsAgainstConstraints(schema);
+        checkReload(schema);
     }
 
     /** Refusal 7. Checked first: every other check assumes a namespace actually exists. */
@@ -155,6 +159,32 @@ public final class ContractValidator {
             if (ConstraintEvaluator.verdict(constraint, defaultValue) instanceof ConstraintEvaluator.Fails failed) {
                 throw new DefaultViolatesConstraintException(
                         key.getPath(), ConstraintEvaluator.show(defaultValue), failed.reason());
+            }
+        }
+    }
+
+    /**
+     * Refusals 10, 11 and 12: reload claims the rest of the same document contradicts. A consumer
+     * leaves a {@code live} key out of the digest a chart rolls its pods on, so each of these is a
+     * change a deployment would report as applied and the process would never apply.
+     */
+    private static void checkReload(final Schema schema) {
+        final ReloadSupport support = schema.getReload();
+        if (support != null
+                && support.getMode() == ReloadMode.REBUILD
+                && support.getLayers().isEmpty()) {
+            throw new RebuildWithoutLayersException();
+        }
+        final boolean rebuilds = support != null && support.getMode() == ReloadMode.REBUILD;
+        for (final Key key : schema.getKeys()) {
+            if (key.getReload() != Reload.LIVE) {
+                continue;
+            }
+            if (key.isReserved()) {
+                throw new ReservedLiveException(key.getPath());
+            }
+            if (!rebuilds) {
+                throw new LiveWithoutRebuildException(key.getPath());
             }
         }
     }

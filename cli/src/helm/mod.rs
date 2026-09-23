@@ -23,6 +23,8 @@ pub mod markers;
 #[cfg(feature = "oci")]
 pub mod pull;
 pub mod readme;
+pub mod restarts;
+pub mod rollout;
 pub mod secrets;
 pub mod shapes;
 pub mod suites;
