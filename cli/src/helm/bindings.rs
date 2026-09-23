@@ -41,7 +41,7 @@ use crate::error::Error;
 use crate::report::Report;
 use crate::union::suggest;
 
-use super::declaration::{Bound, Declaration, chart_dirs, load_declaration, read_yaml};
+use super::declaration::{Bound, Declaration, Selection, load_declaration, read_yaml};
 use super::markers::{Class, MARKER, Marker, read as read_markers};
 
 /// What a run of [`check`] found.
@@ -68,11 +68,11 @@ pub struct Resolved {
 /// # Errors
 /// [`Error::Invalid`] when a declaration, a values file or a vendored contract cannot be read at
 /// all — as distinct from a marker that is wrong, which is a finding.
-pub fn check(charts: &Path) -> Result<Bindings, Error> {
+pub fn check(charts: &Path, selection: &Selection) -> Result<Bindings, Error> {
     let mut report = Report::new();
     let mut enrolled = Vec::new();
 
-    for chart_dir in chart_dirs(charts)? {
+    for chart_dir in selection.dirs(charts)? {
         if let Some(counted) = check_chart(&chart_dir, &mut report)? {
             let name = chart_dir
                 .file_name()

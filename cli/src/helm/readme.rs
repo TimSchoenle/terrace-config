@@ -56,8 +56,9 @@ use crate::error::Error;
 use crate::union::union_contracts;
 
 use super::bindings::has_path;
+use super::declaration::Selection;
 use super::declaration::{Declaration, Document, vendored_for};
-use super::secrets::{Credential, contracted_charts, credentials, declared_secrets};
+use super::secrets::{Credential, credentials, declared_secrets};
 
 /// The two comments the generated block sits between.
 ///
@@ -85,9 +86,9 @@ pub struct Written {
 /// [`Error::Invalid`] when a declaration or a contract cannot be read at all, [`Error::Io`] when the
 /// tree cannot be walked or a template cannot be written. A chart whose *reference* is wrong is a
 /// problem on the result rather than an error: the run still answers for every other chart.
-pub fn walk(charts: &Path, check: bool) -> Result<Written, Error> {
+pub fn walk(charts: &Path, selection: &Selection, check: bool) -> Result<Written, Error> {
     let mut written = Written::default();
-    for (chart_dir, declaration) in contracted_charts(charts)? {
+    for (chart_dir, declaration) in selection.declared(charts, true)? {
         one_chart(&chart_dir, &declaration, check, &mut written)?;
     }
     Ok(written)

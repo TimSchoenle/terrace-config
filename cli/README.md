@@ -106,6 +106,21 @@ and never remove one. `explain` prints what a change to each setting costs.
 Nothing changes for a chart until one of its images declares a rebuild. The rules are in
 [`FORMAT.md`](../spec/v1/FORMAT.md#reloading).
 
+## Checking only the charts a change touched
+
+By default, `check`, `bindings`, `shapes`, `readme` and `tests` read every chart under `--charts`.
+Each of them also takes chart names after its options, and then reads only those charts:
+
+```bash
+terrace-contract bindings --format github portfolio netcup-offer-bot
+terrace-contract tests --check portfolio
+```
+
+A pipeline that knows which charts a pull request changed can pass them, so a pull request is not
+failed by a chart it did not touch. When shared inputs change, such as the pinned CLI version or a
+library chart, pass no names, so that every chart is checked. A name that matches no chart directory
+exits `2`. A misspelt name would otherwise select nothing, and a gate that checks nothing passes.
+
 ## What it deliberately does not do
 
 - **Produce a contract.** That needs the types. It is the seam.

@@ -380,9 +380,10 @@ fn tree() -> Option<PathBuf> {
 
 /// What this crate finds, sorted.
 fn rust_side(root: &Path, rendered: &Path) -> Vec<Finding> {
-    let checked = helm::check(&root.join("charts"), rendered).unwrap_or_else(|failure| {
-        panic!("this crate could not read {}: {failure}", root.display())
-    });
+    let checked = helm::check(&root.join("charts"), &helm::Selection::all(), rendered)
+        .unwrap_or_else(|failure| {
+            panic!("this crate could not read {}: {failure}", root.display())
+        });
     let mut found: Vec<Finding> = checked
         .report
         .entries()
@@ -556,10 +557,11 @@ fn the_binding_rules_agree_with_the_implementation_they_were_ported_from() {
         return;
     };
 
-    let ours =
-        terrace_contract::helm::check_bindings(&root.join("charts")).unwrap_or_else(|failure| {
-            panic!("this crate could not read {}: {failure}", root.display())
-        });
+    let ours = terrace_contract::helm::check_bindings(
+        &root.join("charts"),
+        &terrace_contract::helm::Selection::all(),
+    )
+    .unwrap_or_else(|failure| panic!("this crate could not read {}: {failure}", root.display()));
     let mut mine: Vec<Finding> = ours
         .report
         .entries()
@@ -637,8 +639,11 @@ fn the_binding_rules_agree_about_markers_that_are_wrong() {
     }
 
     let mutant = Charts::of(&root.join("charts"));
-    let ours = terrace_contract::helm::check_bindings(&mutant.path())
-        .expect("this crate reads the mutant tree");
+    let ours = terrace_contract::helm::check_bindings(
+        &mutant.path(),
+        &terrace_contract::helm::Selection::all(),
+    )
+    .expect("this crate reads the mutant tree");
     let mut mine: Vec<Finding> = ours
         .report
         .entries()
@@ -776,8 +781,12 @@ fn the_credential_reference_is_the_one_the_tree_already_carries() {
         "only {emptied} chart(s) carry a credential reference, so this proves almost nothing"
     );
 
-    let written =
-        terrace_contract::helm::readme::walk(&copy.path(), false).expect("the copy is readable");
+    let written = terrace_contract::helm::readme::walk(
+        &copy.path(),
+        &terrace_contract::helm::Selection::all(),
+        false,
+    )
+    .expect("the copy is readable");
     assert!(
         written.problems.is_empty(),
         "the writer could not generate every reference:\n  {}",
@@ -847,8 +856,11 @@ fn the_generated_suites_are_the_ones_the_tree_already_carries() {
         "only {deleted} generated suite(s) in this tree, so this proves almost nothing"
     );
 
-    let generated =
-        terrace_contract::helm::suites::collect(&copy.path(), None).expect("the copy is readable");
+    let generated = terrace_contract::helm::suites::collect(
+        &copy.path(),
+        &terrace_contract::helm::Selection::all(),
+    )
+    .expect("the copy is readable");
     assert_eq!(
         generated.suites.len(),
         deleted,

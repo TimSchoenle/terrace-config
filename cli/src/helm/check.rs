@@ -21,7 +21,7 @@ use crate::report::{Report, warning};
 use crate::union::Union;
 use crate::value::reads_for;
 
-use super::declaration::{Binding, Consumer, Declaration, Document, bind, declared};
+use super::declaration::{Binding, Consumer, Declaration, Document, Selection, bind};
 use super::{DECLARATION, dig};
 
 /// What a run of [`check`] found, and how much of the tree it looked at.
@@ -41,11 +41,11 @@ pub struct Checked {
 /// the trees cannot be walked. A tree this cannot read is a different outcome from a tree it read
 /// and found wanting, and a pipeline that treated them the same could not tell a failing gate from a
 /// broken one.
-pub fn check(charts: &Path, rendered: &Path) -> Result<Checked, Error> {
+pub fn check(charts: &Path, selection: &Selection, rendered: &Path) -> Result<Checked, Error> {
     let mut report = Report::new();
     let mut count = 0;
 
-    for (chart_dir, declaration) in declared(charts, true)? {
+    for (chart_dir, declaration) in selection.declared(charts, true)? {
         check_chart(&chart_dir, &declaration, rendered, &mut report)?;
         count += 1;
     }
