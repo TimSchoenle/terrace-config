@@ -162,7 +162,7 @@ cd java
 ```
 
 Three checks per case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`,
-`entry-names`), for a
+`entry-names`, `element-patterns`), for a
 different reason each:
 the rendering validates against the meta-schema (tier 1); every dialect spelling — `env`, both file
 forms, every alias list, `unreachable` — agrees with this same shared corpus (tier 2); and the

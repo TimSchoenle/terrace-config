@@ -1,0 +1,182 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config-java",
+    "version": "0.0.0-conformance",
+    "loader": "terrace-java"
+  },
+  "app": {
+    "name": "handbook",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 3,
+    "dialect": {
+      "prefix": "BOOK_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "BOOK_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose *.toml files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "BOOK_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files -- a mounted Kubernetes Secret volume. Each file supplies the key its name spells.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "default_locale",
+        "env": "BOOK_DEFAULT_LOCALE",
+        "env_file": "BOOK_DEFAULT_LOCALE_FILE",
+        "secrets_file": "default_locale",
+        "docs": "The locale a chapter falls back to.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "pattern": "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$",
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "en",
+        "default_value": "en",
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "chapters",
+        "env": "BOOK_CHAPTERS",
+        "env_file": "BOOK_CHAPTERS_FILE",
+        "secrets_file": "chapters",
+        "docs": "Chapters, by slug.",
+        "ty": "Map<String,Chapter>",
+        "values": [],
+        "constraint": {
+          "additionalProperties": {
+            "properties": {
+              "body": {
+                "additionalProperties": {
+                  "pattern": "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]",
+                  "type": "string"
+                },
+                "description": "Text, by locale.",
+                "propertyNames": {
+                  "pattern": "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$"
+                },
+                "type": "object"
+              },
+              "title": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Heading, by locale.",
+                "required": [
+                  "en"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*[\\[\\{][\\s\\S]*[\\]\\}]\\s*$",
+          "type": "string"
+        },
+        "text_form": "structured",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "{ intro = { title = { en = Introduction }, body = { en = Start here. } } }",
+        "default_value": {
+          "intro": {
+            "title": {
+              "en": "Introduction"
+            },
+            "body": {
+              "en": "Start here."
+            }
+          }
+        },
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "chapters": {
+        "additionalProperties": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "additionalProperties": {
+                "pattern": "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]",
+                "type": "string"
+              },
+              "description": "Text, by locale.",
+              "propertyNames": {
+                "pattern": "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$"
+              },
+              "type": "object"
+            },
+            "title": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Heading, by locale.",
+              "required": [
+                "en"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "default": {
+          "intro": {
+            "title": {
+              "en": "Introduction"
+            },
+            "body": {
+              "en": "Start here."
+            }
+          }
+        },
+        "description": "Chapters, by slug.",
+        "type": "object"
+      },
+      "default_locale": {
+        "default": "en",
+        "description": "The locale a chapter falls back to.",
+        "pattern": "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$",
+        "type": "string"
+      }
+    },
+    "title": "handbook configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

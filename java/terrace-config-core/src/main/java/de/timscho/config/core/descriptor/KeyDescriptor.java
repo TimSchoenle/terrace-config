@@ -25,12 +25,15 @@ import org.jspecify.annotations.Nullable;
  * @param range      the bound on the field, from {@code @Range}; {@code null} if none
  * @param nestedKeys the field's own nested keys, from {@code @Nested} onto a {@code
  *                   @TerraceConfig} struct; empty if the field is not itself nested
- * @param element    what the container's element looks like, from {@code @Element}/{@code
- *                   @ElementValues}; {@code null} when {@code container} is {@code NONE} or the
- *                   element is a plain leaf needing no description of its own
- * @param closed     whether the field's own type is closed to unknown properties (read off {@code
- *                   @JsonIgnoreProperties(ignoreUnknown = false)}), meaningful only when {@code
- *                   nestedKeys} or {@code element} carries a nested struct
+ * @param element    what the container's element looks like: its type, plus whatever {@code
+ *                   @Element}/{@code @ElementValues}/{@code @Range} added; {@code null} when
+ *                   {@code container} is {@code NONE}, or when nothing about the element is known
+ *                   (a descriptor generated before plain-leaf elements were reported), in which
+ *                   case the container publishes no element schema
+ * @param closed     whether the type the field opens is closed to unknown properties (read off
+ *                   {@code @JsonIgnoreProperties(ignoreUnknown = false)}): the {@code @Nested}
+ *                   struct itself, or the {@code @Element} struct each element is; meaningful only
+ *                   when {@code nestedKeys} or {@code element} carries a nested struct
  * @param hasDefault whether the field declaration carries an initializer ({@code private String
  *                   port = "8080";}, not {@code private String port;}) — the Java equivalent of a
  *                   Rust field carrying {@code #[serde(default = "…")]}, read from source by

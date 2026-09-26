@@ -79,7 +79,10 @@ Terrace::new("BOOK_")
 `LOCALE` is `^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$`; `english()` is
 `"en"`, and `default_chapters()` holds one `intro` chapter with an English title and body.
 
-`terrace-config-java` does not produce this case: its producer publishes no element schema for a map
-yet, so there is no position inside `chapters` to tighten. Its `Refiner` addresses positions inside a
-constraint exactly as the Rust crate does, and `RefinerTest` pins that on a hand-built one; the codec
-modules round-trip this document like every other.
+`terrace-config-java` — `JavaConformanceTest`, fixtures `HandbookConfig` and `Chapter` (the map
+annotated `@Element`), refined through `Schema#refineWith("", …)` with the same four refinements.
+Its producer publishes the same element schema for `chapters` — `additionalProperties` over the
+`Chapter` object, and a map of strings under each of its fields — so every position above exists
+there too. `publishesTheSameConstraintsAsTheSharedSpecCorpus` holds each key's whole `constraint` to
+this document, and `publishesTheSameRefinementsAsTheSharedSpecCorpus` its `schema_version`,
+`required` and which defaults survive.
