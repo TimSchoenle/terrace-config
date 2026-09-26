@@ -94,9 +94,14 @@ Two version numbers, moving independently.
 **`terrace_contract`** versions the envelope. A consumer MUST refuse a version it was not written
 against rather than read it optimistically.
 
-**`schema.schema_version`** versions the schema half. Version 2 allowed `constraint` to nest. A
-consumer gates its keyword allowlist on this: refuse a version you were not written against, widen,
-then accept it.
+**`schema.schema_version`** versions the schema half. Version 2 allowed `constraint` to nest.
+Version 3 added `propertyNames` (see [Refinements](#refinements)). A consumer gates its keyword
+allowlist on this: refuse a version you were not written against, widen, then accept it.
+
+A producer publishes the **lowest** version whose vocabulary holds every keyword the document
+carries, not the newest it can write. Each version's vocabulary contains the last, so a document
+using nothing new reads exactly as it did, and a consumer is told to widen only by a document it
+would otherwise under-check.
 
 The allowlist is of keywords, not of positions. A constraint is one JSON Schema, and a keyword a
 version permits anywhere in it is permitted everywhere in it — so `required` at the top of a
@@ -279,7 +284,7 @@ value the loader would accept and the service would then refuse is not a correct
 gate refusing it is right. Loosening is never safe, because the type's own constraint is what the
 loader enforces.
 
-One tightening is defined: **required entries of a map.** A key whose `constraint` is an object
+The first tightening is **required entries of a map.** A key whose `constraint` is an object
 with no `properties` — a map, its element schema if any under `additionalProperties` — MAY carry
 `required`, a sorted list of entry names the map must contain. It means exactly what JSON Schema's
 `required` means at that position: a document supplying the map must supply those entries. The map
@@ -299,6 +304,53 @@ under its `secrets_file`, by the same derivation the key's own spellings use. A 
 a refinement naming an entry some layer reaching the key could not spell — `Imprint` under a
 lower-casing environment layer, a name carrying the nesting separator or a `.`, one whose spelling
 ends in `indirection_suffix`.
+
+A second tightening is defined: **entry names of a map**, from `schema_version: 3`. A map-typed key's
+`constraint` MAY carry `propertyNames: {"pattern": P}`: every entry name the map holds must match
+`P`, as JSON Schema's `propertyNames` means at that position. `P` MUST lie inside the
+[portable subset](#portable-patterns). A key carries at most one such pattern.
+
+The two tightenings MUST agree: every name in `required` matches the pattern, since a required entry
+the pattern rejects makes the key unsatisfiable. A producer MUST refuse the second of two refinements
+that would publish that, whichever arrived first. A default naming an entry the pattern rejects is,
+like one lacking a required entry, not a default: the key is published `required: true` with none.
+
+The pattern describes names in document space. The environment layer folds a variable's name to lower
+case before reading it, so a pattern admitting an upper-case name describes an entry only a file can
+supply. That is weaker than the loader, not wrong, and a producer publishes the pattern as the
+runtime check states it.
+
+### Portable patterns
+
+A pattern a refinement publishes is read by whatever validates the contract — an ECMA-262 engine
+behind a JSON Schema validator, Rust's `regex`, Java's `java.util.regex`, Python's `re` — and those
+disagree about a great deal. A producer MUST refuse a refinement whose pattern lies outside this
+subset, in which each of them reads every construct alike:
+
+- **Literals.** Any character from U+0000 to U+FFFF except the syntax characters
+  `^ $ \ . * + ? ( ) [ ] { } |`, which are escaped to mean themselves.
+- **Escapes.** A syntax character; `\t`, `\n`, `\r`, `\f`; and `\uXXXX`, exactly four hex digits
+  naming a character that is not a surrogate. Inside a class, `\-` as well.
+- **Classes.** `[…]` and `[^…]`, holding characters and ascending ranges of them. A literal `-`
+  stands first or last, or is escaped; `[` is escaped; `--`, `&&`, `~~` and `||` do not appear,
+  since Rust and Java read them as set operations. An empty class is not written.
+- **Groups.** `(…)` and `(?:…)`, with `|` between alternatives.
+- **Repetition.** `?`, `*`, `+`, `{n}`, `{n,}` and `{n,m}`, with `n ≤ m ≤ 1000`. Greedy only; a
+  repetition is not itself repeated.
+- **Anchors.** `^` and `$`, meaning the start and the end of the whole text.
+
+Matching is JSON Schema's: unanchored, over characters. Nothing else is in the subset — in
+particular `.`, whose line terminators differ by engine; `\d`, `\w`, `\s`, `\b` and their
+negations, which are ASCII in one engine and Unicode in the next (ECMA-262's `\s` holds U+FEFF, which
+Unicode's `White_Space` does not); back-references, lookaround, lazy repetition, flags, and any
+character beyond U+FFFF. Each has a spelling inside the subset: a class naming exactly the characters
+meant.
+
+A consumer applies a pattern with the meaning above. Two engines need telling: Java's and Python's
+`$` also match before a final line terminator, so a consumer in either reads `$` as `\z` or `\Z`
+respectively. One difference survives, observable only by an ECMA-262 engine run without the `u` flag
+and only through a negated class: such an engine reads a character beyond U+FFFF in the *value* as
+two, and a negated class matches each half.
 
 ### `text_form`
 

@@ -46,7 +46,11 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// A document declaring a higher one is still read — the schema half has only ever gained fields —
 /// but [`Contract::schema_version_ahead`] reports it, so a caller walking `constraint` itself can
 /// say "this document may carry more than I know about" rather than quietly under-reading it.
-pub const SCHEMA_VERSION: u32 = 2;
+///
+/// Version 3 added `propertyNames`, which a producer's entry-name refinement writes. A producer
+/// publishes the lowest version whose vocabulary holds what the document carries, so most documents
+/// still declare 2.
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// The default in-image path a contract is published at.
 ///
@@ -387,6 +391,13 @@ impl Key {
     pub fn required_entries(&self) -> Vec<&str> {
         required_entries(self.constraint.as_ref())
     }
+
+    /// The pattern this key's map holds its entry names to, as its constraint publishes it.
+    ///
+    /// See [`entry_name_pattern`].
+    pub fn entry_name_pattern(&self) -> Option<&str> {
+        entry_name_pattern(self.constraint.as_ref())
+    }
 }
 
 /// The entries a map-typed constraint requires: `required` at the top of an object that declares
@@ -415,6 +426,34 @@ pub fn required_entries_of(constraint: &serde_json::Map<String, Json>) -> Vec<&s
         .and_then(Json::as_array)
         .map(|names| names.iter().filter_map(Json::as_str).collect())
         .unwrap_or_default()
+}
+
+/// The pattern a map-typed constraint holds its entry names to: `propertyNames: {"pattern": …}` at
+/// the top of an object that declares no `properties`.
+///
+/// `FORMAT.md` (*Refinements*): from `schema_version: 3` a producer MAY hold a map's entry names to a
+/// pattern from the portable subset, and a consumer showing it reads it from here. Anything else
+/// under `propertyNames` is not a refinement this format defines and yields nothing; the validators
+/// still apply it.
+pub fn entry_name_pattern(constraint: Option<&Json>) -> Option<&str> {
+    match constraint {
+        Some(Json::Object(constraint)) => entry_name_pattern_of(constraint),
+        _ => None,
+    }
+}
+
+/// [`entry_name_pattern`], over a constraint already known to be an object.
+pub fn entry_name_pattern_of(constraint: &serde_json::Map<String, Json>) -> Option<&str> {
+    if constraint.get("type").and_then(Json::as_str) != Some("object")
+        || constraint.contains_key("properties")
+    {
+        return None;
+    }
+    let names = constraint.get("propertyNames")?.as_object()?;
+    if names.len() != 1 {
+        return None;
+    }
+    names.get("pattern")?.as_str()
 }
 
 /// Why the environment cannot name a key.
@@ -608,6 +647,18 @@ struct Envelope {
 #[cfg(test)]
 mod tests {
     use super::{Contract, LoaderRole, TextForm, Unknown, Unreachable};
+
+    #[test]
+    fn only_a_maps_single_pattern_is_an_entry_name_pattern() {
+        let map = serde_json::json!({"type": "object", "propertyNames": {"pattern": "^[a-z]+$"}});
+        assert_eq!(super::entry_name_pattern(Some(&map)), Some("^[a-z]+$"));
+        // A struct's names are its fields, and a schema beyond a lone pattern is not the refinement.
+        let fields = serde_json::json!({"type": "object", "properties": {}, "propertyNames": {"pattern": "x"}});
+        assert_eq!(super::entry_name_pattern(Some(&fields)), None);
+        let wider = serde_json::json!({"type": "object", "propertyNames": {"pattern": "x", "maxLength": 3}});
+        assert_eq!(super::entry_name_pattern(Some(&wider)), None);
+        assert_eq!(super::entry_name_pattern(None), None);
+    }
 
     #[test]
     fn a_document_written_before_producer_existed_is_still_read() {

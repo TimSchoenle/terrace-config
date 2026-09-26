@@ -206,20 +206,25 @@ impl Column {
                 };
                 // Part of what the value has to be, so beside the type: a map type says "a map",
                 // and this says which map. Read off `constraint`, which a validator reads too.
+                let mut parts = Vec::new();
                 let entries = key.required_entries();
-                if entries.is_empty() {
-                    shape
-                } else {
+                if !entries.is_empty() {
                     let entries = entries
                         .iter()
                         .map(|entry| format!("`{}`", escape(entry)))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    if key.ty.is_none() && key.values.is_empty() {
-                        format!("must contain: {entries}")
-                    } else {
-                        format!("{shape}, must contain: {entries}")
-                    }
+                    parts.push(format!("must contain: {entries}"));
+                }
+                if let Some(pattern) = key.entry_name_pattern() {
+                    parts.push(format!("entry names match `{}`", escape(pattern)));
+                }
+                if parts.is_empty() {
+                    shape
+                } else if key.ty.is_none() && key.values.is_empty() {
+                    parts.join(", ")
+                } else {
+                    format!("{shape}, {}", parts.join(", "))
                 }
             }
             Self::Aliases => {

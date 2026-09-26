@@ -53,10 +53,11 @@ class JavaConformanceTest {
             "minimal", FixtureContracts::minimal,
             "full-surface", FixtureContracts::fullSurface,
             "unnameable-key", FixtureContracts::unnameableKey,
-            "required-entries", FixtureContracts::requiredEntries);
+            "required-entries", FixtureContracts::requiredEntries,
+            "entry-names", FixtureContracts::entryNames);
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries", "entry-names"})
     void rendersAValidEnvelope(final String caseName) {
         final MetaSchemaValidator validator = MetaSchemaValidator.load();
         final JsonNode produced = producedNode(caseName);
@@ -70,7 +71,7 @@ class JavaConformanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries", "entry-names"})
     void meetsTier2AgainstTheSharedSpecCorpus(final String caseName) throws IOException {
         final JsonNode produced = producedNode(caseName);
         final JsonNode expected = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase(caseName)));
@@ -81,7 +82,7 @@ class JavaConformanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries"})
+    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries", "entry-names"})
     void meetsTier3AgainstItsOwnJavaGolden(final String caseName) throws IOException {
         final byte[] rendered =
                 ContractCodec.write(withConformanceVersion(CASES.get(caseName).get()));
@@ -112,13 +113,16 @@ class JavaConformanceTest {
      * dropped. Every producer has to agree on those, whatever its type vocabulary, or a chart gets a
      * different answer to "may I leave this out" depending on the language the image was written in.
      */
-    @org.junit.jupiter.api.Test
-    void publishesTheSameRefinementsAsTheSharedSpecCorpus() throws IOException {
-        final JsonNode produced =
-                producedNode("required-entries").path("schema").path("keys");
-        final JsonNode expected = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase("required-entries")))
-                .path("schema")
-                .path("keys");
+    @ParameterizedTest
+    @ValueSource(strings = {"required-entries", "entry-names"})
+    void publishesTheSameRefinementsAsTheSharedSpecCorpus(final String caseName) throws IOException {
+        final JsonNode document = producedNode(caseName);
+        final JsonNode corpus = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase(caseName)));
+        assertThat(document.path("schema").path("schema_version"))
+                .as("`%s` schema_version", caseName)
+                .isEqualTo(corpus.path("schema").path("schema_version"));
+        final JsonNode produced = document.path("schema").path("keys");
+        final JsonNode expected = corpus.path("schema").path("keys");
 
         assertThat(produced.size()).isEqualTo(expected.size());
         for (int i = 0; i < expected.size(); i++) {
@@ -130,6 +134,9 @@ class JavaConformanceTest {
             assertThat(got.path("constraint").path("required"))
                     .as("`%s` constraint.required", path)
                     .isEqualTo(want.path("constraint").path("required"));
+            assertThat(got.path("constraint").path("propertyNames"))
+                    .as("`%s` constraint.propertyNames", path)
+                    .isEqualTo(want.path("constraint").path("propertyNames"));
             assertThat(got.path("default_value").isNull())
                     .as("`%s` has a default exactly when the corpus does", path)
                     .isEqualTo(want.path("default_value").isNull());

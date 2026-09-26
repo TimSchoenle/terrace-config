@@ -11,7 +11,7 @@
 
 use std::fmt::Write as _;
 
-use super::refine::required_entries;
+use super::refine::{entry_name_pattern, required_entries};
 use super::{Key, Schema, summary};
 
 impl Schema {
@@ -219,20 +219,25 @@ impl Column {
                 // Beside the type, because it is part of what the value has to be: `BTreeMap`
                 // says "a map" and this says which map. Read off the constraint, the one place a
                 // validator reads it too.
+                let mut parts = Vec::new();
                 let entries = required_entries(key);
-                if entries.is_empty() {
-                    shape
-                } else {
+                if !entries.is_empty() {
                     let entries = entries
                         .iter()
                         .map(|entry| format!("`{}`", escape(entry)))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    if key.ty.is_none() && key.values.is_empty() {
-                        format!("must contain: {entries}")
-                    } else {
-                        format!("{shape}, must contain: {entries}")
-                    }
+                    parts.push(format!("must contain: {entries}"));
+                }
+                if let Some(pattern) = entry_name_pattern(key) {
+                    parts.push(format!("entry names match `{}`", escape(pattern)));
+                }
+                if parts.is_empty() {
+                    shape
+                } else if key.ty.is_none() && key.values.is_empty() {
+                    parts.join(", ")
+                } else {
+                    format!("{shape}, {}", parts.join(", "))
                 }
             }
             Self::Aliases => {

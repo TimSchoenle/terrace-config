@@ -247,6 +247,22 @@ impl Refine for LegalPagesRefinements {
     }
 }
 
+/// The same library, publishing what its runtime check does to a document's *name* as well: a
+/// slug, which is `Slug::from_str` exactly, and footer labels in lower-case letters only.
+struct NamedLegalPagesRefinements;
+
+impl Refine for NamedLegalPagesRefinements {
+    fn refinements(&self) -> Vec<(String, Refinement)> {
+        let mut refinements = LegalPagesRefinements.refinements();
+        refinements.push((
+            "documents".to_owned(),
+            Refinement::entry_names("^[a-z0-9][a-z0-9_-]{0,63}$"),
+        ));
+        refinements.push(("links".to_owned(), Refinement::entry_names("^[a-z]+$")));
+        refinements
+    }
+}
+
 #[derive(Deserialize, Serialize, Default, Describe)]
 #[serde(rename_all = "lowercase")]
 enum LogLevel {
@@ -343,6 +359,7 @@ fn cases() -> Vec<(&'static str, Contract)> {
         ("full-surface", full_surface()),
         ("unnameable-key", unnameable_key()),
         ("required-entries", required_entries()),
+        ("entry-names", entry_names()),
         ("reload", reload()),
     ]
 }
@@ -399,6 +416,18 @@ fn required_entries() -> Contract {
         .expect("the default config serialises")
         .refine_with("legal", &LegalPagesRefinements)
         .expect("both maps accept their entries")
+        .into_contract(App::new("site").version("1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+fn entry_names() -> Contract {
+    Terrace::new("SITE_")
+        .schema::<Site>()
+        .with_defaults_from(&Site::default())
+        .expect("the default config serialises")
+        .refine_with("legal", &NamedLegalPagesRefinements)
+        .expect("every required entry is a name the patterns admit")
         .into_contract(App::new("site").version("1.0.0"))
         .build()
         .expect("the contract has nothing to refuse")

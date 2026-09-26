@@ -60,7 +60,7 @@ public class Defaults {
             }
             // A default the refined constraint rejects supplies nothing: the image refuses it at
             // boot. The rule `Refiner` applies when the default arrived first, so the two commute.
-            if (Refiner.lacksRequiredEntries(key, observed)) {
+            if (Refiner.rejectedByRefinement(key, observed)) {
                 keys.add(key.toBuilder().required(true).build());
                 continue;
             }

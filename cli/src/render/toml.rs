@@ -212,6 +212,9 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
     if !entries.is_empty() {
         comment(&mut out, &format!("Must contain: {}", entries.join(", ")));
     }
+    if let Some(pattern) = key.entry_name_pattern() {
+        comment(&mut out, &format!("Entry names match: {pattern}"));
+    }
 
     if !key.aliases.is_empty() {
         comment(

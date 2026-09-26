@@ -44,7 +44,7 @@
 use serde_json::{Map, Value as Json};
 
 use crate::classify::matches_ignore;
-use crate::document::{SCHEMA_VERSION, required_entries};
+use crate::document::{SCHEMA_VERSION, entry_name_pattern, required_entries};
 use crate::text::{quoted, short};
 
 /// The smallest chart version bump a finding justifies.
@@ -939,7 +939,7 @@ fn diff_entry(
         // A map's required entries are graded by direction below, so a constraint differing in
         // nothing else is not a second, flat-graded finding about the same edit.
         let differs = if *name == "constraint" {
-            without_entries(old.get(name)) != without_entries(new.get(name))
+            without_refinements(old.get(name)) != without_refinements(new.get(name))
         } else {
             old.get(name) != new.get(name)
         };
@@ -963,6 +963,7 @@ fn diff_entry(
 
     changes.extend(diff_required(area, subject, old, new));
     changes.extend(diff_required_entries(area, subject, old, new));
+    changes.extend(diff_entry_names(area, subject, old, new));
     changes.extend(diff_text_form(area, subject, old, new));
     changes.extend(diff_default(area, subject, old, new));
 
@@ -1100,13 +1101,58 @@ fn diff_required_entries(area: Area, subject: &str, old: &Json, new: &Json) -> V
     changes
 }
 
-/// A constraint with a map's required entries taken out, for comparing everything else about it.
-fn without_entries(constraint: Option<&Json>) -> Option<Json> {
+/// A map's entry-name pattern is graded by direction too, as far as a pattern has one.
+///
+/// Gaining a pattern is a tightening, and so is replacing one: whether a new pattern admits every
+/// name the old one did is not something two regular expressions can be compared for here, and a
+/// chart naming an entry the new one refuses renders a map the image will not start with. Losing
+/// one is a relaxation.
+fn diff_entry_names(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Change> {
+    let before = entry_name_pattern(old.get("constraint"));
+    let after = entry_name_pattern(new.get("constraint"));
+    if before == after {
+        return Vec::new();
+    }
+    let pattern = |held: Option<&str>| held.map(|pattern| Json::String(pattern.to_owned()));
+    let (severity, message) = match (before, after) {
+        (_, Some(after)) => (
+            Severity::Major,
+            format!(
+                "{subject} now holds its entry names to {after}; a chart naming an entry it \
+                 refuses will not start"
+            ),
+        ),
+        (Some(before), None) => (
+            Severity::Minor,
+            format!("{subject} no longer holds its entry names to {before}"),
+        ),
+        (None, None) => return Vec::new(),
+    };
+    vec![Change {
+        severity,
+        area,
+        kind: Kind::Changed,
+        subject: subject.to_owned(),
+        field: Some("constraint.propertyNames".to_owned()),
+        old: pattern(before),
+        new: pattern(after),
+        message,
+    }]
+}
+
+/// A constraint with a map's refinements taken out — its required entries and its entry-name
+/// pattern — for comparing everything else about it. Each is graded by its own direction above.
+fn without_refinements(constraint: Option<&Json>) -> Option<Json> {
     let mut held = constraint.cloned()?;
-    if !required_entries(constraint).is_empty()
-        && let Some(fields) = held.as_object_mut()
-    {
-        fields.remove("required");
+    let entries = !required_entries(constraint).is_empty();
+    let names = entry_name_pattern(constraint).is_some();
+    if let Some(fields) = held.as_object_mut() {
+        if entries {
+            fields.remove("required");
+        }
+        if names {
+            fields.remove("propertyNames");
+        }
     }
     Some(held)
 }
@@ -1716,6 +1762,53 @@ mod tests {
                 .any(|change| change.field.as_deref() == Some("constraint")),
             "{moved:?}"
         );
+    }
+
+    #[test]
+    fn gaining_or_replacing_an_entry_name_pattern_is_major_and_losing_one_is_a_relaxation() {
+        let map = |pattern: Option<&str>| {
+            let mut constraint =
+                json!({"type": "object", "additionalProperties": {"type": "string"}});
+            if let Some(pattern) = pattern {
+                constraint["propertyNames"] = json!({"pattern": pattern});
+            }
+            document(
+                &one("legal.documents", &json!({"constraint": constraint})),
+                &none(),
+            )
+        };
+
+        let gained = changes(&map(None), &map(Some("^[a-z]+$")));
+        assert_eq!(
+            gained.len(),
+            1,
+            "one finding, not a flat constraint line: {gained:?}"
+        );
+        assert_eq!(gained[0].severity, Severity::Major);
+        assert_eq!(gained[0].field.as_deref(), Some("constraint.propertyNames"));
+        assert!(
+            gained[0]
+                .message
+                .contains("now holds its entry names to ^[a-z]+$"),
+            "{gained:?}"
+        );
+
+        // Two patterns cannot be compared for which admits more, so a new one is a tightening.
+        let replaced = changes(&map(Some("^[a-z]+$")), &map(Some("^[a-z0-9]+$")));
+        assert_eq!(replaced.len(), 1, "{replaced:?}");
+        assert_eq!(replaced[0].severity, Severity::Major);
+
+        let lost = changes(&map(Some("^[a-z]+$")), &map(None));
+        assert_eq!(lost.len(), 1, "{lost:?}");
+        assert_eq!(lost[0].severity, Severity::Minor);
+        assert!(
+            lost[0]
+                .message
+                .contains("no longer holds its entry names to ^[a-z]+$"),
+            "{lost:?}"
+        );
+
+        assert!(changes(&map(Some("^[a-z]+$")), &map(Some("^[a-z]+$"))).is_empty());
     }
 
     #[test]

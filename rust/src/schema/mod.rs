@@ -96,6 +96,7 @@ pub mod cli;
 mod contract;
 mod json_schema;
 mod markdown;
+mod pattern;
 mod refine;
 mod reload;
 mod rust_type;
@@ -163,7 +164,21 @@ use crate::error::Error;
 /// Schema, not a set of positions each with a vocabulary of its own. A version-2 consumer that
 /// walks the constraint recursively, which the nesting already obliged it to, meets `required` at
 /// the top exactly as it meets it under `additionalProperties`.
+///
+/// # Version 3, and only where it is used
+///
+/// [`Refinement::EntryNames`] publishes `propertyNames`, which no earlier version's allowlist
+/// holds — so it is version 3, on version 2's reasoning exactly. But a version is a promise about
+/// the keywords a document *may* carry, and nearly every document carries none of the new one. So
+/// this constant stays the version a schema is described at, and [`Schema::refine`] raises
+/// [`Schema::schema_version`] to [`LATEST_SCHEMA_VERSION`] only when it writes the keyword that needs
+/// it. A document using nothing new is published exactly as before, and a version-2 consumer is
+/// told to widen only by a document it would otherwise under-check.
 pub const SCHEMA_VERSION: u32 = 2;
+
+/// The newest version of the schema half this crate writes, and what a document carrying
+/// `propertyNames` is published at. See [`SCHEMA_VERSION`] for why the two differ.
+pub const LATEST_SCHEMA_VERSION: u32 = 3;
 
 /// How deep [`Sink::nested`] and [`Sink::repeated`] will recurse before deciding the type is
 /// cyclic.
@@ -477,6 +492,7 @@ impl Sink {
             secret: leaf.secret,
             reserved: false,
             reload: self.reload.resolve(),
+            stated: refine::Stated::default(),
         });
 
         // Beside the key rather than in it, and only when there is something to hold: an
@@ -876,6 +892,12 @@ pub struct Key {
     /// or the key rules `live` out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload: Option<Reload>,
+    /// The constraint as the type stated it, kept from the first time a refinement tightens it.
+    ///
+    /// Never published and never compared: it exists for the one rule that needs both halves, that
+    /// a default the *refinement* rejects is not a default. See [`Schema::refine`].
+    #[serde(skip)]
+    stated: refine::Stated,
 }
 
 /// What form the text supplying a key takes, and so how to read it.
@@ -1355,7 +1377,7 @@ impl Schema {
             // A default the refined constraint rejects supplies nothing: the image refuses it at
             // boot. The same rule `Schema::refine` applies when the default arrived first, so the
             // two orders produce one schema.
-            if refine::lacks_required_entries(key, observed) {
+            if refine::rejected_by_refinement(key, observed) {
                 key.required = true;
                 continue;
             }
@@ -1403,20 +1425,18 @@ impl Schema {
     /// ```
     ///
     /// # Panics
-    /// If the two schemas disagree — a different [`schema_version`](Self::schema_version) or
-    /// [`dialect`](Self::dialect), or one key path or loader variable described differently on
+    /// If the two schemas disagree — a different [`dialect`](Self::dialect), or one key path or loader variable described differently on
     /// each side. Merging those would produce a document carrying two answers to one question,
     /// and the same reasoning applies as in [`Sink::leaf`]: a table that quietly picks one is
     /// worse than one that refuses to be generated. Describing both halves from the same
-    /// [`Terrace`](crate::Terrace) rules out the version and dialect cases; a path described
+    /// [`Terrace`](crate::Terrace) rules out the dialect case; a path described
     /// differently by two roots is a real disagreement between them, and is meant to be loud.
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
-        assert_eq!(
-            self.schema_version, other.schema_version,
-            "two schemas of different versions cannot be merged: one of them describes a \
-             document shape the other does not."
-        );
+        // A version is the vocabulary a document may carry, and each is a superset of the last, so
+        // the union is written at the later one: a refined half and an unrefined one describe one
+        // document, not two shapes.
+        self.schema_version = self.schema_version.max(other.schema_version);
         assert_eq!(
             self.dialect, other.dialect,
             "two schemas of different dialects cannot be merged: every environment spelling in \

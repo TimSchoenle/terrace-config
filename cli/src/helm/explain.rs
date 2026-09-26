@@ -103,7 +103,8 @@ const CONSTRAINT_ORDER: [&str; 19] = [
 /// Keywords folded into another keyword's phrase, or said elsewhere in the entry.
 ///
 /// Listed so the catch-all can tell "already reported" from "unrecognised".
-const CONSTRAINT_FOLDED: [&str; 11] = [
+const CONSTRAINT_FOLDED: [&str; 12] = [
+    "propertyNames",
     "exclusiveMinimum",
     "exclusiveMaximum",
     "maximum",
@@ -724,6 +725,14 @@ pub fn describe_constraint(constraint: Option<&Json>) -> String {
     let entries = crate::document::required_entries_of(schema);
     if !entries.is_empty() {
         parts.push(format!("must contain: {}", entries.join(", ")));
+    }
+    // A map's entry-name pattern, the other refinement. Anything else under `propertyNames` is not
+    // one this format defines, and is printed as it stands rather than paraphrased.
+    if let Some(names) = schema.get("propertyNames") {
+        parts.push(match crate::document::entry_name_pattern_of(schema) {
+            Some(pattern) => format!("entry names matching {pattern}"),
+            None => format!("propertyNames={names}"),
+        });
     }
 
     for (keyword, value) in schema {
@@ -2015,6 +2024,26 @@ mod tests {
                 .contains("contentEncoding=\"base64\""),
             "{}",
             described(&json!({"type": "string", "contentEncoding": "base64"}))
+        );
+    }
+
+    #[test]
+    fn a_maps_entry_name_pattern_is_said_and_anything_else_under_it_is_printed() {
+        assert_eq!(
+            described(&json!({
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "required": ["home"],
+                "propertyNames": {"pattern": "^[a-z]+$"},
+            })),
+            "object, of string, must contain: home, entry names matching ^[a-z]+$"
+        );
+        assert_eq!(
+            described(&json!({
+                "type": "object",
+                "propertyNames": {"maxLength": 3},
+            })),
+            r#"object, propertyNames={"maxLength":3}"#
         );
     }
 

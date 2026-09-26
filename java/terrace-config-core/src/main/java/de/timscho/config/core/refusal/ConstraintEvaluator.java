@@ -1,11 +1,13 @@
 package de.timscho.config.core.refusal;
 
+import de.timscho.config.core.schema.PortablePattern;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Values are what a producer holds a default as: {@link Map}, {@link List}, {@link String},
  * {@link Boolean}, {@link Number} and {@code null}. No streams, per the project's convention.
  */
-final class ConstraintEvaluator {
+public final class ConstraintEvaluator {
 
     /** Deeper than this and the evaluator stops deciding, rather than risking the stack. */
     private static final int MAX_DEPTH = 32;
@@ -28,20 +30,20 @@ final class ConstraintEvaluator {
     private static final Set<String> ANNOTATIONS = Set.of("description", "title", "default", "examples", "$comment");
 
     /** What evaluating one value against one schema established. */
-    sealed interface Verdict permits Holds, Fails, Undecided {}
+    public sealed interface Verdict permits Holds, Fails, Undecided {}
 
     /** Every keyword was evaluated and none failed. */
-    record Holds() implements Verdict {}
+    public record Holds() implements Verdict {}
 
     /**
      * A keyword failed.
      *
      * @param reason where and how, as a sentence fragment
      */
-    record Fails(String reason) implements Verdict {}
+    public record Fails(String reason) implements Verdict {}
 
     /** Nothing failed, and something could not be evaluated. */
-    record Undecided() implements Verdict {}
+    public record Undecided() implements Verdict {}
 
     private static final Verdict HOLDS = new Holds();
     private static final Verdict UNDECIDED = new Undecided();
@@ -54,7 +56,7 @@ final class ConstraintEvaluator {
      * @param constraint a key's published constraint
      * @param value      the value to hold to it
      */
-    static Verdict verdict(final Map<String, Object> constraint, @Nullable final Object value) {
+    public static Verdict verdict(final Map<String, Object> constraint, @Nullable final Object value) {
         return evaluate(constraint, value, "", 0);
     }
 
@@ -97,12 +99,14 @@ final class ConstraintEvaluator {
                         case "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum" ->
                             bound(keyword, argument, value, at);
                         case "minLength", "maxLength" -> length(keyword, argument, value, at);
+                        case "pattern" -> pattern(argument, value, at);
                         case "minItems", "maxItems" -> count(keyword, argument, value, at);
                         case "uniqueItems" -> unique(argument, value, at);
                         case "items" -> items(argument, value, at, depth);
                         case "required" -> required(argument, value, at);
                         case "properties" -> properties(argument, value, at, depth);
                         case "additionalProperties" -> additional(schema, argument, value, at, depth);
+                        case "propertyNames" -> names(argument, value, at, depth);
                         case "allOf" -> allOf(argument, value, at, depth);
                         case "anyOf" -> anyOf(argument, value, at, depth);
                         default -> ANNOTATIONS.contains(keyword) ? HOLDS : UNDECIDED;
@@ -275,6 +279,23 @@ final class ConstraintEvaluator {
         return HOLDS;
     }
 
+    /**
+     * {@code pattern}, for a pattern inside the portable subset — the only patterns this module can
+     * promise every other engine reads as it does. Any other is undecided.
+     */
+    private static Verdict pattern(@Nullable final Object argument, @Nullable final Object value, final String at) {
+        if (!(value instanceof String text)) {
+            return HOLDS;
+        }
+        final Pattern matcher = argument instanceof String source ? PortablePattern.compile(source) : null;
+        if (matcher == null) {
+            return UNDECIDED;
+        }
+        return matcher.matcher(text).find()
+                ? HOLDS
+                : fails(at, "is " + show(value) + ", which does not match " + show(argument));
+    }
+
     private static Verdict count(
             final String keyword, @Nullable final Object argument, @Nullable final Object value, final String at) {
         if (!(value instanceof List<?> items)) {
@@ -408,6 +429,26 @@ final class ConstraintEvaluator {
         return result;
     }
 
+    /** {@code propertyNames}: every entry name, as a string, against the schema. */
+    private static Verdict names(
+            @Nullable final Object argument, @Nullable final Object value, final String at, final int depth) {
+        if (!(value instanceof Map<?, ?> fields)) {
+            return HOLDS;
+        }
+        Verdict result = HOLDS;
+        for (final Object name : fields.keySet()) {
+            Verdict found = evaluate(argument, String.valueOf(name), "", depth + 1);
+            if (found instanceof Fails failed) {
+                found = fails(at, "has an entry name that " + failed.reason());
+            }
+            result = and(result, found);
+            if (result instanceof Fails) {
+                break;
+            }
+        }
+        return result;
+    }
+
     private static Verdict allOf(
             @Nullable final Object argument, @Nullable final Object value, final String at, final int depth) {
         if (!(argument instanceof List<?> schemas)) {
@@ -463,8 +504,12 @@ final class ConstraintEvaluator {
         return null;
     }
 
-    /** A value as a message shows it: strings quoted, everything else as written. */
-    static String show(@Nullable final Object value) {
+    /**
+     * A value as a message shows it: strings quoted, everything else as written.
+     *
+     * @param value the value to show
+     */
+    public static String show(@Nullable final Object value) {
         if (value instanceof String text) {
             return "\"" + text + "\"";
         }

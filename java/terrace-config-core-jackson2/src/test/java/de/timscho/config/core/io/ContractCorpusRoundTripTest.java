@@ -64,6 +64,7 @@ class ContractCorpusRoundTripTest {
 
     @Test
     void discoversAtLeastTheThreeKnownCases() throws IOException {
-        assertThat(corpusCases()).contains("minimal", "full-surface", "unnameable-key", "required-entries");
+        assertThat(corpusCases())
+                .contains("minimal", "full-surface", "unnameable-key", "required-entries", "entry-names");
     }
 }

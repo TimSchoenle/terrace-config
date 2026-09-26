@@ -16,10 +16,10 @@ import java.util.TreeSet;
  * something that widens what the type stated, and nothing downstream could tell.
  *
  * <p>Sealed so that nothing outside this module can add a refinement {@link Refiner} has not been
- * taught to check. The set grows — an entry-name pattern is the obvious next member — so a caller
- * must not rely on a {@code switch} over it being exhaustive.
+ * taught to check. The set grows, so a caller must not rely on a {@code switch} over it being
+ * exhaustive.
  */
-public sealed interface Refinement permits Refinement.RequiredEntries {
+public sealed interface Refinement permits Refinement.RequiredEntries, Refinement.EntryNames {
 
     /**
      * {@link RequiredEntries} from any collection of names.
@@ -28,6 +28,25 @@ public sealed interface Refinement permits Refinement.RequiredEntries {
      */
     static Refinement requiredEntries(final Collection<String> entries) {
         return new RequiredEntries(new TreeSet<>(entries));
+    }
+
+    /**
+     * {@link EntryNames} from a pattern. Checked when it is applied, where a refusal can name the
+     * key it was meant for.
+     *
+     * @param pattern the pattern every entry name must match, inside the portable subset
+     */
+    static Refinement entryNames(final String pattern) {
+        return new EntryNames(pattern);
+    }
+
+    /**
+     * The version of the schema half a document carrying this refinement is published at.
+     *
+     * @return {@code 2} for required entries, {@code 3} for an entry-name pattern
+     */
+    default int schemaVersion() {
+        return this instanceof EntryNames ? 3 : 2;
     }
 
     /**
@@ -53,4 +72,17 @@ public sealed interface Refinement permits Refinement.RequiredEntries {
             entries = Collections.unmodifiableSortedSet(new TreeSet<>(entries));
         }
     }
+
+    /**
+     * Every entry name of a map-typed key must match this pattern.
+     *
+     * <p>Published as JSON Schema's {@code propertyNames: {"pattern": …}} inside the key's
+     * constraint, which puts the document at {@code schema_version: 3}. Matched as JSON Schema
+     * matches one — unanchored — and held to the portable subset, {@link PortablePattern}. The
+     * environment folds names to lower case, so a pattern admitting an upper-case name describes an
+     * entry only a file can supply: weaker than the loader, not wrong, and published as written.
+     *
+     * @param pattern the pattern every entry name must match
+     */
+    record EntryNames(String pattern) implements Refinement {}
 }

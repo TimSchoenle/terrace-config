@@ -261,7 +261,8 @@ class ContractValidatorTest {
     void refusal9_aKeywordTheEvaluatorCannotDecideIsPublishedRatherThanRefused() {
         java.util.Map<String, Object> constraint = new java.util.TreeMap<>();
         constraint.put("type", "string");
-        constraint.put("pattern", "^never$");
+        // `pattern` is decided now, inside the portable subset; `format` never is.
+        constraint.put("format", "email");
         Key text = key("name", "PORTFOLIO_NAME", null).toBuilder()
                 .constraint(constraint)
                 .defaultText("x")

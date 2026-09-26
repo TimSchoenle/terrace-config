@@ -130,11 +130,14 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   each codec module instead (see below), since it needs an actual `ObjectMapper` to run.
 - **`Schema.refine(path, Refinement)` / `refineWith(at, Refine)`** (`de.timscho.config.core.schema`)
   publish a constraint a type cannot state — a map's required entries, via
-  `Refinement.requiredEntries(…)` — with the Rust crate's rules and messages: an unknown path, a
-  key that is not an open map, or an entry name some layer could not spell is a
-  `RefinementException`; a default the refinement rejects makes the key required with no default,
-  whichever of `refine` and `withDefaultsFromValue` ran first. A library implements `Refine` with
-  paths relative to wherever a host mounts it.
+  `Refinement.requiredEntries(…)`, and the pattern its entry names must match, via
+  `Refinement.entryNames(…)` — with the Rust crate's rules and messages: an unknown path, a key that
+  is not an open map, an entry name some layer could not spell, a pattern outside the portable
+  subset (`PortablePattern`), or a required entry the pattern rejects is a `RefinementException`; a
+  default the refinement rejects makes the key required with no default, whichever of `refine` and
+  `withDefaultsFromValue` ran first. An entry-name pattern raises the schema to
+  `schema_version: 3`. A library implements `Refine` with paths relative to wherever a host mounts
+  it.
 - **`Schema.toJsonSchema()` / `toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`)
   render a `Schema` as the JSON Schema document an editor or a Helm chart validates a rendered
   configuration against — a straight port of the Rust crate's `schema::json_schema` module.

@@ -4,6 +4,7 @@ import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
 import de.timscho.config.core.model.UnreachableReason;
+import de.timscho.config.core.refusal.ConstraintEvaluator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,9 +21,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Same rules, same order of checks, same messages in substance: a refinement names a key's
  * canonical path, applies only to an open map, names only entries every layer reaching the key can
- * spell, unions with what is there, and never loosens. A default the refined constraint rejects
- * makes the key required with no default, and {@link Defaults} applies the same rule, so the two
- * commute.
+ * spell, holds a pattern to the portable subset, refuses two refinements that contradict each
+ * other, unions with what is there, and never loosens. A default the refinement rejects makes the
+ * key required with no default, and {@link Defaults} applies the same rule, so the two commute.
  *
  * <p>No streams, per the project's convention.
  */
@@ -35,8 +36,10 @@ public class Refiner {
      * @param schema     the schema to refine; not modified
      * @param path       the key's canonical dotted path
      * @param refinement the tightening
-     * @throws RefinementException for an unknown path, a key that is not an open map, or an entry
-     *                             name some layer reaching the key could not spell
+     * @throws RefinementException for an unknown path, a key that is not an open map, an entry name
+     *                             some layer reaching the key could not spell, a pattern outside
+     *                             the portable subset, or two refinements that contradict each
+     *                             other
      */
     public static Schema refine(final Schema schema, final String path, final Refinement refinement) {
         final List<Key> keys = new ArrayList<>(schema.getKeys());
@@ -50,19 +53,30 @@ public class Refiner {
         if (index < 0) {
             throw new RefinementException(unknownPath(schema, path));
         }
+        final Key key = keys.get(index);
         // CHECKSTYLE.OFF: Indentation -- palantirJavaFormat wraps each arrow-case body at 4 spaces
         // past `case`; the fetched ruleset's Indentation check wants 8. Reformatting by hand would
         // just be undone by the next spotlessApply, so this scoped disable defers to the formatter
         // that actually governs this file (see terrace-config.java-conventions.gradle.kts'
         // checkstyle block).
-        final Key refined =
+        final Map<String, Object> refinedConstraint =
                 switch (refinement) {
                     case Refinement.RequiredEntries required ->
-                        requireEntries(keys.get(index), schema.getDialect(), required.entries());
+                        requireEntries(key, schema.getDialect(), required.entries());
+                    case Refinement.EntryNames names -> nameEntries(key, names.pattern());
                 };
         // CHECKSTYLE.ON: Indentation
+        if (refinedConstraint == null) {
+            return schema;
+        }
+        final Map<String, Object> stated = key.getStated() != null ? key.getStated() : key.getConstraint();
+        final Key refined = forgetRejectedDefault(
+                key.toBuilder().constraint(refinedConstraint).stated(stated).build());
         keys.set(index, refined);
-        return schema.toBuilder().keys(keys).build();
+        return schema.toBuilder()
+                .keys(keys)
+                .schemaVersion(Math.max(schema.getSchemaVersion(), refinement.schemaVersion()))
+                .build();
     }
 
     /**
@@ -102,12 +116,9 @@ public class Refiner {
      * @param key the key whose constraint to read
      */
     public static List<String> requiredEntries(final Key key) {
-        final Map<String, Object> constraint = key.getConstraint();
+        final Map<String, Object> constraint = mapOf(key);
         final List<String> entries = new ArrayList<>();
-        if (constraint == null
-                || !"object".equals(constraint.get("type"))
-                || constraint.containsKey("properties")
-                || !(constraint.get("required") instanceof List<?> names)) {
+        if (constraint == null || !(constraint.get("required") instanceof List<?> names)) {
             return entries;
         }
         for (final Object name : names) {
@@ -119,35 +130,58 @@ public class Refiner {
     }
 
     /**
-     * Whether an observed default leaves out an entry the key's constraint requires.
+     * The pattern a map-typed key's constraint holds its entry names to, or {@code null} when it
+     * has none. Read from {@code propertyNames}, as {@link #requiredEntries} reads {@code required}.
      *
-     * <p>Only the refinement's own keyword is read. A default failing the constraint for some other
-     * reason is a defect in what the type published, which {@link
-     * de.timscho.config.core.refusal.ContractValidator} refuses; turning it into a required key
-     * here would hide it.
+     * @param key the key whose constraint to read
+     */
+    public static @Nullable String entryNamePattern(final Key key) {
+        final Map<String, Object> constraint = mapOf(key);
+        if (constraint != null
+                && constraint.get("propertyNames") instanceof Map<?, ?> names
+                && names.get("pattern") instanceof String pattern) {
+            return pattern;
+        }
+        return null;
+    }
+
+    /**
+     * Whether an observed default is one the key's <em>refinements</em> reject.
+     *
+     * <p>Only a failure the refinements introduced counts: the default satisfies the constraint the
+     * type stated and fails the refined one. A default failing for some other reason is a defect in
+     * what the type published, which {@link de.timscho.config.core.refusal.ContractValidator}
+     * refuses; turning it into a required key here would hide it.
      *
      * @param key   the key whose constraint to read
      * @param value the observed default
      */
-    public static boolean lacksRequiredEntries(final Key key, @Nullable final Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
+    public static boolean rejectedByRefinement(final Key key, @Nullable final Object value) {
+        final Map<String, Object> refined = key.getConstraint();
+        final Map<String, Object> stated = key.getStated();
+        if (refined == null || stated == null) {
             return false;
         }
-        for (final String entry : requiredEntries(key)) {
-            if (!map.containsKey(entry)) {
-                return true;
-            }
-        }
-        return false;
+        return ConstraintEvaluator.verdict(refined, value) instanceof ConstraintEvaluator.Fails
+                && !(ConstraintEvaluator.verdict(stated, value) instanceof ConstraintEvaluator.Fails);
     }
 
-    private static Key requireEntries(final Key key, final Dialect dialect, final SortedSet<String> entries) {
-        final Map<String, Object> constraint = mapConstraint(key);
+    /** The refined constraint, or {@code null} when refining changed nothing. */
+    private static @Nullable Map<String, Object> requireEntries(
+            final Key key, final Dialect dialect, final SortedSet<String> entries) {
+        final Map<String, Object> constraint = mapConstraint(key, "a required entry");
         for (final String entry : entries) {
             checkSpellable(key, dialect, entry);
         }
-        if (entries.isEmpty()) {
-            return key;
+        if (constraint.get("propertyNames") instanceof Map<?, ?> names) {
+            for (final String entry : entries) {
+                final String why = refusedName(names, entry);
+                if (why != null) {
+                    throw new RefinementException("`" + entry + "` cannot be a required entry of `" + key.getPath()
+                            + "`: its entry names are held to " + ConstraintEvaluator.show(names) + ", and the name "
+                            + why + ". No map could both hold it and satisfy that.");
+                }
+            }
         }
 
         final SortedSet<String> required = new TreeSet<>();
@@ -162,34 +196,95 @@ public class Refiner {
         } else if (held != null) {
             throw notEntryNames(key, held);
         }
+        final int before = required.size();
         required.addAll(entries);
-
+        if (required.size() == before) {
+            return null;
+        }
         final Map<String, Object> refinedConstraint = new TreeMap<>(constraint);
         refinedConstraint.put("required", new ArrayList<>(required));
-        final Key refined = key.toBuilder().constraint(refinedConstraint).build();
+        return refinedConstraint;
+    }
 
-        if (lacksRequiredEntries(refined, refined.getDefaultValue())) {
-            return refined.toBuilder()
+    /** The refined constraint, or {@code null} when refining changed nothing. */
+    private static @Nullable Map<String, Object> nameEntries(final Key key, final String pattern) {
+        final Map<String, Object> constraint = mapConstraint(key, "an entry-name pattern");
+        final String path = key.getPath();
+        final String refused = PortablePattern.refusal(pattern);
+        if (refused != null) {
+            throw new RefinementException("`" + pattern + "` cannot be the entry-name pattern of `" + path + "`: "
+                    + refused + ". A published pattern must mean the same thing to every engine that reads the "
+                    + "contract; see *Portable patterns* in spec/v1/FORMAT.md.");
+        }
+
+        final Map<String, Object> names = new TreeMap<>();
+        names.put("pattern", pattern);
+        final Object held = constraint.get("propertyNames");
+        if (names.equals(held)) {
+            return null;
+        }
+        if (held != null) {
+            throw new RefinementException("`" + path + "` already holds its entry names to "
+                    + ConstraintEvaluator.show(held) + ", so a second pattern `" + pattern
+                    + "` would need both to hold. Publish one pattern that says so.");
+        }
+        for (final String entry : requiredEntries(key)) {
+            final String why = refusedName(names, entry);
+            if (why != null) {
+                throw new RefinementException("`" + pattern + "` cannot be the entry-name pattern of `" + path + "`: `"
+                        + path + "` requires the entry `" + entry + "`, and the name " + why
+                        + ". No map could both hold it and satisfy the pattern.");
+            }
+        }
+        final Map<String, Object> refinedConstraint = new TreeMap<>(constraint);
+        refinedConstraint.put("propertyNames", names);
+        return refinedConstraint;
+    }
+
+    /** Why {@code name} fails the entry-name schema {@code names}, when it certainly does. */
+    private static @Nullable String refusedName(final Map<?, ?> names, final String name) {
+        final Map<String, Object> schema = new TreeMap<>();
+        for (final Map.Entry<?, ?> keyword : names.entrySet()) {
+            schema.put(String.valueOf(keyword.getKey()), keyword.getValue());
+        }
+        return ConstraintEvaluator.verdict(schema, name) instanceof ConstraintEvaluator.Fails failed
+                ? failed.reason()
+                : null;
+    }
+
+    /** Drop a default the refinement just made invalid, making the key required. */
+    private static Key forgetRejectedDefault(final Key key) {
+        if (key.getDefaultValue() != null && rejectedByRefinement(key, key.getDefaultValue())) {
+            return key.toBuilder()
                     .required(true)
                     .defaultText(null)
                     .defaultValue(null)
                     .build();
         }
-        return refined;
+        return key;
     }
 
-    /** The key's constraint, when it describes a map a required entry can be added to. */
-    private static Map<String, Object> mapConstraint(final Key key) {
+    /** The key's constraint, when it is an object that declares no {@code properties}. */
+    private static @Nullable Map<String, Object> mapOf(final Key key) {
+        final Map<String, Object> constraint = key.getConstraint();
+        if (constraint == null || !"object".equals(constraint.get("type")) || constraint.containsKey("properties")) {
+            return null;
+        }
+        return constraint;
+    }
+
+    /** The key's constraint, when it describes a map {@code what} can be stated about. */
+    private static Map<String, Object> mapConstraint(final Key key, final String what) {
         final Map<String, Object> constraint = key.getConstraint();
         if (constraint == null) {
             throw new RefinementException("`" + key.getPath() + "` publishes no constraint, so nothing says it is a "
-                    + "map and a required entry has nowhere to be stated. Refine a key whose type is a map.");
+                    + "map and " + what + " has nowhere to be stated. Refine a key whose type is a map.");
         }
         final Object element = constraint.get("additionalProperties");
         final boolean open = element == null || element instanceof Map<?, ?> || Boolean.TRUE.equals(element);
         if (!"object".equals(constraint.get("type")) || constraint.containsKey("properties") || !open) {
-            throw new RefinementException("`" + key.getPath() + "` is not a map, so it has no entries to require: "
-                    + "its constraint is " + constraint + ". A required entry needs an object whose entries are "
+            throw new RefinementException("`" + key.getPath() + "` is not a map, so it has no entries for " + what
+                    + " to describe: its constraint is " + constraint + ". That needs an object whose entries are "
                     + "open, with any element shape under `additionalProperties`.");
         }
         return constraint;

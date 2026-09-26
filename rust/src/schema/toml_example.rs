@@ -21,7 +21,7 @@
 
 use std::fmt::Write as _;
 
-use super::refine::required_entries;
+use super::refine::{entry_name_pattern, required_entries};
 use super::tree::{self, Node};
 use super::{Docs, Key, Schema};
 
@@ -304,6 +304,9 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
     let entries = required_entries(key);
     if !entries.is_empty() {
         comment(&mut out, &format!("Must contain: {}", entries.join(", ")));
+    }
+    if let Some(pattern) = entry_name_pattern(key) {
+        comment(&mut out, &format!("Entry names match: {pattern}"));
     }
 
     if !key.aliases.is_empty() {
