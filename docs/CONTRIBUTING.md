@@ -16,6 +16,13 @@ that affects more than one implementation ships together with every corpus updat
 the same pull request — not as a follow-up. `spec/v1/CONFORMANCE.md` explains why: a re-blessed
 corpus that lands separately from the spec change it was caused by lets the two drift.
 
+## Writing
+
+Prose in a README, a `docs/` page, a doc comment, a commit body or a pull request description is
+reviewed against the [prose contract](https://github.com/TimSchoenle/actions/blob/main/docs/readme/PROSE.md).
+The three generated READMEs also follow the
+[README contract](https://github.com/TimSchoenle/actions/blob/main/docs/readme/GUIDE.md).
+
 ## Building and testing an implementation
 
 Each implementation documents its own commands in its own README. Today:
