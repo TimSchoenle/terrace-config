@@ -86,6 +86,11 @@ fn evaluate(schema: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
             "propertyNames" => names(argument, value, at, depth),
             "allOf" => all_of(argument, value, at, depth),
             "anyOf" => any_of(argument, value, at, depth),
+            "oneOf" => one_of_branches(argument, value, at, depth),
+            "if" => conditional(schema, argument, value, at, depth),
+            // Read by `if`, whose consequence they are; on their own they assert nothing.
+            "then" | "else" => Verdict::Holds,
+            "minProperties" | "maxProperties" => size(keyword, argument, value, at),
             annotation if ANNOTATIONS.contains(&annotation) => Verdict::Holds,
             _ => Verdict::Undecided,
         };
@@ -414,13 +419,21 @@ fn names(argument: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
     result
 }
 
+/// Every member must hold. A member carrying `description` is a condition a refinement stated, and
+/// its failure is reported as that sentence: the operator reads the rule, not its encoding.
 fn all_of(argument: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
     let Some(schemas) = argument.as_array() else {
         return Verdict::Undecided;
     };
     let mut result = Verdict::Holds;
     for schema in schemas {
-        result = result.and(evaluate(schema, value, at, depth + 1));
+        let mut found = evaluate(schema, value, at, depth + 1);
+        if let (Verdict::Fails(_), Some(description)) =
+            (&found, schema.get("description").and_then(Json::as_str))
+        {
+            found = fails(at, &format!("does not satisfy: {description}"));
+        }
+        result = result.and(found);
         if matches!(result, Verdict::Fails(_)) {
             break;
         }
@@ -446,6 +459,84 @@ fn any_of(argument: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
         return Verdict::Undecided;
     }
     Verdict::Fails(reasons.join("; and "))
+}
+
+/// `oneOf`: exactly one branch holds. Two that certainly hold fail it whatever the rest say; one
+/// that holds beside one nothing could decide leaves it undecided.
+fn one_of_branches(argument: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
+    let Some(schemas) = argument.as_array().filter(|schemas| !schemas.is_empty()) else {
+        return Verdict::Undecided;
+    };
+    let mut holding = 0;
+    let mut undecided = false;
+    for schema in schemas {
+        match evaluate(schema, value, at, depth + 1) {
+            Verdict::Holds => holding += 1,
+            Verdict::Undecided => undecided = true,
+            Verdict::Fails(_) => {}
+        }
+    }
+    match (holding, undecided) {
+        (2.., _) => fails(
+            at,
+            &format!(
+                "satisfies {holding} of {} alternatives, and exactly one must hold",
+                schemas.len()
+            ),
+        ),
+        (_, true) => Verdict::Undecided,
+        (1, false) => Verdict::Holds,
+        _ => fails(
+            at,
+            &format!(
+                "satisfies none of {} alternatives, and exactly one must hold",
+                schemas.len()
+            ),
+        ),
+    }
+}
+
+/// `if`, with the `then` and `else` beside it.
+fn conditional(
+    schema: &Map<String, Json>,
+    argument: &Json,
+    value: &Json,
+    at: &str,
+    depth: usize,
+) -> Verdict {
+    let consequence = |keyword: &str| {
+        schema.get(keyword).map_or(Verdict::Holds, |branch| {
+            evaluate(branch, value, at, depth + 1)
+        })
+    };
+    match evaluate(argument, value, at, depth + 1) {
+        Verdict::Holds => consequence("then"),
+        Verdict::Fails(_) => consequence("else"),
+        // Whichever way the condition went, a value both branches accept is accepted.
+        Verdict::Undecided => match (consequence("then"), consequence("else")) {
+            (Verdict::Holds, Verdict::Holds) => Verdict::Holds,
+            _ => Verdict::Undecided,
+        },
+    }
+}
+
+fn size(keyword: &str, argument: &Json, value: &Json, at: &str) -> Verdict {
+    let Some(fields) = value.as_object() else {
+        return Verdict::Holds;
+    };
+    let Some(limit) = argument.as_u64() else {
+        return Verdict::Undecided;
+    };
+    let held = fields.len() as u64;
+    match keyword {
+        "minProperties" if held < limit => {
+            fails(at, &format!("has {held} entr(ies), fewer than {limit}"))
+        }
+        "maxProperties" if held > limit => {
+            fails(at, &format!("has {held} entr(ies), more than {limit}"))
+        }
+        _ => Verdict::Holds,
+    }
 }
 
 /// A field's position below `at`, spelled as a dotted path.
@@ -576,6 +667,61 @@ mod tests {
         assert_eq!(
             verdict(&json!({"pattern": r"^\d+$"}), &json!("x")),
             Verdict::Undecided
+        );
+    }
+
+    #[test]
+    fn one_of_needs_exactly_one_and_says_how_many_held() {
+        let either = json!({"oneOf": [{"required": ["url"]},
+            {"required": ["body"], "properties": {"body": {"minProperties": 1}}}]});
+        assert_eq!(verdict(&either, &json!({"url": "u"})), Verdict::Holds);
+        assert_eq!(
+            verdict(&either, &json!({"body": {"en": "x"}})),
+            Verdict::Holds
+        );
+        assert_eq!(
+            fails(&either, &json!({"url": "u", "body": {"en": "x"}})),
+            "satisfies 2 of 2 alternatives, and exactly one must hold"
+        );
+        assert_eq!(
+            fails(&either, &json!({"body": {}})),
+            "satisfies none of 2 alternatives, and exactly one must hold"
+        );
+        // One branch nothing can decide beside one that holds could make two.
+        let unsure = json!({"oneOf": [{"format": "email"}, {"type": "string"}]});
+        assert_eq!(verdict(&unsure, &json!("x")), Verdict::Undecided);
+    }
+
+    #[test]
+    fn if_applies_its_consequence_only_when_it_holds() {
+        let rule = json!({"if": {"required": ["grace_days"],
+            "properties": {"grace_days": {"exclusiveMinimum": 0}}},
+            "then": {"required": ["effective"]}});
+        assert_eq!(verdict(&rule, &json!({"grace_days": 0})), Verdict::Holds);
+        assert_eq!(verdict(&rule, &json!({})), Verdict::Holds);
+        assert_eq!(
+            fails(&rule, &json!({"grace_days": 5})),
+            "is missing the required entry `effective`"
+        );
+        assert_eq!(
+            verdict(&rule, &json!({"grace_days": 5, "effective": "x"})),
+            Verdict::Holds
+        );
+    }
+
+    #[test]
+    fn a_described_all_of_member_fails_as_its_sentence() {
+        let conditions = json!({"allOf": [{"description": "`url` is set", "required": ["url"]}]});
+        assert_eq!(
+            fails(
+                &json!({"additionalProperties": conditions}),
+                &json!({"terms": {}})
+            ),
+            "`terms` does not satisfy: `url` is set"
+        );
+        assert_eq!(
+            fails(&json!({"minProperties": 1}), &json!({})),
+            "has 0 entr(ies), fewer than 1"
         );
     }
 

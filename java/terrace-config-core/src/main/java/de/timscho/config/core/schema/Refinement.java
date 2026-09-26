@@ -19,7 +19,8 @@ import java.util.TreeSet;
  * taught to check. The set grows, so a caller must not rely on a {@code switch} over it being
  * exhaustive.
  */
-public sealed interface Refinement permits Refinement.RequiredEntries, Refinement.EntryNames, Refinement.Pattern {
+public sealed interface Refinement
+        permits Refinement.RequiredEntries, Refinement.EntryNames, Refinement.Pattern, Refinement.Holds {
 
     /**
      * Text holding at least one character that is not white space — the negation of Rust's {@code
@@ -68,11 +69,24 @@ public sealed interface Refinement permits Refinement.RequiredEntries, Refinemen
     }
 
     /**
+     * {@link Holds} from a condition.
+     *
+     * @param condition the condition between the struct's fields
+     * @return the refinement
+     */
+    static Refinement holds(final Condition condition) {
+        return new Holds(condition);
+    }
+
+    /**
      * The version of the schema half a document carrying this refinement is published at.
      *
-     * @return {@code 3} for an entry-name pattern, {@code 2} for anything else
+     * @return {@code 4} for a condition, {@code 3} for an entry-name pattern, {@code 2} otherwise
      */
     default int schemaVersion() {
+        if (this instanceof Holds) {
+            return 4;
+        }
         return this instanceof EntryNames ? 3 : 2;
     }
 
@@ -122,4 +136,15 @@ public sealed interface Refinement permits Refinement.RequiredEntries, Refinemen
      * @param pattern the pattern the string must match
      */
     record Pattern(String pattern) implements Refinement {}
+
+    /**
+     * A condition between the fields of a struct must hold.
+     *
+     * <p>Stated on a struct position — in practice the element of a map or sequence of structs — and
+     * published as one member of that position's {@code allOf}: the condition's JSON Schema, with its
+     * readable form as the member's {@code description}. A conjunct, so it only tightens.
+     *
+     * @param condition the condition
+     */
+    record Holds(Condition condition) implements Refinement {}
 }

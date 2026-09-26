@@ -32,6 +32,7 @@ const PRODUCER_CASES: &[&str] = &[
     "required-entries",
     "entry-names",
     "element-patterns",
+    "conditions",
     "reload",
 ];
 

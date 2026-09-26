@@ -1152,7 +1152,7 @@ fn diff_entry_names(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Ch
 /// own wording. Everything else is compared position by position and keyword by keyword: one gained
 /// or replaced is a tightening, major for the reason those are, and one lost is a relaxation.
 fn diff_tightenings(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Change> {
-    let graded = |constraint: Option<&Json>| -> BTreeMap<(String, &'static str), Json> {
+    let graded = |constraint: Option<&Json>| -> BTreeMap<(String, String), Json> {
         tightenings(constraint)
             .into_iter()
             .filter(|(at, tightening)| {
@@ -1161,11 +1161,16 @@ fn diff_tightenings(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Ch
             .map(|(at, tightening)| {
                 let value = match &tightening {
                     Tightening::Entries(entries) => json_list(entries),
-                    Tightening::Names(pattern) | Tightening::Matches(pattern) => {
-                        Json::String((*pattern).to_owned())
-                    }
+                    Tightening::Names(pattern)
+                    | Tightening::Matches(pattern)
+                    | Tightening::Holds(pattern) => Json::String((*pattern).to_owned()),
                 };
-                ((at, tightening.keyword()), value)
+                // Conditions are many to a position, so each is its own entry, named by what it says.
+                let keyword = match &tightening {
+                    Tightening::Holds(description) => format!("allOf {description}"),
+                    other => other.keyword().to_owned(),
+                };
+                ((at, keyword), value)
             })
             .collect()
     };
@@ -1174,7 +1179,7 @@ fn diff_tightenings(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Ch
 
     let mut changes = Vec::new();
     for ((at, keyword), value) in &after {
-        let held = before.get(&(at.clone(), *keyword));
+        let held = before.get(&(at.clone(), keyword.clone()));
         if held == Some(value) {
             continue;
         }
@@ -1194,7 +1199,7 @@ fn diff_tightenings(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Ch
         });
     }
     for ((at, keyword), value) in &before {
-        if after.contains_key(&(at.clone(), *keyword)) {
+        if after.contains_key(&(at.clone(), keyword.clone())) {
             continue;
         }
         changes.push(Change {
@@ -1225,6 +1230,7 @@ fn json_list(names: &[&str]) -> Json {
 }
 
 fn tightening_field(at: &str, keyword: &str) -> String {
+    let keyword = keyword.split(' ').next().unwrap_or(keyword);
     if at.is_empty() {
         format!("constraint.{keyword}")
     } else {
@@ -1257,7 +1263,8 @@ fn phrase(keyword: &str, value: &Json) -> String {
     match keyword {
         "required" => format!("has to contain {}", text(value)),
         "propertyNames" => format!("holds its entry names to {}", text(value)),
-        _ => format!("has to match {}", text(value)),
+        "pattern" => format!("has to match {}", text(value)),
+        _ => format!("has to satisfy: {}", text(value)),
     }
 }
 
@@ -1285,6 +1292,12 @@ fn strip_tightenings(schema: &mut Json, depth: usize) {
     }
     if fields.get("pattern").is_some_and(Json::is_string) {
         fields.remove("pattern");
+    }
+    if let Some(Json::Array(members)) = fields.get_mut("allOf") {
+        members.retain(|member| member.get("description").is_none());
+        if members.is_empty() {
+            fields.remove("allOf");
+        }
     }
     for keyword in ["additionalProperties", "items"] {
         if let Some(element) = fields.get_mut(keyword) {
@@ -1991,6 +2004,35 @@ mod tests {
             lost[0].message.contains("no longer has to match [^ ]"),
             "{lost:?}"
         );
+    }
+
+    #[test]
+    fn a_condition_gained_is_major_and_one_lost_is_a_relaxation() {
+        let documents = |conditions: Json| {
+            let constraint = json!({"type": "object", "additionalProperties": {
+                "type": "object", "properties": {"url": {"type": "string"}},
+                "allOf": conditions}});
+            document(
+                &one("documents", &json!({"constraint": constraint})),
+                &none(),
+            )
+        };
+        let rule = json!({"description": "`url` is set", "required": ["url"]});
+
+        let gained = changes(&documents(json!([])), &documents(json!([rule.clone()])));
+        assert_eq!(gained.len(), 1, "{gained:?}");
+        assert_eq!(gained[0].severity, Severity::Major);
+        assert_eq!(gained[0].field.as_deref(), Some("constraint.*.allOf"));
+        assert!(
+            gained[0]
+                .message
+                .contains("at `*` now has to satisfy: `url` is set"),
+            "{gained:?}"
+        );
+
+        let lost = changes(&documents(json!([rule])), &documents(json!([])));
+        assert_eq!(lost.len(), 1, "{lost:?}");
+        assert_eq!(lost[0].severity, Severity::Minor);
     }
 
     #[test]

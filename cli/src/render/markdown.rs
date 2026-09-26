@@ -331,6 +331,7 @@ fn tightened(at: &str, tightening: &Tightening<'_>) -> String {
         ),
         Tightening::Names(pattern) => format!("entry names match `{}`", escape(pattern)),
         Tightening::Matches(pattern) => format!("matches `{}`", escape(pattern)),
+        Tightening::Holds(description) => escape(description),
     };
     if at.is_empty() {
         said

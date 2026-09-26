@@ -93,6 +93,7 @@
 mod check;
 #[cfg(feature = "schema-cli")]
 pub mod cli;
+mod condition;
 mod contract;
 mod json_schema;
 mod markdown;
@@ -103,6 +104,7 @@ mod rust_type;
 mod toml_example;
 mod tree;
 
+pub use condition::Condition;
 pub use contract::{
     ARTIFACT_TYPE, App, CONTRACT_VERSION, Contract, ContractBuilder, DEFAULT_PATH, External,
     ExternalVar, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION, LabelFault, MARKER_BEGIN, MARKER_END,
@@ -176,9 +178,20 @@ use crate::error::Error;
 /// told to widen only by a document it would otherwise under-check.
 pub const SCHEMA_VERSION: u32 = 2;
 
-/// The newest version of the schema half this crate writes, and what a document carrying
-/// `propertyNames` is published at. See [`SCHEMA_VERSION`] for why the two differ.
-pub const LATEST_SCHEMA_VERSION: u32 = 3;
+/// The newest version of the schema half this crate writes. See [`SCHEMA_VERSION`] for why the two
+/// differ.
+///
+/// # Version 4
+///
+/// [`Refinement::Holds`] publishes a condition between a struct's fields, which needs `oneOf`,
+/// `if`, `then`, `minProperties` and `maxProperties` — none in an earlier allowlist. It needs
+/// `allOf`, `not` and `const` as well, which a version-2 producer could already write, and a
+/// version-4 consumer is held to all eight. A document carrying no condition stays at the version
+/// its other keywords need.
+pub const LATEST_SCHEMA_VERSION: u32 = 4;
+
+/// The version a document carrying `propertyNames` is published at.
+pub(crate) const ENTRY_NAMES_VERSION: u32 = 3;
 
 /// How deep [`Sink::nested`] and [`Sink::repeated`] will recurse before deciding the type is
 /// cyclic.
@@ -1360,6 +1373,7 @@ impl Schema {
             let Some(observed) = root.find_ref(&key.path) else {
                 continue;
             };
+            let observed = &without_unset(observed, 0);
             let Some(rendered) = render_value(observed, 0) else {
                 continue;
             };
@@ -1553,6 +1567,34 @@ fn summary(docs: &str) -> String {
 ///
 /// Returns [`None`] for a value that means "absent", so an explicit `null` and a missing key
 /// render the same way — which is what they mean to an operator.
+/// `value` with every unset field of every table taken out.
+///
+/// An `Option` holding `None` serialises as an empty value, and a table holding one would publish
+/// `"field": null` — a value no TOML file can spell and no element schema admits, since the field's
+/// own constraint is its inner type's. What the loader sees for such a field is absence, so absence
+/// is what the default says. An item of a list keeps its place: removing it would move the rest.
+fn without_unset(value: &figment::value::Value, depth: usize) -> figment::value::Value {
+    use figment::value::Value;
+
+    match value {
+        Value::Dict(tag, dict) if depth <= MAX_DEPTH => Value::Dict(
+            *tag,
+            dict.iter()
+                .filter(|(_, held)| !matches!(held, Value::Empty(..)))
+                .map(|(name, held)| (name.clone(), without_unset(held, depth + 1)))
+                .collect(),
+        ),
+        Value::Array(tag, items) if depth <= MAX_DEPTH => Value::Array(
+            *tag,
+            items
+                .iter()
+                .map(|item| without_unset(item, depth + 1))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
 fn render_value(value: &figment::value::Value, depth: usize) -> Option<String> {
     use figment::value::{Empty, Num, Value};
 

@@ -36,7 +36,7 @@ public class Defaults {
                 continue;
             }
 
-            final Object observed = find(root, key.getPath());
+            final Object observed = withoutUnset(find(root, key.getPath()), 0);
             if (observed == null && !containsPath(root, key.getPath())) {
                 keys.add(key);
                 continue;
@@ -68,6 +68,34 @@ public class Defaults {
                     key.toBuilder().defaultText(rendered).defaultValue(observed).build());
         }
         return schema.toBuilder().keys(keys).build();
+    }
+
+    /**
+     * {@code value} with every unset field of every table taken out — the Rust crate's {@code
+     * without_unset}. A {@code null} inside a table is a field no TOML file can spell and no element
+     * schema admits; what the loader sees for it is absence. An item of a list keeps its place.
+     */
+    private static @Nullable Object withoutUnset(@Nullable final Object value, final int depth) {
+        if (depth > MAX_DEPTH) {
+            return value;
+        }
+        if (value instanceof Map<?, ?> dict) {
+            final Map<String, Object> kept = new java.util.TreeMap<>();
+            for (final Map.Entry<?, ?> entry : dict.entrySet()) {
+                if (entry.getValue() != null) {
+                    kept.put(String.valueOf(entry.getKey()), withoutUnset(entry.getValue(), depth + 1));
+                }
+            }
+            return kept;
+        }
+        if (value instanceof List<?> items) {
+            final List<Object> kept = new ArrayList<>(items.size());
+            for (final Object item : items) {
+                kept.add(withoutUnset(item, depth + 1));
+            }
+            return kept;
+        }
+        return value;
     }
 
     /** The value at a dotted path, or {@code null} for one {@code root} does not carry — see {@link #containsPath}. */

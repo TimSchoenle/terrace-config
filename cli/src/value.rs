@@ -381,8 +381,19 @@ const CONTAINERS: &[&str] = &[
     "propertyNames",
 ];
 
+/// Keywords combining schemas, arriving with `schema_version: 4`: the conditions a producer states
+/// between a struct's fields. `then` and `else` are read by `if` and assert nothing on their own.
+const COMBINATORS: &[&str] = &["allOf", "anyOf", "oneOf", "not", "if", "then", "else"];
+
 /// Flat keywords describing a container rather than a scalar, arriving with `schema_version: 2`.
-const COLLECTIONS: &[&str] = &["required", "uniqueItems", "minItems", "maxItems"];
+const COLLECTIONS: &[&str] = &[
+    "required",
+    "uniqueItems",
+    "minItems",
+    "maxItems",
+    "minProperties",
+    "maxProperties",
+];
 
 /// Keywords that say something to a reader and assert nothing about a value.
 const ANNOTATIONS: &[&str] = &[
@@ -445,6 +456,7 @@ pub fn assert_value(constraint: &Json, value: &Json, at: &str) -> Result<Option<
                 !ASSERTIONS.contains(keyword)
                     && !CONTAINERS.contains(keyword)
                     && !COLLECTIONS.contains(keyword)
+                    && !COMBINATORS.contains(keyword)
                     && !ANNOTATIONS.contains(keyword)
             })
             .collect();
@@ -461,7 +473,87 @@ pub fn assert_value(constraint: &Json, value: &Json, at: &str) -> Result<Option<
     if let Some(failure) = flat(schema, value) {
         return Ok(Some(position(at, &failure)));
     }
-    container(schema, value, at)
+    if let Some(failure) = container(schema, value, at)? {
+        return Ok(Some(failure));
+    }
+    combined(schema, value, at)
+}
+
+/// The `schema_version: 4` half: schemas combined with others.
+///
+/// A member of `allOf` carrying `description` is a condition a producer stated, and its failure is
+/// reported as that sentence — the operator reads the rule, not its encoding.
+fn combined(schema: &Map<String, Json>, value: &Json, at: &str) -> Result<Option<String>, Error> {
+    if let Some(Json::Array(members)) = schema.get("allOf") {
+        for member in members {
+            if let Some(failure) = assert_value(member, value, at)? {
+                return Ok(Some(
+                    match member.get("description").and_then(Json::as_str) {
+                        Some(description) => {
+                            position(at, &format!("does not satisfy: {description}"))
+                        }
+                        None => failure,
+                    },
+                ));
+            }
+        }
+    }
+    if let Some(Json::Array(branches)) = schema.get("anyOf") {
+        let mut failures = Vec::new();
+        for branch in branches {
+            match assert_value(branch, value, at)? {
+                None => {
+                    failures.clear();
+                    break;
+                }
+                Some(failure) => failures.push(failure),
+            }
+        }
+        if !failures.is_empty() {
+            return Ok(Some(failures.join("; and ")));
+        }
+    }
+    if let Some(Json::Array(branches)) = schema.get("oneOf") {
+        let mut holding = 0;
+        for branch in branches {
+            if assert_value(branch, value, at)?.is_none() {
+                holding += 1;
+            }
+        }
+        if holding != 1 {
+            let held = if holding == 0 {
+                "none".to_owned()
+            } else {
+                holding.to_string()
+            };
+            return Ok(Some(position(
+                at,
+                &format!(
+                    "satisfies {held} of {} alternatives, and exactly one must hold",
+                    branches.len()
+                ),
+            )));
+        }
+    }
+    if let Some(excluded) = schema.get("not")
+        && assert_value(excluded, value, at)?.is_none()
+    {
+        return Ok(Some(position(
+            at,
+            &format!("{value} is a value the schema excludes"),
+        )));
+    }
+    if let Some(condition) = schema.get("if") {
+        let branch = if assert_value(condition, value, at)?.is_none() {
+            schema.get("then")
+        } else {
+            schema.get("else")
+        };
+        if let Some(branch) = branch {
+            return assert_value(branch, value, at);
+        }
+    }
+    Ok(None)
 }
 
 /// The keywords whose value is a scalar: the whole vocabulary before `schema_version: 2`.
@@ -833,10 +925,59 @@ mod tests {
     }
 
     #[test]
+    fn a_documents_conditions_are_held_and_a_failure_is_said_as_its_rule() {
+        let documents = json!({"type": "object", "additionalProperties": {
+            "type": "object",
+            "properties": {
+                "body": {"type": "object"},
+                "url": {"type": "string"},
+                "grace_days": {"type": "integer"},
+                "effective": {"type": "string"},
+            },
+            "allOf": [
+                {"description": "exactly one of: [`url` is set; `body` is not empty]",
+                 "oneOf": [{"required": ["url"]},
+                    {"required": ["body"], "properties": {"body": {"minProperties": 1}}}]},
+                {"description": "when `grace_days` is above 0: `effective` is set",
+                 "if": {"required": ["grace_days"],
+                    "properties": {"grace_days": {"exclusiveMinimum": 0}}},
+                 "then": {"required": ["effective"]}},
+                {"not": {"required": ["draft"]}},
+            ],
+        }});
+        let check = |value: Json| assert_value(&documents, &value, "").expect("a known vocabulary");
+
+        assert_eq!(check(json!({"terms": {"url": "u"}})), None);
+        assert_eq!(
+            check(json!({"terms": {"body": {"en": "x"}, "grace_days": 0}})),
+            None
+        );
+        assert_eq!(
+            check(json!({"terms": {"url": "u", "body": {"en": "x"}}})),
+            Some(
+                ".terms: does not satisfy: exactly one of: [`url` is set; `body` is not empty]"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            check(json!({"terms": {"url": "u", "grace_days": 3}})),
+            Some(
+                ".terms: does not satisfy: when `grace_days` is above 0: `effective` is set"
+                    .to_owned()
+            )
+        );
+        // An undescribed member is reported by its own keyword.
+        assert!(
+            check(json!({"terms": {"url": "u", "draft": true}}))
+                .is_some_and(|failure| failure.contains("excludes")),
+        );
+    }
+
+    #[test]
     fn a_keyword_this_validator_does_not_implement_is_an_error_not_a_skip() {
-        let error = assert_value(&json!({"allOf": []}), &json!(1), "")
+        let error = assert_value(&json!({"$ref": "#/x"}), &json!(1), "")
             .expect_err("an unimplemented keyword is refused");
-        assert!(error.to_string().contains("allOf"), "{error}");
+        assert!(error.to_string().contains("$ref"), "{error}");
     }
 
     #[test]

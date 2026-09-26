@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "documents": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "description": "exactly one of: [`url` is set; `body` is not empty]",
+            "oneOf": [
+              {
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "properties": {
+                  "body": {
+                    "minProperties": 1
+                  }
+                },
+                "required": [
+                  "body"
+                ]
+              }
+            ]
+          },
+          {
+            "description": "when `consent.requirement` is set and not \"none\": all of: [`url` is not set; `consent.version` matches `[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]`; when `consent.grace_days` is above 0: `consent.effective` is set]",
+            "if": {
+              "properties": {
+                "consent": {
+                  "properties": {
+                    "requirement": {
+                      "not": {
+                        "const": "none"
+                      }
+                    }
+                  },
+                  "required": [
+                    "requirement"
+                  ]
+                }
+              },
+              "required": [
+                "consent"
+              ]
+            },
+            "then": {
+              "allOf": [
+                {
+                  "not": {
+                    "required": [
+                      "url"
+                    ]
+                  }
+                },
+                {
+                  "properties": {
+                    "consent": {
+                      "properties": {
+                        "version": {
+                          "pattern": "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]"
+                        }
+                      },
+                      "required": [
+                        "version"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "consent"
+                  ]
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "consent": {
+                        "properties": {
+                          "grace_days": {
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "grace_days"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "consent"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "consent": {
+                        "required": [
+                          "effective"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "consent"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "properties": {
+          "body": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Text, by locale. Empty for an external document.",
+            "type": "object"
+          },
+          "consent": {
+            "additionalProperties": false,
+            "properties": {
+              "effective": {
+                "description": "When the current version took effect.",
+                "type": "string"
+              },
+              "grace_days": {
+                "description": "Days a changed document may still be shown without renewed consent.",
+                "maximum": 65535,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "requirement": {
+                "description": "What a visitor is asked for.",
+                "enum": [
+                  "none",
+                  "accept"
+                ],
+                "type": "string"
+              },
+              "version": {
+                "description": "The version a visitor consents to.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "url": {
+            "description": "Where an external document lives.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "default": {
+        "privacy": {
+          "body": {
+            "en": "We collect nothing."
+          },
+          "consent": {
+            "effective": "2026-09-22",
+            "grace_days": 14,
+            "requirement": "accept",
+            "version": "1"
+          }
+        },
+        "terms": {
+          "body": {},
+          "consent": {
+            "grace_days": 0,
+            "requirement": "none"
+          },
+          "url": "https://example.com/terms"
+        }
+      },
+      "description": "Documents, by slug.",
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

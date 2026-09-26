@@ -33,8 +33,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
-    App, Column, Contract, DEFAULT_PATH, Describe, External, ExternalVar, Refine, Refinement,
-    ReloadSupport, Unknown,
+    App, Column, Condition, Contract, DEFAULT_PATH, Describe, External, ExternalVar, Refine,
+    Refinement, ReloadSupport, Unknown,
 };
 
 /// The version string every corpus document carries in place of the real one.
@@ -332,6 +332,118 @@ impl Refine for HandbookRefinements {
     }
 }
 
+/// A legal-pages library's documents: each hosted or external, and a consent rule on the hosted.
+#[derive(Deserialize, Serialize, Describe)]
+struct Policies {
+    /// Documents, by slug.
+    #[config(element)]
+    #[serde(default = "default_documents")]
+    documents: BTreeMap<String, Policy>,
+}
+
+impl Default for Policies {
+    fn default() -> Self {
+        Self {
+            documents: default_documents(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Policy {
+    /// Text, by locale. Empty for an external document.
+    #[serde(default)]
+    body: BTreeMap<String, String>,
+    /// Where an external document lives.
+    #[serde(default)]
+    url: Option<String>,
+    #[config(nested)]
+    #[serde(default)]
+    consent: PolicyConsent,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct PolicyConsent {
+    /// What a visitor is asked for.
+    #[config(values)]
+    #[serde(default)]
+    requirement: ConsentRequirement,
+    /// The version a visitor consents to.
+    #[serde(default)]
+    version: Option<String>,
+    /// Days a changed document may still be shown without renewed consent.
+    #[serde(default)]
+    grace_days: u16,
+    /// When the current version took effect.
+    #[serde(default)]
+    effective: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum ConsentRequirement {
+    #[default]
+    None,
+    Accept,
+}
+
+fn default_documents() -> BTreeMap<String, Policy> {
+    BTreeMap::from([
+        (
+            "privacy".to_owned(),
+            Policy {
+                body: BTreeMap::from([("en".to_owned(), "We collect nothing.".to_owned())]),
+                url: None,
+                consent: PolicyConsent {
+                    requirement: ConsentRequirement::Accept,
+                    version: Some("1".to_owned()),
+                    grace_days: 14,
+                    effective: Some("2026-09-22".to_owned()),
+                },
+            },
+        ),
+        (
+            "terms".to_owned(),
+            Policy {
+                body: BTreeMap::new(),
+                url: Some("https://example.com/terms".to_owned()),
+                consent: PolicyConsent::default(),
+            },
+        ),
+    ])
+}
+
+/// What the library publishes about its documents, relative to its mount.
+struct PolicyRefinements;
+
+impl Refine for PolicyRefinements {
+    fn refinements(&self) -> Vec<(String, Refinement)> {
+        vec![
+            (
+                "documents.*".to_owned(),
+                Refinement::holds(Condition::exactly_one([
+                    Condition::present("url"),
+                    Condition::non_empty("body"),
+                ])),
+            ),
+            (
+                "documents.*".to_owned(),
+                Refinement::holds(Condition::when(
+                    Condition::not_equals("consent.requirement", "none"),
+                    Condition::all([
+                        Condition::absent("url"),
+                        Condition::matches("consent.version", Refinement::NON_BLANK),
+                        Condition::when(
+                            Condition::above("consent.grace_days", 0),
+                            Condition::present("consent.effective"),
+                        ),
+                    ]),
+                )),
+            ),
+        ]
+    }
+}
+
 #[derive(Deserialize, Serialize, Default, Describe)]
 #[serde(rename_all = "lowercase")]
 enum LogLevel {
@@ -430,6 +542,7 @@ fn cases() -> Vec<(&'static str, Contract)> {
         ("required-entries", required_entries()),
         ("entry-names", entry_names()),
         ("element-patterns", element_patterns()),
+        ("conditions", conditions()),
         ("reload", reload()),
     ]
 }
@@ -511,6 +624,18 @@ fn element_patterns() -> Contract {
         .refine_with("", &HandbookRefinements)
         .expect("every position is described and the default satisfies every refinement")
         .into_contract(App::new("handbook").version("1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+fn conditions() -> Contract {
+    Terrace::new("POLICY_")
+        .schema::<Policies>()
+        .with_defaults_from(&Policies::default())
+        .expect("the default config serialises")
+        .refine_with("", &PolicyRefinements)
+        .expect("every field is declared and both defaults satisfy both conditions")
+        .into_contract(App::new("policies").version("1.0.0"))
         .build()
         .expect("the contract has nothing to refuse")
 }

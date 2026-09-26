@@ -22,9 +22,10 @@ use crate::dialect::Dialect;
 use crate::error::Error;
 
 use super::check::{self, Verdict};
+use super::condition::{self, Condition};
 use super::{
-    Key, LATEST_SCHEMA_VERSION, MAX_DEPTH, Schema, Unreachable, env_layer_key, env_spelling,
-    pattern, secrets_file_name,
+    ENTRY_NAMES_VERSION, Key, LATEST_SCHEMA_VERSION, MAX_DEPTH, Schema, Unreachable, env_layer_key,
+    env_spelling, pattern, secrets_file_name,
 };
 
 /// The path segment that addresses every element of a map or a sequence.
@@ -81,6 +82,19 @@ pub enum Refinement {
     /// the same way. [`Self::non_blank`] is the one pattern common enough, and easy enough to get
     /// wrong, to ship ready-made.
     Pattern(String),
+    /// A condition between the fields of a struct must hold.
+    ///
+    /// Stated on a struct position — in practice the element of a map or sequence of structs,
+    /// `legal.documents.*` — and published as one member of that position's `allOf`: the condition's
+    /// JSON Schema, with its readable form as the member's `description`. Every rendering shows that
+    /// sentence; a validator applies the schema. A condition is a conjunct, so it only tightens.
+    ///
+    /// [`Condition`] is the vocabulary, and [`Schema::refine`] checks every field it names against
+    /// the struct and every predicate against the field's type. What it cannot check is that the
+    /// condition says exactly what the runtime check does; see `spec/v1/FORMAT.md`, *Refinements*,
+    /// for the traps a condition meets — an early return in the check that a flat condition would
+    /// not share, and a format the check accepts more of than a pattern would.
+    Holds(Condition),
 }
 
 impl Refinement {
@@ -124,11 +138,18 @@ impl Refinement {
         Self::Pattern(Self::NON_BLANK.to_owned())
     }
 
+    /// [`Self::Holds`].
+    #[must_use]
+    pub const fn holds(condition: Condition) -> Self {
+        Self::Holds(condition)
+    }
+
     /// The version of the schema half a document carrying this refinement is published at.
     const fn schema_version(&self) -> u32 {
         match self {
             Self::RequiredEntries(_) | Self::Pattern(_) => super::SCHEMA_VERSION,
-            Self::EntryNames(_) => LATEST_SCHEMA_VERSION,
+            Self::EntryNames(_) => ENTRY_NAMES_VERSION,
+            Self::Holds(_) => LATEST_SCHEMA_VERSION,
         }
     }
 
@@ -138,6 +159,7 @@ impl Refinement {
             Self::RequiredEntries(_) => "a required entry",
             Self::EntryNames(_) => "an entry-name pattern",
             Self::Pattern(_) => "a pattern",
+            Self::Holds(_) => "a condition",
         }
     }
 }
@@ -274,6 +296,7 @@ impl Schema {
             }
             Refinement::EntryNames(source) => name_entries(target, &reach.at, &source)?,
             Refinement::Pattern(source) => match_pattern(target, &reach.at, &source)?,
+            Refinement::Holds(condition) => hold(target, &reach.at, &condition)?,
         };
         if changed {
             key.stated = Stated(stated);
@@ -654,6 +677,44 @@ fn match_pattern(target: &mut Map<String, Json>, at: &str, source: &str) -> Resu
     Ok(true)
 }
 
+/// [`Refinement::Holds`], applied at one position. Whether the constraint changed.
+fn hold(target: &mut Map<String, Json>, at: &str, condition: &Condition) -> Result<bool, Error> {
+    if target.get("type").and_then(Json::as_str) != Some("object")
+        || !target.get("properties").is_some_and(Json::is_object)
+    {
+        return Err(Error::Invalid(format!(
+            "`{at}` is not a struct, so it has no fields for a condition to relate: its \
+             constraint is {}. State a condition on a struct — the element of a map or sequence of \
+             them is `{at}.{ELEMENT}`.",
+            Json::Object(target.clone())
+        )));
+    }
+    let stated = condition::state(condition, target, at).map_err(|why| {
+        Error::Invalid(format!("the condition cannot be stated on `{at}`: {why}."))
+    })?;
+    let mut member = stated.schema;
+    member.insert("description".to_owned(), Json::String(stated.description));
+    let member = Json::Object(member);
+
+    let conditions = match target
+        .entry("allOf")
+        .or_insert_with(|| Json::Array(Vec::new()))
+    {
+        Json::Array(conditions) => conditions,
+        other => {
+            return Err(Error::Invalid(format!(
+                "`{at}` already carries `allOf: {other}`, which is not a list of schemas, so there \
+                 is nothing sound to add a condition to."
+            )));
+        }
+    };
+    if conditions.contains(&member) {
+        return Ok(false);
+    }
+    conditions.push(member);
+    Ok(true)
+}
+
 /// Refuse a pattern outside the portable subset.
 fn portable(source: &str, what: &str, at: &str) -> Result<(), Error> {
     pattern::check(source).map_err(|why| {
@@ -763,6 +824,8 @@ pub(super) enum Tightening<'a> {
     Names(&'a str),
     /// A string's `pattern`.
     Matches(&'a str),
+    /// A struct's condition, by its readable form: an `allOf` member carrying `description`.
+    Holds(&'a str),
 }
 
 /// Every tightening a key's constraint publishes, each with its position relative to the key —
@@ -813,6 +876,9 @@ fn walk<'a>(schema: &'a Json, at: &str, depth: usize, found: &mut Vec<(String, T
     if let Some(pattern) = schema.get("pattern").and_then(Json::as_str) {
         found.push((at.to_owned(), Tightening::Matches(pattern)));
     }
+    for description in conditions(schema) {
+        found.push((at.to_owned(), Tightening::Holds(description)));
+    }
 
     let below = |segment: &str| {
         if at.is_empty() {
@@ -831,6 +897,19 @@ fn walk<'a>(schema: &'a Json, at: &str, depth: usize, found: &mut Vec<(String, T
             walk(field, &below(name), depth + 1, found);
         }
     }
+}
+
+/// The readable forms of the conditions a struct schema carries, in the order it lists them.
+///
+/// A condition is an `allOf` member carrying `description`. The members a derive writes — the
+/// choice of spellings for a required field with an alias — carry none, and are not conditions.
+pub(super) fn conditions(schema: &Map<String, Json>) -> impl Iterator<Item = &str> {
+    schema
+        .get("allOf")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|member| member.get("description").and_then(Json::as_str))
 }
 
 /// Whether an observed default is one the key's *refinements* reject.

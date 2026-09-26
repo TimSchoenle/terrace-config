@@ -349,6 +349,27 @@ Every rendering names such a tightening by its position inside the key — `at \
 match …` — and a single entry of a map, whose name is the operator's, is no position: it is refused
 with the reason, as is a field the element does not declare.
 
+A rule relating one field to another is a `Condition`, stated on a struct position with
+`Refinement::holds`:
+
+```rust
+let schema = schema.refine(
+    "legal.documents.*",
+    Refinement::holds(Condition::exactly_one([
+        Condition::present("url"),
+        Condition::non_empty("body"),
+    ])),
+)?;
+```
+
+The vocabulary is closed — present, absent, empty, non-empty, equal, not equal, above, matches, all
+of, exactly one of, and when-then — and every field a condition names is checked against the struct,
+every predicate against the field's type. It is published as one `allOf` member whose `description`
+is the sentence every rendering shows, `exactly one of: [`url` is set; `body` is not empty]`, and it
+puts the document at `schema_version: 4`. A condition only tightens; whether it states the runtime
+check exactly is the caller's, and [FORMAT.md, *Refinements*][refinements] names the two traps — a
+check that returns early, and a format parsed more liberally than a pattern could say.
+
 [refinements]: ../../spec/v1/FORMAT.md#refinements
 [portable]: ../../spec/v1/FORMAT.md#portable-patterns
 

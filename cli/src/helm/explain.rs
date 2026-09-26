@@ -103,7 +103,8 @@ const CONSTRAINT_ORDER: [&str; 19] = [
 /// Keywords folded into another keyword's phrase, or said elsewhere in the entry.
 ///
 /// Listed so the catch-all can tell "already reported" from "unrecognised".
-const CONSTRAINT_FOLDED: [&str; 12] = [
+const CONSTRAINT_FOLDED: [&str; 13] = [
+    "allOf",
     "propertyNames",
     "exclusiveMinimum",
     "exclusiveMaximum",
@@ -720,20 +721,7 @@ pub fn describe_constraint(constraint: Option<&Json>) -> String {
         }
     }
 
-    // A map's required entries — `required` beside no `properties`, which a producer's refinement
-    // puts there. A struct's `required` stays folded into its fields line, which marks each one.
-    let entries = crate::document::required_entries_of(schema);
-    if !entries.is_empty() {
-        parts.push(format!("must contain: {}", entries.join(", ")));
-    }
-    // A map's entry-name pattern, the other refinement. Anything else under `propertyNames` is not
-    // one this format defines, and is printed as it stands rather than paraphrased.
-    if let Some(names) = schema.get("propertyNames") {
-        parts.push(match crate::document::entry_name_pattern_of(schema) {
-            Some(pattern) => format!("entry names matching {pattern}"),
-            None => format!("propertyNames={names}"),
-        });
-    }
+    said_refinements(schema, &mut parts);
 
     for (keyword, value) in schema {
         if !CONSTRAINT_ORDER.contains(&keyword.as_str())
@@ -743,6 +731,38 @@ pub fn describe_constraint(constraint: Option<&Json>) -> String {
         }
     }
     parts.join(", ")
+}
+
+/// What a producer's refinements added to a constraint, each in the words a reader acts on.
+fn said_refinements(schema: &Map<String, Json>, parts: &mut Vec<String>) {
+    // A map's required entries — `required` beside no `properties`, which a producer's refinement
+    // puts there. A struct's `required` stays folded into its fields line, which marks each one.
+    let entries = crate::document::required_entries_of(schema);
+    if !entries.is_empty() {
+        parts.push(format!("must contain: {}", entries.join(", ")));
+    }
+    // A struct's conditions, by the sentence each carries. An `allOf` member without one is not a
+    // condition this format defines, and is printed as it stands.
+    if let Some(Json::Array(members)) = schema.get("allOf") {
+        let mut unsaid = Vec::new();
+        for member in members {
+            match member.get("description").and_then(Json::as_str) {
+                Some(description) => parts.push(format!("holds: {description}")),
+                None => unsaid.push(member.clone()),
+            }
+        }
+        if !unsaid.is_empty() {
+            parts.push(format!("allOf={}", Json::Array(unsaid)));
+        }
+    }
+    // A map's entry-name pattern, the other refinement. Anything else under `propertyNames` is not
+    // one this format defines, and is printed as it stands rather than paraphrased.
+    if let Some(names) = schema.get("propertyNames") {
+        parts.push(match crate::document::entry_name_pattern_of(schema) {
+            Some(pattern) => format!("entry names matching {pattern}"),
+            None => format!("propertyNames={names}"),
+        });
+    }
 }
 
 /// One scalar without the quotes JSON would put round it.
@@ -2024,6 +2044,21 @@ mod tests {
                 .contains("contentEncoding=\"base64\""),
             "{}",
             described(&json!({"type": "string", "contentEncoding": "base64"}))
+        );
+    }
+
+    #[test]
+    fn a_structs_conditions_are_said_by_their_sentences() {
+        assert_eq!(
+            described(&json!({
+                "type": "object",
+                "properties": {"url": {"type": "string"}},
+                "allOf": [
+                    {"description": "`url` is set", "required": ["url"]},
+                    {"anyOf": [{"required": ["url"]}]},
+                ],
+            })),
+            r#"object, fields url, holds: `url` is set, allOf=[{"anyOf":[{"required":["url"]}]}]"#
         );
     }
 

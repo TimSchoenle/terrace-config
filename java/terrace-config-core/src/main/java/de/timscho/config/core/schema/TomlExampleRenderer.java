@@ -168,6 +168,9 @@ public class TomlExampleRenderer {
             } else if (tightening instanceof Refiner.Names names) {
                 label = "Entry names match";
                 value = names.pattern();
+            } else if (tightening instanceof Refiner.Holds holds) {
+                label = "Holds";
+                value = holds.description();
             } else {
                 label = "Matches";
                 value = ((Refiner.Matches) tightening).pattern();

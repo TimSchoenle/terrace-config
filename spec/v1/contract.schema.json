@@ -82,7 +82,7 @@
       "required": ["schema_version", "dialect", "loader", "keys"],
       "properties": {
         "schema_version": {
-          "description": "The version of this half's shape, moving independently of `terrace_contract`. Version 2 added nesting inside `constraint`; version 3 added `propertyNames`. A producer publishes the lowest version whose vocabulary holds every keyword the document carries. A consumer gates on this before widening its keyword allowlist.",
+          "description": "The version of this half's shape, moving independently of `terrace_contract`. Version 2 added nesting inside `constraint`; version 3 added `propertyNames`; version 4 added the conditions between a struct's fields (`oneOf`, `if`, `then`, `minProperties`, `maxProperties`). A producer publishes the lowest version whose vocabulary holds every keyword the document carries. A consumer gates on this before widening its keyword allowlist.",
           "type": "integer",
           "minimum": 1
         },

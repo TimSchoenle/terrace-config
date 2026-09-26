@@ -107,6 +107,11 @@ public final class ConstraintEvaluator {
                         case "properties" -> properties(argument, value, at, depth);
                         case "additionalProperties" -> additional(schema, argument, value, at, depth);
                         case "propertyNames" -> names(argument, value, at, depth);
+                        case "oneOf" -> oneOfBranches(argument, value, at, depth);
+                        case "if" -> conditional(schema, argument, value, at, depth);
+                        // Read by `if`, whose consequence they are; on their own they assert nothing.
+                        case "then", "else" -> HOLDS;
+                        case "minProperties", "maxProperties" -> size(keyword, argument, value, at);
                         case "allOf" -> allOf(argument, value, at, depth);
                         case "anyOf" -> anyOf(argument, value, at, depth);
                         default -> ANNOTATIONS.contains(keyword) ? HOLDS : UNDECIDED;
@@ -456,7 +461,15 @@ public final class ConstraintEvaluator {
         }
         Verdict result = HOLDS;
         for (final Object schema : schemas) {
-            result = and(result, evaluate(schema, value, at, depth + 1));
+            Verdict found = evaluate(schema, value, at, depth + 1);
+            // A member carrying `description` is a condition a refinement stated, and fails as that
+            // sentence: the operator reads the rule, not its encoding.
+            if (found instanceof Fails
+                    && schema instanceof Map<?, ?> member
+                    && member.get("description") instanceof String description) {
+                found = fails(at, "does not satisfy: " + description);
+            }
+            result = and(result, found);
             if (result instanceof Fails) {
                 break;
             }
@@ -480,6 +493,73 @@ public final class ConstraintEvaluator {
             }
         }
         return new Fails(String.join("; and ", reasons));
+    }
+
+    /** {@code oneOf}: exactly one branch holds. */
+    private static Verdict oneOfBranches(
+            @Nullable final Object argument, @Nullable final Object value, final String at, final int depth) {
+        if (!(argument instanceof List<?> schemas) || schemas.isEmpty()) {
+            return UNDECIDED;
+        }
+        int holding = 0;
+        boolean undecided = false;
+        for (final Object schema : schemas) {
+            final Verdict found = evaluate(schema, value, at, depth + 1);
+            if (found instanceof Holds) {
+                holding++;
+            } else if (found instanceof Undecided) {
+                undecided = true;
+            }
+        }
+        if (holding >= 2) {
+            return fails(
+                    at, "satisfies " + holding + " of " + schemas.size() + " alternatives, and exactly one must hold");
+        }
+        if (undecided) {
+            return UNDECIDED;
+        }
+        return holding == 1
+                ? HOLDS
+                : fails(at, "satisfies none of " + schemas.size() + " alternatives, and exactly one must hold");
+    }
+
+    /** {@code if}, with the {@code then} and {@code else} beside it. */
+    private static Verdict conditional(
+            final Map<?, ?> schema,
+            @Nullable final Object argument,
+            @Nullable final Object value,
+            final String at,
+            final int depth) {
+        final Verdict condition = evaluate(argument, value, at, depth + 1);
+        final Verdict then = schema.containsKey("then") ? evaluate(schema.get("then"), value, at, depth + 1) : HOLDS;
+        final Verdict otherwise =
+                schema.containsKey("else") ? evaluate(schema.get("else"), value, at, depth + 1) : HOLDS;
+        if (condition instanceof Holds) {
+            return then;
+        }
+        if (condition instanceof Fails) {
+            return otherwise;
+        }
+        return then instanceof Holds && otherwise instanceof Holds ? HOLDS : UNDECIDED;
+    }
+
+    private static Verdict size(
+            final String keyword, @Nullable final Object argument, @Nullable final Object value, final String at) {
+        if (!(value instanceof Map<?, ?> fields)) {
+            return HOLDS;
+        }
+        final BigDecimal limit = decimal(argument);
+        if (limit == null) {
+            return UNDECIDED;
+        }
+        final int compared = BigDecimal.valueOf(fields.size()).compareTo(limit);
+        if ("minProperties".equals(keyword) && compared < 0) {
+            return fails(at, "has " + fields.size() + " entr(ies), fewer than " + show(argument));
+        }
+        if ("maxProperties".equals(keyword) && compared > 0) {
+            return fails(at, "has " + fields.size() + " entr(ies), more than " + show(argument));
+        }
+        return HOLDS;
     }
 
     private static String member(final String at, final Object name) {
