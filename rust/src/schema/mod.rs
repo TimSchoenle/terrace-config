@@ -110,7 +110,7 @@ pub use contract::{
 };
 pub use json_schema::{DRAFT_07, DRAFT_2020_12, JsonSchema};
 pub use markdown::Column;
-pub use refine::{Refine, Refinement};
+pub use refine::{ELEMENT, Refine, Refinement};
 pub use reload::{Reload, ReloadLayer, ReloadMode, ReloadSupport};
 pub use terrace_config_macros::Describe;
 pub use toml_example::TomlExample;

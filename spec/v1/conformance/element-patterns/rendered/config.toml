@@ -1,0 +1,35 @@
+# Configuration for a service reading BOOK_-prefixed keys.
+#
+# Generated from the configuration type, so it lists every key that type can carry and nothing
+# else. Each key shows the value it already has, commented out: a commented key and a deleted key
+# mean the same thing to the loader, so uncomment one only to change it. A key that is not
+# commented out has no default, and nothing loads until something supplies it.
+#
+# Three layers can supply any key below, and all three win over this file: the environment
+# variable named above the key, a file named by that variable plus `_FILE`, and a key-named file
+# in the secrets directory. A secret belongs in one of those — this file is usually committed.
+#
+# Read before this file exists:
+#
+#   BOOK_CONFIG — config, default `config.toml`
+#     Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name
+#     order.
+#
+#   BOOK_SECRETS_DIR — secrets dir
+#     Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file
+#     supplies the key its name spells.
+
+# The locale a chapter falls back to.
+# Type: String
+# Matches: ^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$
+# Also from: BOOK_DEFAULT_LOCALE, BOOK_DEFAULT_LOCALE_FILE=/path/to/file, default_locale in the
+#   secrets directory
+# default_locale = "en"
+
+# Chapters, by slug.
+# Type: BTreeMap<String, Chapter>
+# Entry names match at *.body: ^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$
+# Matches at *.body.*: [^\t\n\u000B\f\r \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]
+# Must contain at *.title: en
+# Also from: BOOK_CHAPTERS, BOOK_CHAPTERS_FILE=/path/to/file, chapters in the secrets directory
+# chapters = { intro = { body = { en = "Start here." }, title = { en = "Introduction" } } }

@@ -13,6 +13,8 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -134,13 +136,43 @@ class JavaConformanceTest {
             assertThat(got.path("constraint").path("required"))
                     .as("`%s` constraint.required", path)
                     .isEqualTo(want.path("constraint").path("required"));
-            assertThat(got.path("constraint").path("propertyNames"))
-                    .as("`%s` constraint.propertyNames", path)
-                    .isEqualTo(want.path("constraint").path("propertyNames"));
+            assertThat(tightenings(got.path("constraint"), ""))
+                    .as("`%s`'s tightenings, at every position inside it", path)
+                    .isEqualTo(tightenings(want.path("constraint"), ""));
             assertThat(got.path("default_value").isNull())
                     .as("`%s` has a default exactly when the corpus does", path)
                     .isEqualTo(want.path("default_value").isNull());
         }
+    }
+
+    /**
+     * Every tightening a constraint publishes, as {@code position keyword value} lines — the walk
+     * {@code FORMAT.md} names, over the JSON both sides render, so the two element schemas may
+     * differ everywhere else and still be compared where it matters.
+     */
+    private static List<String> tightenings(final JsonNode schema, final String at) {
+        final List<String> found = new ArrayList<>();
+        if (!schema.isObject()) {
+            return found;
+        }
+        final boolean map = "object".equals(schema.path("type").asText()) && !schema.has("properties");
+        if (map && schema.has("required")) {
+            found.add(at + " required " + schema.get("required"));
+        }
+        if (map && schema.has("propertyNames")) {
+            found.add(at + " propertyNames " + schema.get("propertyNames"));
+        }
+        if (schema.path("pattern").isTextual()) {
+            found.add(at + " pattern " + schema.get("pattern"));
+        }
+        for (final String keyword : List.of("additionalProperties", "items")) {
+            found.addAll(tightenings(schema.path(keyword), at + "/*"));
+        }
+        final JsonNode fields = schema.path("properties");
+        for (final Map.Entry<String, JsonNode> field : fields.properties()) {
+            found.addAll(tightenings(field.getValue(), at + "/" + field.getKey()));
+        }
+        return found;
     }
 
     private static JsonNode producedNode(final String caseName) {

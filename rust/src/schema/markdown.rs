@@ -11,7 +11,7 @@
 
 use std::fmt::Write as _;
 
-use super::refine::{entry_name_pattern, required_entries};
+use super::refine::{Tightening, tightenings};
 use super::{Key, Schema, summary};
 
 impl Schema {
@@ -219,19 +219,10 @@ impl Column {
                 // Beside the type, because it is part of what the value has to be: `BTreeMap`
                 // says "a map" and this says which map. Read off the constraint, the one place a
                 // validator reads it too.
-                let mut parts = Vec::new();
-                let entries = required_entries(key);
-                if !entries.is_empty() {
-                    let entries = entries
-                        .iter()
-                        .map(|entry| format!("`{}`", escape(entry)))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    parts.push(format!("must contain: {entries}"));
-                }
-                if let Some(pattern) = entry_name_pattern(key) {
-                    parts.push(format!("entry names match `{}`", escape(pattern)));
-                }
+                let parts: Vec<String> = tightenings(key)
+                    .into_iter()
+                    .map(|(at, tightening)| tightened(&at, &tightening))
+                    .collect();
                 if parts.is_empty() {
                     shape
                 } else if key.ty.is_none() && key.values.is_empty() {
@@ -298,6 +289,27 @@ fn yes_or_dash(flag: bool) -> String {
 }
 
 /// A spelling as inline code, or an em dash when there is none.
+/// One tightening, as the type cell says it: the key's own bare, one inside it after its position.
+fn tightened(at: &str, tightening: &Tightening<'_>) -> String {
+    let said = match tightening {
+        Tightening::Entries(entries) => format!(
+            "must contain: {}",
+            entries
+                .iter()
+                .map(|entry| format!("`{}`", escape(entry)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Tightening::Names(pattern) => format!("entry names match `{}`", escape(pattern)),
+        Tightening::Matches(pattern) => format!("matches `{}`", escape(pattern)),
+    };
+    if at.is_empty() {
+        said
+    } else {
+        format!("at `{}`: {said}", escape(at))
+    }
+}
+
 fn optional_code(value: Option<&str>) -> String {
     value.map_or_else(|| "—".to_owned(), |value| format!("`{}`", escape(value)))
 }

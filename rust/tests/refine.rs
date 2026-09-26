@@ -703,6 +703,315 @@ fn markdown_and_the_toml_example_say_what_the_names_must_match() {
     );
 }
 
+// ---- patterns, and positions inside a key ----
+
+/// terrace-legal's shape: every document is a map of locale to text, twice over.
+#[derive(Deserialize, Serialize, Describe)]
+struct Localised {
+    /// The locale a page falls back to.
+    #[serde(default = "english")]
+    default_locale: String,
+    /// Documents, by slug.
+    #[config(element)]
+    #[serde(default)]
+    documents: BTreeMap<String, Page>,
+    /// Labels, in order.
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+impl Default for Localised {
+    fn default() -> Self {
+        Self {
+            default_locale: english(),
+            documents: BTreeMap::new(),
+            tags: Vec::new(),
+        }
+    }
+}
+
+fn english() -> String {
+    "en".to_owned()
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Page {
+    /// Heading, by locale.
+    #[serde(default)]
+    title: BTreeMap<String, String>,
+    /// Text, by locale.
+    #[serde(default)]
+    body: BTreeMap<String, String>,
+}
+
+/// `LocaleTag::from_str`: a two- or three-letter language, an optional script, an optional region.
+const LOCALE: &str = "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$";
+
+fn localised() -> Schema {
+    Terrace::new("SITE_").schema::<Localised>()
+}
+
+/// A default holding one document whose English body is `text`.
+fn one_document(text: &str) -> Localised {
+    let mut config = Localised::default();
+    config.documents.insert(
+        "terms".to_owned(),
+        Page {
+            title: BTreeMap::from([("en".to_owned(), "Terms".to_owned())]),
+            body: BTreeMap::from([("en".to_owned(), text.to_owned())]),
+        },
+    );
+    config
+}
+
+fn at<'a>(schema: &'a Json, pointer: &str) -> &'a Json {
+    schema
+        .pointer(pointer)
+        .unwrap_or_else(|| panic!("{pointer} is in {schema}"))
+}
+
+#[test]
+fn a_pattern_on_a_string_key_is_version_two_vocabulary() {
+    let refined = localised()
+        .refine("default_locale", Refinement::pattern(LOCALE))
+        .expect("a string key accepts a pattern");
+    assert_eq!(
+        constraint(&refined, "default_locale")["pattern"],
+        json!(LOCALE)
+    );
+    assert_eq!(refined.schema_version, SCHEMA_VERSION);
+}
+
+#[test]
+fn a_path_continues_into_the_element_and_its_fields() {
+    let refined = localised()
+        .refine("documents.*.body", Refinement::entry_names(LOCALE))
+        .and_then(|schema| schema.refine("documents.*.title", Refinement::entry_names(LOCALE)))
+        .and_then(|schema| schema.refine("documents.*.body.*", Refinement::non_blank()))
+        .and_then(|schema| schema.refine("tags.*", Refinement::non_blank()))
+        .expect("every position is described");
+
+    let documents = constraint(&refined, "documents");
+    let body = at(&documents, "/additionalProperties/properties/body");
+    assert_eq!(body["propertyNames"], json!({"pattern": LOCALE}));
+    assert_eq!(
+        body["additionalProperties"]["pattern"],
+        json!(Refinement::NON_BLANK)
+    );
+    assert_eq!(
+        at(
+            &documents,
+            "/additionalProperties/properties/title/propertyNames"
+        ),
+        &json!({"pattern": LOCALE})
+    );
+    assert_eq!(
+        constraint(&refined, "tags")["items"]["pattern"],
+        json!(Refinement::NON_BLANK)
+    );
+    assert_eq!(refined.schema_version, LATEST_SCHEMA_VERSION);
+}
+
+#[test]
+fn a_position_the_type_did_not_describe_is_refused_with_the_reason() {
+    for (path, refinement, reason) in [
+        (
+            "documents.*.bodyy",
+            Refinement::non_blank(),
+            "`bodyy` is not a field of `documents.*`, so `documents.*.bodyy` names nothing. Its \
+             fields are `body`, `title`.",
+        ),
+        (
+            "documents.terms.body",
+            Refinement::non_blank(),
+            "`documents` is a map, and `terms` would be one entry of it",
+        ),
+        (
+            "default_locale.*",
+            Refinement::non_blank(),
+            "`default_locale` is neither a map nor a sequence",
+        ),
+        (
+            "documents..body",
+            Refinement::non_blank(),
+            "has an empty segment",
+        ),
+        (
+            "documents",
+            Refinement::non_blank(),
+            "`documents` is not a string",
+        ),
+        (
+            "documents.*",
+            Refinement::entry_names(LOCALE),
+            "`documents.*` is not a map",
+        ),
+        (
+            "tags",
+            Refinement::entry_names(LOCALE),
+            "`tags` is not a map",
+        ),
+    ] {
+        let message = refusal(localised().refine(path, refinement));
+        assert!(message.contains(reason), "{path}: {message}");
+    }
+
+    // A map whose element the walk did not read has nothing below it to address.
+    let message = refusal(described().refine("legal.links.*.x", Refinement::non_blank()));
+    assert!(
+        message.contains("`legal.links.*` is not a struct, so it has no field `x`"),
+        "{message}"
+    );
+    let message = refusal(described().refine("legal.docs.*.body", Refinement::non_blank()));
+    assert!(
+        message.contains("an alias of `legal.documents`"),
+        "{message}"
+    );
+}
+
+#[test]
+fn an_entry_name_inside_an_element_is_held_to_every_layer_too() {
+    let refined = localised()
+        .refine("documents.*.body", Refinement::required_entries(["en"]))
+        .expect("`en` is spellable below any document");
+    assert_eq!(
+        at(
+            &constraint(&refined, "documents"),
+            "/additionalProperties/properties/body/required"
+        ),
+        &json!(["en"])
+    );
+
+    let message =
+        refusal(localised().refine("documents.*.body", Refinement::required_entries(["EN"])));
+    assert!(
+        message.contains("`EN` cannot be a required entry of `documents.*.body`"),
+        "{message}"
+    );
+    assert!(message.contains("in lower case"), "{message}");
+}
+
+#[test]
+fn a_second_pattern_is_refused_and_the_same_one_changes_nothing() {
+    let once = localised()
+        .refine("default_locale", Refinement::pattern(LOCALE))
+        .expect("applies");
+    assert_eq!(
+        once.clone()
+            .refine("default_locale", Refinement::pattern(LOCALE))
+            .expect("applies again"),
+        once
+    );
+    let message = refusal(once.refine("default_locale", Refinement::non_blank()));
+    assert!(message.contains("is already matched against"), "{message}");
+
+    let message = refusal(localised().refine("default_locale", Refinement::pattern(r"\S")));
+    assert!(
+        message.contains("cannot be the pattern of `default_locale`"),
+        "{message}"
+    );
+    assert!(message.contains(r"`\S` names a different set"), "{message}");
+}
+
+#[test]
+fn a_default_a_nested_refinement_rejects_is_not_a_default_in_either_order() {
+    let non_blank = || Refinement::non_blank();
+    let refine_first = localised()
+        .refine("documents.*.body.*", non_blank())
+        .expect("applies")
+        .with_defaults_from(&one_document(" \u{3000} "))
+        .expect("the default serialises");
+    let defaults_first = localised()
+        .with_defaults_from(&one_document(" \u{3000} "))
+        .expect("the default serialises")
+        .refine("documents.*.body.*", non_blank())
+        .expect("applies");
+    assert_eq!(refine_first, defaults_first);
+    assert!(key(&refine_first, "documents").required);
+    assert_eq!(key(&refine_first, "documents").default_value, None);
+
+    // U+FEFF is not white space, so `trim()` leaves it and so does the pattern.
+    let kept = localised()
+        .with_defaults_from(&one_document("\u{feff}"))
+        .expect("the default serialises")
+        .refine("documents.*.body.*", non_blank())
+        .expect("applies");
+    assert!(!key(&kept, "documents").required);
+
+    let capitalised = Localised {
+        default_locale: "english!".to_owned(),
+        ..Localised::default()
+    };
+    let locale = localised()
+        .with_defaults_from(&capitalised)
+        .expect("the default serialises")
+        .refine("default_locale", Refinement::pattern(LOCALE))
+        .expect("applies");
+    assert!(key(&locale, "default_locale").required);
+}
+
+#[test]
+fn the_json_schema_holds_every_document_to_the_nested_refinements() {
+    let refined = localised()
+        .refine("documents.*.body", Refinement::entry_names(LOCALE))
+        .and_then(|schema| schema.refine("documents.*.body.*", Refinement::non_blank()))
+        .expect("applies");
+    let validator = document_validator(&refined.to_json_schema().expect("it renders"));
+
+    assert!(validator.is_valid(&json!({"documents": {"terms": {"body": {"de_DE": "Text"}}}})));
+    assert!(!validator.is_valid(&json!({"documents": {"terms": {"body": {"deutsch": "Text"}}}})));
+    assert!(!validator.is_valid(&json!({"documents": {"terms": {"body": {"de": " \t"}}}})));
+}
+
+#[test]
+fn the_renderings_say_where_inside_the_key_each_refinement_is() {
+    let refined = localised()
+        .refine("default_locale", Refinement::pattern(LOCALE))
+        .and_then(|schema| schema.refine("documents.*.body", Refinement::entry_names(LOCALE)))
+        .and_then(|schema| schema.refine("documents.*.body.*", Refinement::non_blank()))
+        .expect("applies");
+
+    let markdown = refined.to_markdown();
+    let locale = markdown
+        .lines()
+        .find(|line| line.starts_with("| `default_locale`"))
+        .expect("the key has a row");
+    // A table cell escapes `|`, as it does in every other cell.
+    let escaped = LOCALE.replace('|', r"\|");
+    assert!(
+        locale.contains(&format!("`String`, matches `{escaped}`")),
+        "{locale}"
+    );
+    let documents = markdown
+        .lines()
+        .find(|line| line.starts_with("| `documents`"))
+        .expect("the key has a row");
+    assert!(
+        documents.contains(&format!(
+            "`BTreeMap<String, Page>`, at `*.body`: entry names match `{escaped}`, at `*.body.*`: \
+             matches `"
+        )),
+        "{documents}"
+    );
+
+    let example = refined.to_toml_example();
+    assert!(
+        example.contains(&format!("# Matches: {LOCALE}\n")),
+        "{example}"
+    );
+    assert!(
+        example.contains(&format!("# Entry names match at *.body: {LOCALE}\n")),
+        "{example}"
+    );
+    assert!(
+        example.contains(&format!(
+            "# Matches at *.body.*: {}\n",
+            Refinement::NON_BLANK
+        )),
+        "{example}"
+    );
+}
+
 // ---- the producer refusal the refinement could otherwise violate ----
 
 #[derive(Deserialize, Serialize, Describe)]

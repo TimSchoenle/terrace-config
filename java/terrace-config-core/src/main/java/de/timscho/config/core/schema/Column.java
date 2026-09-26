@@ -89,20 +89,8 @@ public enum Column {
         // Part of what the value has to be, so beside the type. Read off the constraint, which is
         // what a validator reads too.
         final List<String> parts = new ArrayList<>();
-        final List<String> entries = Refiner.requiredEntries(key);
-        if (!entries.isEmpty()) {
-            final StringBuilder required = new StringBuilder();
-            for (final String entry : entries) {
-                if (!required.isEmpty()) {
-                    required.append(", ");
-                }
-                required.append('`').append(escape(entry)).append('`');
-            }
-            parts.add("must contain: " + required);
-        }
-        final String pattern = Refiner.entryNamePattern(key);
-        if (pattern != null) {
-            parts.add("entry names match `" + escape(pattern) + "`");
+        for (final Refiner.Tightening tightening : Refiner.tightenings(key)) {
+            parts.add(tightened(tightening));
         }
         if (parts.isEmpty()) {
             return shape;
@@ -111,6 +99,26 @@ public enum Column {
             return String.join(", ", parts);
         }
         return shape + ", " + String.join(", ", parts);
+    }
+
+    /** One tightening, as the type cell says it: the key's own bare, one inside it after its position. */
+    private static String tightened(final Refiner.Tightening tightening) {
+        final String said;
+        if (tightening instanceof Refiner.Entries entries) {
+            final StringBuilder required = new StringBuilder();
+            for (final String entry : entries.entries()) {
+                if (!required.isEmpty()) {
+                    required.append(", ");
+                }
+                required.append('`').append(escape(entry)).append('`');
+            }
+            said = "must contain: " + required;
+        } else if (tightening instanceof Refiner.Names names) {
+            said = "entry names match `" + escape(names.pattern()) + "`";
+        } else {
+            said = "matches `" + escape(((Refiner.Matches) tightening).pattern()) + "`";
+        }
+        return tightening.at().isEmpty() ? said : "at `" + escape(tightening.at()) + "`: " + said;
     }
 
     private static String renderShape(final Key key) {

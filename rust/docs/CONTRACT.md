@@ -333,6 +333,22 @@ entry the pattern rejects is refused in whichever order the two arrive, and a de
 entry is dropped exactly as one lacking a required entry is. A document carrying `propertyNames` is
 published at `schema_version: 3`; one that carries none stays at `2`.
 
+A path may continue **inside** a key, wherever the type described a position: `*` is the element
+every entry of a map or item of a sequence shares, and a field name is a field of an element struct.
+`Refinement::pattern` holds a string to a portable pattern, and `Refinement::non_blank()` is the one
+common enough to ship ready-made — the negation of `str::trim().is_empty()`, exactly:
+
+```rust
+let schema = schema
+    .refine("legal.default_locale", Refinement::pattern(LOCALE_TAG))?
+    .refine("legal.documents.*.body", Refinement::entry_names(LOCALE_TAG))?
+    .refine("legal.documents.*.body.*", Refinement::non_blank())?;
+```
+
+Every rendering names such a tightening by its position inside the key — `at \`*.body\`: entry names
+match …` — and a single entry of a map, whose name is the operator's, is no position: it is refused
+with the reason, as is a field the element does not declare.
+
 [refinements]: ../../spec/v1/FORMAT.md#refinements
 [portable]: ../../spec/v1/FORMAT.md#portable-patterns
 

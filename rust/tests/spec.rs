@@ -263,6 +263,75 @@ impl Refine for NamedLegalPagesRefinements {
     }
 }
 
+/// A handbook whose chapters are written in several locales: every position a refinement can reach
+/// inside a key, and a string key beside them.
+#[derive(Deserialize, Serialize, Describe)]
+struct Handbook {
+    /// The locale a chapter falls back to.
+    #[serde(default = "english")]
+    default_locale: String,
+    /// Chapters, by slug.
+    #[config(element)]
+    #[serde(default = "default_chapters")]
+    chapters: BTreeMap<String, Chapter>,
+}
+
+impl Default for Handbook {
+    fn default() -> Self {
+        Self {
+            default_locale: english(),
+            chapters: default_chapters(),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Chapter {
+    /// Heading, by locale.
+    #[serde(default)]
+    title: BTreeMap<String, String>,
+    /// Text, by locale.
+    #[serde(default)]
+    body: BTreeMap<String, String>,
+}
+
+fn english() -> String {
+    "en".to_owned()
+}
+
+fn default_chapters() -> BTreeMap<String, Chapter> {
+    BTreeMap::from([(
+        "intro".to_owned(),
+        Chapter {
+            title: BTreeMap::from([("en".to_owned(), "Introduction".to_owned())]),
+            body: BTreeMap::from([("en".to_owned(), "Start here.".to_owned())]),
+        },
+    )])
+}
+
+/// `LocaleTag::from_str`: a two- or three-letter language, an optional script, an optional region.
+const LOCALE: &str = "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$";
+
+/// What the handbook publishes about the text its types cannot describe.
+struct HandbookRefinements;
+
+impl Refine for HandbookRefinements {
+    fn refinements(&self) -> Vec<(String, Refinement)> {
+        vec![
+            ("default_locale".to_owned(), Refinement::pattern(LOCALE)),
+            (
+                "chapters.*.body".to_owned(),
+                Refinement::entry_names(LOCALE),
+            ),
+            ("chapters.*.body.*".to_owned(), Refinement::non_blank()),
+            (
+                "chapters.*.title".to_owned(),
+                Refinement::required_entries(["en"]),
+            ),
+        ]
+    }
+}
+
 #[derive(Deserialize, Serialize, Default, Describe)]
 #[serde(rename_all = "lowercase")]
 enum LogLevel {
@@ -360,6 +429,7 @@ fn cases() -> Vec<(&'static str, Contract)> {
         ("unnameable-key", unnameable_key()),
         ("required-entries", required_entries()),
         ("entry-names", entry_names()),
+        ("element-patterns", element_patterns()),
         ("reload", reload()),
     ]
 }
@@ -429,6 +499,18 @@ fn entry_names() -> Contract {
         .refine_with("legal", &NamedLegalPagesRefinements)
         .expect("every required entry is a name the patterns admit")
         .into_contract(App::new("site").version("1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+fn element_patterns() -> Contract {
+    Terrace::new("BOOK_")
+        .schema::<Handbook>()
+        .with_defaults_from(&Handbook::default())
+        .expect("the default config serialises")
+        .refine_with("", &HandbookRefinements)
+        .expect("every position is described and the default satisfies every refinement")
+        .into_contract(App::new("handbook").version("1.0.0"))
         .build()
         .expect("the contract has nothing to refuse")
 }
