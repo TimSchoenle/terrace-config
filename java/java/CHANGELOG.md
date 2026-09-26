@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.5.0...terrace-config-java-v0.6.0) (2026-09-26)
+
+
+### Features
+
+* **schema:** refine a map's entry names with a portable pattern ([#204](https://github.com/TimSchoenle/terrace-config/issues/204)) ([e8ef79d](https://github.com/TimSchoenle/terrace-config/commit/e8ef79d7d843ac141950be558ed1fec7db07a162))
+* **schema:** string patterns, addressable inside a key's element schema ([#206](https://github.com/TimSchoenle/terrace-config/issues/206)) ([75cec22](https://github.com/TimSchoenle/terrace-config/commit/75cec22cf86a7215821a1925e778e153ef2c9ed8))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.fasterxml.jackson.core:jackson-databind to v2.22.3 ([#195](https://github.com/TimSchoenle/terrace-config/issues/195)) ([5c28e86](https://github.com/TimSchoenle/terrace-config/commit/5c28e862b03a465ddfde41fc24dc7a6ca0a0c544))
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.7.0 ([#196](https://github.com/TimSchoenle/terrace-config/issues/196)) ([8b9609d](https://github.com/TimSchoenle/terrace-config/commit/8b9609da30e70188332923aac120a53a7c8ac60c))
+* **deps:** update dependency tools.jackson.core:jackson-databind to v3.2.3 ([#198](https://github.com/TimSchoenle/terrace-config/issues/198)) ([1ce6cb3](https://github.com/TimSchoenle/terrace-config/commit/1ce6cb3e277e95fde1f87150045fcc02dd24aa06))
+
 ## [0.5.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.4.0...terrace-config-java-v0.5.0) (2026-09-23)
 
 
