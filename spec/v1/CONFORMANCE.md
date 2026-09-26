@@ -77,7 +77,7 @@ do not treat failing to as a defect.
 
 ## The corpus
 
-```
+```text
 spec/v1/conformance/<case>/
   README.md        what the case pins, and the source that produces it in each language
   contract.json    the document

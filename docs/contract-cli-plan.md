@@ -132,7 +132,7 @@ including the ones that do not exist yet.**
 
 ## 2. The seam
 
-```
+```text
 per language, once                    the binary, for everyone
 ───────────────────────────────       ────────────────────────────────────────────────
 types ──> Schema ──> Contract ──JSON──> render   --format markdown|toml|json-schema|…
@@ -173,7 +173,7 @@ finished.
 
 ## 3. Where it lives
 
-```
+```text
 spec/     the format, the conformance corpus, and (new) the rendered goldens
 rust/     the Rust implementation — loader, producer, macros, fuzz
 java/     the Java implementations — annotations, core, processor, loader, spring, tck
@@ -193,7 +193,7 @@ and a JSON Schema engine.
 
 ### Module layout
 
-```
+```text
 cli/
   Cargo.toml
   src/
@@ -361,7 +361,7 @@ runtime audience (§2). Two renderers is the state this whole plan exists to lea
 
 So the corpus grows a rendered half:
 
-```
+```text
 spec/v1/conformance/<case>/
   contract.json          what a producer emits            (exists)
   README.md              what the case is for             (exists)
@@ -556,7 +556,7 @@ language-neutral format. Two things keep that from being a mistake.
 "`spec/v1/` describes `terrace_contract: 1` and will not be edited to describe anything else." They
 land in an independently versioned tree:
 
-```
+```text
 spec/helm/v1/
   DECLARATION.md           what config-contract.yaml means
   declaration.schema.json  validates one, and ships with the binary

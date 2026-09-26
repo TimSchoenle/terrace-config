@@ -33,7 +33,7 @@ So `src/mutate.rs` reads the input as directives applied to one of the stored co
 The fuzzer mutates directives; the directives mutate a document that was valid to begin with; and
 what reaches the oracle is deep enough for a rule to have an opinion about it.
 
-```
+```text
 full-surface
 k=0:secret=true
 g=PORT*
