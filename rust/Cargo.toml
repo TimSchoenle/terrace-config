@@ -45,7 +45,11 @@ loader = ["dep:figment", "dep:serde"]
 # `serde/derive` is pulled in here rather than in `loader` on purpose: the loader itself only
 # needs `DeserializeOwned` as a bound, and a service that loads configuration at boot has no
 # reason to compile `serde_derive` on this crate's account.
-schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros"]
+#
+# `regex` is the one engine a pattern refinement is checked with. A refinement's pattern is held to a
+# portable subset before it is published, and a default is held to the refined constraint — which
+# means matching a name or a value against that pattern here, in the crate, rather than trusting it.
+schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros", "dep:regex"]
 # `schema-cli` is the generator every consumer of `schema` was writing by hand: the `--format`
 # vocabulary, the argument parsing, the dispatch across the six renderings, and the two readers
 # that check a built image against what was generated. It costs no dependency `schema` did not
@@ -97,6 +101,7 @@ serde = { version = "1", optional = true }
 # two crates are one artefact and a version skew between them is a compile error at best.
 terrace-config-macros = { version = "0.14.0", path = "macros", optional = true }
 serde_json = { version = "1", optional = true }
+regex = { version = "1", optional = true }
 
 # --- reload ---
 notify = { version = "8.2", optional = true }

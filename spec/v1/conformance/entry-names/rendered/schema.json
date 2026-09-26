@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "dist_dir": {
+      "default": "public",
+      "description": "Bundle directory the readiness probe checks.",
+      "type": "string"
+    },
+    "legal": {
+      "additionalProperties": false,
+      "properties": {
+        "documents": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "description": "Markdown body.",
+                "type": "string"
+              },
+              "title": {
+                "description": "Heading of the page.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "type": "object"
+          },
+          "description": "Legal documents, by the name the site links them under.\n\nDefaults to none, which the library refuses at boot — so the refined contract publishes the\nkey as required, with no default.",
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+          },
+          "required": [
+            "imprint",
+            "privacy"
+          ],
+          "type": "object"
+        },
+        "links": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {
+            "home": "/"
+          },
+          "description": "Footer links, by label.\n\nDefaults to a `home` link, which is the one the refinement requires — so this default\nsurvives it.",
+          "propertyNames": {
+            "pattern": "^[a-z]+$"
+          },
+          "required": [
+            "home"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "documents"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "legal"
+  ],
+  "type": "object"
+}

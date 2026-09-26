@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
-use terrace_config::schema::{App, Describe, Key, Refine, Refinement, Schema};
+use terrace_config::schema::{
+    App, Describe, Key, LATEST_SCHEMA_VERSION, Refine, Refinement, SCHEMA_VERSION, Schema,
+};
 
 #[derive(Deserialize, Serialize, Default, Describe)]
 struct Host {
@@ -465,6 +467,238 @@ fn markdown_and_the_toml_example_say_what_the_map_must_contain() {
     );
     assert!(
         example.contains("# Required: nothing loads until this key is supplied.\ndocuments = {}"),
+        "{example}"
+    );
+}
+
+// ---- entry names ----
+
+/// `Slug::from_str` in the legal-pages library that asked for this: one to 64 ASCII bytes, the first
+/// a lower-case letter or digit, the rest those or `_` and `-`.
+const SLUG: &str = "^[a-z0-9][a-z0-9_-]{0,63}$";
+
+fn slugs() -> Refinement {
+    Refinement::entry_names(SLUG)
+}
+
+/// A host whose default names a document the pattern rejects.
+fn with_a_capitalised_document() -> Host {
+    let mut host = Host::default();
+    host.legal.documents.insert(
+        "Terms".to_owned(),
+        LegalDocument {
+            title: "Terms".to_owned(),
+            body: String::new(),
+        },
+    );
+    host
+}
+
+#[test]
+fn an_entry_name_pattern_lands_in_property_names_and_raises_the_version() {
+    let unrefined = described();
+    assert_eq!(unrefined.schema_version, SCHEMA_VERSION);
+
+    let refined = unrefined
+        .refine(DOCUMENTS, slugs())
+        .expect("a map key accepts an entry-name pattern");
+    assert_eq!(
+        constraint(&refined, DOCUMENTS)["propertyNames"],
+        json!({"pattern": SLUG})
+    );
+    assert_eq!(refined.schema_version, LATEST_SCHEMA_VERSION);
+    // The element the type described is untouched.
+    assert_eq!(
+        constraint(&refined, DOCUMENTS)["additionalProperties"]["properties"]["title"]["type"],
+        json!("string")
+    );
+
+    // Required entries alone are version 2's vocabulary, and do not move it.
+    let entries_only = described()
+        .refine(DOCUMENTS, imprint_and_privacy())
+        .expect("the refinement applies");
+    assert_eq!(entries_only.schema_version, SCHEMA_VERSION);
+}
+
+#[test]
+fn a_pattern_outside_the_portable_subset_is_refused_naming_the_construct() {
+    for (pattern, reason) in [
+        (r"^\S+$", r"`\S` names a different set of characters"),
+        ("^a.b$", "`.` excludes a different set of line terminators"),
+        ("^[a-z]+?$", "cannot itself be repeated or made lazy"),
+        ("(?=a)", "lookaround"),
+        ("", "an empty pattern"),
+    ] {
+        let message = refusal(described().refine(DOCUMENTS, Refinement::entry_names(pattern)));
+        assert!(
+            message.contains("cannot be the entry-name pattern of `legal.documents`"),
+            "{message}"
+        );
+        assert!(message.contains(reason), "{pattern:?}: {message}");
+        assert!(message.contains("Portable patterns"), "{message}");
+    }
+}
+
+#[test]
+fn an_entry_name_pattern_needs_a_map_too() {
+    for path in ["legal.title", "legal.assets", "port"] {
+        let message = refusal(described().refine(path, slugs()));
+        assert!(
+            message.contains(&format!("`{path}` is not a map")),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn one_pattern_per_key_and_the_same_one_twice_changes_nothing() {
+    let once = described().refine(DOCUMENTS, slugs()).expect("applies");
+    let twice = once
+        .clone()
+        .refine(DOCUMENTS, slugs())
+        .expect("applies again");
+    assert_eq!(once, twice);
+
+    let message = refusal(once.refine(DOCUMENTS, Refinement::entry_names("^[a-z]+$")));
+    assert!(
+        message.contains("already holds its entry names to"),
+        "{message}"
+    );
+    assert!(message.contains("Publish one pattern"), "{message}");
+}
+
+#[test]
+fn a_required_entry_the_pattern_rejects_is_refused_in_either_order() {
+    let digits_only = Refinement::entry_names("^[a-z]+$");
+    let entries = Refinement::required_entries(["imprint", "privacy2"]);
+
+    let pattern_first = refusal(
+        described()
+            .refine(DOCUMENTS, digits_only.clone())
+            .and_then(|schema| schema.refine(DOCUMENTS, entries.clone())),
+    );
+    assert!(
+        pattern_first.contains("`privacy2` cannot be a required entry of `legal.documents`"),
+        "{pattern_first}"
+    );
+    assert!(pattern_first.contains("does not match"), "{pattern_first}");
+
+    let entries_first = refusal(
+        described()
+            .refine(DOCUMENTS, entries)
+            .and_then(|schema| schema.refine(DOCUMENTS, digits_only)),
+    );
+    assert!(
+        entries_first.contains("requires the entry `privacy2`"),
+        "{entries_first}"
+    );
+
+    // Entries the pattern admits are fine, whichever arrived first.
+    let both = described()
+        .refine(DOCUMENTS, imprint_and_privacy())
+        .and_then(|schema| schema.refine(DOCUMENTS, slugs()))
+        .expect("every required entry is a slug");
+    assert_eq!(
+        constraint(&both, DOCUMENTS)["required"],
+        json!(["imprint", "privacy"])
+    );
+}
+
+#[test]
+fn a_default_naming_an_entry_the_pattern_rejects_is_not_a_default_in_either_order() {
+    let refine_first = described()
+        .refine(DOCUMENTS, slugs())
+        .expect("applies")
+        .with_defaults_from(&with_a_capitalised_document())
+        .expect("the default config serialises");
+    let defaults_first = described()
+        .with_defaults_from(&with_a_capitalised_document())
+        .expect("the default config serialises")
+        .refine(DOCUMENTS, slugs())
+        .expect("applies");
+    assert_eq!(refine_first, defaults_first);
+
+    let documents = key(&refine_first, DOCUMENTS);
+    assert!(documents.required, "a `Terms` entry is refused at boot");
+    assert_eq!(documents.default, None);
+    assert_eq!(documents.default_value, None);
+
+    // A default every name of which is a slug stays one.
+    let kept = defaulted().refine(DOCUMENTS, slugs()).expect("applies");
+    assert!(!key(&kept, DOCUMENTS).required);
+    assert!(key(&kept, DOCUMENTS).default_value.is_some());
+}
+
+#[test]
+fn the_json_schema_and_the_contract_hold_entry_names_to_the_pattern() {
+    let refined = defaulted()
+        .refine_with("legal", &LegalPages)
+        .and_then(|schema| schema.refine(DOCUMENTS, slugs()))
+        .expect("the refinements apply");
+    let validator = document_validator(&refined.to_json_schema().expect("it renders"));
+
+    let page = json!({"title": "x"});
+    let both = json!({"imprint": page, "privacy": page});
+    assert!(validator.is_valid(&json!({"legal": {"documents": both}})));
+    let mut capitalised = both;
+    capitalised["Terms"] = page;
+    assert!(!validator.is_valid(&json!({"legal": {"documents": capitalised}})));
+
+    let contract = refined
+        .into_contract(App::new("portfolio"))
+        .build()
+        .expect("a refined schema builds");
+    let document: Json =
+        serde_json::from_str(&contract.to_json().expect("it serialises")).expect("JSON");
+    assert_eq!(
+        document["schema"]["schema_version"],
+        json!(LATEST_SCHEMA_VERSION)
+    );
+    assert_eq!(
+        contract.json_schema["properties"]["legal"]["properties"]["documents"]["propertyNames"],
+        json!({"pattern": SLUG})
+    );
+}
+
+#[test]
+fn a_merge_is_written_at_the_later_version() {
+    let refined = described().refine(DOCUMENTS, slugs()).expect("applies");
+    let unrefined = Terrace::new("PORTFOLIO_").schema::<Workers>();
+    assert_eq!(
+        unrefined.clone().merge(refined.clone()).schema_version,
+        LATEST_SCHEMA_VERSION
+    );
+    assert_eq!(
+        refined.merge(unrefined).schema_version,
+        LATEST_SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn markdown_and_the_toml_example_say_what_the_names_must_match() {
+    let refined = defaulted()
+        .refine(DOCUMENTS, imprint_and_privacy())
+        .and_then(|schema| schema.refine(DOCUMENTS, slugs()))
+        .expect("the refinements apply");
+
+    let markdown = refined.to_markdown();
+    let row = markdown
+        .lines()
+        .find(|line| line.starts_with("| `legal.documents`"))
+        .expect("the key has a row");
+    assert!(
+        row.contains(
+            "`BTreeMap<String, LegalDocument>`, must contain: `imprint`, `privacy`, entry names \
+             match `^[a-z0-9][a-z0-9_-]{0,63}$`"
+        ),
+        "{row}"
+    );
+
+    let example = refined.to_toml_example();
+    assert!(
+        example.contains(
+            "# Must contain: imprint, privacy\n# Entry names match: ^[a-z0-9][a-z0-9_-]{0,63}$\n"
+        ),
         "{example}"
     );
 }

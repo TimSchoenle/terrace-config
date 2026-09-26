@@ -163,6 +163,10 @@ public class TomlExampleRenderer {
         if (!entries.isEmpty()) {
             comment(out, "Must contain: " + String.join(", ", entries));
         }
+        final String pattern = Refiner.entryNamePattern(key);
+        if (pattern != null) {
+            comment(out, "Entry names match: " + pattern);
+        }
     }
 
     private static void appendAliasesComment(final StringBuilder out, final Key key) {

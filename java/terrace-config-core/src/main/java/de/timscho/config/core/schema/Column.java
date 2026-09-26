@@ -1,6 +1,7 @@
 package de.timscho.config.core.schema;
 
 import de.timscho.config.core.model.Key;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -87,21 +88,29 @@ public enum Column {
         final String shape = renderShape(key);
         // Part of what the value has to be, so beside the type. Read off the constraint, which is
         // what a validator reads too.
+        final List<String> parts = new ArrayList<>();
         final List<String> entries = Refiner.requiredEntries(key);
-        if (entries.isEmpty()) {
+        if (!entries.isEmpty()) {
+            final StringBuilder required = new StringBuilder();
+            for (final String entry : entries) {
+                if (!required.isEmpty()) {
+                    required.append(", ");
+                }
+                required.append('`').append(escape(entry)).append('`');
+            }
+            parts.add("must contain: " + required);
+        }
+        final String pattern = Refiner.entryNamePattern(key);
+        if (pattern != null) {
+            parts.add("entry names match `" + escape(pattern) + "`");
+        }
+        if (parts.isEmpty()) {
             return shape;
         }
-        final StringBuilder required = new StringBuilder();
-        for (final String entry : entries) {
-            if (!required.isEmpty()) {
-                required.append(", ");
-            }
-            required.append('`').append(escape(entry)).append('`');
-        }
         if (key.getTy() == null && key.getValues().isEmpty()) {
-            return "must contain: " + required;
+            return String.join(", ", parts);
         }
-        return shape + ", must contain: " + required;
+        return shape + ", " + String.join(", ", parts);
     }
 
     private static String renderShape(final Key key) {

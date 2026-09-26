@@ -1,11 +1,14 @@
 package de.timscho.config.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import java.util.List;
 import java.util.Map;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.jspecify.annotations.Nullable;
@@ -161,4 +164,15 @@ public class Key {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @Nullable Reload reload;
+
+    /**
+     * The constraint as the type stated it, kept from the first time a refinement tightens it.
+     *
+     * <p>Never published and never compared: it exists for the one rule that needs both halves, that
+     * a default the <em>refinement</em> rejects is not a default. See {@link Schema#refine}.
+     */
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    @Nullable Map<String, Object> stated;
 }

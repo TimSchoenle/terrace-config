@@ -76,12 +76,14 @@ fn evaluate(schema: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
                 bound(keyword, argument, value, at)
             }
             "minLength" | "maxLength" => length(keyword, argument, value, at),
+            "pattern" => pattern(argument, value, at),
             "minItems" | "maxItems" => count(keyword, argument, value, at),
             "uniqueItems" => unique(argument, value, at),
             "items" => items(argument, value, at, depth),
             "required" => required(argument, value, at),
             "properties" => properties(argument, value, at, depth),
             "additionalProperties" => additional(schema, argument, value, at, depth),
+            "propertyNames" => names(argument, value, at, depth),
             "allOf" => all_of(argument, value, at, depth),
             "anyOf" => any_of(argument, value, at, depth),
             annotation if ANNOTATIONS.contains(&annotation) => Verdict::Holds,
@@ -247,6 +249,22 @@ fn length(keyword: &str, argument: &Json, value: &Json, at: &str) -> Verdict {
     }
 }
 
+/// `pattern`, for a pattern inside the portable subset — the only patterns this crate can promise
+/// every other engine reads as it does. Any other is [`Verdict::Undecided`].
+fn pattern(argument: &Json, value: &Json, at: &str) -> Verdict {
+    let Some(text) = value.as_str() else {
+        return Verdict::Holds;
+    };
+    let Some(matcher) = argument.as_str().and_then(super::pattern::matcher) else {
+        return Verdict::Undecided;
+    };
+    if matcher.is_match(text) {
+        Verdict::Holds
+    } else {
+        fails(at, &format!("is {value}, which does not match {argument}"))
+    }
+}
+
 fn count(keyword: &str, argument: &Json, value: &Json, at: &str) -> Verdict {
     let Some(items) = value.as_array() else {
         return Verdict::Holds;
@@ -368,6 +386,25 @@ fn additional(
             Json::Bool(false) => fails(&member(at, name), "is not a key this table declares"),
             Json::Object(_) => evaluate(argument, held, &member(at, name), depth + 1),
             _ => Verdict::Undecided,
+        };
+        result = result.and(found);
+        if matches!(result, Verdict::Fails(_)) {
+            break;
+        }
+    }
+    result
+}
+
+/// `propertyNames`: every entry name, as a string, against the schema.
+fn names(argument: &Json, value: &Json, at: &str, depth: usize) -> Verdict {
+    let Some(fields) = value.as_object() else {
+        return Verdict::Holds;
+    };
+    let mut result = Verdict::Holds;
+    for name in fields.keys() {
+        let found = match evaluate(argument, &Json::String(name.clone()), "", depth + 1) {
+            Verdict::Fails(reason) => fails(at, &format!("has an entry name that {reason}")),
+            other => other,
         };
         result = result.and(found);
         if matches!(result, Verdict::Fails(_)) {
@@ -508,7 +545,7 @@ mod tests {
 
     #[test]
     fn an_unknown_keyword_is_undecided_and_never_satisfies_a_not() {
-        let unknown = json!({"pattern": "^a$"});
+        let unknown = json!({"format": "email"});
         assert_eq!(verdict(&unknown, &json!("b")), Verdict::Undecided);
         // Read as holding, the `not` would refuse "b" on the strength of a keyword nobody checked.
         assert_eq!(
@@ -516,8 +553,30 @@ mod tests {
             Verdict::Undecided
         );
         // A certain failure still wins beside it.
-        let mixed = json!({"type": "integer", "pattern": "^a$"});
+        let mixed = json!({"type": "integer", "format": "email"});
         assert!(matches!(verdict(&mixed, &json!("b")), Verdict::Fails(_)));
+    }
+
+    #[test]
+    fn entry_names_are_held_to_the_pattern_and_a_foreign_pattern_is_undecided() {
+        let slugs = json!({"type": "object", "propertyNames": {"pattern": "^[a-z]+$"}});
+        assert_eq!(verdict(&slugs, &json!({"terms": 1})), Verdict::Holds);
+        assert_eq!(
+            fails(&slugs, &json!({"terms": 1, "Privacy": 2})),
+            "has an entry name that is \"Privacy\", which does not match \"^[a-z]+$\""
+        );
+        assert_eq!(
+            fails(
+                &json!({"additionalProperties": slugs}),
+                &json!({"legal": {"X": 1}})
+            ),
+            "`legal` has an entry name that is \"X\", which does not match \"^[a-z]+$\""
+        );
+        // `\d` is outside the portable subset, so nothing here is certain about it.
+        assert_eq!(
+            verdict(&json!({"pattern": r"^\d+$"}), &json!("x")),
+            Verdict::Undecided
+        );
     }
 
     #[test]

@@ -317,7 +317,24 @@ mounted, and the host calls `schema.refine_with("legal", &legal_config)`. The pu
 default lacking an entry is dropped and the key published `required: true`, whichever order the
 refinement and the defaults were applied in. See [FORMAT.md, *Refinements*][refinements].
 
+A map's entry *names* are the second thing a type cannot state. The same library refuses a document
+whose name is not a slug, and `Refinement::entry_names` publishes that check as `propertyNames`:
+
+```rust
+let schema = schema
+    .refine("legal.documents", Refinement::entry_names("^[a-z0-9][a-z0-9_-]{0,63}$"))?;
+```
+
+The pattern must lie inside the [portable subset][portable] — no `.`, no `\d`, `\w`, `\s` or `\b`,
+no lookaround — because the gate applying it may be an ECMA-262 engine, Java's or Python's, and a
+pattern meaning one thing to the producer and another to the gate is exact in one language and
+unsound in the next. `refine` names the construct it refused and the portable spelling. A required
+entry the pattern rejects is refused in whichever order the two arrive, and a default naming such an
+entry is dropped exactly as one lacking a required entry is. A document carrying `propertyNames` is
+published at `schema_version: 3`; one that carries none stays at `2`.
+
 [refinements]: ../../spec/v1/FORMAT.md#refinements
+[portable]: ../../spec/v1/FORMAT.md#portable-patterns
 
 ## How a validator reads it
 

@@ -374,7 +374,12 @@ const ASSERTIONS: &[&str] = &[
 /// `additionalProperties` is the one that is two things at once: `true` and `false` are the
 /// open/closed flag, and an *object* is a map's element schema. Both spellings are legal in the
 /// same field and mean different things, so every reader branches on the type rather than the name.
-const CONTAINERS: &[&str] = &["items", "additionalProperties", "properties"];
+const CONTAINERS: &[&str] = &[
+    "items",
+    "additionalProperties",
+    "properties",
+    "propertyNames",
+];
 
 /// Flat keywords describing a container rather than a scalar, arriving with `schema_version: 2`.
 const COLLECTIONS: &[&str] = &["required", "uniqueItems", "minItems", "maxItems"];
@@ -634,6 +639,22 @@ fn container(schema: &Map<String, Json>, value: &Json, at: &str) -> Result<Optio
             }
         }
 
+        // Every entry name, as the string it is, against the name schema: `schema_version: 3`'s
+        // entry-name refinement. Named in the message, since the name is what the operator edits.
+        if let Some(names) = schema
+            .get("propertyNames")
+            .filter(|names| names.is_object())
+        {
+            for name in fields.keys() {
+                if let Some(failure) = assert_value(names, &Json::String(name.clone()), "")? {
+                    return Ok(Some(position(
+                        at,
+                        &format!("the entry name {}: {failure}", json_text(name)),
+                    )));
+                }
+            }
+        }
+
         // Only the object spelling is an element schema. `true` and `false` are the open/closed
         // flag, and neither says anything about a value — the union is where closure is decided,
         // and it decides it for the document rather than for one key.
@@ -857,6 +878,39 @@ mod tests {
             )
             .expect("a known vocabulary"),
             Range::Ok
+        );
+    }
+
+    #[test]
+    fn a_map_entry_name_the_pattern_refuses_is_named() {
+        let map = entry(&json!({
+            "path": "legal.documents",
+            "text_form": "structured",
+            "constraint": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+                "propertyNames": {"pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+            },
+        }));
+        assert_eq!(
+            range(Entry(&map), "figment", r#"{ terms = "t" }"#).expect("a known vocabulary"),
+            Range::Ok
+        );
+        assert_eq!(
+            range(Entry(&map), "figment", r#"{ terms = "t", Privacy = "p" }"#)
+                .expect("a known vocabulary"),
+            Range::Wrong(
+                r#"the entry name "Privacy": "Privacy" does not match ^[a-z0-9][a-z0-9_-]{0,63}$"#
+                    .to_owned()
+            )
+        );
+        // Inside an element too, named by position.
+        let nested = json!({"type": "object", "additionalProperties": {
+            "type": "object", "propertyNames": {"pattern": "^[a-z]{2}$"}}});
+        assert_eq!(
+            assert_value(&nested, &json!({"terms": {"de": "x", "EN": "y"}}), "")
+                .expect("a known vocabulary"),
+            Some(r#".terms: the entry name "EN": "EN" does not match ^[a-z]{2}$"#.to_owned())
         );
     }
 

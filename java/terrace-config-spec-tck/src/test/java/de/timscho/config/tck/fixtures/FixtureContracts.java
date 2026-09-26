@@ -15,6 +15,7 @@ import de.timscho.config.core.model.TextForm;
 import de.timscho.config.core.schema.Refine;
 import de.timscho.config.core.schema.Refinement;
 import de.timscho.config.loader.TerraceLoader;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -74,6 +75,30 @@ public final class FixtureContracts {
                 .refineWith("legal", legalPagesRefinements());
         final App app = App.builder().name("site").version("1.0.0").build();
         return ContractAssembler.assemble(schema, app, producer());
+    }
+
+    /**
+     * The {@code entry-names} case: the same host and defaults as {@link #requiredEntries()}, with
+     * the library also publishing what its runtime check does to a name — a slug for a document,
+     * lower-case letters for a footer label. Both carry {@code propertyNames}, so the document is
+     * published at {@code schema_version: 3}.
+     */
+    public static Contract entryNames() {
+        final Schema schema = TerraceLoader.of("SITE_")
+                .schema(RequiredEntriesConfigDescriptor.DESCRIPTOR)
+                .withDefaultsFromValue(defaultsAsMap(new RequiredEntriesConfig()))
+                .refineWith("legal", namedLegalPagesRefinements());
+        final App app = App.builder().name("site").version("1.0.0").build();
+        return ContractAssembler.assemble(schema, app, producer());
+    }
+
+    /** What the legal-pages library publishes about names as well, relative to its mount. */
+    private static Refine namedLegalPagesRefinements() {
+        final List<Refine.At> refinements =
+                new ArrayList<>(legalPagesRefinements().refinements());
+        refinements.add(new Refine.At("documents", Refinement.entryNames("^[a-z0-9][a-z0-9_-]{0,63}$")));
+        refinements.add(new Refine.At("links", Refinement.entryNames("^[a-z]+$")));
+        return () -> refinements;
     }
 
     /** What the legal-pages library publishes, relative to its mount. */

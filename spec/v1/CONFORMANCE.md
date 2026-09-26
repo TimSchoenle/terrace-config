@@ -106,6 +106,7 @@ renderers that can each rewrite the expectation agree by construction and prove 
 | [`full-surface`](conformance/full-surface/) | Every key field a producer can be asked to fill — secret, note, alias, choice, bounded number, container-of-choice, nested struct, required key, reserved loader variable, declared and ignored externals. |
 | [`unnameable-key`](conformance/unnameable-key/) | A key no variable can name, and the `unreachable` reason that says which kind. |
 | [`required-entries`](conformance/required-entries/) | A map's required entries supplied at build time rather than by its type: `required` inside `constraint`, a default the refinement rejects turned into a required key, and the tables above it made required in the rendered schema. |
+| [`entry-names`](conformance/entry-names/) | A map's entry names held to a pattern supplied at build time: `propertyNames` inside `constraint`, required entries the pattern admits, and the document published at the lowest `schema_version` that holds the keyword. |
 | [`reload`](conformance/reload/) | A binary that rebuilds on a change: `schema.reload`, a `reload` class on every key, `restart` winning wherever it is written, and a reserved key that is `restart` whatever it was annotated. |
 
 ### Consumer cases
@@ -158,7 +159,8 @@ cd java
 ./gradlew :terrace-config-spec-tck:test
 ```
 
-Three checks per case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`), for a
+Three checks per case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`,
+`entry-names`), for a
 different reason each:
 the rendering validates against the meta-schema (tier 1); every dialect spelling — `env`, both file
 forms, every alias list, `unreachable` — agrees with this same shared corpus (tier 2); and the

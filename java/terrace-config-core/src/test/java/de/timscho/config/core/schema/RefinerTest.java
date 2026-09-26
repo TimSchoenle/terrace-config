@@ -201,6 +201,84 @@ class RefinerTest {
         assertThat(documents.get("required")).isEqualTo(List.of("imprint", "privacy"));
     }
 
+    private static final String SLUG = "^[a-z0-9][a-z0-9_-]{0,63}$";
+
+    @Test
+    void anEntryNamePatternLandsInPropertyNamesAndRaisesTheVersion() {
+        assertThat(described().getSchemaVersion()).isEqualTo(2);
+        final Schema refined = described().refine(DOCUMENTS, Refinement.entryNames(SLUG));
+        assertThat(documents(refined).getConstraint()).containsEntry("propertyNames", Map.of("pattern", SLUG));
+        assertThat(Refiner.entryNamePattern(documents(refined))).isEqualTo(SLUG);
+        assertThat(refined.getSchemaVersion()).isEqualTo(3);
+        assertThat(described().refine(DOCUMENTS, imprintAndPrivacy()).getSchemaVersion())
+                .isEqualTo(2);
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "^\\S+$|names a different set of characters",
+                "^a.b$|excludes a different set of line terminators",
+                "^[a-z]+?$|cannot itself be repeated or made lazy",
+                "(?=a)|lookaround"
+            })
+    void aPatternOutsideThePortableSubsetIsRefusedNamingTheConstruct(final String pattern, final String reason) {
+        assertThatThrownBy(() -> described().refine(DOCUMENTS, Refinement.entryNames(pattern)))
+                .isInstanceOf(RefinementException.class)
+                .hasMessageContaining("cannot be the entry-name pattern of `legal.documents`")
+                .hasMessageContaining(reason)
+                .hasMessageContaining("Portable patterns");
+    }
+
+    @Test
+    void onePatternPerKeyAndTheSameOneTwiceChangesNothing() {
+        final Schema once = described().refine(DOCUMENTS, Refinement.entryNames(SLUG));
+        assertThat(once.refine(DOCUMENTS, Refinement.entryNames(SLUG))).isEqualTo(once);
+        assertThatThrownBy(() -> once.refine(DOCUMENTS, Refinement.entryNames("^[a-z]+$")))
+                .hasMessageContaining("already holds its entry names to");
+    }
+
+    @Test
+    void aRequiredEntryThePatternRejectsIsRefusedInEitherOrder() {
+        final Refinement letters = Refinement.entryNames("^[a-z]+$");
+        final Refinement entries = Refinement.requiredEntries(List.of("imprint", "privacy2"));
+        assertThatThrownBy(() -> described().refine(DOCUMENTS, letters).refine(DOCUMENTS, entries))
+                .hasMessageContaining("`privacy2` cannot be a required entry of `legal.documents`")
+                .hasMessageContaining("does not match");
+        assertThatThrownBy(() -> described().refine(DOCUMENTS, entries).refine(DOCUMENTS, letters))
+                .hasMessageContaining("requires the entry `privacy2`");
+    }
+
+    @Test
+    void aDefaultNamingAnEntryThePatternRejectsIsNotADefaultInEitherOrder() {
+        final Map<String, Object> capitalised = Map.of("Terms", "t");
+        final Schema refineFirst =
+                described().refine(DOCUMENTS, Refinement.entryNames(SLUG)).withDefaultsFromValue(defaults(capitalised));
+        final Schema defaultsFirst =
+                described().withDefaultsFromValue(defaults(capitalised)).refine(DOCUMENTS, Refinement.entryNames(SLUG));
+        assertThat(refineFirst).isEqualTo(defaultsFirst);
+        assertThat(documents(refineFirst).isRequired()).isTrue();
+        assertThat(documents(refineFirst).getDefaultValue()).isNull();
+
+        final Schema kept = described()
+                .withDefaultsFromValue(defaults(Map.of("terms", "t")))
+                .refine(DOCUMENTS, Refinement.entryNames(SLUG));
+        assertThat(documents(kept).isRequired()).isFalse();
+        assertThat(documents(kept).getDefaultValue()).isEqualTo(Map.of("terms", "t"));
+    }
+
+    @Test
+    void theRenderingsSayWhatTheNamesMustMatch() {
+        final Schema refined = described()
+                .withDefaultsFromValue(defaults(Map.of()))
+                .refine(DOCUMENTS, imprintAndPrivacy())
+                .refine(DOCUMENTS, Refinement.entryNames(SLUG));
+        assertThat(refined.toMarkdown())
+                .contains("must contain: `imprint`, `privacy`, entry names match `" + SLUG + "`");
+        assertThat(refined.toTomlExample()).contains("# Must contain: imprint, privacy\n# Entry names match: " + SLUG);
+    }
+
     @Test
     void theRenderingsSayWhatTheMapMustContain() {
         final Schema refined =

@@ -67,7 +67,7 @@ pub const NARROW_MARKER: &str = "@config-shape-narrow";
 /// Anything outside this list is appended alphabetically rather than dropped — under-reporting a
 /// constraint is the failure this whole toolchain exists to remove, and it would be no better
 /// coming from a renderer.
-const ORDER: [&str; 19] = [
+const ORDER: [&str; 20] = [
     "type",
     "enum",
     "const",
@@ -84,6 +84,7 @@ const ORDER: [&str; 19] = [
     "maxItems",
     "uniqueItems",
     "required",
+    "propertyNames",
     "properties",
     "additionalProperties",
     "items",
@@ -530,8 +531,9 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
         types = vec!["object".to_owned()];
         // The producer's own fields, where it published any. A table key is normally split into one
         // contract key per field, so this is the hand-written case rather than the derive's — and
-        // dropping the fields there would describe a documented struct as an open table.
-        for keyword in ["required", "properties"] {
+        // dropping the fields there would describe a documented struct as an open table. A map's
+        // entry-name pattern travels with them, for the reason its required entries do.
+        for keyword in ["required", "properties", "propertyNames"] {
             if let Some(value) = held.get(keyword) {
                 schema.insert(keyword.to_owned(), copy_keyword(keyword, value));
             }
@@ -1772,18 +1774,25 @@ mod tests {
     }
 
     #[test]
-    fn a_map_keeps_the_entries_its_contract_requires() {
-        // A refined map: the entries its host refuses to start without travel into the chart's
+    fn a_map_keeps_the_entries_and_names_its_contract_requires() {
+        // A refined map: the entries its host refuses to start without, and the names it accepts,
+        // travel into the chart's
         // values schema, so an operator's editor and `helm lint` flag the omission before any
         // gate runs. Both the structured path and the plain one carry them.
         let constraint = json!({
             "type": "object",
             "additionalProperties": {"type": "object", "properties": {"title": {"type": "string"}}},
             "required": ["imprint", "privacy"],
+            "propertyNames": {"pattern": "^[a-z]+$"},
         });
         for structured in [true, false] {
             let held = expected(Some(&constraint), true, structured);
             assert_eq!(held["required"], json!(["imprint", "privacy"]), "{held}");
+            assert_eq!(
+                held["propertyNames"],
+                json!({"pattern": "^[a-z]+$"}),
+                "{held}"
+            );
             assert_eq!(
                 held["additionalProperties"]["properties"]["title"],
                 json!({"type": "string"})
