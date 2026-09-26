@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.6.0...terrace-contract-v0.7.0) (2026-09-26)
+
+
+### Features
+
+* **schema:** refine a map's entry names with a portable pattern ([#204](https://github.com/TimSchoenle/terrace-config/issues/204)) ([e8ef79d](https://github.com/TimSchoenle/terrace-config/commit/e8ef79d7d843ac141950be558ed1fec7db07a162))
+* **schema:** string patterns, addressable inside a key's element schema ([#206](https://github.com/TimSchoenle/terrace-config/issues/206)) ([75cec22](https://github.com/TimSchoenle/terrace-config/commit/75cec22cf86a7215821a1925e778e153ef2c9ed8))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.57.0 ([#199](https://github.com/TimSchoenle/terrace-config/issues/199)) ([977a2c2](https://github.com/TimSchoenle/terrace-config/commit/977a2c2ff6de064728f1ec9fa7067cf74e4eaa05))
+
 ## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.5.0...terrace-contract-v0.6.0) (2026-09-23)
 
 
