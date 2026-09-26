@@ -21,7 +21,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Checks the Java-side rendering of the four named spec cases against every level {@code
+ * Checks the Java-side rendering of every named spec case against every level {@code
  * spec/v1/CONFORMANCE.md} describes, from a real {@code @TerraceConfig} fixture (see {@code
  * fixtures/}) through the real loader and Jackson 2 codec — never a hand-written JSON literal
  * standing in for what the pipeline actually renders.
@@ -56,10 +56,19 @@ class JavaConformanceTest {
             "full-surface", FixtureContracts::fullSurface,
             "unnameable-key", FixtureContracts::unnameableKey,
             "required-entries", FixtureContracts::requiredEntries,
-            "entry-names", FixtureContracts::entryNames);
+            "entry-names", FixtureContracts::entryNames,
+            "element-patterns", FixtureContracts::elementPatterns);
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries", "entry-names"})
+    @ValueSource(
+            strings = {
+                "minimal",
+                "full-surface",
+                "unnameable-key",
+                "required-entries",
+                "entry-names",
+                "element-patterns"
+            })
     void rendersAValidEnvelope(final String caseName) {
         final MetaSchemaValidator validator = MetaSchemaValidator.load();
         final JsonNode produced = producedNode(caseName);
@@ -73,7 +82,15 @@ class JavaConformanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries", "entry-names"})
+    @ValueSource(
+            strings = {
+                "minimal",
+                "full-surface",
+                "unnameable-key",
+                "required-entries",
+                "entry-names",
+                "element-patterns"
+            })
     void meetsTier2AgainstTheSharedSpecCorpus(final String caseName) throws IOException {
         final JsonNode produced = producedNode(caseName);
         final JsonNode expected = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase(caseName)));
@@ -84,7 +101,15 @@ class JavaConformanceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"minimal", "full-surface", "unnameable-key", "required-entries", "entry-names"})
+    @ValueSource(
+            strings = {
+                "minimal",
+                "full-surface",
+                "unnameable-key",
+                "required-entries",
+                "entry-names",
+                "element-patterns"
+            })
     void meetsTier3AgainstItsOwnJavaGolden(final String caseName) throws IOException {
         final byte[] rendered =
                 ContractCodec.write(withConformanceVersion(CASES.get(caseName).get()));
@@ -116,7 +141,7 @@ class JavaConformanceTest {
      * different answer to "may I leave this out" depending on the language the image was written in.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"required-entries", "entry-names"})
+    @ValueSource(strings = {"required-entries", "entry-names", "element-patterns"})
     void publishesTheSameRefinementsAsTheSharedSpecCorpus(final String caseName) throws IOException {
         final JsonNode document = producedNode(caseName);
         final JsonNode corpus = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase(caseName)));
@@ -142,6 +167,29 @@ class JavaConformanceTest {
             assertThat(got.path("default_value").isNull())
                     .as("`%s` has a default exactly when the corpus does", path)
                     .isEqualTo(want.path("default_value").isNull());
+        }
+    }
+
+    /**
+     * The refinement cases use no type whose spelling differs between the two languages, so every
+     * key's whole {@code constraint} — element schema included, as deep as it nests — has to be
+     * the one the Rust crate publishes. This is what holds {@code SchemaAssembler}'s port of the
+     * element schema to the reference, rather than only the positions a refinement tightened.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"required-entries", "entry-names", "element-patterns"})
+    void publishesTheSameConstraintsAsTheSharedSpecCorpus(final String caseName) throws IOException {
+        final JsonNode produced = producedNode(caseName).path("schema").path("keys");
+        final JsonNode expected = MAPPER.readTree(Files.readAllBytes(SpecPaths.conformanceCase(caseName)))
+                .path("schema")
+                .path("keys");
+
+        assertThat(produced.size()).isEqualTo(expected.size());
+        for (int i = 0; i < expected.size(); i++) {
+            final String path = expected.get(i).path("path").asText();
+            assertThat(produced.get(i).path("constraint"))
+                    .as("`%s` constraint", path)
+                    .isEqualTo(expected.get(i).path("constraint"));
         }
     }
 

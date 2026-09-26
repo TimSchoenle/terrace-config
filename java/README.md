@@ -36,7 +36,7 @@ shows up as a failing test rather than a document nobody noticed had drifted.
 | `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. A field's key path follows its `@JsonProperty` rename when present, matching whichever binder actually reads that name (`FieldResolver.resolve`), the same way it already follows one for an enum constant. | **implemented** |
 | `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | **implemented** — layers, dialect and shadow policy; schema/`explain()`/watched-reload wiring against the processor's descriptors is open |
 | `terrace-config-spring-boot` | The Spring Boot starter over Spring's `Binder`. `producer.loader` is `spring-boot`, target **tier 1**. | **implemented** — the `_FILE` indirection `EnvironmentPostProcessor`, the `_`-vs-`__` dialect divergence, and `SpringContractProducer` assembling a full validated `Contract` from a `TypeDescriptor`; a starter auto-configuration is still open |
-| `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`, plus `JavaConformanceTest`: three real `@TerraceConfig` fixtures (`minimal`, `full-surface`, `unnameable-key`) rendered through the real loader and Jackson 2 codec, checked at tier 1 (meta-schema), tier 2 (dialect spellings against the shared spec corpus) and tier 3 (byte-for-byte against this module's own `conformance-java/` golden corpus — regenerate with `./gradlew :terrace-config-spec-tck:blessJavaConformance`). `JacksonParityTest` proves the Jackson 2 and Jackson 3 codecs render the same bytes. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3; `terrace-config-java` tier 3 against itself and tier 2 against the spec corpus |
+| `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`, plus `JavaConformanceTest`: real `@TerraceConfig` fixtures for every named case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`, `entry-names`, `element-patterns`) rendered through the real loader and Jackson 2 codec, checked at tier 1 (meta-schema), tier 2 (dialect spellings against the shared spec corpus) and tier 3 (byte-for-byte against this module's own `conformance-java/` golden corpus — regenerate with `./gradlew :terrace-config-spec-tck:blessJavaConformance`). `JacksonParityTest` proves the Jackson 2 and Jackson 3 codecs render the same bytes. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3; `terrace-config-java` tier 3 against itself and tier 2 against the spec corpus |
 | `terrace-config-example-service` | A worked example: a small "orders" service loading its configuration through `-loader`, mirroring `rust/examples/service/` field for field. `OrdersServiceConfigTest` exercises the example's own `Config` class through `TerraceLoader`, so it stays correct by a real assertion rather than by compiling alone — run it with `./gradlew :terrace-config-example-service:run`. `Config` is also `@TerraceConfig`; `--contract` renders it as a real `Contract`, checked fresh against the committed `contract.json` by `ContractTest` on every run. | **implemented** |
 | `terrace-config-example-spring-service` | The same "orders" service, this time configured through `-spring-boot` instead of `-loader`. `OrdersPropertiesBindingTest` exercises `OrdersProperties` through Spring's own `Binder` via `ApplicationContextRunner`; `OrdersServiceFileIndirectionIntegrationTest` boots the real `SpringApplication` — the one thing a context runner cannot do — to prove `_FILE` indirection actually reaches a bound bean, including the `_`-vs-`__` divergence's own failure mode. Run it with `./gradlew :terrace-config-example-spring-service:run`. `--contract` and `ContractTest` give it the same checked-fresh `contract.json` as the loader example, this time through `SpringContractProducer`. | **implemented** |
 
@@ -138,9 +138,8 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   `withDefaultsFromValue` ran first. An entry-name pattern raises the schema to
   `schema_version: 3`. `Refinement.pattern(…)` and `Refinement.nonBlank()` hold a string to a
   pattern, and a path continues inside a key's constraint — `*` for an element, a field name for a
-  field — wherever the constraint describes one. (Maps publish no element schema from this producer
-  yet, so the positions inside one are reachable only on a constraint built by hand.) A library
-  implements `Refine` with paths relative to wherever a host mounts it.
+  field — wherever the constraint describes one, which `SchemaAssembler` does for every container
+  (see below). A library implements `Refine` with paths relative to wherever a host mounts it.
 - **`Schema.toJsonSchema()` / `toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`)
   render a `Schema` as the JSON Schema document an editor or a Helm chart validates a rendered
   configuration against — a straight port of the Rust crate's `schema::json_schema` module.
@@ -161,7 +160,13 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   (see below). It walks a type's fields into a flat `Key` list (a `@Nested` field opens a level
   rather than becoming a key of its own; a container field — `List`/`Set`/`Map`, nested-struct
   elements included — stays one `Structured`-form key, since an environment variable cannot address
-  an index inside itself), and ports `env_spelling`/`secrets_file_name` field for field: an
+  an index inside itself). That key's `constraint` carries the shape of one element, as
+  `rust_type::interpret_with` does: `items` for a `List`/`Set`, `additionalProperties` for a `Map`
+  — a scalar element's own type, or an `@Element` struct's keys as nested `properties` with
+  `required`, closed (`additionalProperties: false`) exactly where the struct carries
+  `@JsonIgnoreProperties(ignoreUnknown = false)`, and composed as deep as element structs hold
+  containers of their own (`JsonSchemaRenderer.elementObject`, the port of `element_object`). It
+  also ports `env_spelling`/`secrets_file_name` field for field: an
   environment name that a case-folding, separator-splitting reader can't map back to the same path
   is `Unreachable.Unnameable`; a name colliding with the indirection suffix is
   `Unreachable.Indirection`; a reserved key's file spellings are cleared, exactly as
@@ -501,7 +506,8 @@ a loader or Spring producer combines it with its own dialect to build the actual
   The same diagnostic covers a container whose element publishes nothing, a `@Range` on a
   non-numeric type or with no bound set, a `@Nested`/`@Values` pointed at a type that isn't
   annotated the right way, and more than one shape annotation on one field.
-- **Jackson is read, not duplicated.** A struct's `closed` flag and an enum constant's spelling
+- **Jackson is read, not duplicated.** A struct's `closed` flag — for a `@Nested` field's type and
+  an `@Element` container's element type alike — and an enum constant's spelling
   are read off `com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = false)` and
   `@JsonProperty` respectively — via `AnnotationMirror`, by qualified name, so the processor takes
   no compile dependency on either Jackson major (`jackson-annotations` is shared by both, see
@@ -524,7 +530,7 @@ a loader or Spring producer combines it with its own dialect to build the actual
   compile.
 - **Tested with `compile-testing`** (`TerraceConfigProcessorTest`): one compilation per resolvable
   shape (plain leaves, `@Nested`, all three `@Values` forms, `@Range`, `@Element`,
-  `@ElementValues`, `@Skip`) and one per refusal, asserting the diagnostic text — 15 cases in all.
+  `@ElementValues`, `@Skip`) and one per refusal, asserting the diagnostic text — 17 cases in all.
 
 ## `terrace-config-loader`
 

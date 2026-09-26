@@ -3,6 +3,7 @@ package de.timscho.config.core.descriptor;
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Schema;
+import de.timscho.config.core.schema.JsonSchemaRenderer;
 import de.timscho.config.core.schema.Spellings;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,6 +35,13 @@ import org.jspecify.annotations.Nullable;
  * de.timscho.config.core.model.Schema#withDefaultsFromValue}, the Java port of {@code
  * Schema::with_defaults_from_value}, which a caller runs against a default-constructed instance
  * converted to a nested map.
+ *
+ * <p>A container key's {@link Key#getConstraint()} carries the shape of one element, as the Rust
+ * crate's {@code rust_type::interpret_with} does: {@code items} for a {@code List}/{@code Set},
+ * {@code additionalProperties} for a {@code Map}. A scalar element is its type's own constraint;
+ * an {@code @Element} struct is its keys as nested {@code properties} with {@code required}, plus
+ * {@code additionalProperties: false} wherever the type is closed — see {@link
+ * JsonSchemaRenderer#elementObject}.
  */
 @UtilityClass
 public class SchemaAssembler {
@@ -96,10 +104,7 @@ public class SchemaAssembler {
             final Set<String> reservedUpper) {
         for (final KeyDescriptor field : fields) {
             final String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
-            final boolean isNestedStruct = !field.nestedKeys().isEmpty()
-                    && (field.container() == KeyDescriptor.ContainerKind.NONE
-                            || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
-            if (isNestedStruct) {
+            if (isNestedStruct(field)) {
                 // `#[config(nested)]`: the field opens a level rather than becoming a key of its
                 // own, bare or behind an `Optional` — neither carries a key of its own in Rust
                 // either, since a struct field has no scalar value to bind directly.
@@ -108,6 +113,14 @@ public class SchemaAssembler {
                 out.add(leaf(field, prefix, path, dialect, reservedUpper));
             }
         }
+    }
+
+    /** Whether {@code field} opens a level of its own rather than becoming a key: {@code @Nested},
+     * bare or behind an {@code Optional}. */
+    private static boolean isNestedStruct(final KeyDescriptor field) {
+        return !field.nestedKeys().isEmpty()
+                && (field.container() == KeyDescriptor.ContainerKind.NONE
+                        || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
     }
 
     /** One field as a leaf {@link Key} — the whole of a container field, structured or not. */
@@ -134,7 +147,7 @@ public class SchemaAssembler {
                 .docs(field.docs() != null ? field.docs() : "")
                 .ty(field.typeName())
                 .values(values)
-                .constraint(constraint(field, container, textForm, values))
+                .constraint(constraint(field, container, textForm, values, dialect))
                 .textForm(textForm.model)
                 .aliases(aliasSet.paths())
                 .envAliases(aliasSet.env())
@@ -279,29 +292,79 @@ public class SchemaAssembler {
 
     /** The JSON Schema keywords this field's value must satisfy, or {@code null} if none apply. */
     private static @Nullable Map<String, Object> constraint(
-            final KeyDescriptor field, final boolean container, final TextForm textForm, final List<String> values) {
-        if (container) {
-            final Map<String, Object> schema = new TreeMap<>();
-            if (Objects.requireNonNull(field.container()) == KeyDescriptor.ContainerKind.MAP) {
-                schema.put("type", "object");
-            } else {
-                schema.put("type", "array");
-                final Map<String, Object> items = elementConstraint(field.element());
-                if (items != null) {
-                    schema.put("items", items);
-                }
-            }
-            return schema;
+            final KeyDescriptor field,
+            final boolean container,
+            final TextForm textForm,
+            final List<String> values,
+            final Dialect dialect) {
+        if (!container) {
+            return leafConstraint(textForm, values, field.range());
         }
-        return leafConstraint(textForm, values, field.range());
+        final Map<String, Object> schema = new TreeMap<>();
+        final Map<String, Object> element = elementSchema(field, dialect);
+        if (Objects.requireNonNull(field.container()) == KeyDescriptor.ContainerKind.MAP) {
+            // The map's key type is ignored on purpose: a TOML table's keys are strings whatever
+            // the map is keyed by, so the element schema describes the value and nothing else.
+            schema.put("type", "object");
+            if (element != null) {
+                schema.put("additionalProperties", element);
+            }
+        } else {
+            schema.put("type", "array");
+            if (element != null) {
+                schema.put("items", element);
+            }
+        }
+        return schema;
     }
 
-    private static @Nullable Map<String, Object> elementConstraint(@Nullable final ElementDescriptor element) {
+    /**
+     * One element of the container {@code field}, as JSON Schema — the position the Rust crate's
+     * {@code rust_type::interpret_with} fills. {@code null} where nothing certain is known: no
+     * {@link ElementDescriptor} at all, or a scalar type {@link TextForm#of} does not recognise.
+     *
+     * <p>A {@code @TerraceConfig} struct element is its own keys as one object schema, built by
+     * the same {@link #walk} as the document's keys and rendered by {@link
+     * JsonSchemaRenderer#elementObject}. Each of those keys already carries its own composed
+     * constraint, so a container field inside the element nests its element schema in turn, as
+     * deep as the types stack.
+     */
+    private static @Nullable Map<String, Object> elementSchema(final KeyDescriptor field, final Dialect dialect) {
+        final ElementDescriptor element = field.element();
         if (element == null) {
             return null;
         }
-        final TextForm elementForm = !element.values().isEmpty() ? TextForm.CHOICE : TextForm.of(element.typeName());
-        return leafConstraint(elementForm, element.values(), element.range());
+        if (element.nestedKeys().isEmpty()) {
+            final TextForm elementForm =
+                    !element.values().isEmpty() ? TextForm.CHOICE : TextForm.of(element.typeName());
+            return leafConstraint(elementForm, element.values(), element.range());
+        }
+
+        // Walked with no reserved names: an element's fields have no environment spelling that the
+        // loader could read ahead of the layers, and only their constraints survive into the result.
+        final List<Key> keys = new ArrayList<>();
+        walk(element.nestedKeys(), "", keys, dialect, Set.of());
+        final Set<String> closed = new HashSet<>();
+        if (field.closed()) {
+            closed.add("");
+        }
+        closedLevels(element.nestedKeys(), "", closed);
+        return JsonSchemaRenderer.elementObject(keys, closed);
+    }
+
+    /** Adds to {@code out} the path of every {@code @Nested} level under {@code prefix} whose type
+     * refuses an undeclared key — the levels an element schema closes on the type's own word. */
+    private static void closedLevels(final List<KeyDescriptor> fields, final String prefix, final Set<String> out) {
+        for (final KeyDescriptor field : fields) {
+            if (!isNestedStruct(field)) {
+                continue;
+            }
+            final String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
+            if (field.closed()) {
+                out.add(path);
+            }
+            closedLevels(field.nestedKeys(), path, out);
+        }
     }
 
     private static @Nullable Map<String, Object> leafConstraint(

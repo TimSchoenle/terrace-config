@@ -27,6 +27,14 @@ import org.jspecify.annotations.Nullable;
 @UtilityClass
 public class JsonSchemaRenderer {
 
+    /**
+     * What {@link #elementObject} renders with: every comment, {@code required} meaning what it
+     * says, open wherever the type did not close it, and no {@code default}. See {@link
+     * #elementObject} for why each is fixed rather than a caller's choice.
+     */
+    private static final JsonSchemaOptions ELEMENT =
+            JsonSchemaOptions.standard().withClosed(false).withDefaults(false);
+
     /** The schema as a JSON Schema document, nested {@code properties} object per path level.
      *
      * @param schema  the schema to render
@@ -51,6 +59,38 @@ public class JsonSchemaRenderer {
             document.put("title", options.title());
         }
         return document;
+    }
+
+    /**
+     * One element of a container-typed key, as a JSON Schema object — the Rust crate's {@code
+     * json_schema::element_object}. The rendering {@link #document} gives a level of the document,
+     * over the keys an element type's own descriptor reports; a {@code @Nested} struct inside the
+     * element arrives as dotted paths and comes back as nested {@code properties}, exactly as it
+     * does for the document itself.
+     *
+     * <p>Fixed rather than driven by {@link JsonSchemaOptions}, because the result lands in {@link
+     * Key#getConstraint()}, which no rendering option reaches:
+     *
+     * <ul>
+     *   <li><b>Descriptions are kept.</b> An element's fields are not keys, so their comments have
+     *       nowhere else in the document to live.
+     *   <li><b>{@code required} is kept and means what it says.</b> No environment variable and no
+     *       mounted file can reach a field of an element, so the document really is the only layer
+     *       that could supply it.
+     *   <li><b>It is open unless the type closed it.</b> Jackson accepts a field nobody declared
+     *       unless the type says {@code @JsonIgnoreProperties(ignoreUnknown = false)}; {@code closed}
+     *       holds the levels, relative to the element and empty for the element itself, that did.
+     *       Whether an undeclared key is an error elsewhere is still {@link
+     *       JsonSchemaOptions#closed()}'s question, applied when the document is rendered.
+     *   <li><b>No {@code default}.</b> An element has no observed value to take one from.
+     * </ul>
+     *
+     * @param keys   the element type's own keys, pathed relative to the element
+     * @param closed the element-relative paths whose type refuses an undeclared key
+     * @return the element's schema, a fresh mutable map
+     */
+    public static Map<String, Object> elementObject(final List<Key> keys, final Set<String> closed) {
+        return object(Node.of(keys), "", ELEMENT, closed);
     }
 
     /**

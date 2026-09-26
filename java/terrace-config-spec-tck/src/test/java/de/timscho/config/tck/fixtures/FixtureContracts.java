@@ -21,16 +21,23 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Assembles the four named spec cases ({@code minimal}, {@code full-surface},
- * {@code unnameable-key}, {@code required-entries}) as real {@link Contract}s, each from its own fixture type in this
- * package, run through the real {@code terrace-config-loader} and the real Jackson 2 codec —
- * exactly the pipeline a consuming service runs, not a hand-maintained restatement of what one
- * would render. Mirrors {@code terrace-config-example-service}'s {@code ContractGenerator},
- * generalised from one service to the three spec cases {@code JavaConformanceTest} checks.
+ * Assembles the named spec cases ({@code minimal}, {@code full-surface}, {@code unnameable-key},
+ * {@code required-entries}, {@code entry-names}, {@code element-patterns}) as real {@link
+ * Contract}s, each from its own fixture type in this package, run through the real {@code
+ * terrace-config-loader} and the real Jackson 2 codec — exactly the pipeline a consuming service
+ * runs, not a hand-maintained restatement of what one would render. Mirrors {@code
+ * terrace-config-example-service}'s {@code ContractGenerator}, generalised from one service to
+ * every spec case {@code JavaConformanceTest} checks.
  */
 public final class FixtureContracts {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * A locale tag, as the handbook's runtime check parses one: a language, an optional script and
+     * an optional region, separated by {@code -} or {@code _}.
+     */
+    private static final String LOCALE = "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$";
 
     private FixtureContracts() {}
 
@@ -90,6 +97,31 @@ public final class FixtureContracts {
                 .refineWith("legal", namedLegalPagesRefinements());
         final App app = App.builder().name("site").version("1.0.0").build();
         return ContractAssembler.assemble(schema, app, producer());
+    }
+
+    /**
+     * The {@code element-patterns} case, reachable under {@code BOOK_}: tightenings inside a key.
+     * Three of the four refinements address positions inside {@code chapters}' element schema —
+     * {@code *} for a map's entry, a field name for an element struct's field — which exist only
+     * because {@link HandbookConfig} reports {@link Chapter} as that map's element. The defaults
+     * satisfy every refinement, so both keys keep them.
+     */
+    public static Contract elementPatterns() {
+        final Schema schema = TerraceLoader.of("BOOK_")
+                .schema(HandbookConfigDescriptor.DESCRIPTOR)
+                .withDefaultsFromValue(defaultsAsMap(new HandbookConfig()))
+                .refineWith("", handbookRefinements());
+        final App app = App.builder().name("handbook").version("1.0.0").build();
+        return ContractAssembler.assemble(schema, app, producer());
+    }
+
+    /** What the handbook's runtime check holds its locales and texts to. */
+    private static Refine handbookRefinements() {
+        return () -> List.of(
+                new Refine.At("default_locale", Refinement.pattern(LOCALE)),
+                new Refine.At("chapters.*.body", Refinement.entryNames(LOCALE)),
+                new Refine.At("chapters.*.body.*", Refinement.nonBlank()),
+                new Refine.At("chapters.*.title", Refinement.requiredEntries(List.of("en"))));
     }
 
     /** What the legal-pages library publishes about names as well, relative to its mount. */
