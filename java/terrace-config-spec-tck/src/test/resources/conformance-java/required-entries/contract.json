@@ -60,9 +60,25 @@
         "env_file": "SITE_LEGAL__DOCUMENTS_FILE",
         "secrets_file": "legal__documents",
         "docs": "Legal documents, by the name the site links them under.",
-        "ty": "Map<String,String>",
+        "ty": "Map<String,LegalDocument>",
         "values": [],
         "constraint": {
+          "additionalProperties": {
+            "properties": {
+              "body": {
+                "description": "Markdown body.",
+                "type": "string"
+              },
+              "title": {
+                "description": "Heading of the page.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "type": "object"
+          },
           "required": [
             "imprint",
             "privacy"
@@ -94,6 +110,9 @@
         "ty": "Map<String,String>",
         "values": [],
         "constraint": {
+          "additionalProperties": {
+            "type": "string"
+          },
           "required": [
             "home"
           ],
@@ -132,6 +151,23 @@
         "additionalProperties": false,
         "properties": {
           "documents": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "description": "Markdown body.",
+                  "type": "string"
+                },
+                "title": {
+                  "description": "Heading of the page.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title"
+              ],
+              "type": "object"
+            },
             "description": "Legal documents, by the name the site links them under.",
             "required": [
               "imprint",
@@ -140,6 +176,9 @@
             "type": "object"
           },
           "links": {
+            "additionalProperties": {
+              "type": "string"
+            },
             "default": {
               "home": "/"
             },

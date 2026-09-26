@@ -13,7 +13,7 @@
 
 use std::fmt::Write as _;
 
-use crate::document::{Key, Schema};
+use crate::document::{Key, Schema, Tightening};
 
 /// Both tables, under [`Column::DEFAULT`].
 ///
@@ -206,19 +206,11 @@ impl Column {
                 };
                 // Part of what the value has to be, so beside the type: a map type says "a map",
                 // and this says which map. Read off `constraint`, which a validator reads too.
-                let mut parts = Vec::new();
-                let entries = key.required_entries();
-                if !entries.is_empty() {
-                    let entries = entries
-                        .iter()
-                        .map(|entry| format!("`{}`", escape(entry)))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    parts.push(format!("must contain: {entries}"));
-                }
-                if let Some(pattern) = key.entry_name_pattern() {
-                    parts.push(format!("entry names match `{}`", escape(pattern)));
-                }
+                let parts: Vec<String> = key
+                    .tightenings()
+                    .into_iter()
+                    .map(|(at, tightening)| tightened(&at, &tightening))
+                    .collect();
                 if parts.is_empty() {
                     shape
                 } else if key.ty.is_none() && key.values.is_empty() {
@@ -324,6 +316,28 @@ fn optional_code(value: Option<&str>) -> String {
         || EM_DASH.to_owned(),
         |value| format!("`{}`", escape(value)),
     )
+}
+
+/// One tightening, as the type cell says it: the key's own bare, one inside it after its position.
+fn tightened(at: &str, tightening: &Tightening<'_>) -> String {
+    let said = match tightening {
+        Tightening::Entries(entries) => format!(
+            "must contain: {}",
+            entries
+                .iter()
+                .map(|entry| format!("`{}`", escape(entry)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Tightening::Names(pattern) => format!("entry names match `{}`", escape(pattern)),
+        Tightening::Matches(pattern) => format!("matches `{}`", escape(pattern)),
+        Tightening::Holds(description) => escape(description),
+    };
+    if at.is_empty() {
+        said
+    } else {
+        format!("at `{}`: {said}", escape(at))
+    }
 }
 
 /// Prose in a table cell: newlines become breaks, and `|` stops ending the cell early.

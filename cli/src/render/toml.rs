@@ -35,6 +35,8 @@ use std::fmt::Write as _;
 
 use serde_json::Value as Json;
 
+use crate::document::Tightening;
+
 use super::json_schema::Docs;
 use super::tree::{self, Node};
 use crate::document::{Key, Schema};
@@ -208,12 +210,18 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
     }
 
     // The entries a map has to hold, said where the operator is about to write the map.
-    let entries = key.required_entries();
-    if !entries.is_empty() {
-        comment(&mut out, &format!("Must contain: {}", entries.join(", ")));
-    }
-    if let Some(pattern) = key.entry_name_pattern() {
-        comment(&mut out, &format!("Entry names match: {pattern}"));
+    for (at, tightening) in key.tightenings() {
+        let (label, value) = match tightening {
+            Tightening::Entries(entries) => ("Must contain", entries.join(", ")),
+            Tightening::Names(pattern) => ("Entry names match", pattern.to_owned()),
+            Tightening::Matches(pattern) => ("Matches", pattern.to_owned()),
+            Tightening::Holds(description) => ("Holds", description.to_owned()),
+        };
+        if at.is_empty() {
+            comment(&mut out, &format!("{label}: {value}"));
+        } else {
+            comment(&mut out, &format!("{label} at {at}: {value}"));
+        }
     }
 
     if !key.aliases.is_empty() {

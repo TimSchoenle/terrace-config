@@ -216,6 +216,7 @@ final class FieldResolver {
             result.element = "new de.timscho.config.core.descriptor.ElementDescriptor("
                     + CodeGen.stringLiteral(TypeNames.simplify(elementType.toString())) + ", "
                     + "java.util.List.of(), null, " + nestedKeys + ")";
+            result.closed = JacksonReflection.isClosed(nestedType);
             return result;
         }
         if (elementValues != null) {
@@ -234,6 +235,11 @@ final class FieldResolver {
             return result;
         }
         if (LeafTypes.isLeaf(elementType)) {
+            // Reported even though nothing annotates it: the element's own type is what gives a
+            // `List<String>` its `items` and a `Map<String, Integer>` its `additionalProperties`.
+            result.element = "new de.timscho.config.core.descriptor.ElementDescriptor("
+                    + CodeGen.stringLiteral(TypeNames.simplify(elementType.toString())) + ", "
+                    + "java.util.List.of(), null, java.util.List.of())";
             return result;
         }
         throw this.error(

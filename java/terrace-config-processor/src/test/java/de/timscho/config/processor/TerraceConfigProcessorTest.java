@@ -153,6 +153,67 @@ class TerraceConfigProcessorTest {
         assertThat(compilation).succeededWithoutWarnings();
     }
 
+    /**
+     * The element struct's own {@code @JsonIgnoreProperties(ignoreUnknown = false)} closes the key.
+     * The annotation is a same-named stand-in: the processor reads it by qualified name, and this
+     * module takes no Jackson dependency, test scope included.
+     */
+    @Test
+    void elementOnAContainerOfAClosedStructReportsItClosed() {
+        Compilation compilation = Compiler.javac()
+                .withProcessors(new TerraceConfigProcessor())
+                .compile(
+                        JavaFileObjects.forSourceLines(
+                                "com.fasterxml.jackson.annotation.JsonIgnoreProperties",
+                                "package com.fasterxml.jackson.annotation;",
+                                "public @interface JsonIgnoreProperties {",
+                                "    boolean ignoreUnknown() default false;",
+                                "}"),
+                        JavaFileObjects.forSourceLines(
+                                "test.ClosedRoutes",
+                                "package test;",
+                                "import java.util.List;",
+                                "import com.fasterxml.jackson.annotation.JsonIgnoreProperties;",
+                                "import de.timscho.config.annotations.TerraceConfig;",
+                                "import de.timscho.config.annotations.Element;",
+                                "public class ClosedRoutes {",
+                                "    @TerraceConfig",
+                                "    @JsonIgnoreProperties(ignoreUnknown = false)",
+                                "    public static class Route {",
+                                "        String upstream;",
+                                "    }",
+                                "    @TerraceConfig",
+                                "    public static class Root {",
+                                "        @Element",
+                                "        List<Route> routes;",
+                                "    }",
+                                "}"));
+        assertThat(compilation).succeededWithoutWarnings();
+        assertThat(compilation)
+                .generatedSourceFile("test.ClosedRoutes$RootDescriptor")
+                .contentsAsUtf8String()
+                .contains("ClosedRoutes$RouteDescriptor.DESCRIPTOR.keys()), true, false,");
+    }
+
+    /** A plain-leaf element needs no annotation, and is still reported so its type reaches the schema. */
+    @Test
+    void aContainerOfPlainLeavesReportsItsElementType() {
+        Compilation compilation = compile(
+                "test.Weights",
+                "package test;",
+                "import java.util.Map;",
+                "import de.timscho.config.annotations.TerraceConfig;",
+                "@TerraceConfig",
+                "public class Weights {",
+                "    Map<String, Integer> weights;",
+                "}");
+        assertThat(compilation).succeededWithoutWarnings();
+        assertThat(compilation)
+                .generatedSourceFile("test.WeightsDescriptor")
+                .contentsAsUtf8String()
+                .contains("ElementDescriptor(\"Integer\", java.util.List.of(), null, java.util.List.of())");
+    }
+
     @Test
     void elementValuesOnAContainerOfAnEnum() {
         Compilation compilation = compile(

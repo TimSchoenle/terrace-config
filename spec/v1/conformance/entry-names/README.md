@@ -64,4 +64,4 @@ Terrace::new("SITE_")
 `Schema#refineWith("legal", …)` with the same four refinements.
 `publishesTheSameRefinementsAsTheSharedSpecCorpus` holds `schema_version`, `required`,
 `constraint.required`, `constraint.propertyNames` and which defaults survive to this document key by
-key.
+key, and `publishesTheSameConstraintsAsTheSharedSpecCorpus` each key's whole `constraint`.

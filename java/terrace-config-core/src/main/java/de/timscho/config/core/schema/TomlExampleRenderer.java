@@ -159,13 +159,25 @@ public class TomlExampleRenderer {
         } else if (!values.isEmpty()) {
             comment(out, "One of: " + String.join(", ", values));
         }
-        final List<String> entries = Refiner.requiredEntries(key);
-        if (!entries.isEmpty()) {
-            comment(out, "Must contain: " + String.join(", ", entries));
-        }
-        final String pattern = Refiner.entryNamePattern(key);
-        if (pattern != null) {
-            comment(out, "Entry names match: " + pattern);
+        for (final Refiner.Tightening tightening : Refiner.tightenings(key)) {
+            final String label;
+            final String value;
+            if (tightening instanceof Refiner.Entries entries) {
+                label = "Must contain";
+                value = String.join(", ", entries.entries());
+            } else if (tightening instanceof Refiner.Names names) {
+                label = "Entry names match";
+                value = names.pattern();
+            } else if (tightening instanceof Refiner.Holds holds) {
+                label = "Holds";
+                value = holds.description();
+            } else {
+                label = "Matches";
+                value = ((Refiner.Matches) tightening).pattern();
+            }
+            comment(
+                    out,
+                    tightening.at().isEmpty() ? label + ": " + value : label + " at " + tightening.at() + ": " + value);
         }
     }
 
