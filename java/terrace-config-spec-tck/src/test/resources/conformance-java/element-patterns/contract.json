@@ -101,14 +101,14 @@
         "env_aliases": [],
         "env_file_aliases": [],
         "secrets_file_aliases": [],
-        "default": "{ intro = { title = { en = Introduction }, body = { en = Start here. } } }",
+        "default": "{ intro = { body = { en = Start here. }, title = { en = Introduction } } }",
         "default_value": {
           "intro": {
-            "title": {
-              "en": "Introduction"
-            },
             "body": {
               "en": "Start here."
+            },
+            "title": {
+              "en": "Introduction"
             }
           }
         },
@@ -153,11 +153,11 @@
         },
         "default": {
           "intro": {
-            "title": {
-              "en": "Introduction"
-            },
             "body": {
               "en": "Start here."
+            },
+            "title": {
+              "en": "Introduction"
             }
           }
         },
