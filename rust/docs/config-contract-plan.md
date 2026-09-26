@@ -467,7 +467,7 @@ Vendoring rather than fetching on every run, for three reasons in ascending orde
 Refresh belongs in the existing **Documentation** job, which already regenerates `values.schema.json`
 and every README and commits the result back to the branch:
 
-```
+```bash
 just contracts        # resolve each declared image to a digest, fetch, verify, write
 just check-contracts  # `git diff --exit-code`, for anyone running it locally
 ```
@@ -747,7 +747,7 @@ recipe, and the docs job gains one step that calls another. Everything else is `
 
 Two touch points in `.github/workflows/ci.yaml`, and only one of them is new.
 
-```
+```text
 docs (existing, contents: write)
   └── + just contracts          # networked: fetch, verify, write the vendored contracts
                                 #            → swept up by the existing commit-changes step
@@ -915,7 +915,7 @@ file before it exits").
 
 ### 12.1 The loop
 
-```
+```text
 for chart in charts/*/:
     contract = charts/<chart>/config-contract.yaml     # absent → skip; documents: [] → opt-out
     for document in contract.documents:
@@ -945,7 +945,7 @@ contract where it is not.
 One line per violation, prefixed by the pair that produced it, so a failure names the chart, the
 values file and the key:
 
-```
+```text
 portfolio--default-values.yaml: server: config.toml: isr.ttl_secs: no such key
   (did you mean isr.revalidate_secs? renamed in portfolio v2.6.0)
 portfolio--default-values.yaml: server: env: PORTFOLIO_ISR__TTL_SECS set by container
@@ -989,7 +989,7 @@ bytes exactly the ones that were hashed:
 `sha256` is over `contract` as published, so the vendored copy can still be checked against the
 image label without re-fetching. The interlock then reads:
 
-```
+```text
 if vendored["source"]["digest"] != resolve_digest(values, document.images[i]):
     fail: "charts/portfolio/contracts/server.json is for sha256:48e259cb..., but the chart
            pins sha256:9a1f22e7.... The Documentation job refreshes it; re-run after its

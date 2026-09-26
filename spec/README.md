@@ -34,7 +34,7 @@ does not.
 
 ## Layout
 
-```
+```text
 spec/
   README.md            this file
   v1/

@@ -7,7 +7,7 @@ A service publishes one JSON document describing every setting its binary reads 
 types and can only be per-language. Everything downstream of it needs a document and nothing else,
 and that is this binary.
 
-```
+```text
 per language, once                    this binary, for everyone
 ───────────────────────────────       ─────────────────────────────────────────
 types ──> Schema ──> Contract ──JSON──> render    the tables, the file, the labels
@@ -134,7 +134,7 @@ exits `2`. A misspelt name would otherwise select nothing, and a gate that check
 
 ## Building
 
-Its own Cargo workspace, and a sibling of [`../src`](../src) rather than a member of it — the
+Its own Cargo workspace, and a sibling of [`../rust`](../rust) rather than a member of it — the
 binary is not part of the Rust implementation, it is *written in* Rust.
 
 ```bash
