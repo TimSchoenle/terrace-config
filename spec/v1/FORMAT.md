@@ -320,6 +320,31 @@ case before reading it, so a pattern admitting an upper-case name describes an e
 supply. That is weaker than the loader, not wrong, and a producer publishes the pattern as the
 runtime check states it.
 
+A third tightening is defined: **a string's pattern.** A string-typed position MAY carry `pattern`,
+from the [portable subset](#portable-patterns), which means what JSON Schema's `pattern` means there.
+`pattern` has been in version 2's vocabulary from the start, so it does not raise the version. A
+position carries at most one, and a choice (`enum`) none of whose values the pattern matches is
+unsatisfiable and MUST be refused.
+
+**Every tightening may sit inside a key**, not only at its top: at the element schema of a map
+(`additionalProperties`) or a sequence (`items`), and at a declared field of an element struct
+(`properties`), as deeply as the type described. A tightening inside a key applies to every entry or
+item that position describes, as JSON Schema applies anything at that position. An entry named by
+`required` inside a key MUST still be spellable wherever the key is, the element's own segment
+standing for any entry name.
+
+A consumer showing tightenings names each by its **position relative to the key**: the segments
+from the key's constraint down to it, `.`-joined, with `*` for an element and a field's name for a
+field — `*.body` for the `body` field of every entry, `*.body.*` for every text in it. The key's own
+tightenings have the empty position. A consumer reads them by walking `constraint` in this order:
+at each position, `required` (on a map only — a struct's `required` names fields), then a
+`propertyNames` holding only `pattern`, then `pattern`; then the element, `additionalProperties`
+before `items`; then each field in the order `properties` lists them.
+
+A tightening's meaning never depends on how a consumer displays it; the renderings in the
+[conformance corpus](CONFORMANCE.md) pin one way to say each, for the implementations that share
+those goldens.
+
 ### Portable patterns
 
 A pattern a refinement publishes is read by whatever validates the contract — an ECMA-262 engine

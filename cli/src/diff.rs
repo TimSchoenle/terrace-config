@@ -41,10 +41,15 @@
 //! small addition rather than a rewrite: [`Kind`] reserves [`Kind::Renamed`] beside the other two,
 //! and the alias fields are already compared.
 
+use std::collections::BTreeMap;
+
 use serde_json::{Map, Value as Json};
 
 use crate::classify::matches_ignore;
-use crate::document::{SCHEMA_VERSION, entry_name_pattern, required_entries};
+use crate::document::{
+    SCHEMA_VERSION, Tightening, entry_name_pattern, entry_name_pattern_of, required_entries,
+    required_entries_of, tightenings,
+};
 use crate::text::{quoted, short};
 
 /// The smallest chart version bump a finding justifies.
@@ -964,6 +969,7 @@ fn diff_entry(
     changes.extend(diff_required(area, subject, old, new));
     changes.extend(diff_required_entries(area, subject, old, new));
     changes.extend(diff_entry_names(area, subject, old, new));
+    changes.extend(diff_tightenings(area, subject, old, new));
     changes.extend(diff_text_form(area, subject, old, new));
     changes.extend(diff_default(area, subject, old, new));
 
@@ -1140,21 +1146,156 @@ fn diff_entry_names(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Ch
     }]
 }
 
-/// A constraint with a map's refinements taken out — its required entries and its entry-name
-/// pattern — for comparing everything else about it. Each is graded by its own direction above.
+/// Every other tightening — a string's pattern, and anything inside the key — graded by direction.
+///
+/// The key's own required entries and entry-name pattern have their own graders above, with their
+/// own wording. Everything else is compared position by position and keyword by keyword: one gained
+/// or replaced is a tightening, major for the reason those are, and one lost is a relaxation.
+fn diff_tightenings(area: Area, subject: &str, old: &Json, new: &Json) -> Vec<Change> {
+    let graded = |constraint: Option<&Json>| -> BTreeMap<(String, &'static str), Json> {
+        tightenings(constraint)
+            .into_iter()
+            .filter(|(at, tightening)| {
+                !at.is_empty() || matches!(tightening, Tightening::Matches(_))
+            })
+            .map(|(at, tightening)| {
+                let value = match &tightening {
+                    Tightening::Entries(entries) => json_list(entries),
+                    Tightening::Names(pattern) | Tightening::Matches(pattern) => {
+                        Json::String((*pattern).to_owned())
+                    }
+                };
+                ((at, tightening.keyword()), value)
+            })
+            .collect()
+    };
+    let before = graded(old.get("constraint"));
+    let after = graded(new.get("constraint"));
+
+    let mut changes = Vec::new();
+    for ((at, keyword), value) in &after {
+        let held = before.get(&(at.clone(), *keyword));
+        if held == Some(value) {
+            continue;
+        }
+        changes.push(Change {
+            severity: Severity::Major,
+            area,
+            kind: Kind::Changed,
+            subject: subject.to_owned(),
+            field: Some(tightening_field(at, keyword)),
+            old: held.cloned(),
+            new: Some(value.clone()),
+            message: format!(
+                "{subject}{} now {}; a value that does not will stop the image starting",
+                position_of(at),
+                phrase(keyword, value)
+            ),
+        });
+    }
+    for ((at, keyword), value) in &before {
+        if after.contains_key(&(at.clone(), *keyword)) {
+            continue;
+        }
+        changes.push(Change {
+            severity: Severity::Minor,
+            area,
+            kind: Kind::Changed,
+            subject: subject.to_owned(),
+            field: Some(tightening_field(at, keyword)),
+            old: Some(value.clone()),
+            new: None,
+            message: format!(
+                "{subject}{} no longer {}",
+                position_of(at),
+                phrase(keyword, value)
+            ),
+        });
+    }
+    changes
+}
+
+fn json_list(names: &[&str]) -> Json {
+    Json::Array(
+        names
+            .iter()
+            .map(|name| Json::String((*name).to_owned()))
+            .collect(),
+    )
+}
+
+fn tightening_field(at: &str, keyword: &str) -> String {
+    if at.is_empty() {
+        format!("constraint.{keyword}")
+    } else {
+        format!("constraint.{at}.{keyword}")
+    }
+}
+
+fn position_of(at: &str) -> String {
+    if at.is_empty() {
+        String::new()
+    } else {
+        format!(" at `{at}`")
+    }
+}
+
+/// What one tightening requires, as a verb phrase after "now" or "no longer".
+fn phrase(keyword: &str, value: &Json) -> String {
+    let text = |value: &Json| {
+        value.as_array().map_or_else(
+            || value.as_str().unwrap_or_default().to_owned(),
+            |names| {
+                names
+                    .iter()
+                    .filter_map(Json::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        )
+    };
+    match keyword {
+        "required" => format!("has to contain {}", text(value)),
+        "propertyNames" => format!("holds its entry names to {}", text(value)),
+        _ => format!("has to match {}", text(value)),
+    }
+}
+
+/// A constraint with every tightening taken out, for comparing everything else about it. Each is
+/// graded by direction above.
 fn without_refinements(constraint: Option<&Json>) -> Option<Json> {
     let mut held = constraint.cloned()?;
-    let entries = !required_entries(constraint).is_empty();
-    let names = entry_name_pattern(constraint).is_some();
-    if let Some(fields) = held.as_object_mut() {
-        if entries {
-            fields.remove("required");
-        }
-        if names {
-            fields.remove("propertyNames");
+    strip_tightenings(&mut held, 0);
+    Some(held)
+}
+
+/// [`tightenings`], removed: the walk it takes, taking out what it finds.
+fn strip_tightenings(schema: &mut Json, depth: usize) {
+    let Some(fields) = schema.as_object_mut() else {
+        return;
+    };
+    if depth > 32 {
+        return;
+    }
+    if !required_entries_of(fields).is_empty() {
+        fields.remove("required");
+    }
+    if entry_name_pattern_of(fields).is_some() {
+        fields.remove("propertyNames");
+    }
+    if fields.get("pattern").is_some_and(Json::is_string) {
+        fields.remove("pattern");
+    }
+    for keyword in ["additionalProperties", "items"] {
+        if let Some(element) = fields.get_mut(keyword) {
+            strip_tightenings(element, depth + 1);
         }
     }
-    Some(held)
+    if let Some(Json::Object(properties)) = fields.get_mut("properties") {
+        for field in properties.values_mut() {
+            strip_tightenings(field, depth + 1);
+        }
+    }
 }
 
 /// `text_form` decides the read, and with it whether a file can supply the setting at all.
@@ -1809,6 +1950,47 @@ mod tests {
         );
 
         assert!(changes(&map(Some("^[a-z]+$")), &map(Some("^[a-z]+$"))).is_empty());
+    }
+
+    #[test]
+    fn a_tightening_inside_the_key_is_graded_by_direction_at_its_position() {
+        let book = |body: Json| {
+            let constraint = json!({"type": "object", "additionalProperties": {
+                "type": "object", "properties": {"body": body}}});
+            document(
+                &one("chapters", &json!({"constraint": constraint})),
+                &none(),
+            )
+        };
+        let plain = json!({"type": "object", "additionalProperties": {"type": "string"}});
+        let mut matched = plain.clone();
+        matched["additionalProperties"]["pattern"] = json!("[^ ]");
+
+        let gained = changes(&book(plain.clone()), &book(matched.clone()));
+        assert_eq!(
+            gained.len(),
+            1,
+            "one finding, not a flat constraint line: {gained:?}"
+        );
+        assert_eq!(gained[0].severity, Severity::Major);
+        assert_eq!(
+            gained[0].field.as_deref(),
+            Some("constraint.*.body.*.pattern")
+        );
+        assert!(
+            gained[0]
+                .message
+                .contains("at `*.body.*` now has to match [^ ]"),
+            "{gained:?}"
+        );
+
+        let lost = changes(&book(matched), &book(plain));
+        assert_eq!(lost.len(), 1, "{lost:?}");
+        assert_eq!(lost[0].severity, Severity::Minor);
+        assert!(
+            lost[0].message.contains("no longer has to match [^ ]"),
+            "{lost:?}"
+        );
     }
 
     #[test]

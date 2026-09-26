@@ -80,7 +80,8 @@ class RefinerTest {
         assertThat(refined.getConstraint()).containsEntry("required", List.of("imprint", "privacy"));
         assertThat(refined.getConstraint()).containsEntry("type", "object");
         assertThat(refined.getConstraint()).doesNotContainKey("additionalProperties");
-        assertThat(Refiner.requiredEntries(refined)).containsExactly("imprint", "privacy");
+        assertThat(Refiner.tightenings(refined))
+                .containsExactly(new Refiner.Entries("", List.of("imprint", "privacy")));
     }
 
     @Test
@@ -208,7 +209,7 @@ class RefinerTest {
         assertThat(described().getSchemaVersion()).isEqualTo(2);
         final Schema refined = described().refine(DOCUMENTS, Refinement.entryNames(SLUG));
         assertThat(documents(refined).getConstraint()).containsEntry("propertyNames", Map.of("pattern", SLUG));
-        assertThat(Refiner.entryNamePattern(documents(refined))).isEqualTo(SLUG);
+        assertThat(Refiner.tightenings(documents(refined))).containsExactly(new Refiner.Names("", SLUG));
         assertThat(refined.getSchemaVersion()).isEqualTo(3);
         assertThat(described().refine(DOCUMENTS, imprintAndPrivacy()).getSchemaVersion())
                 .isEqualTo(2);
@@ -277,6 +278,162 @@ class RefinerTest {
         assertThat(refined.toMarkdown())
                 .contains("must contain: `imprint`, `privacy`, entry names match `" + SLUG + "`");
         assertThat(refined.toTomlExample()).contains("# Must contain: imprint, privacy\n# Entry names match: " + SLUG);
+    }
+
+    private static final String LOCALE = "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$";
+
+    /** terrace-legal's shape, by hand: every chapter a map of locale to text. */
+    private static Schema chapters() {
+        final Map<String, Object> chapter = constraint(
+                "type",
+                "object",
+                "properties",
+                constraint(
+                        "body", constraint("type", "object", "additionalProperties", constraint("type", "string")),
+                        "title", constraint("type", "object", "additionalProperties", constraint("type", "string"))));
+        return Schema.builder()
+                .schemaVersion(2)
+                .dialect(dialect())
+                .keys(List.of(
+                        key("chapters", constraint("type", "object", "additionalProperties", chapter)),
+                        key("locale", constraint("type", "string")),
+                        key("tags", constraint("type", "array", "items", constraint("type", "string")))))
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> body(final Schema schema) {
+        final Map<String, Object> chapter =
+                (Map<String, Object>) schema.getKeys().get(0).getConstraint().get("additionalProperties");
+        return (Map<String, Object>) ((Map<String, Object>) chapter.get("properties")).get("body");
+    }
+
+    @Test
+    void aPathContinuesIntoTheElementAndItsFields() {
+        final Schema refined = chapters()
+                .refine("chapters.*.body", Refinement.entryNames(LOCALE))
+                .refine("chapters.*.body.*", Refinement.nonBlank())
+                .refine("chapters.*.title", Refinement.requiredEntries(List.of("en")))
+                .refine("locale", Refinement.pattern(LOCALE))
+                .refine("tags.*", Refinement.nonBlank());
+        assertThat(body(refined)).containsEntry("propertyNames", Map.of("pattern", LOCALE));
+        assertThat(((Map<?, ?>) body(refined).get("additionalProperties")).get("pattern"))
+                .isEqualTo(Refinement.NON_BLANK);
+        assertThat(refined.getSchemaVersion()).isEqualTo(3);
+        assertThat(Refiner.tightenings(refined.getKeys().get(0)))
+                .containsExactly(
+                        new Refiner.Names("*.body", LOCALE),
+                        new Refiner.Matches("*.body.*", Refinement.NON_BLANK),
+                        new Refiner.Entries("*.title", List.of("en")));
+        // The schema it was given is untouched: refining copies what it changes.
+        assertThat(body(chapters())).doesNotContainKey("propertyNames");
+        assertThat(chapters().refine("locale", Refinement.pattern(LOCALE)).getSchemaVersion())
+                .isEqualTo(2);
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "chapters.*.bodyy|`bodyy` is not a field of `chapters.*`, so `chapters.*.bodyy` names nothing. Its "
+                        + "fields are `body`, `title`.",
+                "chapters.intro.body|`chapters` is a map, and `intro` would be one entry of it",
+                "locale.*|`locale` is neither a map nor a sequence",
+                "chapters..body|has an empty segment",
+                "chapters|`chapters` is not a string",
+                "tags.*.x|`tags.*` is not a struct, so it has no field `x`"
+            })
+    void aPositionTheTypeDidNotDescribeIsRefusedWithTheReason(final String path, final String reason) {
+        assertThatThrownBy(() -> chapters().refine(path, Refinement.nonBlank()))
+                .isInstanceOf(RefinementException.class)
+                .hasMessageContaining(reason);
+    }
+
+    @Test
+    void aDefaultANestedRefinementRejectsIsNotADefaultInEitherOrder() {
+        final Map<String, Object> blank =
+                Map.of("chapters", Map.of("intro", Map.of("body", Map.of("en", " \u3000 "))), "locale", "en");
+        final Schema refineFirst =
+                chapters().refine("chapters.*.body.*", Refinement.nonBlank()).withDefaultsFromValue(blank);
+        final Schema defaultsFirst =
+                chapters().withDefaultsFromValue(blank).refine("chapters.*.body.*", Refinement.nonBlank());
+        assertThat(refineFirst).isEqualTo(defaultsFirst);
+        assertThat(refineFirst.getKeys().get(0).isRequired()).isTrue();
+
+        final Map<String, Object> feff =
+                Map.of("chapters", Map.of("intro", Map.of("body", Map.of("en", "\uFEFF"))), "locale", "en");
+        assertThat(chapters()
+                        .withDefaultsFromValue(feff)
+                        .refine("chapters.*.body.*", Refinement.nonBlank())
+                        .getKeys()
+                        .get(0)
+                        .isRequired())
+                .isFalse();
+    }
+
+    @Test
+    void aSecondPatternIsRefusedAndOneNoChoiceMatchesIsUnsatisfiable() {
+        final Schema once = chapters().refine("locale", Refinement.pattern(LOCALE));
+        assertThat(once.refine("locale", Refinement.pattern(LOCALE))).isEqualTo(once);
+        assertThatThrownBy(() -> once.refine("locale", Refinement.nonBlank()))
+                .hasMessageContaining("is already matched against");
+
+        final Schema choice = Schema.builder()
+                .schemaVersion(2)
+                .dialect(dialect())
+                .keys(List.of(key("level", constraint("type", "string", "enum", List.of("info", "warn")))))
+                .build();
+        assertThatThrownBy(() -> choice.refine("level", Refinement.pattern("^x")))
+                .hasMessageContaining("matches none of them");
+        assertThat(choice.refine("level", Refinement.pattern("^i"))
+                        .getKeys()
+                        .get(0)
+                        .getConstraint())
+                .containsEntry("pattern", "^i");
+    }
+
+    @Test
+    void nonBlankIsExactlyWhatTrimLeavesNonEmptyForEveryCharacter() {
+        final java.util.regex.Pattern blank = PortablePattern.compile(Refinement.NON_BLANK);
+        assertThat(blank).isNotNull();
+        for (int code = 0; code <= Character.MAX_CODE_POINT; code++) {
+            if (code >= 0xD800 && code <= 0xDFFF) {
+                continue;
+            }
+            // Rust's `char::is_whitespace` is Unicode's White_Space property.
+            final boolean whiteSpace = isWhiteSpace(code);
+            assertThat(blank.matcher(Character.toString(code)).find())
+                    .as("U+%04X", code)
+                    .isEqualTo(!whiteSpace);
+        }
+    }
+
+    /** Unicode's {@code White_Space} property, which {@link Character#isWhitespace} is not. */
+    private static boolean isWhiteSpace(final int code) {
+        return (code >= 0x09 && code <= 0x0D)
+                || code == 0x20
+                || code == 0x85
+                || code == 0xA0
+                || code == 0x1680
+                || (code >= 0x2000 && code <= 0x200A)
+                || code == 0x2028
+                || code == 0x2029
+                || code == 0x202F
+                || code == 0x205F
+                || code == 0x3000;
+    }
+
+    @Test
+    void theRenderingsSayWhereInsideTheKeyEachRefinementIs() {
+        final Schema refined = chapters()
+                .refine("chapters.*.body", Refinement.entryNames("^[a-z]{2}$"))
+                .refine("locale", Refinement.pattern("^[a-z]{2}$"));
+        assertThat(refined.toMarkdown())
+                .contains("at `*.body`: entry names match `^[a-z]{2}$`")
+                .contains("matches `^[a-z]{2}$`");
+        assertThat(refined.toTomlExample())
+                .contains("# Entry names match at *.body: ^[a-z]{2}$")
+                .contains("# Matches: ^[a-z]{2}$");
     }
 
     @Test

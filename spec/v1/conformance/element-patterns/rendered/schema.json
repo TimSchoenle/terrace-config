@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "chapters": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": {
+              "pattern": "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]",
+              "type": "string"
+            },
+            "description": "Text, by locale.",
+            "propertyNames": {
+              "pattern": "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$"
+            },
+            "type": "object"
+          },
+          "title": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Heading, by locale.",
+            "required": [
+              "en"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "default": {
+        "intro": {
+          "body": {
+            "en": "Start here."
+          },
+          "title": {
+            "en": "Introduction"
+          }
+        }
+      },
+      "description": "Chapters, by slug.",
+      "type": "object"
+    },
+    "default_locale": {
+      "default": "en",
+      "description": "The locale a chapter falls back to.",
+      "pattern": "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

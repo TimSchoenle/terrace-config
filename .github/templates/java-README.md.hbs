@@ -136,8 +136,11 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   subset (`PortablePattern`), or a required entry the pattern rejects is a `RefinementException`; a
   default the refinement rejects makes the key required with no default, whichever of `refine` and
   `withDefaultsFromValue` ran first. An entry-name pattern raises the schema to
-  `schema_version: 3`. A library implements `Refine` with paths relative to wherever a host mounts
-  it.
+  `schema_version: 3`. `Refinement.pattern(…)` and `Refinement.nonBlank()` hold a string to a
+  pattern, and a path continues inside a key's constraint — `*` for an element, a field name for a
+  field — wherever the constraint describes one. (Maps publish no element schema from this producer
+  yet, so the positions inside one are reachable only on a constraint built by hand.) A library
+  implements `Refine` with paths relative to wherever a host mounts it.
 - **`Schema.toJsonSchema()` / `toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`)
   render a `Schema` as the JSON Schema document an editor or a Helm chart validates a rendered
   configuration against — a straight port of the Rust crate's `schema::json_schema` module.

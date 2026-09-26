@@ -19,7 +19,34 @@ import java.util.TreeSet;
  * taught to check. The set grows, so a caller must not rely on a {@code switch} over it being
  * exhaustive.
  */
-public sealed interface Refinement permits Refinement.RequiredEntries, Refinement.EntryNames {
+public sealed interface Refinement permits Refinement.RequiredEntries, Refinement.EntryNames, Refinement.Pattern {
+
+    /**
+     * Text holding at least one character that is not white space — the negation of Rust's {@code
+     * str::trim().is_empty()}, exactly. The class is Unicode's {@code White_Space} property. {@code
+     * \S} is not a substitute: ECMA-262's {@code \s} holds U+FEFF, which is not white space, so it
+     * would reject a value the runtime check accepts.
+     */
+    String NON_BLANK =
+            "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F" + "\\u205F\\u3000]";
+
+    /**
+     * {@link Pattern} from a pattern, checked when it is applied.
+     *
+     * @param pattern the pattern the string must match, inside the portable subset
+     */
+    static Refinement pattern(final String pattern) {
+        return new Pattern(pattern);
+    }
+
+    /**
+     * {@link Pattern} of {@link #NON_BLANK}: the string is not empty and not only white space.
+     *
+     * @return the refinement
+     */
+    static Refinement nonBlank() {
+        return new Pattern(NON_BLANK);
+    }
 
     /**
      * {@link RequiredEntries} from any collection of names.
@@ -43,7 +70,7 @@ public sealed interface Refinement permits Refinement.RequiredEntries, Refinemen
     /**
      * The version of the schema half a document carrying this refinement is published at.
      *
-     * @return {@code 2} for required entries, {@code 3} for an entry-name pattern
+     * @return {@code 3} for an entry-name pattern, {@code 2} for anything else
      */
     default int schemaVersion() {
         return this instanceof EntryNames ? 3 : 2;
@@ -85,4 +112,14 @@ public sealed interface Refinement permits Refinement.RequiredEntries, Refinemen
      * @param pattern the pattern every entry name must match
      */
     record EntryNames(String pattern) implements Refinement {}
+
+    /**
+     * A string must match this pattern.
+     *
+     * <p>Published as JSON Schema's {@code pattern} at the string's position — a string-typed key,
+     * or a string inside one's element schema. The same portable subset as {@link EntryNames}.
+     *
+     * @param pattern the pattern the string must match
+     */
+    record Pattern(String pattern) implements Refinement {}
 }

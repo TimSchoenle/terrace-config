@@ -31,6 +31,7 @@ const PRODUCER_CASES: &[&str] = &[
     "unnameable-key",
     "required-entries",
     "entry-names",
+    "element-patterns",
     "reload",
 ];
 

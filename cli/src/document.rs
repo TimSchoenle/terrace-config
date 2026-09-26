@@ -398,6 +398,97 @@ impl Key {
     pub fn entry_name_pattern(&self) -> Option<&str> {
         entry_name_pattern(self.constraint.as_ref())
     }
+
+    /// Every tightening this key's constraint publishes, with its position inside the key.
+    ///
+    /// See [`tightenings`].
+    pub fn tightenings(&self) -> Vec<(String, Tightening<'_>)> {
+        tightenings(self.constraint.as_ref())
+    }
+}
+
+/// How deep [`tightenings`] follows a constraint before it stops: a document is untrusted input.
+const MAX_TIGHTENING_DEPTH: usize = 32;
+
+/// One tightening `FORMAT.md` (*Refinements*) lets a producer publish, as a rendering names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Tightening<'a> {
+    /// A map's `required` entries.
+    Entries(Vec<&'a str>),
+    /// A map's `propertyNames` pattern.
+    Names(&'a str),
+    /// A string's `pattern`.
+    Matches(&'a str),
+}
+
+impl Tightening<'_> {
+    /// The keyword the tightening is published under.
+    pub const fn keyword(&self) -> &'static str {
+        match self {
+            Self::Entries(_) => "required",
+            Self::Names(_) => "propertyNames",
+            Self::Matches(_) => "pattern",
+        }
+    }
+}
+
+/// Every tightening a constraint publishes, each with its position relative to the key.
+///
+/// The position is empty for the key itself and `*.body` for the `body` field of every element,
+/// `*` standing for an element as the producer's refinement path spells it.
+///
+/// In the order a reader meets them, which is the order every rendering prints them in: the key's
+/// own — entries, entry names, pattern — then its element, then its fields as the constraint lists
+/// them. A struct's `required` names its fields rather than a map's entries and is not one; neither
+/// is a `propertyNames` other than a lone pattern.
+pub fn tightenings(constraint: Option<&Json>) -> Vec<(String, Tightening<'_>)> {
+    let mut found = Vec::new();
+    if let Some(constraint) = constraint {
+        walk_tightenings(constraint, "", 0, &mut found);
+    }
+    found
+}
+
+fn walk_tightenings<'a>(
+    schema: &'a Json,
+    at: &str,
+    depth: usize,
+    found: &mut Vec<(String, Tightening<'a>)>,
+) {
+    let Some(schema) = schema.as_object() else {
+        return;
+    };
+    if depth > MAX_TIGHTENING_DEPTH {
+        return;
+    }
+    let entries = required_entries_of(schema);
+    if !entries.is_empty() {
+        found.push((at.to_owned(), Tightening::Entries(entries)));
+    }
+    if let Some(pattern) = entry_name_pattern_of(schema) {
+        found.push((at.to_owned(), Tightening::Names(pattern)));
+    }
+    if let Some(pattern) = schema.get("pattern").and_then(Json::as_str) {
+        found.push((at.to_owned(), Tightening::Matches(pattern)));
+    }
+
+    let below = |segment: &str| {
+        if at.is_empty() {
+            segment.to_owned()
+        } else {
+            format!("{at}.{segment}")
+        }
+    };
+    for keyword in ["additionalProperties", "items"] {
+        if let Some(element) = schema.get(keyword).filter(|element| element.is_object()) {
+            walk_tightenings(element, &below("*"), depth + 1, found);
+        }
+    }
+    if let Some(fields) = schema.get("properties").and_then(Json::as_object) {
+        for (name, field) in fields {
+            walk_tightenings(field, &below(name), depth + 1, found);
+        }
+    }
 }
 
 /// The entries a map-typed constraint requires: `required` at the top of an object that declares
@@ -647,6 +738,35 @@ struct Envelope {
 #[cfg(test)]
 mod tests {
     use super::{Contract, LoaderRole, TextForm, Unknown, Unreachable};
+
+    #[test]
+    fn every_tightening_is_found_at_its_position_in_reading_order() {
+        use super::Tightening;
+
+        let constraint = serde_json::json!({
+            "type": "object",
+            "required": ["intro"],
+            "additionalProperties": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                    "body": {"type": "object", "propertyNames": {"pattern": "^[a-z]{2}$"},
+                             "additionalProperties": {"type": "string", "pattern": "[^ ]"}},
+                    "title": {"type": "object", "required": ["en"]},
+                },
+            },
+        });
+        assert_eq!(
+            super::tightenings(Some(&constraint)),
+            vec![
+                (String::new(), Tightening::Entries(vec!["intro"])),
+                ("*.body".to_owned(), Tightening::Names("^[a-z]{2}$")),
+                ("*.body.*".to_owned(), Tightening::Matches("[^ ]")),
+                ("*.title".to_owned(), Tightening::Entries(vec!["en"])),
+            ],
+            "a struct's own `required` names fields, not entries"
+        );
+    }
 
     #[test]
     fn only_a_maps_single_pattern_is_an_entry_name_pattern() {
