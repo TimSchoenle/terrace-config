@@ -215,6 +215,7 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
             Tightening::Entries(entries) => ("Must contain", entries.join(", ")),
             Tightening::Names(pattern) => ("Entry names match", pattern.to_owned()),
             Tightening::Matches(pattern) => ("Matches", pattern.to_owned()),
+            Tightening::Holds(description) => ("Holds", description.to_owned()),
         };
         if at.is_empty() {
             comment(&mut out, &format!("{label}: {value}"));

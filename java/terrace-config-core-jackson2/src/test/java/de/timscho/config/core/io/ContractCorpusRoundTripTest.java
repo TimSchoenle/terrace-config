@@ -71,6 +71,7 @@ class ContractCorpusRoundTripTest {
                         "unnameable-key",
                         "required-entries",
                         "entry-names",
-                        "element-patterns");
+                        "element-patterns",
+                        "conditions");
     }
 }

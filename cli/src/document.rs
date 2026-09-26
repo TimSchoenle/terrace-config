@@ -47,10 +47,11 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// but [`Contract::schema_version_ahead`] reports it, so a caller walking `constraint` itself can
 /// say "this document may carry more than I know about" rather than quietly under-reading it.
 ///
-/// Version 3 added `propertyNames`, which a producer's entry-name refinement writes. A producer
-/// publishes the lowest version whose vocabulary holds what the document carries, so most documents
-/// still declare 2.
-pub const SCHEMA_VERSION: u32 = 3;
+/// Version 3 added `propertyNames`, which a producer's entry-name refinement writes. Version 4 added
+/// the conditions between a struct's fields: `oneOf`, `if`, `then`, `minProperties` and
+/// `maxProperties`, beside `allOf`, `anyOf`, `not` and `const`. A producer publishes the lowest
+/// version whose vocabulary holds what the document carries, so most documents still declare 2.
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// The default in-image path a contract is published at.
 ///
@@ -419,6 +420,8 @@ pub enum Tightening<'a> {
     Names(&'a str),
     /// A string's `pattern`.
     Matches(&'a str),
+    /// A struct's condition, by the sentence its `allOf` member carries as `description`.
+    Holds(&'a str),
 }
 
 impl Tightening<'_> {
@@ -428,6 +431,7 @@ impl Tightening<'_> {
             Self::Entries(_) => "required",
             Self::Names(_) => "propertyNames",
             Self::Matches(_) => "pattern",
+            Self::Holds(_) => "allOf",
         }
     }
 }
@@ -470,6 +474,9 @@ fn walk_tightenings<'a>(
     }
     if let Some(pattern) = schema.get("pattern").and_then(Json::as_str) {
         found.push((at.to_owned(), Tightening::Matches(pattern)));
+    }
+    for description in conditions_of(schema) {
+        found.push((at.to_owned(), Tightening::Holds(description)));
     }
 
     let below = |segment: &str| {
@@ -545,6 +552,20 @@ pub fn entry_name_pattern_of(constraint: &serde_json::Map<String, Json>) -> Opti
         return None;
     }
     names.get("pattern")?.as_str()
+}
+
+/// The sentences of the conditions a schema carries: its `allOf` members carrying `description`.
+///
+/// `FORMAT.md` (*Refinements*): a condition between a struct's fields is published as one `allOf`
+/// member whose `description` is its readable form. A member without one — the choice of spellings a
+/// producer writes for a required field with an alias — is not a condition.
+pub fn conditions_of(schema: &serde_json::Map<String, Json>) -> impl Iterator<Item = &str> {
+    schema
+        .get("allOf")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|member| member.get("description").and_then(Json::as_str))
 }
 
 /// Why the environment cannot name a key.

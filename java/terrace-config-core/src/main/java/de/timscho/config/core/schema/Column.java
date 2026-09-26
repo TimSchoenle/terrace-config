@@ -115,6 +115,8 @@ public enum Column {
             said = "must contain: " + required;
         } else if (tightening instanceof Refiner.Names names) {
             said = "entry names match `" + escape(names.pattern()) + "`";
+        } else if (tightening instanceof Refiner.Holds holds) {
+            said = escape(holds.description());
         } else {
             said = "matches `" + escape(((Refiner.Matches) tightening).pattern()) + "`";
         }

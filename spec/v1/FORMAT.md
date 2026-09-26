@@ -95,7 +95,9 @@ Two version numbers, moving independently.
 against rather than read it optimistically.
 
 **`schema.schema_version`** versions the schema half. Version 2 allowed `constraint` to nest.
-Version 3 added `propertyNames` (see [Refinements](#refinements)). A consumer gates its keyword
+Version 3 added `propertyNames`, and version 4 the conditions between a struct's fields — `oneOf`,
+`if`, `then`, `minProperties` and `maxProperties`, beside `allOf`, `anyOf`, `not` and `const`, which a
+version-4 consumer is held to as well (see [Refinements](#refinements)). A consumer gates its keyword
 allowlist on this: refuse a version you were not written against, widen, then accept it.
 
 A producer publishes the **lowest** version whose vocabulary holds every keyword the document
@@ -232,6 +234,9 @@ wrong for the second, which is why the reason is published rather than inferred.
 **`default_value: null` is ambiguous on its own** — it is what both "no default" and "the default
 is null" render to. Read `default` and `required` alongside it.
 
+Inside a default, an unset field — an optional value holding nothing — is **absent**, never `null`.
+No document can spell a `null` field, and what the loader sees for one is absence.
+
 **A `default_value` MUST satisfy the key's own `constraint`.** A key publishing a default says
 leaving it out is fine and names what it falls back to; a constraint rejecting that value says the
 fallback is invalid. The two cannot both be true, and a consumer generating fixtures or values from
@@ -326,6 +331,25 @@ from the [portable subset](#portable-patterns), which means what JSON Schema's `
 position carries at most one, and a choice (`enum`) none of whose values the pattern matches is
 unsatisfiable and MUST be refused.
 
+A fourth tightening is defined: **a condition between a struct's fields**, from `schema_version: 4`.
+A struct position — in practice the element of a map or sequence of structs — MAY carry, as members
+of its `allOf`, schemas relating its declared fields: that exactly one of several conditions holds
+(`oneOf`), that one condition implies another (`if`/`then`), built from a field being present
+(`required`), absent (`not` of `required`), empty or not (`maxProperties`/`minProperties`, or
+`maxItems`/`minItems` and `maxLength`/`minLength` by the field's type), equal or not to a value (`const`, `not`), above a
+bound (`exclusiveMinimum`) or matching a portable pattern, through nested structs by `properties`.
+Each such member carries **`description`**, its readable form, and a consumer showing the condition
+shows that sentence rather than paraphrasing the schema. An `allOf` member without `description` is
+not a condition this format defines — a producer writes one for a required field with an alias — and
+a consumer shows it as it shows any other keyword.
+
+A condition is a conjunct and can only tighten. Whether it states the runtime check *exactly* is the
+producer's to get right, and two traps are common enough to name. A check that returns early — no
+consent rule applies when the requirement is `none` — makes a rule that ignores the early return
+stricter than the check; state it inside the consequence of the condition that guards it. And a
+check that parses a format more liberally than any pattern says — a date parser accepting week and
+ordinal dates — has no exact pattern; publish nothing for it rather than an approximation.
+
 **Every tightening may sit inside a key**, not only at its top: at the element schema of a map
 (`additionalProperties`) or a sequence (`items`), and at a declared field of an element struct
 (`properties`), as deeply as the type described. A tightening inside a key applies to every entry or
@@ -338,7 +362,8 @@ from the key's constraint down to it, `.`-joined, with `*` for an element and a 
 field — `*.body` for the `body` field of every entry, `*.body.*` for every text in it. The key's own
 tightenings have the empty position. A consumer reads them by walking `constraint` in this order:
 at each position, `required` (on a map only — a struct's `required` names fields), then a
-`propertyNames` holding only `pattern`, then `pattern`; then the element, `additionalProperties`
+`propertyNames` holding only `pattern`, then `pattern`, then each `allOf` member carrying
+`description`; then the element, `additionalProperties`
 before `items`; then each field in the order `properties` lists them.
 
 A tightening's meaning never depends on how a consumer displays it; the renderings in the

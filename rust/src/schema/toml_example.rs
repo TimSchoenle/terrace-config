@@ -306,7 +306,10 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
             Tightening::Entries(entries) => ("Must contain", entries.join(", ")),
             Tightening::Names(pattern) => ("Entry names match", pattern.to_owned()),
             Tightening::Matches(pattern) => ("Matches", pattern.to_owned()),
+            Tightening::Holds(description) => ("Holds", description.to_owned()),
         };
+        // One line each, however long: a condition quotes patterns, and a break inside one would
+        // read as a space in it.
         if at.is_empty() {
             comment(&mut out, &format!("{label}: {value}"));
         } else {

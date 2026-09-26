@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use terrace_config::Terrace;
 use terrace_config::schema::{
-    App, Describe, Key, LATEST_SCHEMA_VERSION, Refine, Refinement, SCHEMA_VERSION, Schema,
+    App, Condition, Describe, Key, LATEST_SCHEMA_VERSION, Refine, Refinement, SCHEMA_VERSION,
+    Schema,
 };
 
 #[derive(Deserialize, Serialize, Default, Describe)]
@@ -53,6 +54,9 @@ struct LegalDocument {
 }
 
 const DOCUMENTS: &str = "legal.documents";
+
+/// The version `propertyNames` arrived in, and so what a document carrying it is published at.
+const PROPERTY_NAMES_VERSION: u32 = 3;
 
 fn described() -> Schema {
     Terrace::new("PORTFOLIO_").schema::<Host>()
@@ -506,7 +510,7 @@ fn an_entry_name_pattern_lands_in_property_names_and_raises_the_version() {
         constraint(&refined, DOCUMENTS)["propertyNames"],
         json!({"pattern": SLUG})
     );
-    assert_eq!(refined.schema_version, LATEST_SCHEMA_VERSION);
+    assert_eq!(refined.schema_version, PROPERTY_NAMES_VERSION);
     // The element the type described is untouched.
     assert_eq!(
         constraint(&refined, DOCUMENTS)["additionalProperties"]["properties"]["title"]["type"],
@@ -652,7 +656,7 @@ fn the_json_schema_and_the_contract_hold_entry_names_to_the_pattern() {
         serde_json::from_str(&contract.to_json().expect("it serialises")).expect("JSON");
     assert_eq!(
         document["schema"]["schema_version"],
-        json!(LATEST_SCHEMA_VERSION)
+        json!(PROPERTY_NAMES_VERSION)
     );
     assert_eq!(
         contract.json_schema["properties"]["legal"]["properties"]["documents"]["propertyNames"],
@@ -666,11 +670,11 @@ fn a_merge_is_written_at_the_later_version() {
     let unrefined = Terrace::new("PORTFOLIO_").schema::<Workers>();
     assert_eq!(
         unrefined.clone().merge(refined.clone()).schema_version,
-        LATEST_SCHEMA_VERSION
+        PROPERTY_NAMES_VERSION
     );
     assert_eq!(
         refined.merge(unrefined).schema_version,
-        LATEST_SCHEMA_VERSION
+        PROPERTY_NAMES_VERSION
     );
 }
 
@@ -809,7 +813,7 @@ fn a_path_continues_into_the_element_and_its_fields() {
         constraint(&refined, "tags")["items"]["pattern"],
         json!(Refinement::NON_BLANK)
     );
-    assert_eq!(refined.schema_version, LATEST_SCHEMA_VERSION);
+    assert_eq!(refined.schema_version, PROPERTY_NAMES_VERSION);
 }
 
 #[test]
@@ -1008,6 +1012,277 @@ fn the_renderings_say_where_inside_the_key_each_refinement_is() {
             "# Matches at *.body.*: {}\n",
             Refinement::NON_BLANK
         )),
+        "{example}"
+    );
+}
+
+// ---- conditions between fields ----
+
+/// terrace-legal's `documents.<slug>`: hosted or external, and a consent rule on top.
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Legal2 {
+    /// Documents, by slug.
+    #[config(element)]
+    #[serde(default)]
+    documents: BTreeMap<String, Document>,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Document {
+    /// Text, by locale. Empty for an external document.
+    #[serde(default)]
+    body: BTreeMap<String, String>,
+    /// Where an external document lives.
+    #[serde(default)]
+    url: Option<String>,
+    #[config(nested)]
+    #[serde(default)]
+    consent: Consent,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+struct Consent {
+    /// What a visitor is asked for.
+    #[config(values)]
+    #[serde(default)]
+    requirement: Requirement,
+    /// The version a visitor consents to.
+    #[serde(default)]
+    version: Option<String>,
+    /// Days a changed document may still be shown without renewed consent.
+    #[config(range(max = 365))]
+    #[serde(default)]
+    grace_days: u16,
+    /// When the current version took effect.
+    #[serde(default)]
+    effective: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Default, Describe)]
+#[serde(rename_all = "lowercase")]
+enum Requirement {
+    #[default]
+    None,
+    Accept,
+}
+
+fn legal2() -> Schema {
+    Terrace::new("SITE_").schema::<Legal2>()
+}
+
+/// Exactly one of hosted and external.
+fn hosted_or_external() -> Refinement {
+    Refinement::holds(Condition::exactly_one([
+        Condition::present("url"),
+        Condition::non_empty("body"),
+    ]))
+}
+
+/// A requirement needs a version and a hosted document, and a grace period needs an effective date —
+/// but only under a requirement, since the runtime returns before any other check without one.
+fn consent_rule() -> Refinement {
+    Refinement::holds(Condition::when(
+        Condition::not_equals("consent.requirement", "none"),
+        Condition::all([
+            Condition::absent("url"),
+            Condition::matches("consent.version", Refinement::NON_BLANK),
+            Condition::when(
+                Condition::above("consent.grace_days", 0),
+                Condition::present("consent.effective"),
+            ),
+        ]),
+    ))
+}
+
+fn documents_with(document: &Json) -> Json {
+    json!({"documents": {"terms": document}})
+}
+
+#[test]
+fn a_condition_is_an_all_of_member_carrying_its_sentence_and_raises_the_version() {
+    let refined = legal2()
+        .refine("documents.*", hosted_or_external())
+        .expect("both fields are declared");
+    let element = constraint(&refined, "documents")["additionalProperties"].clone();
+    assert_eq!(
+        element["allOf"],
+        json!([{
+            "description": "exactly one of: [`url` is set; `body` is not empty]",
+            "oneOf": [
+                {"required": ["url"]},
+                {"required": ["body"], "properties": {"body": {"minProperties": 1}}},
+            ],
+        }])
+    );
+    assert_eq!(refined.schema_version, LATEST_SCHEMA_VERSION);
+
+    // Twice is once.
+    let twice = refined
+        .clone()
+        .refine("documents.*", hosted_or_external())
+        .expect("applies again");
+    assert_eq!(twice, refined);
+}
+
+#[test]
+fn the_json_schema_holds_every_document_to_its_conditions_exactly() {
+    let refined = legal2()
+        .refine("documents.*", hosted_or_external())
+        .and_then(|schema| schema.refine("documents.*", consent_rule()))
+        .expect("every field is declared");
+    let validator = document_validator(&refined.to_json_schema().expect("it renders"));
+    let valid = |document: Json| validator.is_valid(&documents_with(&document));
+
+    assert!(valid(json!({"body": {"en": "x"}})), "hosted");
+    assert!(valid(json!({"url": "https://example.com"})), "external");
+    assert!(
+        valid(json!({"url": "u", "body": {}})),
+        "external, with an empty body"
+    );
+    assert!(!valid(json!({"url": "u", "body": {"en": "x"}})), "both");
+    assert!(!valid(json!({})), "neither");
+    assert!(!valid(json!({"body": {}})), "an empty body alone");
+
+    let consent = |consent: Json| json!({"body": {"en": "x"}, "consent": consent});
+    assert!(valid(consent(json!({"requirement": "none"}))));
+    assert!(
+        valid(consent(json!({"requirement": "none", "grace_days": 5}))),
+        "no rule without a requirement"
+    );
+    assert!(
+        !valid(consent(json!({"requirement": "accept"}))),
+        "a requirement needs a version"
+    );
+    assert!(
+        !valid(consent(json!({"requirement": "accept", "version": " "}))),
+        "a blank version"
+    );
+    assert!(valid(consent(
+        json!({"requirement": "accept", "version": "1"})
+    )));
+    assert!(
+        !valid(consent(
+            json!({"requirement": "accept", "version": "1", "grace_days": 5})
+        )),
+        "a grace period needs an effective date"
+    );
+    assert!(valid(consent(
+        json!({"requirement": "accept", "version": "1", "grace_days": 5, "effective": "2026-09-22"})
+    )));
+    assert!(
+        !valid(json!({"url": "u", "consent": {"requirement": "accept", "version": "1"}})),
+        "a requirement needs a hosted document"
+    );
+}
+
+#[test]
+fn a_condition_names_only_declared_fields_on_a_struct() {
+    for (path, refinement, reason) in [
+        (
+            "documents",
+            hosted_or_external(),
+            "`documents` is not a struct, so it has no fields for a condition to relate",
+        ),
+        (
+            "documents.*",
+            Refinement::holds(Condition::present("urll")),
+            "the condition cannot be stated on `documents.*`: `urll` is not a field of \
+             `documents.*`",
+        ),
+        (
+            "documents.*",
+            Refinement::holds(Condition::equals("consent.requirement", "always")),
+            "`consent.requirement` can never be \"always\"",
+        ),
+        (
+            "documents.*",
+            Refinement::holds(Condition::above("url", 0)),
+            "`url` is not a number",
+        ),
+    ] {
+        let message = refusal(legal2().refine(path, refinement));
+        assert!(message.contains(reason), "{path}: {message}");
+    }
+}
+
+#[test]
+fn a_default_a_condition_rejects_is_not_a_default_in_either_order() {
+    let mut both = Legal2::default();
+    both.documents.insert(
+        "terms".to_owned(),
+        Document {
+            body: BTreeMap::from([("en".to_owned(), "x".to_owned())]),
+            url: Some("https://example.com".to_owned()),
+            consent: Consent::default(),
+        },
+    );
+    let refine_first = legal2()
+        .refine("documents.*", hosted_or_external())
+        .expect("applies")
+        .with_defaults_from(&both)
+        .expect("the default serialises");
+    let defaults_first = legal2()
+        .with_defaults_from(&both)
+        .expect("the default serialises")
+        .refine("documents.*", hosted_or_external())
+        .expect("applies");
+    assert_eq!(refine_first, defaults_first);
+    assert!(key(&refine_first, "documents").required);
+    assert_eq!(key(&refine_first, "documents").default_value, None);
+}
+
+#[test]
+fn a_contract_refuses_a_default_failing_a_condition_by_its_sentence() {
+    // A condition written into the constraint by hand, with a default that fails it: `build` is the
+    // boundary, and it names the rule rather than its encoding.
+    let mut both = Legal2::default();
+    both.documents
+        .insert("terms".to_owned(), Document::default());
+    let mut schema = legal2()
+        .with_defaults_from(&both)
+        .expect("the default serialises");
+    let refined = legal2()
+        .refine("documents.*", hosted_or_external())
+        .expect("applies");
+    schema
+        .keys
+        .iter_mut()
+        .find(|key| key.path == "documents")
+        .expect("described")
+        .constraint = key(&refined, "documents").constraint.clone();
+    let message = match schema.into_contract(App::new("site")).build() {
+        Ok(_) => panic!("a default failing its own condition was published"),
+        Err(error) => error.to_string(),
+    };
+    assert!(
+        message.contains(
+            "`terms` does not satisfy: exactly one of: [`url` is set; `body` is not empty]"
+        ),
+        "{message}"
+    );
+}
+
+#[test]
+fn the_renderings_say_each_condition_in_its_own_words() {
+    let refined = legal2()
+        .refine("documents.*", hosted_or_external())
+        .expect("applies");
+    let row = refined
+        .to_markdown()
+        .lines()
+        .find(|line| line.starts_with("| `documents`"))
+        .expect("the key has a row")
+        .to_owned();
+    assert!(
+        row.contains(
+            "`BTreeMap<String, Document>`, at `*`: exactly one of: [`url` is set; `body` is not \
+             empty]"
+        ),
+        "{row}"
+    );
+    let example = refined.to_toml_example();
+    assert!(
+        example.contains("# Holds at *: exactly one of: [`url` is set; `body` is not empty]\n"),
         "{example}"
     );
 }

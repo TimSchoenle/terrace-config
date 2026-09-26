@@ -43,7 +43,7 @@ public class Refiner {
     private static final int MAX_DEPTH = 32;
 
     /** One tightening a constraint publishes, and its position relative to the key. */
-    public sealed interface Tightening permits Entries, Names, Matches {
+    public sealed interface Tightening permits Entries, Names, Matches, Holds {
         /**
          * Where the tightening is: empty for the key itself, {@code *.body} for the {@code body}
          * field of every element.
@@ -76,6 +76,14 @@ public class Refiner {
      * @param pattern the pattern
      */
     public record Matches(String at, String pattern) implements Tightening {}
+
+    /**
+     * A struct's condition, by the sentence its {@code allOf} member carries as {@code description}.
+     *
+     * @param at          the position
+     * @param description the sentence
+     */
+    public record Holds(String at, String description) implements Tightening {}
 
     /**
      * {@code schema} with the constraint at {@code path} tightened by {@code refinement}.
@@ -113,6 +121,7 @@ public class Refiner {
                         requireEntries(target, reach, schema.getDialect(), required.entries());
                     case Refinement.EntryNames names -> nameEntries(target, reach.at(), names.pattern());
                     case Refinement.Pattern matching -> matchPattern(target, reach.at(), matching.pattern());
+                    case Refinement.Holds holds -> hold(target, reach.at(), holds.condition());
                 };
         // CHECKSTYLE.ON: Indentation
         if (!changed) {
@@ -215,6 +224,9 @@ public class Refiner {
     private static String what(final Refinement refinement) {
         if (refinement instanceof Refinement.RequiredEntries) {
             return "a required entry";
+        }
+        if (refinement instanceof Refinement.Holds) {
+            return "a condition";
         }
         return refinement instanceof Refinement.EntryNames ? "an entry-name pattern" : "a pattern";
     }
@@ -438,6 +450,42 @@ public class Refiner {
                 + choices + ", and the pattern matches none of them. No value could satisfy both.");
     }
 
+    /** {@link Refinement.Holds} at one position. Whether the constraint changed. */
+    @SuppressWarnings("unchecked")
+    private static boolean hold(final Map<String, Object> target, final String at, final Condition condition) {
+        if (!"object".equals(target.get("type")) || !(target.get("properties") instanceof Map<?, ?>)) {
+            throw new RefinementException("`" + at + "` is not a struct, so it has no fields for a condition to "
+                    + "relate: its constraint is " + target + ". State a condition on a struct — the element of a "
+                    + "map or sequence of them is `" + at + "." + ELEMENT + "`.");
+        }
+        final Conditions.Stated stated;
+        try {
+            stated = Conditions.state(condition, target, at);
+        } catch (final Conditions.Refused refused) {
+            throw new RefinementException(
+                    "the condition cannot be stated on `" + at + "`: " + refused.getMessage() + ".");
+        }
+        final Map<String, Object> member = new TreeMap<>(stated.schema());
+        member.put("description", stated.description());
+
+        final Object held = target.get("allOf");
+        final List<Object> conditions;
+        if (held == null) {
+            conditions = new ArrayList<>();
+        } else if (held instanceof List<?> list) {
+            conditions = (List<Object>) list;
+        } else {
+            throw new RefinementException("`" + at + "` already carries `allOf: " + held
+                    + "`, which is not a list of schemas, so there is nothing sound to add a condition to.");
+        }
+        if (conditions.contains(member)) {
+            return false;
+        }
+        conditions.add(member);
+        target.put("allOf", conditions);
+        return true;
+    }
+
     private static void checkPortable(final String pattern, final String what, final String at) {
         final String refused = PortablePattern.refusal(pattern);
         if (refused != null) {
@@ -555,6 +603,7 @@ public class Refiner {
         if (schema.get("pattern") instanceof String pattern) {
             found.add(new Matches(at, pattern));
         }
+        conditionTightenings(schema, at, found);
         for (final String keyword : List.of("additionalProperties", "items")) {
             if (schema.get(keyword) instanceof Map<?, ?> element) {
                 walk(element, below(at, ELEMENT), depth + 1, found);
@@ -584,6 +633,18 @@ public class Refiner {
                 && names.size() == 1
                 && names.get("pattern") instanceof String pattern) {
             found.add(new Names(at, pattern));
+        }
+    }
+
+    /** A struct's conditions: the {@code allOf} members carrying {@code description}. */
+    private static void conditionTightenings(final Map<?, ?> schema, final String at, final List<Tightening> found) {
+        if (!(schema.get("allOf") instanceof List<?> members)) {
+            return;
+        }
+        for (final Object member : members) {
+            if (member instanceof Map<?, ?> described && described.get("description") instanceof String said) {
+                found.add(new Holds(at, said));
+            }
         }
     }
 
