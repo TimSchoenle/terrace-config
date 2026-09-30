@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.1](https://github.com/TimSchoenle/terrace-config/compare/v0.15.0...v0.15.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.58.0 ([#215](https://github.com/TimSchoenle/terrace-config/issues/215)) ([96ef649](https://github.com/TimSchoenle/terrace-config/commit/96ef64945cc57e45604f28c736351b2b956aba38))
+* **deps:** update rust crate jsonschema to v0.58.1 ([#219](https://github.com/TimSchoenle/terrace-config/issues/219)) ([f3621ab](https://github.com/TimSchoenle/terrace-config/commit/f3621ab6f3ddf970b8f0e94cef6bd2e5b3a3cc51))
+
+
+### Miscellaneous
+
+* **deps:** update actions-rust-lang/setup-rust-toolchain action to v2 ([#125](https://github.com/TimSchoenle/terrace-config/issues/125)) ([1b95c25](https://github.com/TimSchoenle/terrace-config/commit/1b95c250afe7baac16ddaab73d697c68507ea085))
+
 ## [0.15.0](https://github.com/TimSchoenle/terrace-config/compare/v0.14.0...v0.15.0) (2026-09-26)
 
 
