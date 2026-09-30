@@ -24,8 +24,13 @@ cargo-fuzz = true
 name = "terrace_contract_fuzz"
 path = "src/lib.rs"
 
-[dependencies]
+# Only the `fuzz_target!` shims use it, and only under `cfg(fuzzing)`, which `cargo fuzz` sets
+# through RUSTFLAGS. Declared unconditionally, it is unused in every other build, and cargo's
+# `unused_dependencies` lint says so on each `--all-targets` run.
+[target.'cfg(fuzzing)'.dependencies]
 libfuzzer-sys = "0.4"
+
+[dependencies]
 terrace-contract = { path = "..", default-features = false }
 serde_json = "1"
 # The TOML oracle's central claim is that the rendered example *loads*. Asserting that needs a

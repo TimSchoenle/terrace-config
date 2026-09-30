@@ -23,8 +23,13 @@ cargo-fuzz = true
 name = "terrace_config_fuzz"
 path = "src/lib.rs"
 
-[dependencies]
+# Only the `fuzz_target!` shims use it, and only under `cfg(fuzzing)`, which `cargo fuzz` sets
+# through RUSTFLAGS. Declared unconditionally, it is unused in every other build, and cargo's
+# `unused_dependencies` lint says so on each `--all-targets` run.
+[target.'cfg(fuzzing)'.dependencies]
 libfuzzer-sys = "0.4"
+
+[dependencies]
 # `full`, because `secrets_dir` reaches the file layers and `env_load` compares `load` against
 # `load_watched`. The supervisor itself is not fuzzed: its inputs are a filesystem event and a
 # caller's closure, neither of which a byte string models.
