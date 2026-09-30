@@ -1,19 +1,18 @@
 package de.timscho.config.tck;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SchemaValidatorsConfig;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.InputFormat;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import org.jetbrains.annotations.Blocking;
 
 /**
@@ -25,15 +24,20 @@ import org.jetbrains.annotations.Blocking;
  * resolve nothing over the network — {@code contract.schema.json} is self-contained by design,
  * and a validator that happened not to need the network is not the same guarantee as one that is
  * configured to refuse it.
+ *
+ * <p>The validator is built on Jackson 3 while this module's public surface, and every caller of
+ * it, speaks Jackson 2. Documents cross that boundary as JSON text rather than through a tree
+ * conversion: text is the one representation both majors agree on exactly, and it keeps Jackson 3
+ * an implementation detail of the validator instead of a second tree model on this API.
  */
 public final class MetaSchemaValidator {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final JsonSchema fullSchema;
-    private final JsonSchema schemaHalf;
+    private final Schema fullSchema;
+    private final Schema schemaHalf;
 
-    private MetaSchemaValidator(final JsonSchema fullSchema, final JsonSchema schemaHalf) {
+    private MetaSchemaValidator(final Schema fullSchema, final Schema schemaHalf) {
         this.fullSchema = fullSchema;
         this.schemaHalf = schemaHalf;
     }
@@ -45,11 +49,12 @@ public final class MetaSchemaValidator {
     }
 
     static MetaSchemaValidator forSchema(final JsonNode metaSchema) {
-        final SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().build();
-        final JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+        final SchemaRegistry registry = SchemaRegistry.withDefaultDialect(
+                SpecificationVersion.DRAFT_2020_12,
+                builder -> builder.schemaLoader(loader -> loader.fetchRemoteResources(false)));
 
-        final JsonSchema full = factory.getSchema(metaSchema, config);
-        final JsonSchema half = factory.getSchema(schemaHalfNode(metaSchema), config);
+        final Schema full = registry.getSchema(toJson(metaSchema), InputFormat.JSON);
+        final Schema half = registry.getSchema(toJson(schemaHalfNode(metaSchema)), InputFormat.JSON);
         return new MetaSchemaValidator(full, half);
     }
 
@@ -80,7 +85,7 @@ public final class MetaSchemaValidator {
      * @param instance the document to validate
      */
     public List<String> validateEnvelope(final JsonNode instance) {
-        return describe(this.fullSchema.validate(instance));
+        return describe(this.fullSchema.validate(toJson(instance), InputFormat.JSON));
     }
 
     /** Every error validating {@code instance} against {@code #/$defs/schema} alone.
@@ -88,13 +93,22 @@ public final class MetaSchemaValidator {
      * @param instance the {@code json_schema} half to validate
      */
     public List<String> validateSchemaHalf(final JsonNode instance) {
-        return describe(this.schemaHalf.validate(instance));
+        return describe(this.schemaHalf.validate(toJson(instance), InputFormat.JSON));
     }
 
-    private static List<String> describe(final Set<ValidationMessage> messages) {
-        final List<String> described = new ArrayList<>();
-        for (final ValidationMessage message : messages) {
-            described.add("  at `" + message.getInstanceLocation() + "`: " + message.getMessage());
+    private static String toJson(final JsonNode node) {
+        try {
+            return MAPPER.writeValueAsString(node);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("a parsed JSON tree could not be written back as JSON", e);
+        }
+    }
+
+    // Fully qualified: an import would shadow java.lang.Error for the whole file.
+    private static List<String> describe(final List<com.networknt.schema.Error> errors) {
+        final List<String> described = new ArrayList<>(errors.size());
+        for (final com.networknt.schema.Error error : errors) {
+            described.add("  at `" + error.getInstanceLocation() + "`: " + error.getMessage());
         }
         return described;
     }

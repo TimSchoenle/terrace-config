@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
@@ -68,6 +69,21 @@ class MetaSchemaValidatorTest {
         assertThat(errors)
                 .as("the `%s` case's schema half against #/$defs/schema", name)
                 .isEmpty();
+    }
+
+    @Test
+    void an_envelope_missing_a_required_member_is_rejected() throws IOException {
+        // The positive cases alone cannot tell a working validator from one that accepts
+        // everything; this is the check that the compiled schema actually constrains anything.
+        MetaSchemaValidator validator = MetaSchemaValidator.load();
+        ObjectNode contract = (ObjectNode) readCase("minimal");
+        contract.remove("app");
+
+        List<String> errors = validator.validateEnvelope(contract);
+        assertThat(errors)
+                .as("the `minimal` case without its required `app` member")
+                .isNotEmpty()
+                .anySatisfy(error -> assertThat(error).contains("app"));
     }
 
     private static JsonNode readCase(String name) throws IOException {
