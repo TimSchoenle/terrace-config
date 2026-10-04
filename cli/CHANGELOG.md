@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.7.0...terrace-contract-v0.7.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.58.0 ([#215](https://github.com/TimSchoenle/terrace-config/issues/215)) ([96ef649](https://github.com/TimSchoenle/terrace-config/commit/96ef64945cc57e45604f28c736351b2b956aba38))
+* **deps:** update rust crate jsonschema to v0.58.1 ([#219](https://github.com/TimSchoenle/terrace-config/issues/219)) ([f3621ab](https://github.com/TimSchoenle/terrace-config/commit/f3621ab6f3ddf970b8f0e94cef6bd2e5b3a3cc51))
+* **lint:** satisfy clippy assert_is_empty from Rust 1.99 ([#230](https://github.com/TimSchoenle/terrace-config/issues/230)) ([7c826b9](https://github.com/TimSchoenle/terrace-config/commit/7c826b98f714896634aa461f80a95f005364af9d))
+
+
+### Miscellaneous
+
+* **deps:** update actions-rust-lang/setup-rust-toolchain action to v2 ([#125](https://github.com/TimSchoenle/terrace-config/issues/125)) ([1b95c25](https://github.com/TimSchoenle/terrace-config/commit/1b95c250afe7baac16ddaab73d697c68507ea085))
+* **deps:** update rust crate thiserror to v2.0.21 ([#209](https://github.com/TimSchoenle/terrace-config/issues/209)) ([1990db7](https://github.com/TimSchoenle/terrace-config/commit/1990db73193be39a441a9c96050ab9304a34da29))
+
+
+### Dependencies
+
+* **deps:** lock file maintenance ([#213](https://github.com/TimSchoenle/terrace-config/issues/213)) ([656e4ed](https://github.com/TimSchoenle/terrace-config/commit/656e4ed88d933a8c02ce69088057d424145fa77c))
+
 ## [0.7.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.6.0...terrace-contract-v0.7.0) (2026-09-26)
 
 
