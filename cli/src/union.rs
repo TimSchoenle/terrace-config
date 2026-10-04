@@ -832,7 +832,10 @@ mod tests {
 
     #[test]
     fn a_local_reference_is_not() {
-        assert!(local_refs_only(&json!({"$ref": "#/definitions/a"})).is_empty());
+        assert_eq!(
+            local_refs_only(&json!({"$ref": "#/definitions/a"})),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

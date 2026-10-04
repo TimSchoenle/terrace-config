@@ -1725,7 +1725,7 @@ mod tests {
             &one("a", &json!({"reload": "restart"})),
             &json!({"mode": "none", "layers": []}),
         );
-        assert!(reload_changes(&undeclared, &stated).is_empty());
+        assert_eq!(reload_changes(&undeclared, &stated), Vec::new());
         assert!(
             changes(&undeclared, &stated)
                 .iter()
@@ -1962,7 +1962,10 @@ mod tests {
             "{lost:?}"
         );
 
-        assert!(changes(&map(Some("^[a-z]+$")), &map(Some("^[a-z]+$"))).is_empty());
+        assert_eq!(
+            changes(&map(Some("^[a-z]+$")), &map(Some("^[a-z]+$"))),
+            Vec::new()
+        );
     }
 
     #[test]

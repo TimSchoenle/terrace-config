@@ -2131,7 +2131,7 @@ mod tests {
         );
 
         // The structured key still carries no probe: the refusal is about the fixture, not a case.
-        assert!(simple(std::slice::from_ref(&map)).cases.is_empty());
+        assert_eq!(simple(std::slice::from_ref(&map)).cases, Vec::new());
     }
 
     #[test]

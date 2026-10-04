@@ -231,7 +231,7 @@ fn tier_2_accepts_a_derived_spelling_and_refuses_one_that_is_merely_plausible() 
         &schema(&json!([key("github.token", json!({}))])),
         &no_external(),
     );
-    assert!(conform::conform(&derived, Tier::Dialect).is_empty());
+    assert_eq!(conform::conform(&derived, Tier::Dialect), Vec::new());
 
     // What Spring's relaxed binding would emit: one separator where the dialect says two.
     let relaxed = document(
@@ -268,7 +268,7 @@ fn tier_2_refuses_an_unspelled_key_that_does_not_say_why() {
         )])),
         &no_external(),
     );
-    assert!(conform::conform(&explained, Tier::Dialect).is_empty());
+    assert_eq!(conform::conform(&explained, Tier::Dialect), Vec::new());
 }
 
 #[test]

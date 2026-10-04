@@ -334,7 +334,10 @@ mod tests {
             assert_eq!(of(&document, Channel::Document), Effective::Restart(why));
         }
 
-        assert!(degradations(&contract(&rebuild(), Some("live"))).is_empty());
+        assert_eq!(
+            degradations(&contract(&rebuild(), Some("live"))),
+            Vec::<String>::new()
+        );
         assert_eq!(
             degradations(&contract(&rebuild(), Some("eventually"))).len(),
             1

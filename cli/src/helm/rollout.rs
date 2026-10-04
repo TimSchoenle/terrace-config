@@ -436,7 +436,10 @@ mod tests {
 
     #[test]
     fn an_image_that_declares_nothing_is_not_this_gates_business() {
-        assert!(findings(&Json::Null, &json!({}), &directory_mounts()).is_empty());
+        assert_eq!(
+            findings(&Json::Null, &json!({}), &directory_mounts()),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

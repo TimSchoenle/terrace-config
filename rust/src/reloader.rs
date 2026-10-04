@@ -318,7 +318,7 @@ mod tests {
     fn nothing_changed_is_nothing_pending() {
         let boot = value(r#"{"log": {"level": "info"}}"#);
         let pins = Pins::capture(&["log.level", "absent.key"], &boot);
-        assert!(pins.pending(&boot).is_empty());
+        assert_eq!(pins.pending(&boot), Vec::<String>::new());
     }
 
     #[test]

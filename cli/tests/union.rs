@@ -359,12 +359,18 @@ fn a_remote_reference_is_reported() {
 
 #[test]
 fn a_local_reference_is_allowed() {
-    assert!(local_refs_only(&json!({"$ref": "#/definitions/thing"})).is_empty());
+    assert_eq!(
+        local_refs_only(&json!({"$ref": "#/definitions/thing"})),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
 fn the_real_fixtures_carry_none() {
-    assert!(local_refs_only(&union(&["api", "worker"]).json_schema).is_empty());
+    assert_eq!(
+        local_refs_only(&union(&["api", "worker"]).json_schema),
+        Vec::<String>::new()
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

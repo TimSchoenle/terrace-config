@@ -990,10 +990,10 @@ fn a_key_without_aliases_carries_no_alias_spellings() {
     let contract = contract();
     let key = key_of(&contract, "ttl_secs");
 
-    assert!(key.aliases.is_empty());
-    assert!(key.env_aliases.is_empty());
-    assert!(key.env_file_aliases.is_empty());
-    assert!(key.secrets_file_aliases.is_empty());
+    assert_eq!(key.aliases, Vec::<String>::new());
+    assert_eq!(key.env_aliases, Vec::<String>::new());
+    assert_eq!(key.env_file_aliases, Vec::<String>::new());
+    assert_eq!(key.secrets_file_aliases, Vec::<String>::new());
 }
 
 #[test]
