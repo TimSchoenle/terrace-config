@@ -791,13 +791,13 @@ fn a_schema_with_no_keys_still_renders_and_round_trips() {
     }
 
     let schema = Terrace::new("T_").schema::<Empty>();
-    assert!(schema.keys.is_empty());
+    assert_eq!(schema.keys, Vec::new());
 
     let markdown = schema.to_markdown();
     assert!(markdown.contains("| TOML |"));
 
     let parsed: Schema = serde_json::from_str(&schema.to_json().unwrap()).unwrap();
-    assert!(parsed.keys.is_empty());
+    assert_eq!(parsed.keys, Vec::new());
     assert_eq!(parsed.loader.len(), 2);
 }
 
@@ -956,7 +956,7 @@ fn serde_aliases_are_reported_as_the_key_paths_they_are() {
 
 #[test]
 fn a_key_with_no_aliases_reports_none() {
-    assert!(key(&schema(), "dist_dir").aliases.is_empty());
+    assert_eq!(key(&schema(), "dist_dir").aliases, Vec::<String>::new());
 }
 
 /// The whole point of the type column: a required key with no default still tells the reader
@@ -1404,7 +1404,7 @@ fn an_empty_loader_table_is_empty_rather_than_a_bare_header() {
     }
 
     let bare = Schema::describe::<Config>(&Terrace::new("T_").dialect());
-    assert!(bare.loader.is_empty());
+    assert_eq!(bare.loader, Vec::new());
     assert_eq!(bare.to_markdown_loader(), "");
     // With nothing above it, the whole rendering is the key table, with no leading blank line.
     assert_eq!(bare.to_markdown(), bare.to_markdown_keys(Column::DEFAULT));

@@ -1990,7 +1990,7 @@ mod tests {
     #[test]
     fn a_glob_is_matched_against_the_whole_path() {
         assert_eq!(selected(Some("log.*")), ["log.level"]);
-        assert!(selected(Some("auth.*.ttl")).is_empty());
+        assert_eq!(selected(Some("auth.*.ttl")), Vec::<String>::new());
         assert_eq!(selected(Some("log.leve?")), ["log.level"]);
         assert_eq!(selected(Some("[dl]og.level")), ["log.level"]);
         assert_eq!(selected(Some("[!L]og.level")), ["log.level"]);

@@ -1086,7 +1086,10 @@ mod tests {
             beyond_scalar_vocabulary(&json!({"type": "array", "items": {}, "minItems": 1})),
             ["items", "minItems"]
         );
-        assert!(beyond_scalar_vocabulary(&json!({"type": "string", "default": "x"})).is_empty());
-        assert!(beyond_scalar_vocabulary(&json!(null)).is_empty());
+        assert_eq!(
+            beyond_scalar_vocabulary(&json!({"type": "string", "default": "x"})),
+            Vec::<String>::new()
+        );
+        assert_eq!(beyond_scalar_vocabulary(&json!(null)), Vec::<String>::new());
     }
 }

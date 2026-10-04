@@ -1625,6 +1625,6 @@ mod tests {
             sweep(&[], &["contract_roundtrip_api_test.yaml"]),
             ["contract_roundtrip_api_test.yaml"]
         );
-        assert!(sweep(&[], &["configmap_test.yaml"]).is_empty());
+        assert_eq!(sweep(&[], &["configmap_test.yaml"]), Vec::<String>::new());
     }
 }

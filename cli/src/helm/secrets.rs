@@ -1367,12 +1367,15 @@ mod tests {
         // Nothing renders it, so nothing can be read from it. Silence is the only honest answer.
         let spec =
             json!({"volumes": [{"name": "creds", "secret": {"secretName": "not-rendered"}}]});
-        assert!(secret_file_names(&[], &spec, "creds").is_empty());
+        assert_eq!(secret_file_names(&[], &spec, "creds"), Vec::<String>::new());
     }
 
     #[test]
     fn a_volume_the_pod_does_not_have_is_not_an_error() {
-        assert!(secret_file_names(&[], &json!({"volumes": []}), "missing").is_empty());
+        assert_eq!(
+            secret_file_names(&[], &json!({"volumes": []}), "missing"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -1501,13 +1504,13 @@ mod tests {
             "templates/_secrets.tpl",
             "key: {{ printf \"internal__tokens__%s\" . }}\n{{ .Values.internal.tokens }}\n",
         )]);
-        assert!(
+        assert_eq!(
             names_credential(
                 chart.path(),
                 &credential("internal.token", "internal__token")
             )
-            .expect("the chart is readable")
-            .is_empty()
+            .expect("the chart is readable"),
+            Vec::<String>::new()
         );
     }
 
@@ -1532,13 +1535,13 @@ mod tests {
             "contracts/a.json",
             "{\"secrets_file\": \"internal__token\"}",
         )]);
-        assert!(
+        assert_eq!(
             names_credential(
                 chart.path(),
                 &credential("internal.token", "internal__token")
             )
-            .expect("the chart is readable")
-            .is_empty()
+            .expect("the chart is readable"),
+            Vec::<String>::new()
         );
     }
 
@@ -1619,8 +1622,8 @@ mod tests {
             scan.supplied(),
             [("worker", "database.url", vec!["the secrets directory"])]
         );
-        assert!(scan.surface.unclaimed.is_empty());
-        assert!(scan.surface.over_projected.is_empty());
+        assert_eq!(scan.surface.unclaimed, Vec::new());
+        assert_eq!(scan.surface.over_projected, Vec::new());
     }
 
     #[test]
@@ -1629,7 +1632,7 @@ mod tests {
         // variable names, and a file lying anywhere else is a file lying anywhere else.
         let mut scan = Scan::new();
         scan.scan("database__url", "/elsewhere", Some("/secrets"), &[], &[]);
-        assert!(scan.supplied().is_empty());
+        assert_eq!(scan.supplied(), Vec::new());
     }
 
     #[test]
@@ -1652,7 +1655,7 @@ mod tests {
     fn a_sibling_images_key_is_over_projection_rather_than_an_unknown_name() {
         let mut scan = Scan::new();
         scan.scan("auth__session_ttl", "/secrets", Some("/other"), &[], &[]);
-        assert!(scan.surface.unclaimed.is_empty());
+        assert_eq!(scan.surface.unclaimed, Vec::new());
         assert_eq!(scan.surface.over_projected.len(), 1);
         assert_eq!(
             scan.surface.over_projected[0].file_name,
@@ -1664,7 +1667,7 @@ mod tests {
     fn a_name_no_contract_of_the_chart_spells_is_unclaimed() {
         let mut scan = Scan::new();
         scan.scan("nothing__spells_this", "/secrets", Some("/other"), &[], &[]);
-        assert!(scan.surface.over_projected.is_empty());
+        assert_eq!(scan.surface.over_projected, Vec::new());
         assert_eq!(scan.surface.unclaimed.len(), 1);
     }
 
@@ -1680,8 +1683,8 @@ mod tests {
             &[("Deployment app", "app")],
             &[],
         );
-        assert!(scan.surface.unclaimed.is_empty());
-        assert!(scan.surface.over_projected.is_empty());
+        assert_eq!(scan.surface.unclaimed, Vec::new());
+        assert_eq!(scan.surface.over_projected, Vec::new());
     }
 
     #[test]
@@ -1713,7 +1716,7 @@ mod tests {
                 "text".to_owned()
             )]
         );
-        assert!(scan.surface.over_projected.is_empty());
+        assert_eq!(scan.surface.over_projected, Vec::new());
     }
 
     #[test]

@@ -45,7 +45,7 @@ fn a_restart_key_keeps_its_boot_value_across_a_rebuild() {
         jail.secret("level", "info")?;
 
         let (boot, reloader) = jail.terrace().reloader::<TestConfig>()?;
-        assert!(boot.sources.pending_restart().is_empty());
+        assert_eq!(boot.sources.pending_restart(), Vec::<String>::new());
         let files = jail.sandbox();
         let rebuilds: Rebuilds = Rebuilds::new();
 
@@ -110,7 +110,10 @@ fn a_held_back_change_is_reported_as_pending() {
         assert_eq!(held.sources.pending_restart(), ["level"]);
 
         jail.secret("level", "info")?;
-        assert!(reloader.reload()?.sources.pending_restart().is_empty());
+        assert_eq!(
+            reloader.reload()?.sources.pending_restart(),
+            Vec::<String>::new()
+        );
         Ok(())
     });
 }
