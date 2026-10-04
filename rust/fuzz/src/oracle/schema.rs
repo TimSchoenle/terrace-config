@@ -57,7 +57,8 @@ const MARKER: &str = "sentinel-value";
 /// The most leaves one iteration will describe.
 const MAX_LEAVES: usize = 24;
 
-/// The deepest a declared path will nest, well inside the schema's own limit.
+/// The deepest a declared path will nest, in `.`-separated components, well inside the schema's
+/// own limit.
 const MAX_DEPTH: usize = 8;
 
 /// One leaf, as the input asked for it.
@@ -231,6 +232,11 @@ fn parse(data: &str) -> Spec {
 }
 
 /// The path segments a `k:` directive names, or [`None`] if it names nothing usable.
+///
+/// Depth is counted in `.`-separated components, not in segments: a `.` inside a segment nests
+/// in the loader and in the JSON Schema exactly as a segment boundary does. Counting segments
+/// alone let one segment made of dots declare a path nested past what `serde_json` will read
+/// back, which [`json_schema_lists_every_reachable_key`] then reported as a crash.
 fn segments(path: &str) -> Option<Vec<String>> {
     let segments: Vec<String> = path
         .split('/')
@@ -238,7 +244,9 @@ fn segments(path: &str) -> Option<Vec<String>> {
         .filter(|s| !s.is_empty())
         .map(ToOwned::to_owned)
         .collect();
-    (!segments.is_empty() && segments.iter().all(|s| s.len() <= MAX_NAME_LEN)).then_some(segments)
+    let depth: usize = segments.iter().map(|s| s.split('.').count()).sum();
+    (!segments.is_empty() && depth <= MAX_DEPTH && segments.iter().all(|s| s.len() <= MAX_NAME_LEN))
+        .then_some(segments)
 }
 
 /// Run every property over one input.
