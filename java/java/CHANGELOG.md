@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.5.0...terrace-config-java-v0.6.0) (2026-10-04)
+
+
+### Features
+
+* **schema:** refine a map's entry names with a portable pattern ([#204](https://github.com/TimSchoenle/terrace-config/issues/204)) ([e8ef79d](https://github.com/TimSchoenle/terrace-config/commit/e8ef79d7d843ac141950be558ed1fec7db07a162))
+* **schema:** string patterns, addressable inside a key's element schema ([#206](https://github.com/TimSchoenle/terrace-config/issues/206)) ([75cec22](https://github.com/TimSchoenle/terrace-config/commit/75cec22cf86a7215821a1925e778e153ef2c9ed8))
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.diffplug.spotless:spotless-plugin-gradle to v8.10.3 ([#214](https://github.com/TimSchoenle/terrace-config/issues/214)) ([966e77b](https://github.com/TimSchoenle/terrace-config/commit/966e77b41120bb955ddab5ed1fcc274de6bf1456))
+* **deps:** update dependency com.fasterxml.jackson.core:jackson-databind to v2.22.3 ([#195](https://github.com/TimSchoenle/terrace-config/issues/195)) ([5c28e86](https://github.com/TimSchoenle/terrace-config/commit/5c28e862b03a465ddfde41fc24dc7a6ca0a0c544))
+* **deps:** update dependency com.networknt:json-schema-validator to v3 ([#154](https://github.com/TimSchoenle/terrace-config/issues/154)) ([5702a33](https://github.com/TimSchoenle/terrace-config/commit/5702a336f8d86ae338f4255d8c7f2027b58a3afc))
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.7.0 ([#196](https://github.com/TimSchoenle/terrace-config/issues/196)) ([8b9609d](https://github.com/TimSchoenle/terrace-config/commit/8b9609da30e70188332923aac120a53a7c8ac60c))
+* **deps:** update dependency org.tomlj:tomlj to v2 ([#216](https://github.com/TimSchoenle/terrace-config/issues/216)) ([3f51595](https://github.com/TimSchoenle/terrace-config/commit/3f515955298a5177fd7a0e86da8cf3d6b597cde8))
+* **deps:** update dependency org.tomlj:tomlj to v2.2.0 ([#229](https://github.com/TimSchoenle/terrace-config/issues/229)) ([6e90192](https://github.com/TimSchoenle/terrace-config/commit/6e901922953ccee61d48b0f82cc44ab8d7d6a089))
+* **deps:** update dependency tools.jackson.core:jackson-databind to v3.2.3 ([#198](https://github.com/TimSchoenle/terrace-config/issues/198)) ([1ce6cb3](https://github.com/TimSchoenle/terrace-config/commit/1ce6cb3e277e95fde1f87150045fcc02dd24aa06))
+
+
+### Miscellaneous
+
+* **deps:** update gradle to v9.8.0 ([#212](https://github.com/TimSchoenle/terrace-config/issues/212)) ([de3d9ea](https://github.com/TimSchoenle/terrace-config/commit/de3d9ea57ef0da47bedd2109790f381d9d3d9920))
+
 ## [0.5.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.4.0...terrace-config-java-v0.5.0) (2026-09-23)
 
 
