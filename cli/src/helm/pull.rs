@@ -1444,10 +1444,9 @@ mod tests {
         ] {
             assert_eq!(parse_referrers(&text).expect("it reads").len(), 1, "{text}");
         }
-        assert!(
-            parse_referrers("{\"something\": 1}")
-                .expect("it reads")
-                .is_empty()
+        assert_eq!(
+            parse_referrers("{\"something\": 1}").expect("it reads"),
+            Vec::<Json>::new()
         );
         assert!(parse_referrers("not json").is_err());
     }
