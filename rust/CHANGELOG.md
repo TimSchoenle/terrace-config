@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.15.1](https://github.com/TimSchoenle/terrace-config/compare/v0.15.0...v0.15.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.58.0 ([#215](https://github.com/TimSchoenle/terrace-config/issues/215)) ([96ef649](https://github.com/TimSchoenle/terrace-config/commit/96ef64945cc57e45604f28c736351b2b956aba38))
+* **deps:** update rust crate jsonschema to v0.58.1 ([#219](https://github.com/TimSchoenle/terrace-config/issues/219)) ([f3621ab](https://github.com/TimSchoenle/terrace-config/commit/f3621ab6f3ddf970b8f0e94cef6bd2e5b3a3cc51))
+* **deps:** update rust crate jsonschema to v0.58.2 ([#220](https://github.com/TimSchoenle/terrace-config/issues/220)) ([0f16bc3](https://github.com/TimSchoenle/terrace-config/commit/0f16bc3c01434cfe940e3b704c72cc86b0088bac))
+* **deps:** update rust crate jsonschema to v0.58.4 ([#240](https://github.com/TimSchoenle/terrace-config/issues/240)) ([3cc6342](https://github.com/TimSchoenle/terrace-config/commit/3cc6342d01d8df7f1e78a99dd0598146fa6c54b1))
+* **deps:** update rust crate jsonschema to v0.58.5 ([#242](https://github.com/TimSchoenle/terrace-config/issues/242)) ([f57264c](https://github.com/TimSchoenle/terrace-config/commit/f57264c2fa469c5eae3dced54c8320df538f4fa9))
+* **fuzz:** bound the schema oracle's dotted path depth ([#231](https://github.com/TimSchoenle/terrace-config/issues/231)) ([1dd51ec](https://github.com/TimSchoenle/terrace-config/commit/1dd51ec0b75c3eb87a92a4e731df8107835da1fc))
+* **lint:** satisfy clippy assert_is_empty from Rust 1.99 ([#230](https://github.com/TimSchoenle/terrace-config/issues/230)) ([7c826b9](https://github.com/TimSchoenle/terrace-config/commit/7c826b98f714896634aa461f80a95f005364af9d))
+
+
+### Miscellaneous
+
+* **deps:** update actions-rust-lang/setup-rust-toolchain action to v2 ([#125](https://github.com/TimSchoenle/terrace-config/issues/125)) ([1b95c25](https://github.com/TimSchoenle/terrace-config/commit/1b95c250afe7baac16ddaab73d697c68507ea085))
+* **deps:** update rust crate tokio to v1.53.2 ([#243](https://github.com/TimSchoenle/terrace-config/issues/243)) ([958a385](https://github.com/TimSchoenle/terrace-config/commit/958a38585ddc80f70fc201c9e2113000498a70c5))
+
 ## [0.15.0](https://github.com/TimSchoenle/terrace-config/compare/v0.14.0...v0.15.0) (2026-09-26)
 
 
