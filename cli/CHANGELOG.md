@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.7.1...terrace-contract-v0.7.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate jsonschema to v0.58.2 ([#220](https://github.com/TimSchoenle/terrace-config/issues/220)) ([0f16bc3](https://github.com/TimSchoenle/terrace-config/commit/0f16bc3c01434cfe940e3b704c72cc86b0088bac))
+* **deps:** update rust crate jsonschema to v0.58.4 ([#240](https://github.com/TimSchoenle/terrace-config/issues/240)) ([3cc6342](https://github.com/TimSchoenle/terrace-config/commit/3cc6342d01d8df7f1e78a99dd0598146fa6c54b1))
+* **deps:** update rust crate jsonschema to v0.58.5 ([#242](https://github.com/TimSchoenle/terrace-config/issues/242)) ([f57264c](https://github.com/TimSchoenle/terrace-config/commit/f57264c2fa469c5eae3dced54c8320df538f4fa9))
+
+
+### Dependencies
+
+* **deps:** lock file maintenance ([#241](https://github.com/TimSchoenle/terrace-config/issues/241)) ([17b81ee](https://github.com/TimSchoenle/terrace-config/commit/17b81eeca081674a43ef33ccd8d8462614564f38))
+
 ## [0.7.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.7.0...terrace-contract-v0.7.1) (2026-10-04)
 
 
