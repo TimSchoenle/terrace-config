@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.0...terrace-config-java-v0.6.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.networknt:json-schema-validator to v3.0.8 ([#227](https://github.com/TimSchoenle/terrace-config/issues/227)) ([995cbbb](https://github.com/TimSchoenle/terrace-config/commit/995cbbb6357181ca476f5e66add792259efed089))
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.8.0 ([#228](https://github.com/TimSchoenle/terrace-config/issues/228)) ([c7aa249](https://github.com/TimSchoenle/terrace-config/commit/c7aa24971c591a192833b1d76fd905ddffb3d6f8))
+
 ## [0.6.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.5.0...terrace-config-java-v0.6.0) (2026-10-04)
 
 
