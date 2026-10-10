@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.1...terrace-config-java-v0.6.2) (2026-10-10)
+
+
+### Miscellaneous
+
+* **deps:** update gradle to v9.8.1 ([#267](https://github.com/TimSchoenle/terrace-config/issues/267)) ([be7a3c4](https://github.com/TimSchoenle/terrace-config/commit/be7a3c48b73ca977f50a4c838f9f7d0d6a3a10a7))
+
 ## [0.6.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.0...terrace-config-java-v0.6.1) (2026-10-08)
 
 
