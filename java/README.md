@@ -2,7 +2,12 @@
 Generated from .github/templates/java-README.md.hbs — edit that file, not this one.
 
 CI renders it on every pull request and commits the result back to the branch, the same way it
-does for rust/README.md and README.md. See .github/workflows/docs.yml.
+does for rust/README.md and README.md. A push to `main` whose java/README.md does not match its
+template fails the `readme` job in .github/workflows/docs.yml.
+
+The payload is the one rust/README.md renders from: TimSchoenle/actions/actions/common/readme-variables
+reads rust/Cargo.toml and walks rust/docs/, merged over the output of
+`bash .github/scripts/readme-variables.sh`. This template reads only `repo`.
 
 Nothing in this comment may contain a mustache that is not a real reference.
 -->

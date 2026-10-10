@@ -2,7 +2,12 @@
 Generated from .github/templates/root-README.md.hbs — edit that file, not this one.
 
 CI renders it on every pull request and commits the result back to the branch, the same way it
-does for rust/README.md and java/README.md. See .github/workflows/docs.yml.
+does for rust/README.md and java/README.md. A push to `main` whose README.md does not match its
+template fails the `readme` job in .github/workflows/docs.yml.
+
+The payload is the one rust/README.md renders from: TimSchoenle/actions/actions/common/readme-variables
+reads rust/Cargo.toml and walks rust/docs/, merged over the output of
+`bash .github/scripts/readme-variables.sh`. This template reads only `repo`.
 
 This is the repository's front door: what the project is, its features, one table of
 implementations, and a link into each implementation's own README plus the spec.
@@ -34,7 +39,7 @@ nobody chose.
   resolve. Three conformance tiers say how closely two implementations' reads actually agree, from
   a well-formed document up to byte-identical output; a second language conforms by emitting one
   that passes `terrace-contract conform`, not by re-implementing anything.
-- The reference loader's five layers exist for a pod, not a laptop. A directory of key-named files
+- The reference loader's five layers follow how Kubernetes hands configuration to a pod. A directory of key-named files
   survives a mounted Kubernetes `Secret`'s rotation, following the kubelet's `..data` symlink
   swap. `_FILE` indirection reads the same secret without it ever touching the environment, and
   the `reload` feature rebuilds a running service when those files change, with no restart.
@@ -51,7 +56,9 @@ nobody chose.
   pure function of the published document, so it runs unmodified for a producer nobody has
   written yet.
 
-## Implementations
+## Documentation
+
+### Implementations
 
 | Implementation | Language | `producer.loader` | What it provides |
 |---|---|---|---|
@@ -59,7 +66,7 @@ nobody chose.
 | [`terrace-config-java`](java/README.md) | Java | `terrace-java` | Byte-identical output across its own runs, and the same environment variable names, aliases, and file spellings as the Rust reference for a shared configuration shape, checked against that same corpus. |
 | [`terrace-config-spring`](java/README.md#terrace-config-spring-boot) | Java (Spring Boot) | `spring-boot` | Valid, schema-checked contracts under Spring's own relaxed binding, a dialect that deliberately differs from the other two (single-underscore nesting, indexed list variables, no loader-file layers) and is documented rather than reconciled. |
 
-## The spec
+### The spec
 
 [`spec/README.md`](spec/README.md) is the entry point: a directory-versioned, language-neutral
 description of the document, with a meta-schema, reference documents and conformance tiers. It is

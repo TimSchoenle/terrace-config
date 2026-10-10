@@ -2,11 +2,11 @@
 Generated from .github/templates/README.md.hbs — edit that file, not this one.
 
 CI renders it on every pull request and commits the result back to the branch. A push to `main`
-whose README.md does not match its template fails the `readme` job in
+whose rust/README.md does not match its template fails the `readme` job in
 .github/workflows/docs.yml, which is a required check.
 
 The payload is collected by TimSchoenle/actions/actions/common/readme-variables, which reads
-Cargo.toml and walks docs/, merged over the output of one command:
+rust/Cargo.toml and walks rust/docs/, merged over the output of one command:
 
     bash .github/scripts/readme-variables.sh
 
@@ -273,8 +273,7 @@ for everything this crate does at runtime should not link a test harness.
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
 to run a campaign, and [spec/](../spec/) is the contract format itself — normative, language-neutral,
-and what an implementation in another language conforms to. The table above documents *this*
-implementation; the spec documents the document.
+and what an implementation in another language conforms to.
 
 ## Contributing
 
