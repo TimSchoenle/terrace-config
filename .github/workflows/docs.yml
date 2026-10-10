@@ -90,7 +90,7 @@ jobs:
 
       - name: Render and commit the README
         id: readme
-        uses: TimSchoenle/actions/actions/common/render-template-and-commit@1e89d598e447ab05d36edc9e9d18e8771adf6426 # tag=actions-common-render-template-and-commit-v1.1.13
+        uses: TimSchoenle/actions/actions/common/render-template-and-commit@5f23e7ecae779a09b699ce2983ec5e49e5f2b0a5 # tag=actions-common-render-template-and-commit-v1.1.14
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
@@ -100,7 +100,7 @@ jobs:
 
       - name: Render and commit the Java README
         id: java_readme
-        uses: TimSchoenle/actions/actions/common/render-template-and-commit@1e89d598e447ab05d36edc9e9d18e8771adf6426 # tag=actions-common-render-template-and-commit-v1.1.13
+        uses: TimSchoenle/actions/actions/common/render-template-and-commit@5f23e7ecae779a09b699ce2983ec5e49e5f2b0a5 # tag=actions-common-render-template-and-commit-v1.1.14
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
@@ -113,7 +113,7 @@ jobs:
       # only matter to the crate render — this one only reads `repo`.
       - name: Render and commit the root README
         id: root_readme
-        uses: TimSchoenle/actions/actions/common/render-template-and-commit@1e89d598e447ab05d36edc9e9d18e8771adf6426 # tag=actions-common-render-template-and-commit-v1.1.13
+        uses: TimSchoenle/actions/actions/common/render-template-and-commit@5f23e7ecae779a09b699ce2983ec5e49e5f2b0a5 # tag=actions-common-render-template-and-commit-v1.1.14
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
