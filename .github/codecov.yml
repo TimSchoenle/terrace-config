@@ -3,7 +3,8 @@
 #
 # Everything above `flags` is the baseline every repository in the estate carries unchanged,
 # except the `after_n_builds` value; `flags` and the components below are this repository's own.
-# Statuses are informational until the rollout makes `codecov/patch` a required check.
+# Both statuses can fail a pull request. `codecov/patch` is the gate; `.github/CODEOWNERS` keeps
+# a pull request from lowering its own thresholds here.
 
 codecov:
   require_ci_to_pass: true
@@ -26,14 +27,14 @@ coverage:
         target: auto
         threshold: 1%
         if_ci_failed: error
-        informational: true
+        informational: false
     patch:
       default:
         target: 80%
         # A pull request that changes no measured line, such as a lockfile update, passes rather
         # than reporting 0% of nothing.
         if_not_found: success
-        informational: true
+        informational: false
 
 comment:
   layout: 'condensed_header, diff, flags, components, condensed_files, condensed_footer'
