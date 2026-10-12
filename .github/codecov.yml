@@ -1,0 +1,110 @@
+# Codecov configuration. Codecov reads this file from the commit it is processing, so a change
+# here takes effect on the pull request that makes it.
+#
+# Everything above `flags` is the baseline every repository in the estate carries unchanged,
+# except the `after_n_builds` value; `flags` and the components below are this repository's own.
+# Statuses are informational until the rollout makes `codecov/patch` a required check.
+
+codecov:
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+    # Two coverage uploads on every commit, from the `coverage-rust` matrix in ci.yml: one for
+    # `rust/`, one for `cli/`. `coverage-java` uploads a third only when `java/` changed, so it
+    # cannot count here: on a Rust-only commit Codecov would wait for an upload that never comes.
+    # `wait_for_ci` still holds the statuses until the Java job has finished when it does run.
+    # Test results are a separate report type and do not count towards this.
+    after_n_builds: 2
+
+coverage:
+  precision: 2
+  round: down
+  range: '60...90'
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        if_ci_failed: error
+        informational: true
+    patch:
+      default:
+        target: 80%
+        # A pull request that changes no measured line, such as a lockfile update, passes rather
+        # than reporting 0% of nothing.
+        if_not_found: success
+        informational: true
+
+comment:
+  layout: 'condensed_header, diff, flags, components, condensed_files, condensed_footer'
+  behavior: default
+  require_changes: 'coverage_drop OR uncovered_patch'
+
+github_checks:
+  annotations: false
+
+flag_management:
+  default_rules:
+    carryforward: true
+
+ignore:
+  - '**/fuzz/**'
+  - 'xtask/**'
+  - '**/benches/**'
+  - '**/examples/**'
+  - '**/generated/**'
+
+# One flag per language. Carryforward, from `flag_management` above, is what keeps the `java`
+# figure on a commit whose CI skipped `coverage-java`.
+flags:
+  rust:
+    paths:
+      - rust/
+      - cli/
+  java:
+    paths:
+      - java/
+
+# One component per Cargo package and per Gradle module, so a pull request's comment shows which
+# one its coverage moved in.
+component_management:
+  individual_components:
+    - component_id: terrace_config
+      name: terrace-config
+      paths: ['rust/src/**']
+    - component_id: terrace_config_macros
+      name: terrace-config-macros
+      paths: ['rust/macros/**']
+    - component_id: terrace_contract
+      name: terrace-contract
+      paths: ['cli/src/**']
+    - component_id: java_annotations
+      name: terrace-config-annotations
+      paths: ['java/terrace-config-annotations/**']
+    - component_id: java_core
+      name: terrace-config-core
+      paths: ['java/terrace-config-core/**']
+    - component_id: java_core_jackson2
+      name: terrace-config-core-jackson2
+      paths: ['java/terrace-config-core-jackson2/**']
+    - component_id: java_core_jackson3
+      name: terrace-config-core-jackson3
+      paths: ['java/terrace-config-core-jackson3/**']
+    - component_id: java_processor
+      name: terrace-config-processor
+      paths: ['java/terrace-config-processor/**']
+    - component_id: java_loader
+      name: terrace-config-loader
+      paths: ['java/terrace-config-loader/**']
+    - component_id: java_spring_boot
+      name: terrace-config-spring-boot
+      paths: ['java/terrace-config-spring-boot/**']
+    - component_id: java_spec_tck
+      name: terrace-config-spec-tck
+      paths: ['java/terrace-config-spec-tck/**']
+    - component_id: java_example_service
+      name: terrace-config-example-service
+      paths: ['java/terrace-config-example-service/**']
+    - component_id: java_example_spring_service
+      name: terrace-config-example-spring-service
+      paths: ['java/terrace-config-example-spring-service/**']

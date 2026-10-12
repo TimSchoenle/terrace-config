@@ -120,6 +120,38 @@ jobs:
           # whose `cfg` is not satisfied is silently empty rather than a failure.
           test_arguments: --workspace --all-features
 
+  # Kept apart from `test`, so a Codecov outage fails this job alone, and left out of `ci`'s
+  # `needs` for the same reason. The upload authenticates with this job's OIDC token, so the job
+  # needs no environment and no secret. `.github/codecov.yml` decides what the Codecov statuses
+  # check.
+  #
+  # One entry per Cargo workspace: `cli/` is a workspace of its own, so `--workspace` from `rust/`
+  # never reaches it. `cli`'s default features are all of its features, so `--all-features` runs
+  # the same tests as the `cli` job's `cargo test`.
+  coverage-rust:
+    name: coverage (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # Required to checkout the code
+      id-token: write # Required to authenticate the Codecov upload with OIDC
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [rust, cli]
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Run Coverage
+        uses: TimSchoenle/actions/actions/rust/coverage-codecov@3dc15ee0f2fbacdc1741a20bc0e8ad1011b989c7 # tag=actions-rust-coverage-codecov-v2.0.0
+        with:
+          source_directory: ${{ matrix.workspace }}
+          test_arguments: --workspace --all-features
+          flags: rust
+          name: ${{ matrix.workspace }}
+
   # A build of each feature set on its own, with no dev-dependencies in the graph. This is the
   # job that catches a feature only unified in by a dev-dependency — `tokio/macros` was exactly
   # that, and `cargo test --all-features` passed while `cargo doc` did not.
@@ -299,6 +331,31 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - run: ./gradlew clean spotlessCheck checkstyleMain checkstyleTest test --console=plain
         working-directory: java
+
+  # Gated like `java`, so a commit that leaves `java/` alone uploads no Java report. Codecov
+  # carries the `java` flag forward from the last commit that had one (`.github/codecov.yml`).
+  # Kept out of `ci`'s `needs` for the same reason as `coverage-rust`.
+  coverage-java:
+    name: coverage (java)
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # Required to checkout the code
+      id-token: write # Required to authenticate the Codecov upload with OIDC
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Run Coverage
+        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@3dc15ee0f2fbacdc1741a20bc0e8ad1011b989c7 # tag=actions-java-gradle-coverage-codecov-v1.1.0
+        with:
+          source_directory: java
+          java_version: "25"
+          flags: java
+          name: java
 
   deny:
     name: deny
