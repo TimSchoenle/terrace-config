@@ -244,7 +244,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
-      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: cargo-fuzz
       - name: Replay the corpus
@@ -350,7 +350,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@3dc15ee0f2fbacdc1741a20bc0e8ad1011b989c7 # tag=actions-java-gradle-coverage-codecov-v1.1.0
+        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@ff1e7853c7953c8d7176325ea4912add4a3c5398 # tag=actions-java-gradle-coverage-codecov-v1.1.1
         with:
           source_directory: java
           java_version: "25"
