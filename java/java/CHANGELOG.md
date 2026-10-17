@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.1...terrace-config-java-v0.6.2) (2026-10-17)
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.diffplug.spotless:spotless-plugin-gradle to v8.10.4 ([#273](https://github.com/TimSchoenle/terrace-config/issues/273)) ([cfc7205](https://github.com/TimSchoenle/terrace-config/commit/cfc72050acc1bbf782ebbda9e29f4af992edc4a6))
+
+
+### Dependencies
+
+* **deps:** update dependency com.google.testing.compile:compile-testing to v0.24.0 ([#283](https://github.com/TimSchoenle/terrace-config/issues/283)) ([dd24d2f](https://github.com/TimSchoenle/terrace-config/commit/dd24d2f872b2aecad0c083e1652f4d70f5ef04a5))
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.8.1 ([#291](https://github.com/TimSchoenle/terrace-config/issues/291)) ([1963e2e](https://github.com/TimSchoenle/terrace-config/commit/1963e2eaa20b47e7960b22c6256ea6f86f4e3460))
+
 ## [0.6.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.0...terrace-config-java-v0.6.1) (2026-10-08)
 
 
