@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/TimSchoenle/terrace-config/compare/v0.15.2...v0.15.3) (2026-10-17)
+
+
+### Dependencies
+
+* **deps:** update rust crate tokio to v1.53.3 ([#289](https://github.com/TimSchoenle/terrace-config/issues/289)) ([a613e48](https://github.com/TimSchoenle/terrace-config/commit/a613e488e7a06da139e85107d9c9538dc5f4e46b))
+
 ## [0.15.2](https://github.com/TimSchoenle/terrace-config/compare/v0.15.1...v0.15.2) (2026-10-16)
 
 
