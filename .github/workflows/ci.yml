@@ -145,7 +145,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/rust/coverage-codecov@f33849da61e2397d3a9277762d09a1bf0d2b9d7c # tag=actions-rust-coverage-codecov-v2.0.1
+        uses: TimSchoenle/actions/actions/rust/coverage-codecov@eaf935674fec7116856ca5e138e1a2dca3f8146d # tag=actions-rust-coverage-codecov-v2.0.2
         with:
           source_directory: ${{ matrix.workspace }}
           test_arguments: --workspace --all-features
