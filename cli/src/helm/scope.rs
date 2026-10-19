@@ -155,7 +155,16 @@ fn is_chart_name(name: &str) -> bool {
 #[must_use]
 pub fn since(charts: &Path, base: &str) -> Scope {
     match Change::read(charts, base) {
-        Ok(change) => classify(&change.paths, &change.prefix, |name| change.kind_of(name)),
+        Ok(change) => {
+            // Once per chart, not once per changed file: each read is two `git show` processes.
+            let kinds = std::cell::RefCell::new(std::collections::BTreeMap::<String, Kind>::new());
+            classify(&change.paths, &change.prefix, |name| {
+                *kinds
+                    .borrow_mut()
+                    .entry(name.to_owned())
+                    .or_insert_with(|| change.kind_of(name))
+            })
+        }
         Err(error) => Scope::Every(Widened::Unreadable(error.to_string())),
     }
 }
