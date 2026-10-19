@@ -1,0 +1,22 @@
+# The compiler the Rust half of this repository is developed, checked and released with: local
+# `cargo`, every CI job that does not name a toolchain of its own, and the `terrace-contract`
+# binaries `release-cli.yml` publishes. It does not reach anyone depending on the crates; what
+# they need is `rust-version` in each Cargo.toml.
+#
+# At the repository root rather than in `rust/` or `cli/`: there is no root workspace, and rustup
+# finds this file by walking up from either directory, so one pin covers both.
+#
+# Pinned to an exact release rather than `stable` so that a new Rust, with its new clippy lints
+# and rustfmt output, arrives as a reviewed Renovate pull request instead of turning an unrelated
+# pull request red on the day it ships.
+#
+# Two kinds of job deliberately run something else. `msrv` installs the `rust-version` floor and
+# the fuzz job installs nightly, both through the action's `toolchain` input, whose
+# `rustup override` takes precedence over this file. `rust/fuzz/` and `cli/fuzz/` carry nightly
+# pins of their own, which win for anything run inside those directories.
+[toolchain]
+channel = "1.99.1"
+# What the `fmt` and `clippy` jobs run.
+components = ["rustfmt", "clippy"]
+# No `targets`: each `release-cli.yml` matrix leg adds the one triple it builds.
+profile = "minimal"
