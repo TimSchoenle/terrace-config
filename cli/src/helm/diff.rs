@@ -278,7 +278,7 @@ fn vendored_paths(charts: &Path) -> Result<BTreeSet<String>, Error> {
 }
 
 /// A repository-relative, forward-slashed path — the only spelling version control accepts.
-fn spec_of(path: &Path, charts: &Path) -> String {
+pub(crate) fn spec_of(path: &Path, charts: &Path) -> String {
     let root = repository_root(charts);
     let relative = path.strip_prefix(&root).unwrap_or(path);
     relative.to_string_lossy().replace('\\', "/")
@@ -343,7 +343,8 @@ impl Committed {
         )
         .map_err(|_| {
             Error::Invalid(format!(
-                "{reference}: no such revision. Name one that exists, or fetch the default branch                  if this is a shallow checkout."
+                "{reference}: no such revision. Name one that exists, or fetch the default branch \
+                 if this is a shallow checkout."
             ))
         })?;
         Ok(Self {

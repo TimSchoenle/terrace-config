@@ -6,7 +6,7 @@
 //! is reached by no chart value. The document gate cannot see it either: **a key nothing renders is
 //! not a key rendered wrongly.**
 //!
-//! This is the key-level half. Five rules, and every one of them is a way for a marker to be worse
+//! This is the key-level half. Six rules, and every one of them is a way for a marker to be worse
 //! than no marker at all:
 //!
 //! 1. **A marker's target exists.** A typo binds a value to a key that is not there while looking
@@ -23,6 +23,10 @@
 //!    is still a composition. `composed` says "an input", and the arity is counted here.
 //! 5. **Every key of an enrolled chart is bound, or written off with a reason.** This is the rule
 //!    the whole module exists for; the other four keep it from being satisfied by fiction.
+//! 6. **A bound key reaches a template at all.** The first five hold a marker against the
+//!    contract and never read a template, so a value can be bound, typed and documented while the
+//!    chart renders nothing for it. This one reads the templates, crudely and on purpose; see
+//!    [`leaf_of`] and the rule itself for what a hit does and does not prove.
 //!
 //! # Enrolment is declared, not inferred
 //!
@@ -125,6 +129,10 @@ fn check_chart(chart_dir: &Path, report: &mut Report) -> Result<Option<(usize, u
     }
 
     let declaration = declaration.expect("enrolment was read from a declaration");
+    // Ahead of everything that needs a contract, because this rule does not: whether a template
+    // renders a key is a question about the chart alone, and a chart failing for want of a document
+    // should still hear about the markers nothing projects.
+    check_wired(chart_dir, &chart, &markers, report)?;
     if declaration.documents.is_empty() {
         report.fail(
             &at,
@@ -569,6 +577,108 @@ pub fn missing_keys(bound: &Bound, resolved: &[Resolved]) -> BTreeMap<String, Ve
     missing
 }
 
+// ------------------------------------------------------------------------------------------
+// Rule 6 — the key reaches a template at all
+// ------------------------------------------------------------------------------------------
+
+/// The final segment of a marker's target: the literal key a template has to render.
+///
+/// `scheduler.chapter_rollup_verify_interval_secs` renders as a
+/// `chapter_rollup_verify_interval_secs` key nested under a `scheduler` table, and the leaf is what
+/// a template line actually spells — the dotted path never appears verbatim anywhere, YAML-nested
+/// or TOML-nested alike.
+pub fn leaf_of(target: &str) -> &str {
+    target.rsplit_once('.').map_or(target, |(_, leaf)| leaf)
+}
+
+/// Rule 6. Every key a marker binds is rendered, by name, by some template.
+///
+/// Rules 1 to 5 hold a marker against the *contract*, and none of them reads a template. So a
+/// marker can pass all five while the chart renders nothing for it: the value exists, is typed,
+/// documented and bound, and the define nobody edited still emits exactly what it emitted before.
+/// That is a measured case, not a hypothetical one — a `tankovault` change gave `scheduler.*` and
+/// `statementTimeouts.*` markers, schemas and round-trip tests, and reached no `[scheduler]` table
+/// anywhere until the generated round-trip suite happened to be run.
+///
+/// The `projection`, `structured` and `composed` markers are checked — the classes whose target is
+/// a contract key. An `external` marker feeds an environment variable, not a template's document.
+///
+/// **Deliberately crude**: a plain search of `templates/*.tpl` for `leaf:` or `"leaf"`, nothing that
+/// parses a Go template or the TOML it emits, because nothing here can round-trip a template and a
+/// line-based reader is the only one that cannot silently disagree with itself. Two spellings cover
+/// every hand-written chart: a YAML-style mapping key, and a `dict` or `set` call building the same
+/// table from quoted arguments — `tankovault`'s `branding` and `telemetry.sentry` blocks are built
+/// entirely the second way, and a search for only the first flags every key in both. A key rendered
+/// some third way is a false negative this accepts, in exchange for never crying wolf on a real one.
+///
+/// So a hit proves the name is rendered *somewhere*, not that it is wired to the right value, gated
+/// on the right service, or guarded against the right falsy-versus-null distinction. Its only job is
+/// turning "nobody wired it at all" from silence into a failure, for every marker — including the
+/// many whose wiring no generator could ever write, and which have no other net under them.
+///
+/// Folded into this gate rather than standing beside it because it has exactly this gate's
+/// enrolment and reads exactly these markers. A second reader of either would agree with this one
+/// until the day one of them was not updated.
+fn check_wired(
+    chart_dir: &Path,
+    chart: &str,
+    markers: &[Marker],
+    report: &mut Report,
+) -> Result<(), Error> {
+    let bound: Vec<&Marker> = markers
+        .iter()
+        .filter(|marker| marker.class.targets_a_key())
+        .collect();
+    if bound.is_empty() {
+        return Ok(());
+    }
+
+    let text = template_text(&chart_dir.join("templates"))?;
+    for marker in bound {
+        let leaf = leaf_of(&marker.target);
+        if text.contains(&format!("{leaf}:")) || text.contains(&format!("\"{leaf}\"")) {
+            continue;
+        }
+        report.fail(
+            marker.at(),
+            format!(
+                "binds contract key {}, but no template under {chart}/templates/ renders a {} key. \
+                 The value exists and is typed, but nothing projects it — indistinguishable, to an \
+                 operator, from the setting never having been added",
+                crate::gate::quoted(&marker.target),
+                crate::gate::quoted(leaf)
+            ),
+        );
+    }
+    Ok(())
+}
+
+/// Every `*.tpl` file directly under `templates`, in name order, joined by newlines.
+///
+/// One text rather than a search per file, which is equivalent — the newline between two files
+/// keeps a match from spanning them — and is what the rule this was ported from searched.
+fn template_text(templates: &Path) -> Result<String, Error> {
+    if !templates.is_dir() {
+        return Ok(String::new());
+    }
+    let mut paths = Vec::new();
+    for entry in std::fs::read_dir(templates).map_err(|e| Error::io(templates.display(), e))? {
+        let path = entry.map_err(|e| Error::io(templates.display(), e))?.path();
+        let named = path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().ends_with(".tpl"));
+        if named && path.is_file() {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    let mut texts = Vec::with_capacity(paths.len());
+    for path in &paths {
+        texts.push(std::fs::read_to_string(path).map_err(|e| Error::io(path.display(), e))?);
+    }
+    Ok(texts.join("\n"))
+}
+
 /// The keys `unbound` writes off in one document.
 ///
 /// An entry with no scope writes its keys off wherever they are declared, which is what "no chart
@@ -590,9 +700,266 @@ pub fn written_off_in(declaration: &Declaration, document: &str) -> BTreeSet<Str
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use serde_json::json;
 
-    use super::has_path;
+    use super::{check_chart, check_wired, has_path, leaf_of};
+    use crate::helm::markers::read as read_markers;
+    use crate::report::Report;
+
+    /// A declaration enrolling the chart, with one document whose contract is `contracts/api.json`.
+    const DECLARATION: &str = "\
+bindings: true
+documents:
+  - name: api
+    source:
+      kind: ConfigMap
+      selector: { app: fixture }
+      key: config.toml
+    images:
+      - values: image
+        contract: contracts/api.json
+";
+
+    /// One value bound to `scheduler.interval_secs`.
+    const VALUES: &str = "\
+# @schema
+# additionalProperties: true
+# @schema
+# -- The `scheduler` settings.
+scheduler:
+  # @schema
+  # # @config projection scheduler.interval_secs optional
+  # type: [integer, 'null']
+  # @schema
+  # -- Seconds between passes. 0 disables (`scheduler.interval_secs`).
+  intervalSecs: 300
+";
+
+    /// A template rendering the key as a YAML-style mapping key.
+    const RENDERED_AS_A_KEY: &str = "\
+{{- define \"fixture.derivedConfig\" -}}
+scheduler:
+  interval_secs: {{ .Values.scheduler.intervalSecs }}
+{{- end -}}
+";
+
+    /// A template building the same table through a `dict` call, as `tankovault`'s `branding` and
+    /// `telemetry.sentry` blocks are built entirely — a search for only `leaf:` flags every key in
+    /// both, which is the false positive this rules out.
+    const RENDERED_THROUGH_DICT: &str = "\
+{{- define \"fixture.derivedConfig\" -}}
+{{- $out := dict \"interval_secs\" .Values.scheduler.intervalSecs -}}
+scheduler:
+  {{- toYaml $out | nindent 2 }}
+{{- end -}}
+";
+
+    /// A template that renders some other key, and not this one.
+    const RENDERED_ELSEWHERE: &str = "\
+{{- define \"fixture.derivedConfig\" -}}
+auth:
+  session_ttl: {{ .Values.auth.sessionTtl }}
+{{- end -}}
+";
+
+    /// A chart directory named `fixture`, removed when it goes out of scope.
+    struct Chart(PathBuf);
+
+    impl Chart {
+        fn with_helpers(helpers: &str) -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "terrace-bindings-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let chart = Self(root);
+            chart
+                .write("config-contract.yaml", DECLARATION)
+                .write("values.yaml", VALUES)
+                .write("templates/_helpers.tpl", helpers);
+            chart
+        }
+
+        fn write(&self, relative: &str, text: &str) -> &Self {
+            let path = self.dir().join(relative);
+            std::fs::create_dir_all(path.parent().expect("a parent")).expect("a directory");
+            std::fs::write(path, text).expect("a file is written");
+            self
+        }
+
+        fn dir(&self) -> PathBuf {
+            self.0.join("fixture")
+        }
+
+        /// Rule 6 alone, over this chart's markers.
+        fn wired(&self) -> Report {
+            let mut report = Report::new();
+            let text = std::fs::read_to_string(self.dir().join("values.yaml")).expect("values");
+            let (markers, _) = read_markers(&text, "fixture").expect("the markers read");
+            check_wired(&self.dir(), "fixture", &markers, &mut report).expect("the chart reads");
+            report
+        }
+
+        /// The whole gate, over this chart.
+        fn checked(&self) -> Report {
+            let mut report = Report::new();
+            check_chart(&self.dir(), &mut report).expect("the chart reads");
+            report
+        }
+    }
+
+    impl Drop for Chart {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The findings rule 6 made, among everything a report holds.
+    fn unwired(report: &Report) -> Vec<String> {
+        report
+            .entries()
+            .iter()
+            .filter(|entry| entry.finding.message.contains("renders a"))
+            .map(|entry| format!("{}: {}", entry.at, entry.finding.message))
+            .collect()
+    }
+
+    /// A vendored contract declaring `scheduler.interval_secs` and nothing else.
+    fn vendored_contract() -> String {
+        json!({
+            "source": {
+                "image": "ghcr.io/x/y",
+                "digest": "sha256:00",
+                "sha256": "ab",
+                "fetched": "2026-01-01T00:00:00Z",
+            },
+            "contract": {
+                "terrace_contract": 1,
+                "producer": {"name": "x", "version": "1", "loader": "figment"},
+                "app": {"name": "x", "version": "1.0.0"},
+                "schema": {
+                    "schema_version": 2,
+                    "dialect": {
+                        "prefix": "P_",
+                        "nesting_separator": "__",
+                        "indirection_suffix": "_FILE",
+                    },
+                    "loader": [],
+                    "keys": [{
+                        "path": "scheduler.interval_secs",
+                        "env": "P_SCHEDULER__INTERVAL_SECS",
+                        "text_form": "integer",
+                        "required": false,
+                    }],
+                },
+                "json_schema": {},
+                "external": {"env": [], "ignore": [], "unknown": "reject"},
+            },
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn the_leaf_is_the_final_path_segment() {
+        assert_eq!(leaf_of("scheduler.interval_secs"), "interval_secs");
+        assert_eq!(leaf_of("metrics.enabled"), "enabled");
+        assert_eq!(leaf_of("port"), "port");
+    }
+
+    #[test]
+    fn a_key_rendered_as_a_yaml_style_mapping_is_found() {
+        assert_eq!(
+            unwired(&Chart::with_helpers(RENDERED_AS_A_KEY).wired()),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_key_built_through_a_go_template_dict_call_is_found() {
+        assert_eq!(
+            unwired(&Chart::with_helpers(RENDERED_THROUGH_DICT).wired()),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_key_no_template_renders_is_reported() {
+        let found = unwired(&Chart::with_helpers(RENDERED_ELSEWHERE).wired());
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(
+            found[0],
+            "fixture/values.yaml:7: binds contract key 'scheduler.interval_secs', but no template \
+             under fixture/templates/ renders a 'interval_secs' key. The value exists and is \
+             typed, but nothing projects it — indistinguishable, to an operator, from the setting \
+             never having been added"
+        );
+    }
+
+    #[test]
+    fn only_a_tpl_file_directly_under_templates_is_read() {
+        // A manifest or a nested helper spelling the key is not where the rule looks, which is
+        // the reach of the rule this was ported from.
+        let chart = Chart::with_helpers(RENDERED_ELSEWHERE);
+        chart
+            .write("templates/configmap.yaml", RENDERED_AS_A_KEY)
+            .write("templates/nested/_more.tpl", RENDERED_AS_A_KEY);
+        assert_eq!(unwired(&chart.wired()).len(), 1);
+    }
+
+    #[test]
+    fn an_external_marker_is_not_held_to_a_template() {
+        let chart = Chart::with_helpers(RENDERED_ELSEWHERE);
+        chart.write(
+            "values.yaml",
+            &VALUES.replace(
+                "@config projection scheduler.interval_secs optional",
+                "@config external SCHEDULER_INTERVAL",
+            ),
+        );
+        assert_eq!(unwired(&chart.wired()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_enrolled_chart_reports_an_unwired_key_through_the_gate() {
+        let chart = Chart::with_helpers(RENDERED_ELSEWHERE);
+        chart.write("contracts/api.json", &vendored_contract());
+        let report = chart.checked();
+        assert_eq!(unwired(&report).len(), 1, "{:?}", report.entries());
+        assert_eq!(report.error_count(), 1, "{:?}", report.entries());
+
+        let wired = Chart::with_helpers(RENDERED_AS_A_KEY);
+        wired.write("contracts/api.json", &vendored_contract());
+        let report = wired.checked();
+        assert!(!report.failed(), "{:?}", report.entries());
+    }
+
+    #[test]
+    fn an_unenrolled_chart_is_not_checked() {
+        let chart = Chart::with_helpers("{{- define \"fixture.derivedConfig\" -}}\n{{- end -}}\n");
+        chart.write(
+            "config-contract.yaml",
+            &DECLARATION.replace("bindings: true", "bindings: false"),
+        );
+        assert_eq!(unwired(&chart.checked()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_chart_with_no_declaration_is_not_checked() {
+        let chart = Chart::with_helpers("{{- define \"fixture.derivedConfig\" -}}\n{{- end -}}\n");
+        std::fs::remove_file(chart.dir().join("config-contract.yaml")).expect("removed");
+        assert_eq!(unwired(&chart.checked()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_chart_with_no_template_directory_has_every_key_unwired() {
+        let chart = Chart::with_helpers(RENDERED_AS_A_KEY);
+        std::fs::remove_dir_all(chart.dir().join("templates")).expect("removed");
+        assert_eq!(unwired(&chart.wired()).len(), 1);
+    }
 
     #[test]
     fn a_values_path_that_is_null_or_false_still_exists() {

@@ -20,6 +20,7 @@ pub mod declaration;
 pub mod diff;
 pub mod explain;
 pub mod markers;
+pub mod migrate;
 #[cfg(feature = "oci")]
 pub mod pull;
 pub mod readme;

@@ -185,6 +185,10 @@ enum Command {
     /// image release adds a setting, an automated bump repins the digest and omits everything else,
     /// and no gate notices that the new key is reached by no chart value. `check` cannot see it
     /// either: a key nothing renders is not a key rendered wrongly.
+    ///
+    /// It also reads the templates, crudely: every key a marker binds must appear in
+    /// `templates/*.tpl` as `leaf:` or `"leaf"`, so a value that is bound and documented but
+    /// projected by nothing fails here rather than in a round-trip suite nobody ran.
     Bindings {
         /// Only these charts, by directory name; every chart when none is named. A name the
         /// tree does not hold is refused, so a typo cannot select nothing and pass.
@@ -264,6 +268,37 @@ enum Command {
         /// to answer exits 1.
         #[arg(long)]
         exit_code: bool,
+    },
+
+    /// Name the chart lines that still use something a contract removed since a revision.
+    ///
+    /// `diff` says a key or an element property is gone; this says where the chart still uses it,
+    /// under `templates/`, the hand-written `tests/*.yaml` and `ci/*.yaml`. No writer edits those
+    /// files, so a removal is the one contract change a refresh cannot follow, and without this it
+    /// surfaces as schema refusals in a test run with nothing naming the cause. The chart's markers
+    /// are read at the revision too, because the value a removed key was bound to has usually been
+    /// deleted by then.
+    ///
+    /// A report, never a writer. Exits 0 when nothing references a removal, 2 when something does,
+    /// and 1 when it could not answer — the split `diff --exit-code` uses, so a caller can tell work
+    /// to do from a broken run.
+    Migrate {
+        /// Only this chart.
+        #[arg(value_name = "CHART")]
+        chart: Option<String>,
+
+        /// The revision to compare against: where the branch started, not `HEAD`, once the refresh
+        /// is committed.
+        #[arg(long, default_value = "origin/main")]
+        since: String,
+
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
+
+        /// Emit the findings as JSON, for something that is not a person.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Report which charts a configuration contract covers, and which it does not.
@@ -652,6 +687,11 @@ fn main() -> ExitCode {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one arm per subcommand and nothing else; splitting the dispatch would only hide \
+              which handler a variant reaches"
+)]
 fn run(cli: Cli) -> Result<ExitCode, Error> {
     let repo = cli.repo;
     match cli.command {
@@ -703,6 +743,8 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             json,
             exit_code,
         ),
+
+        Command::Migrate { .. } => Ok(migrate_command(&repo, cli.command)),
 
         Command::Secrets {
             reconcile,
@@ -1193,7 +1235,8 @@ fn bindings_command(
         &found.report,
         format,
         "Configuration bindings",
-        "Every contract key of every enrolled chart is bound by a value, or written off with a reason.",
+        "Every contract key of every enrolled chart is bound by a value, or written off with a \
+         reason, and every bound key is rendered by a template.",
     ))
 }
 
@@ -1319,6 +1362,72 @@ fn diff_command(
         return Ok(ExitCode::from(2));
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Name every chart line that still uses something a contract removed since `since`.
+///
+/// Returns its exit code rather than an error, because an error reaching `main` exits 2 — which is
+/// this command's "a chart still references something removed". Every way of failing to answer is
+/// 1 instead, so the three outcomes stay distinguishable to a caller.
+///
+/// A vendored contract that cannot be read on either side is a failure to answer, and nothing is
+/// reported past it: the comparison would read the unreadable side as absent and name every key of
+/// that contract as removed.
+fn migrate_command(repo: &Repo, command: Command) -> ExitCode {
+    let Command::Migrate {
+        chart: only,
+        since,
+        charts,
+        json: as_json,
+    } = command
+    else {
+        unreachable!("dispatched on the variant")
+    };
+    let answer = || -> Result<ExitCode, Error> {
+        let charts = repo.charts(charts)?;
+        if let Some(name) = &only {
+            // Refused by name, so a misspelt chart cannot compare nothing and pass.
+            Selection::of([name]).dirs(&charts)?;
+        }
+        let revision = helm::Committed::resolve_for(&charts, &since)?;
+        let diffed = helm::collect(&charts, &revision, only.as_deref())?;
+        let (_, problems) = diffed.report.text();
+        eprint!("{problems}");
+        if diffed.report.failed() {
+            return Err(Error::Invalid(format!(
+                "a vendored contract could not be read at {since} or in the working tree, so what \
+                 it removed is unknown"
+            )));
+        }
+
+        let found = helm::migrate::migrations(&charts, &diffed.charts, &revision)?;
+        let root = std::env::current_dir().map_err(|e| Error::io(".", e))?;
+        if as_json {
+            let mut document = helm::migrate::as_json(&found, &root);
+            document["tool"] = "terrace-contract migrate".into();
+            document["ref"] = since.as_str().into();
+            document["commit"] = revision.commit().into();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&document).expect("owned values serialise")
+            );
+        } else {
+            print!("{}", helm::migrate::render(&found, &root));
+        }
+
+        let open = found
+            .iter()
+            .any(|migration| !migration.references.is_empty());
+        Ok(if open {
+            ExitCode::from(2)
+        } else {
+            ExitCode::SUCCESS
+        })
+    };
+    answer().unwrap_or_else(|error| {
+        eprintln!("error: {error}");
+        ExitCode::FAILURE
+    })
 }
 
 /// Prose and prose alone are collapsed: they are real changes and they are shown, but one line per

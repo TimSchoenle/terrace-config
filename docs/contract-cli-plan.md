@@ -334,6 +334,8 @@ cannot do.
 | `just contract-tests` / `check-contract-tests` | `terrace-contract tests` / `--check` |
 | `just config-secrets` / `check-config-secrets` | `terrace-contract secrets` / `--reconcile rendered` |
 | `just contract-diff` | `terrace-contract diff --since origin/main` |
+| `just contract-migrations` | `terrace-contract migrate --since <where the branch started>` |
+| `just check-config-wired` | folded into `terrace-contract bindings`: same enrolment, same markers |
 | `just explain` | `terrace-contract explain <chart> [pattern]` |
 | `just test-contract-union` | deleted — becomes `cli/tests/union.rs` |
 | `new-chart.py`'s config half | `terrace-contract scaffold` |
