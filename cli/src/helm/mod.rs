@@ -25,6 +25,7 @@ pub mod pull;
 pub mod readme;
 pub mod restarts;
 pub mod rollout;
+pub mod scope;
 pub mod secrets;
 pub mod shapes;
 pub mod suites;
@@ -39,6 +40,7 @@ pub use declaration::{
 };
 pub use diff::{ChartDiff, Committed, Diffed, Revision, collect};
 pub use markers::{Block, Class, Marker};
+pub use scope::{Scope, Widened};
 pub use secrets::{Credential, Surface, reconcile as reconcile_secrets};
 pub use shapes::{Divergence, Shape};
 

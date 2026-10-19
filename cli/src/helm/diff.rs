@@ -311,6 +311,10 @@ pub struct Committed {
     reference: String,
     commit: String,
     root: std::path::PathBuf,
+    /// Where the chart tree's parent sits under `root`, with a trailing slash, or empty when it is
+    /// `root` itself. Every path a caller names is relative to that parent, and Git's are relative
+    /// to `root`, so this is what translates between the two.
+    prefix: String,
 }
 
 impl Committed {
@@ -346,7 +350,49 @@ impl Committed {
             reference: reference.to_owned(),
             commit: commit.trim().to_owned(),
             root,
+            prefix: String::new(),
         })
+    }
+
+    /// Resolve one reference for comparing the chart tree at `charts`.
+    ///
+    /// The tree need not sit at the root of its repository: a chart repository nested in a larger
+    /// one, or a `terrace.yaml` naming `deploy/charts`, reads the same files at the revision as in
+    /// the working tree.
+    ///
+    /// # Errors
+    /// [`Error::Invalid`] when there is no such revision, or when the tree is not inside a
+    /// repository.
+    pub fn resolve_for(charts: &Path, reference: &str) -> Result<Self, Error> {
+        let base = repository_root(charts);
+        let base = if base.as_os_str().is_empty() {
+            Path::new(".").to_path_buf()
+        } else {
+            base
+        };
+        let mut resolved = Self::resolve_in(&base, reference)?;
+        let canonical = |path: &Path| {
+            path.canonicalize()
+                .map_err(|e| Error::io(path.display(), e))
+        };
+        let relative = canonical(&base)?
+            .strip_prefix(canonical(&resolved.root)?)
+            .map(|inside| {
+                inside.components().fold(String::new(), |mut held, part| {
+                    held.push_str(&part.as_os_str().to_string_lossy());
+                    held.push('/');
+                    held
+                })
+            })
+            .map_err(|_| {
+                Error::Invalid(format!(
+                    "{} is outside the Git repository at {}",
+                    base.display(),
+                    resolved.root.display()
+                ))
+            })?;
+        resolved.prefix = relative;
+        Ok(resolved)
     }
 
     /// The commit the reference resolved to, for a report that has to be reproducible.
@@ -357,23 +403,36 @@ impl Committed {
 
 impl Revision for Committed {
     fn read(&self, path: &str) -> Option<String> {
-        run(&["show", &format!("{}:{path}", self.commit)], &self.root).ok()
+        run(
+            &["show", &format!("{}:{}{path}", self.commit, self.prefix)],
+            &self.root,
+        )
+        .ok()
     }
 
     fn contracts(&self, charts: &Path) -> BTreeSet<String> {
-        let pattern = format!(
-            "{}/*/contracts/*.json",
-            spec_of(charts, charts.parent().unwrap_or(charts))
-        );
+        let tree = spec_of(charts, charts);
+        let directory = format!("{}{tree}", self.prefix);
+        // The whole tree, filtered here: `ls-tree` takes a pathspec as a literal prefix, so a
+        // `*/contracts/*.json` glob would match nothing. NUL-separated, because a path with a
+        // non-ASCII byte is otherwise printed quoted and escaped.
         let listed = run(
-            &["ls-tree", "-r", "--name-only", &self.commit, "--", &pattern],
+            &[
+                "ls-tree",
+                "-r",
+                "-z",
+                "--name-only",
+                &self.commit,
+                "--",
+                &directory,
+            ],
             &self.root,
         );
         listed
             .unwrap_or_default()
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
+            .split('\0')
+            .filter_map(|path| path.strip_prefix(self.prefix.as_str()))
+            .filter(|path| is_vendored_contract(path, &tree))
             .map(str::to_owned)
             .collect()
     }
@@ -381,6 +440,25 @@ impl Revision for Committed {
     fn name(&self) -> &str {
         &self.reference
     }
+}
+
+/// Whether `path` is `<tree>/<chart>/contracts/<name>.json`, the one place a vendored contract lives.
+fn is_vendored_contract(path: &str, tree: &str) -> bool {
+    let Some(rest) = path
+        .strip_prefix(tree)
+        .and_then(|rest| rest.strip_prefix('/'))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        [chart, "contracts", file]
+            // The rule `vendored_paths` applies to the working tree, so both sides agree.
+            if !chart.is_empty()
+                && Path::new(file).file_stem().is_some_and(|stem| !stem.is_empty())
+                && Path::new(file).extension().and_then(std::ffi::OsStr::to_str) == Some("json")
+    )
 }
 
 /// One version-control command, with its output.
@@ -413,7 +491,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{ChartDiff, Revision, chart_of, chart_version};
+    use super::{ChartDiff, Revision, chart_of, chart_version, is_vendored_contract};
     use crate::diff::{Severity, diff_contract};
 
     /// A revision that is a map, which is what makes every rule above testable without a
@@ -456,6 +534,27 @@ mod tests {
             contracts,
             old_version: old.map(str::to_owned),
             new_version: new.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_vendored_contract_sits_exactly_one_chart_deep() {
+        for path in [
+            "charts/web/contracts/app.json",
+            "charts/w-1/contracts/a.b.json",
+        ] {
+            assert!(is_vendored_contract(path, "charts"), "{path}");
+        }
+        for path in [
+            "charts/web/contracts/app.yaml",
+            "charts/web/contracts/.json",
+            "charts/web/contracts/nested/app.json",
+            "charts/web/values.json",
+            "charts/contracts/app.json",
+            "chartsx/web/contracts/app.json",
+            "other/web/contracts/app.json",
+        ] {
+            assert!(!is_vendored_contract(path, "charts"), "{path}");
         }
     }
 

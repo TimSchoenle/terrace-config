@@ -147,10 +147,46 @@ terrace-contract bindings --format github portfolio netcup-offer-bot
 terrace-contract tests --check portfolio
 ```
 
-A pipeline that knows which charts a pull request changed can pass them, so a pull request is not
-failed by a chart it did not touch. When shared inputs change, such as the pinned CLI version or a
-library chart, pass no names, so that every chart is checked. A name that matches no chart directory
-exits `2`. A misspelt name would otherwise select nothing, and a gate that checks nothing passes.
+A name that matches no chart directory exits `2`. A misspelt name would otherwise select nothing,
+and a gate that checks nothing passes.
+
+`scope` works out the names from Git. It prints the application charts that the commits since a
+revision touched, measured from the merge base with `HEAD`, on one line:
+
+```bash
+terrace-contract scope --since origin/main          # e.g. "portfolio tankovault"
+terrace-contract scope --since origin/main --json   # the same, with the reason it widened
+```
+
+The line is empty, meaning every chart, whenever narrowing could miss a chart the change breaks:
+a changed path outside the charts' own directories (the pinned CLI, `terrace.yaml`, a workflow), a
+change to a chart that is a library at the base or at `HEAD` (deleting a library, or turning one
+into an application chart, still widens), or a change that cannot be read, such as in a shallow
+clone. Why it
+widened goes to stderr. It can therefore widen a gate and never narrow one by mistake.
+
+## One command for CI: `sync`
+
+`sync` runs the steps a chart repository needs in the right order, so a pipeline or a person runs
+one command instead of a list of them.
+
+```bash
+terrace-contract sync                                # pull, then rewrite shapes and README references
+terrace-contract sync --no-pull                      # the same from the contracts already vendored
+terrace-contract sync --check --since origin/main    # every offline gate, on the charts the change touched
+terrace-contract sync --check --manifests rendered   # and `check` on a render, too
+```
+
+Without `--check` it writes: `pull`, then `shapes`, then `readme`, each reading what the one before
+it wrote. It does not write the round-trip suites, because a generated test that lands without its
+author reading it is a test nobody has read; run `tests` for those.
+
+With `--check` it writes nothing and needs no network. It runs `bindings`, `shapes --check`,
+`readme --check`, `tests --check` and, when `helm.firstParty` is set, `coverage`. With `--manifests`
+it also runs `check` on that render. Every step runs even when an earlier one failed, so one run
+reports everything. The exit code is `0` when every step passed, `1` when a step found something,
+and `2` when a step could not run. `--format github` puts each step in a collapsible log group and
+writes the findings into the job summary.
 
 ## What it deliberately does not do
 
