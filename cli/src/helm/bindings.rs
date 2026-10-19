@@ -549,6 +549,27 @@ fn bound_in<'a>(resolved: &'a [Resolved], document: &str) -> BTreeSet<&'a str> {
         .collect()
 }
 
+/// Rules 1 to 4 over one chart's markers: every marker that named something real, and the findings
+/// of the ones that did not.
+///
+/// The premises of rule 5, lifted out for the writer that acts on rule 5's answer. A marker naming
+/// a key that does not exist means the chart's mapping is already wrong somewhere, and the keys
+/// [`missing_keys`] would then call owed are whatever that mistake left over — so a writer that
+/// planned past a finding here would write values for keys that are bound, under names nobody
+/// chose. It runs exactly the rules [`check`] runs before coverage, in the same order, so the two
+/// cannot disagree about which charts are fit to be written to.
+pub fn premises(
+    bound: &Bound,
+    markers: &[Marker],
+    values: &Json,
+    report: &mut Report,
+) -> Vec<Resolved> {
+    let resolved = resolve(bound, markers, values, report);
+    check_uniqueness(&resolved, report);
+    check_write_offs(bound, report);
+    resolved
+}
+
 /// The keys of each document that no value binds and no `unbound` entry writes off.
 ///
 /// Lifted out of the rule that reports it because a second caller acts on the same set: the writer

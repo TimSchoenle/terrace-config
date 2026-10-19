@@ -571,14 +571,26 @@ impl<'a> Scan<'a> {
 ///
 /// A `#` inside a quoted scalar is not a comment, and splitting on the first one would truncate the
 /// value and then fail to find the mapping key it was reading.
-fn split_comment(line: &str) -> (String, Option<String>) {
+///
+/// A backslash inside a double-quoted scalar escapes the character after it, so `"a\" # b"` is one
+/// scalar and no comment. A single-quoted scalar has no escapes — `''` is a closing quote and an
+/// opening one, which the toggle below already reads correctly.
+///
+/// Shared with [`super::regions`], which reads the same lines for a writer: two splitters would be
+/// two answers to where a value ends.
+pub(crate) fn split_comment(line: &str) -> (String, Option<String>) {
     let characters: Vec<char> = line.chars().collect();
     let mut quote: Option<char> = None;
+    let mut escaped = false;
     for (index, character) in characters.iter().enumerate() {
         // Inside a quoted scalar nothing is a comment, which is the whole reason this is not a
         // `split_once('#')`: truncating there loses the value, and then loses the key with it.
         if let Some(open) = quote {
-            if *character == open {
+            if escaped {
+                escaped = false;
+            } else if open == '"' && *character == '\\' {
+                escaped = true;
+            } else if *character == open {
                 quote = None;
             }
             continue;
@@ -746,7 +758,27 @@ fn parse_marker(text: &str) -> Result<Parsed, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Class, read};
+    use super::{Class, read, split_comment};
+
+    #[test]
+    fn an_escaped_quote_does_not_close_a_double_quoted_scalar() {
+        assert_eq!(
+            split_comment(r#"a: "x\" # not a comment" # one"#),
+            (
+                r#"a: "x\" # not a comment" "#.to_owned(),
+                Some("one".to_owned())
+            )
+        );
+        // A single-quoted scalar has no escapes: the backslash is a character, and the quote
+        // after it closes the scalar.
+        assert_eq!(
+            split_comment(r"a: 'x\' # comment"),
+            (r"a: 'x\' ".to_owned(), Some("comment".to_owned()))
+        );
+        assert_eq!(split_comment("a: '#x'").1, None);
+        assert_eq!(split_comment("colour: #fff").1, Some("fff".to_owned()));
+        assert_eq!(split_comment("colour: a#fff").1, None);
+    }
 
     fn markers(text: &str) -> Vec<super::Marker> {
         read(text, "x").expect("the markers read").0
