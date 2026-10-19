@@ -311,6 +311,10 @@ pub struct Committed {
     reference: String,
     commit: String,
     root: std::path::PathBuf,
+    /// Where the chart tree's parent sits under `root`, with a trailing slash, or empty when it is
+    /// `root` itself. Every path a caller names is relative to that parent, and Git's are relative
+    /// to `root`, so this is what translates between the two.
+    prefix: String,
 }
 
 impl Committed {
@@ -346,7 +350,49 @@ impl Committed {
             reference: reference.to_owned(),
             commit: commit.trim().to_owned(),
             root,
+            prefix: String::new(),
         })
+    }
+
+    /// Resolve one reference for comparing the chart tree at `charts`.
+    ///
+    /// The tree need not sit at the root of its repository: a chart repository nested in a larger
+    /// one, or a `terrace.yaml` naming `deploy/charts`, reads the same files at the revision as in
+    /// the working tree.
+    ///
+    /// # Errors
+    /// [`Error::Invalid`] when there is no such revision, or when the tree is not inside a
+    /// repository.
+    pub fn resolve_for(charts: &Path, reference: &str) -> Result<Self, Error> {
+        let base = repository_root(charts);
+        let base = if base.as_os_str().is_empty() {
+            Path::new(".").to_path_buf()
+        } else {
+            base
+        };
+        let mut resolved = Self::resolve_in(&base, reference)?;
+        let canonical = |path: &Path| {
+            path.canonicalize()
+                .map_err(|e| Error::io(path.display(), e))
+        };
+        let relative = canonical(&base)?
+            .strip_prefix(canonical(&resolved.root)?)
+            .map(|inside| {
+                inside.components().fold(String::new(), |mut held, part| {
+                    held.push_str(&part.as_os_str().to_string_lossy());
+                    held.push('/');
+                    held
+                })
+            })
+            .map_err(|_| {
+                Error::Invalid(format!(
+                    "{} is outside the Git repository at {}",
+                    base.display(),
+                    resolved.root.display()
+                ))
+            })?;
+        resolved.prefix = relative;
+        Ok(resolved)
     }
 
     /// The commit the reference resolved to, for a report that has to be reproducible.
@@ -357,12 +403,17 @@ impl Committed {
 
 impl Revision for Committed {
     fn read(&self, path: &str) -> Option<String> {
-        run(&["show", &format!("{}:{path}", self.commit)], &self.root).ok()
+        run(
+            &["show", &format!("{}:{}{path}", self.commit, self.prefix)],
+            &self.root,
+        )
+        .ok()
     }
 
     fn contracts(&self, charts: &Path) -> BTreeSet<String> {
         let pattern = format!(
-            "{}/*/contracts/*.json",
+            "{}{}/*/contracts/*.json",
+            self.prefix,
             spec_of(charts, charts.parent().unwrap_or(charts))
         );
         let listed = run(
@@ -373,6 +424,7 @@ impl Revision for Committed {
             .unwrap_or_default()
             .lines()
             .map(str::trim)
+            .filter_map(|line| line.strip_prefix(self.prefix.as_str()))
             .filter(|line| !line.is_empty())
             .map(str::to_owned)
             .collect()

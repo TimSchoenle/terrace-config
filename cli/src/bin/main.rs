@@ -1283,7 +1283,7 @@ fn diff_command(
     as_json: bool,
     exit_code: bool,
 ) -> Result<ExitCode, Error> {
-    let revision = helm::Committed::resolve(since)?;
+    let revision = helm::Committed::resolve_for(charts, since)?;
     let found = helm::collect(charts, &revision, only)?;
 
     if as_json {

@@ -1,5 +1,6 @@
-//! `scope` and `sync`, through the binary, against a real Git repository: which charts a change
-//! selects, which steps a run takes, and which exit code a pipeline sees.
+//! `scope`, `sync` and `diff`, through the binary, against a real Git repository: which charts a
+//! change selects, which steps a run takes, which revision a comparison reads, and which exit code a
+//! pipeline sees.
 
 #![cfg(feature = "cli")]
 
@@ -267,4 +268,54 @@ fn sync_in_github_format_groups_each_step() {
         shown.matches("::group::").count(),
         shown.matches("::endgroup::").count()
     );
+}
+
+/// A vendored contract whose only moving part is the app version.
+fn vendored(app_version: &str) -> String {
+    serde_json::json!({
+        "source": {"image": "i", "digest": "sha256:0", "sha256": "a", "fetched": "t"},
+        "contract": {
+            "terrace_contract": 1,
+            "app": {"name": "x", "version": app_version},
+            "schema": {"schema_version": 2, "dialect": {}, "loader": [], "keys": []},
+            "json_schema": {},
+            "external": {"env": [], "ignore": [], "unknown": "reject"},
+        },
+    })
+    .to_string()
+}
+
+#[test]
+fn diff_reads_the_base_revision_of_a_chart_tree_below_the_repository_root() {
+    let repository = Repository::new();
+    repository
+        .write(
+            "deploy/terrace.yaml",
+            "version: 1\nhelm:\n  charts: charts\n",
+        )
+        .write(
+            "deploy/charts/web/Chart.yaml",
+            "apiVersion: v2\nname: web\nversion: 1.0.0\n",
+        )
+        .write("deploy/charts/web/contracts/app.json", &vendored("1"));
+    repository.commit("nested tree");
+    repository.branch_with("deploy/charts/web/contracts/app.json", &vendored("2"));
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_terrace-contract"));
+    let output = command
+        .current_dir(repository.path())
+        .env(
+            "TERRACE_CONFIG",
+            repository.path().join("deploy/terrace.yaml"),
+        )
+        .env_remove("TERRACE_CHARTS")
+        .args(["diff", "--since", "main", "--exit-code"])
+        .output()
+        .expect("the binary runs");
+    let shown = text(&output);
+    assert_eq!(code(&output), 2, "{shown}");
+    // Read at the base, not reported as added: the chart's version there is known, and the
+    // contract is a change rather than a new file.
+    assert!(shown.contains("1.0.0 at main"), "{shown}");
+    assert!(shown.contains("(changed)"), "{shown}");
 }
