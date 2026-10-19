@@ -2213,7 +2213,15 @@ fn verify_command(
         let expected = image::dockerfile_labels(&contract, path);
         // Every region is compared: a Dockerfile building several images carries one per stage,
         // and each is a place the contract is published from.
-        for region in image::committed_blocks(&text)? {
+        // Named here because the parser only knows lines: a refusal that does not say which file
+        // is no help in a build checking several.
+        let regions = image::committed_blocks(&text).map_err(|error| match error {
+            Error::Invalid(message) => {
+                Error::Invalid(format!("{}: {message}", path_to_dockerfile.display()))
+            }
+            other => other,
+        })?;
+        for region in regions {
             // A Dockerfile checked out with CRLF would otherwise never match a block rendered
             // with LF, and the diff would be invisible in every terminal that shows it.
             let committed = region.block.replace("\r\n", "\n");
