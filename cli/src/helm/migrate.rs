@@ -42,7 +42,10 @@
 //! each one has a single possible end for a given start; the private `Search` type spells out why.
 //!
 //! Lines are counted as `str::lines` counts them, on `\n` with an optional `\r`, which is how an
-//! editor and `grep -n` count them too.
+//! editor and `grep -n` count them too. The implementation this was ported from counted with
+//! Python's `splitlines`, which also breaks at a lone `\r`, a form feed and the Unicode line
+//! separators; a file holding one of those gets a different line number here, and the one an
+//! editor shows.
 
 use std::path::{Path, PathBuf};
 

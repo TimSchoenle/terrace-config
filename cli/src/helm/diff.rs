@@ -278,17 +278,45 @@ fn vendored_paths(charts: &Path) -> Result<BTreeSet<String>, Error> {
 }
 
 /// A repository-relative, forward-slashed path — the only spelling version control accepts.
+///
+/// Both paths are [`anchored`] first, so a tree named `.` or `..` is spelled by its real name: the
+/// parent of `.` is the empty path, and stripping that left `./x/contracts/a.json`, which matched
+/// no path at the revision — every contract read as absent there, and nothing was reported.
 pub(crate) fn spec_of(path: &Path, charts: &Path) -> String {
     let root = repository_root(charts);
-    let relative = path.strip_prefix(&root).unwrap_or(path);
+    let path = anchored(path);
+    let relative = path.strip_prefix(&root).unwrap_or(&path);
     relative.to_string_lossy().replace('\\', "/")
 }
 
 /// The directory the chart tree sits in, which every path is spelled relative to.
 fn repository_root(charts: &Path) -> std::path::PathBuf {
+    let charts = anchored(charts);
     charts
         .parent()
-        .map_or_else(|| Path::new(".").to_path_buf(), Path::to_path_buf)
+        .map_or_else(|| charts.clone(), Path::to_path_buf)
+}
+
+/// A path made absolute against the working directory, with `.` and `..` resolved lexically.
+///
+/// Lexically rather than through the filesystem, so a path that does not exist yet — a contract a
+/// refresh removed — is spelled the same way as one that does. [`std::path::absolute`] alone keeps
+/// a `..` component, and the parent of `/repo/charts/..` would then be `/repo/charts`.
+fn anchored(path: &Path) -> std::path::PathBuf {
+    use std::path::Component;
+
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut out = std::path::PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// The chart one contract path belongs to.

@@ -16,6 +16,13 @@
 //! against, so none is reported; all three are counted as content, so the value they belong to
 //! ends after them rather than before.
 //!
+//! One departure, where the walk it replaces was wrong: inside a block scalar's body or a sequence
+//! item's interior, *every* line is content, a line that looks like a comment or like a `# @schema`
+//! delimiter included. The original checked for those two before it checked whether it was inside
+//! such a body, so a `|` scalar with a `# ...` line in its text ended early — and one with a
+//! `# @schema` line swallowed every line after it — and a writer then inserted into the middle of
+//! the text.
+//!
 //! # Lines are counted the way the files were always counted
 //!
 //! [`split_lines`] is a port of Python's `str.splitlines`, not of [`str::lines`]. The two disagree
@@ -46,6 +53,10 @@ pub struct Region {
     pub indent: usize,
     /// The last line of content belonging to it.
     pub end: usize,
+    /// Whether the key stands alone on its line, comment aside — `auth:` rather than `auth: {}`,
+    /// `auth: null` or `auth: |`. Only such a key can take a block child: a line under `auth: {}`
+    /// is a second value for one key, which no YAML parser accepts.
+    pub bare: bool,
 }
 
 /// Every mapping value in one YAML file's text, with the lines it spans, in file order.
@@ -56,8 +67,8 @@ pub fn regions(text: &str) -> Vec<Region> {
     // Every line that is neither blank nor comment-only, as `(number, indent)`. A value ends at the
     // last of these below it and more indented than it.
     let mut content: Vec<(usize, usize)> = Vec::new();
-    // `(line, indent, values_path)` for each mapping key, closed in the second pass.
-    let mut keys: Vec<(usize, usize, String)> = Vec::new();
+    // `(line, indent, values_path, bare)` for each mapping key, closed in the second pass.
+    let mut keys: Vec<(usize, usize, String, bool)> = Vec::new();
 
     let mut stack: Vec<(usize, String)> = Vec::new();
     let mut skip_deeper_than: Option<usize> = None;
@@ -70,6 +81,16 @@ pub fn regions(text: &str) -> Vec<Region> {
             continue;
         }
         let indent = line.len() - line.trim_start_matches(' ').len();
+
+        // Inside a block scalar's body or a sequence item's interior every line is content,
+        // whatever it looks like: `# not a comment` in a `|` scalar is text, and so is a line that
+        // reads `# @schema`. Counting it before the comment and delimiter checks is what keeps
+        // the value above from ending early — and a value that ended early would take a new
+        // sibling in the middle of its own text, truncating it.
+        if skip_deeper_than.is_some_and(|limit| indent > limit) {
+            content.push((number, indent));
+            continue;
+        }
 
         if patterns().delimiter.is_match(line) {
             in_schema = !in_schema;
@@ -114,11 +135,11 @@ pub fn regions(text: &str) -> Vec<Region> {
             .map(|(_, name)| name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        keys.push((number, indent, dotted));
+        keys.push((number, indent, dotted, key["rest"].trim().is_empty()));
     }
 
     keys.into_iter()
-        .map(|(line, indent, values_path)| {
+        .map(|(line, indent, values_path, bare)| {
             let first_below = content.partition_point(|(number, _)| *number <= line);
             let end = content[first_below..]
                 .iter()
@@ -130,6 +151,7 @@ pub fn regions(text: &str) -> Vec<Region> {
                 line,
                 indent,
                 end,
+                bare,
             }
         })
         .collect()
@@ -220,7 +242,8 @@ mod tests {
                 values_path: "auth".to_owned(),
                 line: 1,
                 indent: 0,
-                end: 5
+                end: 5,
+                bare: true,
             }
         );
         assert_eq!(region(&found, "auth.sessionTtl").end, 5);
@@ -244,6 +267,40 @@ mod tests {
         let found = regions("labels:\n  app.kubernetes.io/name: x\nnext: 1\n");
         assert_eq!(region(&found, "labels").end, 2);
         assert!(found.iter().all(|item| !item.values_path.contains('/')));
+    }
+
+    #[test]
+    fn a_block_scalars_body_is_content_whatever_it_looks_like() {
+        // A `#` line and a `# @schema` line inside a `|` scalar are text. Read as a comment and a
+        // delimiter they ended `script` early, and a new sibling went in mid-scalar.
+        let found = regions(
+            "outer:\n  script: |\n    echo one\n    # not a comment\n    # @schema\n    \
+             echo two\n  after: 1\n",
+        );
+        assert_eq!(region(&found, "outer.script").end, 6);
+        assert_eq!(region(&found, "outer.after").line, 7);
+        assert_eq!(region(&found, "outer").end, 7);
+    }
+
+    #[test]
+    fn only_a_key_alone_on_its_line_is_bare() {
+        let found = regions("a:\n  x: 1\nb: {}\nc: null\nd: # a comment\ne: |\n  text\nf: []\n");
+        let bare: Vec<(&str, bool)> = found
+            .iter()
+            .map(|item| (item.values_path.as_str(), item.bare))
+            .collect();
+        assert_eq!(
+            bare,
+            [
+                ("a", true),
+                ("a.x", false),
+                ("b", false),
+                ("c", false),
+                ("d", true),
+                ("e", false),
+                ("f", false)
+            ]
+        );
     }
 
     #[test]

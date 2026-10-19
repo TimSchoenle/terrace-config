@@ -1003,8 +1003,38 @@ pub(super) fn scalar(value: &Json) -> String {
 }
 
 /// A YAML double-quoted scalar. Used wherever a value could be read as something else.
+///
+/// Every character that would break the line is escaped, not only the quote and the backslash. The
+/// scalar is written onto one line of a values file or of an `@schema` comment, and a raw newline
+/// inside it would end that line: in a comment the rest of the default becomes a line of YAML, and
+/// in a value it becomes a folded scalar that no longer says what the contract said. `\n`, `\r`
+/// and `\t` keep their short escapes, YAML's own line and paragraph separators (U+0085, U+2028,
+/// U+2029) and every other control character are written as `\u` escapes, which every YAML 1.2
+/// reader decodes back to the same text.
+///
+/// This departs from the script it replaces, which escaped the quote and the backslash alone.
 pub(super) fn quoted(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+    use std::fmt::Write as _;
+
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for character in text.chars() {
+        match character {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            // `is_control` covers U+0085 with the rest of C1; the two separators are format
+            // characters to Unicode and line breaks to YAML, so they are named here.
+            breaking if breaking.is_control() || matches!(breaking, '\u{2028}' | '\u{2029}') => {
+                let _ = write!(out, "\\u{:04X}", u32::from(breaking));
+            }
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
 }
 
 // ------------------------------------------------------------------------------------------
@@ -1714,8 +1744,26 @@ mod tests {
 
     use super::{
         Added, Departure, Divergence, apply_divergences, covers, expected, ordinal, parse_markers,
-        render,
+        render, scalar,
     };
+
+    #[test]
+    fn a_string_with_a_line_break_stays_on_one_line_and_reads_back_the_same() {
+        let text = "one\ntwo\r\tthree \"q\" \\ \u{7}\u{85}\u{2028}\u{2029}end";
+        let written = scalar(&json!(text));
+        assert_eq!(written.lines().count(), 1, "{written:?}");
+        assert!(!written.contains(['\u{85}', '\u{2028}', '\u{2029}', '\u{7}']));
+        let read = crate::helm::declaration::read_yaml(
+            &format!("value: {written}\n"),
+            std::path::Path::new("values.yaml"),
+        )
+        .expect("the scalar parses");
+        assert_eq!(read["value"], json!(text));
+
+        // And in a comment, where a raw newline would turn the rest of a default into YAML.
+        let rendered = render(&json!({"default": "a\nb: c"}), 0, &Added::default());
+        assert_eq!(rendered, ["# default: \"a\\nb: c\""]);
+    }
 
     fn divergence(sub_path: &str, kind: Departure) -> Divergence {
         Divergence {

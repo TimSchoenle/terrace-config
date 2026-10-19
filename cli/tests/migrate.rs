@@ -494,3 +494,57 @@ fn markers_that_cannot_be_read_at_the_revision_are_a_failure_to_answer() {
     let output = repository.migrate(&[]);
     assert_eq!(code(&output), 1, "{}", text(&output));
 }
+
+/// `--charts .` and `--charts ..` name the same tree as `--charts charts`, and answer the same.
+///
+/// The parent of `.` is the empty path, so the tree used to be spelled `.` at the revision, where
+/// it matched nothing: every contract read as absent there, and both `diff` and `migrate` reported
+/// no change at all for a bump that removed two keys.
+#[test]
+fn a_tree_named_dot_or_dot_dot_is_read_by_its_real_name() {
+    let repository = Repository::new();
+    repository.chart_file("templates/_legal.tpl", TEMPLATE_STALE);
+
+    let run = |directory: &str, arguments: &[&str]| -> (i32, Json) {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_terrace-contract"));
+        for name in INHERITED {
+            command.env_remove(name);
+        }
+        let output = command
+            .current_dir(repository.0.join(directory))
+            .args(arguments)
+            .output()
+            .expect("the binary runs");
+        let parsed = serde_json::from_slice(&output.stdout)
+            .unwrap_or_else(|e| panic!("{arguments:?} prints JSON ({e}): {}", text(&output)));
+        (code(&output), parsed)
+    };
+    let keys = |found: &Json| by_key(found).keys().cloned().collect::<Vec<_>>();
+
+    let migrate = ["migrate", "--since", "main", "--json", "--charts"];
+    let (expected_exit, expected) = run(".", &[&migrate[..], &["charts"]].concat());
+    assert_eq!(expected_exit, 2, "{expected}");
+    assert_eq!(keys(&expected), ["legal.dir", "legal.documents"]);
+    for (directory, charts) in [("charts", "."), ("charts/fixture/templates", "../..")] {
+        let (exit, found) = run(directory, &[&migrate[..], &[charts]].concat());
+        assert_eq!(exit, expected_exit, "{directory} {charts}: {found}");
+        assert_eq!(
+            keys(&found),
+            keys(&expected),
+            "{directory} {charts}: {found}"
+        );
+    }
+
+    let diff = ["diff", "--since", "main", "--json", "--charts"];
+    let (_, expected) = run(".", &[&diff[..], &["charts"]].concat());
+    assert_eq!(expected["changed"], json!(true), "{expected}");
+    for (directory, charts) in [("charts", "."), ("charts/fixture", "..")] {
+        let (_, found) = run(directory, &[&diff[..], &[charts]].concat());
+        assert_eq!(
+            found["changed"],
+            json!(true),
+            "{directory} {charts}: {found}"
+        );
+        assert_eq!(found["charts"], expected["charts"], "{directory} {charts}");
+    }
+}

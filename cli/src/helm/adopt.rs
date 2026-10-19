@@ -109,10 +109,47 @@
 //! - **Two documents agreeing on a key.** The script compared the fields' Python `repr`, so the
 //!   same constraint published with its members in another order read as a disagreement. Here
 //!   the fields are compared as JSON, where member order means nothing.
+//! - **A block scalar whose text looks like a comment.** The script's line walk read `# ...` and
+//!   `# @schema` lines inside a `|` or `>` scalar as a comment and a delimiter, so the value ended
+//!   early, and the delimiter swallowed every line after it. A new block then went into the middle
+//!   of the scalar's text. [`super::regions`] counts every line of a scalar body as content.
+//! - **A parent written with its value on one line.** `telemetry: null`, `auth: {}`, `unbound: []`
+//!   and `credentials: []` cannot take a block child: a line inserted under one is a second value
+//!   for the same key, and the file no longer parses. The script inserted anyway. Here a value
+//!   under such a parent is refused, naming the rewrite, and a declaration block in that shape
+//!   blocks the chart until it is rewritten by hand — values without their write-offs would leave
+//!   the chart failing the gate the run was for.
+//! - **A define whose closing `end` shares its line.** Lines are inserted above the define's
+//!   closing `end`. When that `end` followed an inner `{{- end }}` on the same line, the script put
+//!   the projection inside the inner `with`; when the whole define was on one line, above the
+//!   define. Here the closing `end` has to be alone on a line of its own, or the lines are printed
+//!   for a person instead.
+//! - **A `text_form` this build does not implement.** Refused per key, with the rest of the
+//!   contract adopted. The script typed such a key as text, or failed the run when it was a
+//!   credential.
+//! - **A string with a line break in it.** A default or an enum member holding a newline, a tab,
+//!   another control character or a Unicode line separator is written escaped, on one line. The
+//!   script wrote the raw character, which broke the `@schema` comment or the value it was in.
+//! - **Writing.** The script wrote file by file as it reported, so a failure part-way left some
+//!   charts adopted and others not, and a file could be left half-written. [`write_all`] plans every
+//!   file of every chart first, stages each beside its target, and only then renames them into
+//!   place: a failure before the renames leaves every file as it was. A file that resolves outside
+//!   its chart — a symbolic link to somebody else's template — fails the run before anything is
+//!   written.
 //! - **Unreadable input.** A tree the script could not read ended in a Python traceback. Here it
 //!   ends in one `error:` line. With `--check` that exits 2, so a gate can tell "owes a key" from
-//!   "could not answer".
+//!   "could not answer"; otherwise it exits 1, as the traceback did.
 //! - **`--check` and `--diff`** are new. The script had only a plan and `--write`.
+//!
+//! Three smaller differences, none of which any chart in the repository reaches:
+//!
+//! - A number is written as Rust prints it, so a default of `0.0000001` is `1e-7` where the
+//!   script wrote `1e-07`. Both read back as the same number.
+//! - A file starting with a byte-order mark is refused as YAML that does not parse, as every other
+//!   reader in this crate refuses it. The script's reader skipped the mark.
+//! - Lines are split where Python splits them, so line numbers agree with the script's. The
+//!   `migrate` command counts lines as an editor does instead; the two differ only on a lone `\r`
+//!   and the Unicode separators, which no chart file contains.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -225,6 +262,10 @@ pub struct Adoption {
     pub refusals: Vec<Refusal>,
     /// Why nothing was planned at all, when the chart fails a rule the plan depends on.
     pub blocked: Vec<String>,
+    /// Whether `blocked` is a hand edit the declaration needs before anything can be appended to
+    /// it, rather than the bindings gate's own findings — which decides what the report says
+    /// will find it again.
+    pub by_hand: bool,
     /// The projections that could not be appended, printed for a person to place.
     pub owed_projected: Vec<Placement>,
     /// The credentials whose `secretData` line could not be appended, printed likewise.
@@ -241,6 +282,7 @@ impl Adoption {
             edits: Vec::new(),
             refusals: Vec::new(),
             blocked: Vec::new(),
+            by_hand: false,
             owed_projected: Vec::new(),
             owed_secrets: Vec::new(),
         }
@@ -376,6 +418,8 @@ pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adopt
     let (mut owed, refusals) = owed_keys(&bound, &missing_keys(&bound, &resolved), &markers);
     adoption.refusals = refusals;
 
+    refuse_unknown_forms(&mut owed, &mut adoption.refusals);
+
     if !wanted.is_empty() {
         let known: BTreeSet<&str> = owed
             .iter()
@@ -411,18 +455,50 @@ pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adopt
     // written: a credential whose value was refused is one this chart already delivers, and an
     // entry claiming otherwise would describe an edit nobody made.
     let placed = adoption.placed();
-    adoption.edits = declaration_edits(
+    let (edits, unwritable) = declaration_edits(
         &declaration_path,
         &bound.declaration,
         &placed,
         &adoption.occupied(),
     )?;
+    if !unwritable.is_empty() {
+        // Values written without the write-offs they need leave the chart failing the gate this
+        // was run to satisfy, so the whole chart waits for the hand edit rather than half of it.
+        adoption.insertions.clear();
+        adoption.blocked = unwritable;
+        adoption.by_hand = true;
+        return Ok(Some(adoption));
+    }
+    adoption.edits = edits;
     let projections =
         projection_edits(chart_dir, &chart, &placed, &all_documents, &service_key_of)?;
     adoption.edits.extend(projections.edits);
     adoption.owed_projected = projections.owed_projected;
     adoption.owed_secrets = projections.owed_secrets;
     Ok(Some(adoption))
+}
+
+/// Refuse every owed key whose `text_form` this build does not implement, and keep the rest.
+///
+/// A form never seen before says nothing about how the loader reads the value, so there is no type
+/// to write, no default to trust and no telling whether a file can deliver it. Refused per key, so
+/// the rest of the contract is still adopted.
+fn refuse_unknown_forms(owed: &mut Vec<Key>, refusals: &mut Vec<Refusal>) {
+    owed.retain(|key| {
+        if key.entry.entry().text_form().is_ok() {
+            return true;
+        }
+        refusals.push(Refusal {
+            path: key.entry.name.clone(),
+            reason: format!(
+                "has `text_form` {}, which this build does not implement, so nothing says how its \
+                 value is read. Upgrade terrace-contract, or write the value by hand",
+                super::shown(key.entry.fields.get("text_form"))
+            ),
+            occupied: false,
+        });
+        false
+    });
 }
 
 /// The keys of one chart that are owed a value, each resolved to a single description.
@@ -653,6 +729,29 @@ fn insertions_for(
             continue;
         }
 
+        // `auth: {}` and `telemetry: null` are mappings to YAML, but written on one line: a block
+        // inserted under either is a second value for the same key, and the file no longer parses.
+        // Turning one into a bare `auth:` is a rewrite of a line somebody wrote, which an
+        // insertion-only writer does not do.
+        if let Some(region) = by_path.get(ancestor.as_str())
+            && !ancestor.is_empty()
+            && !region.bare
+        {
+            refusals.push(Refusal {
+                path: placement.path().to_owned(),
+                reason: format!(
+                    "needs the chart value {}, and {} is written with its value on the key's own \
+                     line, so nothing can be inserted under it. Rewrite it as a bare `{}:` with \
+                     its children indented below, then run this again",
+                    quoted(values_path),
+                    quoted(&ancestor),
+                    ancestor.rsplit('.').next().unwrap_or_default()
+                ),
+                occupied: false,
+            });
+            continue;
+        }
+
         match groups.iter_mut().find(|(held, _)| *held == ancestor) {
             Some((_, members)) => members.push(placement.clone()),
             None => groups.push((ancestor, vec![placement.clone()])),
@@ -775,12 +874,16 @@ const CREDENTIALS_HEADER: [&str; 7] = [
 /// The `credentials` row is the same argument once more. `value` is the chart value carrying the
 /// credential, which is a fact here because this just wrote that value. `note` — when a release
 /// needs the credential at all — is the chart's, and is left for a person.
+///
+/// The second half of the answer is the blocks that exist but cannot take a line: `unbound: []`
+/// and `credentials: []` are lists, but written on the key's own line, and an entry appended
+/// below either is a second value for one key that no YAML parser accepts.
 fn declaration_edits(
     path: &Path,
     declaration: &Declaration,
     plan: &Plan,
     occupied: &[Placement],
-) -> Result<Vec<FileEdit>, Error> {
+) -> Result<(Vec<FileEdit>, Vec<String>), Error> {
     let text = read_text(path)?;
     // Keyed by path, a key written twice read as its last occurrence.
     let regions: HashMap<String, Region> = regions(&text)
@@ -789,11 +892,21 @@ fn declaration_edits(
         .collect();
 
     let mut edits = Vec::new();
+    let mut unwritable = Vec::new();
     let mut fresh: Vec<(&str, Vec<String>)> = Vec::new();
+    let mut inline = |name: &str| {
+        unwritable.push(format!(
+            "{}: `{name}` is written with its value on the key's own line, so the entries this \
+             adoption owes cannot be appended to it. Rewrite it as a bare `{name}:` with its \
+             entries indented below, then run this again",
+            posix(path)
+        ));
+    };
 
     let rows = credential_rows(declaration, plan);
     if !rows.is_empty() {
         match regions.get("credentials") {
+            Some(region) if !region.bare => inline("credentials"),
             Some(region) => edits.push(FileEdit {
                 path: path.to_path_buf(),
                 after: region.end,
@@ -807,6 +920,7 @@ fn declaration_edits(
     let groups = owed_write_offs(plan, occupied, declaration)?;
     if !groups.is_empty() {
         match regions.get("unbound") {
+            Some(region) if !region.bare => inline("unbound"),
             Some(region) => edits.push(FileEdit {
                 path: path.to_path_buf(),
                 after: region.end,
@@ -834,7 +948,7 @@ fn declaration_edits(
                 .join(" and "),
         });
     }
-    Ok(edits)
+    Ok((edits, unwritable))
 }
 
 fn with_header(header: &[&str], body: Vec<String>) -> Vec<String> {
@@ -976,14 +1090,25 @@ fn read_define(text: &str, name: &str) -> Option<Define> {
         {
             roots.insert(key["name"].to_owned());
         }
-        for action in template_patterns().action.captures_iter(line) {
-            let action = &action[1];
-            if OPENERS.contains(&action) {
+        let actions: Vec<&str> = template_patterns()
+            .action
+            .captures_iter(line)
+            .filter_map(|found| found.get(1))
+            .map(|found| found.as_str())
+            .collect();
+        for action in &actions {
+            if OPENERS.contains(action) {
                 depth += 1;
-            } else if action == "end" {
+            } else if *action == "end" {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(Define {
+                    // Lines are inserted *above* the closing `end`, so it has to own its line.
+                    // Sharing it with the define's opening would put them above the define, and
+                    // sharing it with an inner `{{- end }}` would put them inside that inner
+                    // block, under a condition nobody wrote for them. Either way the shape is not
+                    // one an append can be trusted with, and the lines are printed instead.
+                    let alone = number != start && actions.len() == 1;
+                    return alone.then_some(Define {
                         end: number + 1,
                         roots,
                     });
@@ -1462,13 +1587,92 @@ pub fn splices(adoption: &Adoption) -> Result<Vec<Splice>, Error> {
 /// command that wrote one of the three would be a command whose output is never the finished state.
 ///
 /// # Errors
-/// [`Error::Io`] when a file cannot be read or written.
+/// As [`write_all`].
 pub fn write(adoption: &Adoption) -> Result<(), Error> {
-    for splice in splices(adoption)? {
-        std::fs::write(&splice.path, splice.apply())
-            .map_err(|e| Error::io(splice.path.display(), e))?;
+    write_all(std::slice::from_ref(adoption))
+}
+
+/// Apply every chart's edits, all of them or none.
+///
+/// Three phases, so that a failure leaves the tree as it was rather than half adopted. Every
+/// splice of every chart is planned first, reading each file once. Each result is then written to
+/// a temporary file beside the file it replaces, so the rename that follows stays on one
+/// filesystem; a failure in either phase removes the temporaries and has touched nothing. Only
+/// then is each temporary renamed over its file — a rename is atomic, so no reader ever sees half
+/// a file, and nothing that can fail for want of space or permission is left for this last phase.
+///
+/// A file is written at its canonical path, and only when that path is inside the chart's own
+/// directory. A `templates/_helpers.tpl` that is a symbolic link to somewhere else is somebody
+/// else's file, and an edit planned from one chart has no business landing in it.
+///
+/// # Errors
+/// [`Error::Io`] when a file cannot be read, resolved or written, and [`Error::Invalid`] when one
+/// resolves outside its chart.
+pub fn write_all(adoptions: &[Adoption]) -> Result<(), Error> {
+    let mut planned: Vec<(PathBuf, String)> = Vec::new();
+    for adoption in adoptions.iter().filter(|item| item.writes()) {
+        let chart_dir = adoption.values.parent().unwrap_or_else(|| Path::new("."));
+        let root = chart_dir
+            .canonicalize()
+            .map_err(|e| Error::io(chart_dir.display(), e))?;
+        for splice in splices(adoption)? {
+            let target = splice
+                .path
+                .canonicalize()
+                .map_err(|e| Error::io(splice.path.display(), e))?;
+            if !target.starts_with(&root) {
+                return Err(Error::Invalid(format!(
+                    "{}: resolves to {}, outside the chart {}; nothing was written",
+                    posix(&splice.path),
+                    target.display(),
+                    root.display()
+                )));
+            }
+            planned.push((target, splice.apply()));
+        }
+    }
+
+    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let discard = |staged: &[(PathBuf, PathBuf)]| {
+        for (temporary, _) in staged {
+            let _ = std::fs::remove_file(temporary);
+        }
+    };
+    for (index, (target, text)) in planned.iter().enumerate() {
+        match stage(target, text, index) {
+            Ok(temporary) => staged.push((temporary, target.clone())),
+            Err(error) => {
+                discard(&staged);
+                return Err(error);
+            }
+        }
+    }
+
+    for (position, (temporary, target)) in staged.iter().enumerate() {
+        if let Err(error) = std::fs::rename(temporary, target) {
+            discard(&staged[position..]);
+            return Err(Error::io(target.display(), error));
+        }
     }
     Ok(())
+}
+
+/// Write one file's new text to a temporary beside it, with the file's own permissions.
+fn stage(target: &Path, text: &str, index: usize) -> Result<PathBuf, Error> {
+    let name = target
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+    let temporary =
+        target.with_file_name(format!(".{name}.adopt-{}-{index}.tmp", std::process::id()));
+    let written = std::fs::write(&temporary, text).and_then(|()| {
+        let permissions = std::fs::metadata(target)?.permissions();
+        std::fs::set_permissions(&temporary, permissions)
+    });
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(Error::io(temporary.display(), error));
+    }
+    Ok(temporary)
 }
 
 // ------------------------------------------------------------------------------------------
@@ -1487,9 +1691,11 @@ pub fn report(adoption: &Adoption, written: bool) -> Result<String, Error> {
         for message in &adoption.blocked {
             let _ = writeln!(out, "  blocked: {message}");
         }
-        out.push_str(
-            "\n  Nothing was planned. `just check-config-bindings` reports the same thing.\n",
-        );
+        out.push_str(if adoption.by_hand {
+            "\n  Nothing was planned. Once the declaration is fixed by hand, this plans the rest.\n"
+        } else {
+            "\n  Nothing was planned. `just check-config-bindings` reports the same thing.\n"
+        });
         return Ok(out);
     }
 
@@ -3098,5 +3304,230 @@ auth:
         write(&planned).expect("written");
         assert_eq!(chart.text(), found[0].apply());
         assert_eq!(chart.parsed()["log"]["level"], Json::Null);
+    }
+
+    // --------------------------------------------------------------------------------------
+    // Shapes an insertion-only writer must not write into
+    // --------------------------------------------------------------------------------------
+
+    #[test]
+    fn a_block_scalar_that_looks_like_comments_is_not_cut_in_two() {
+        // `auth` ends with a `|` scalar whose text has a comment-looking line and a `# @schema`
+        // line. Read as a comment and a delimiter, they ended `auth` mid-scalar, and the new
+        // top-level block went into the middle of the text.
+        let chart = Chart::new();
+        chart.values(&VALUES.replace(
+            "  sessionTtl: 3600\n",
+            "  sessionTtl: 3600\n\n  # -- A banner.\n  banner: |\n    hello\n    # @schema\n    \
+             # not a comment\n    world\n",
+        ));
+        chart.contract("api", &[session_ttl(), key("log.level", &json!({}))]);
+        chart.write();
+
+        let values = chart.parsed();
+        assert_eq!(
+            values["auth"]["banner"],
+            json!("hello\n# @schema\n# not a comment\nworld\n")
+        );
+        assert_eq!(values["log"]["level"], Json::Null);
+        let text = chart.text();
+        assert!(line_of(&text, "log:") > line_of(&text, "    world"));
+    }
+
+    #[test]
+    fn a_parent_written_with_its_value_on_one_line_is_refused() {
+        // `telemetry: null` and `limits: {}` are mappings to YAML, but a block below either is a
+        // second value for one key, and the file would no longer parse.
+        let chart = Chart::new();
+        chart.values(&format!(
+            "{VALUES}\n# -- Telemetry.\ntelemetry: null\n\n# -- Limits.\nlimits: {{}}\n"
+        ));
+        chart.contract(
+            "api",
+            &[
+                session_ttl(),
+                key("telemetry.level", &json!({})),
+                key("limits.burst", &json!({})),
+            ],
+        );
+        let before = chart.text();
+        let planned = chart.write();
+
+        assert_eq!(planned.insertions, [] as [super::Insertion; 0]);
+        let refused = refusals(&planned);
+        assert!(
+            refused.contains("telemetry.level needs the chart value 'telemetry.level'"),
+            "{refused}"
+        );
+        assert!(refused.contains("limits.burst"), "{refused}");
+        assert!(
+            refused.contains("written with its value on the key's own line"),
+            "{refused}"
+        );
+        assert_eq!(chart.text(), before);
+        let _ = chart.parsed();
+    }
+
+    #[test]
+    fn a_declaration_block_written_on_one_line_blocks_the_chart() {
+        for (block, owed) in [
+            (
+                "unbound: []",
+                key("runtime.node_id", &json!({"reserved": true})),
+            ),
+            (
+                "credentials: []",
+                key("database.url", &json!({"secret": true})),
+            ),
+        ] {
+            let chart = Chart::new();
+            chart.declaration(&format!("{DECLARATION}{block}\n"));
+            chart.contract("api", &[session_ttl(), owed]);
+            let values = chart.text();
+            let declaration = chart.declaration_text();
+            let planned = chart.write();
+
+            assert!(planned.by_hand, "{block}");
+            assert!(
+                planned
+                    .blocked
+                    .join("\n")
+                    .contains("is written with its value on the key's own line"),
+                "{block}: {:?}",
+                planned.blocked
+            );
+            assert_eq!(planned.insertions, [] as [super::Insertion; 0], "{block}");
+            assert_eq!(chart.text(), values, "{block}");
+            assert_eq!(chart.declaration_text(), declaration, "{block}");
+            let shown = super::report(&planned, false).expect("a report");
+            assert!(shown.contains("fixed by hand"), "{shown}");
+        }
+    }
+
+    #[test]
+    fn a_define_closed_on_a_line_shared_with_another_action_is_printed_not_written() {
+        // Inserting above `{{- end }}{{- end -}}` lands inside the `with`, under a condition
+        // nobody wrote for the new lines.
+        let chart = Chart::new();
+        chart.template(
+            "_helpers.tpl",
+            "{{- define \"fixture.derivedConfig\" -}}\nauth:\n  {{- with .Values.auth.sessionTtl }}\n  \
+             session_ttl: {{ . }}\n  {{- end }}{{- end -}}\n\n{{- define \"fixture.secretData\" -}}\n\
+             {{- end -}}\n",
+        );
+        let before = chart.helper_text();
+        chart.contract("api", &[session_ttl(), key("log.level", &json!({}))]);
+        let planned = chart.write();
+
+        assert_eq!(owed_projected(&planned), ["log.level"]);
+        assert_eq!(chart.helper_text(), before);
+    }
+
+    #[test]
+    fn a_define_opened_and_closed_on_one_line_is_printed_not_written() {
+        // Inserting above the closing `end` would put the lines above the define itself.
+        let chart = Chart::new();
+        chart.template(
+            "_helpers.tpl",
+            &HELPERS.replace(
+                "{{- define \"fixture.secretData\" -}}\n{{- end -}}",
+                "{{- define \"fixture.secretData\" -}}{{- end -}}",
+            ),
+        );
+        let before = chart.helper_text();
+        chart.contract(
+            "api",
+            &[session_ttl(), key("database.url", &json!({"secret": true}))],
+        );
+        let planned = chart.write();
+
+        let owed: Vec<&str> = planned
+            .owed_secrets
+            .iter()
+            .map(super::Placement::path)
+            .collect();
+        assert_eq!(owed, ["database.url"]);
+        assert_eq!(chart.helper_text(), before);
+    }
+
+    #[test]
+    fn a_key_whose_text_form_this_build_does_not_know_is_refused_and_the_rest_adopted() {
+        let chart = Chart::new();
+        chart.contract(
+            "api",
+            &[
+                session_ttl(),
+                key("log.level", &json!({})),
+                key("log.window", &json!({"text_form": "duration"})),
+            ],
+        );
+        let planned = chart.write();
+
+        assert!(
+            refusals(&planned).contains(
+                "log.window has `text_form` 'duration', which this build does not implement"
+            ),
+            "{}",
+            refusals(&planned)
+        );
+        assert_eq!(chart.parsed()["log"]["level"], Json::Null);
+        assert!(chart.parsed()["log"].get("window").is_none());
+    }
+
+    // --------------------------------------------------------------------------------------
+    // Writing: all or nothing, and only inside the chart
+    // --------------------------------------------------------------------------------------
+
+    #[test]
+    fn a_file_that_resolves_outside_its_chart_fails_the_whole_write_before_anything_lands() {
+        // Two charts planned together; the second's helper is a link to a file outside it. The
+        // first chart's files are untouched, the outside file is untouched, and no temporary is
+        // left behind.
+        let first = Chart::new();
+        first.contract("api", &[session_ttl(), key("log.level", &json!({}))]);
+        let second = Chart::new();
+        second.contract("api", &[session_ttl(), key("log.level", &json!({}))]);
+        let outside = second.root.join("outside.tpl");
+        std::fs::write(&outside, HELPERS).expect("the outside file");
+        let helper = second.dir.join("templates").join("_helpers.tpl");
+        std::fs::remove_file(&helper).expect("removed");
+        std::os::unix::fs::symlink(&outside, &helper).expect("a symbolic link");
+
+        let before = (first.text(), first.helper_text(), second.text());
+        let planned = [first.plan(), second.plan()];
+        let error = super::write_all(&planned).expect_err("the link escapes its chart");
+        assert!(error.to_string().contains("outside the chart"), "{error}");
+
+        assert_eq!((first.text(), first.helper_text(), second.text()), before);
+        assert_eq!(std::fs::read_to_string(&outside).expect("outside"), HELPERS);
+        for chart in [&first, &second] {
+            for directory in [chart.dir.clone(), chart.dir.join("templates")] {
+                for entry in std::fs::read_dir(&directory).expect("a directory") {
+                    let name = entry.expect("an entry").file_name();
+                    assert!(
+                        !name.to_string_lossy().contains(".adopt-"),
+                        "a temporary was left: {name:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_write_keeps_each_files_permissions() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let chart = Chart::new();
+        let values = chart.dir.join("values.yaml");
+        std::fs::set_permissions(&values, std::fs::Permissions::from_mode(0o640))
+            .expect("permissions set");
+        chart.contract("api", &[session_ttl(), key("log.level", &json!({}))]);
+        chart.write();
+        let mode = std::fs::metadata(&values)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o640);
+        assert!(chart.text().contains("log:"));
     }
 }

@@ -742,7 +742,7 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             format,
         } => bindings_command(&repo.charts(charts)?, &Selection::of(only), format),
 
-        Command::Adopt(adopt) => adopt_command(&repo, adopt),
+        Command::Adopt(adopt) => Ok(adopt_command(&repo, adopt)),
 
         Command::Shapes {
             only,
@@ -1296,7 +1296,7 @@ struct Adopt {
 /// names no chart or a `--key` with no chart, 1 for a refused key, a blocked chart or a tree that
 /// could not be read, 0 otherwise. `--check` alone departs from that, to the convention `sync
 /// --check` reads: 1 for anything owed, 2 for a tree it could not read.
-fn adopt_command(repo: &Repo, options: Adopt) -> Result<ExitCode, Error> {
+fn adopt_command(repo: &Repo, options: Adopt) -> ExitCode {
     use helm::adopt;
 
     let Adopt {
@@ -1307,25 +1307,28 @@ fn adopt_command(repo: &Repo, options: Adopt) -> Result<ExitCode, Error> {
         diff,
         write,
     } = options;
-    let charts = &repo.charts(charts)?;
     // An empty name selects every chart, as the recipe that passes `''` through expects.
     let chart = chart.as_deref().filter(|name| !name.is_empty());
-    let chart_dirs: Vec<PathBuf> = helm::declaration::chart_dirs(charts)?
-        .into_iter()
-        .filter(|dir| chart.is_none_or(|name| dir.file_name() == Some(name.as_ref())))
-        .collect();
-    if let Some(name) = chart
-        && chart_dirs.is_empty()
-    {
-        eprintln!("error: {} is not a chart", adopt::posix(&charts.join(name)));
-        return Ok(ExitCode::from(2));
-    }
-    if !keys.is_empty() && chart.is_none() {
-        eprintln!("error: --key selects keys of one chart, so name the chart");
-        return Ok(ExitCode::from(2));
-    }
 
+    // Everything that reads the tree runs in here, the chart list included, so that a tree that
+    // cannot be read exits the way the contract above says rather than the way `main` would.
     let run = || -> Result<ExitCode, Error> {
+        let charts = &repo.charts(charts)?;
+        let chart_dirs: Vec<PathBuf> = helm::declaration::chart_dirs(charts)?
+            .into_iter()
+            .filter(|dir| chart.is_none_or(|name| dir.file_name() == Some(name.as_ref())))
+            .collect();
+        if let Some(name) = chart
+            && chart_dirs.is_empty()
+        {
+            eprintln!("error: {} is not a chart", adopt::posix(&charts.join(name)));
+            return Ok(ExitCode::from(2));
+        }
+        if !keys.is_empty() && chart.is_none() {
+            eprintln!("error: --key selects keys of one chart, so name the chart");
+            return Ok(ExitCode::from(2));
+        }
+
         let wanted = keys.iter().cloned().collect();
         let adoptions = adopt::adopt_all(&chart_dirs, &wanted)?;
         if adoptions.is_empty() {
@@ -1354,10 +1357,11 @@ fn adopt_command(repo: &Repo, options: Adopt) -> Result<ExitCode, Error> {
                 }
             }
         } else {
+            // Every file of every chart, or none: see `write_all`.
+            if write {
+                adopt::write_all(&adoptions)?;
+            }
             for adoption in &adoptions {
-                if write && adoption.writes() {
-                    adopt::write(adoption)?;
-                }
                 print!("{}", adopt::report(adoption, write)?);
             }
             let rows = if write {
@@ -1375,10 +1379,10 @@ fn adopt_command(repo: &Repo, options: Adopt) -> Result<ExitCode, Error> {
         })
     };
 
-    Ok(run().unwrap_or_else(|failure| {
+    run().unwrap_or_else(|failure| {
         eprintln!("error: {failure}");
         ExitCode::from(if check { 2 } else { 1 })
-    }))
+    })
 }
 
 /// Write or check every generated `@schema` block.

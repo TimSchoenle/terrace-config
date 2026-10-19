@@ -195,6 +195,8 @@ existing value feeds. A chart whose markers are broken is blocked and nothing is
 
 Every edit inserts whole lines and changes no existing byte: each block goes after the last bound
 sibling of the value it belongs with, CRLF files stay CRLF, and YAML is never re-serialised.
+`--write` stages every file of every chart before it replaces any of them, so a run that fails
+part-way leaves the tree as it was. It refuses to write a file that resolves outside its chart.
 `--diff` writes nothing. Its output applies with `patch -p0` from the directory `adopt` ran in, and
 it lists blocked charts and refused keys on stderr.
 
