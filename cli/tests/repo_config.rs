@@ -23,6 +23,11 @@ impl Repository {
         ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".git")).expect("git dir");
+        // The binary resolves the file from its working directory, which the OS reports as a
+        // physical path: on macOS the temporary directory is a `/var` symlink to `/private/var`.
+        // Not on Windows, where canonicalising adds a `\\?\` prefix nothing else uses.
+        #[cfg(unix)]
+        let root = root.canonicalize().expect("canonical root");
         Self(root)
     }
 
