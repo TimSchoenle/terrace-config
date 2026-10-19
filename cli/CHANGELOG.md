@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.8.0...terrace-contract-v0.9.0) (2026-10-19)
+
+
+### Features
+
+* **cli:** add scope and sync, one entry point for chart repository CI ([#300](https://github.com/TimSchoenle/terrace-config/issues/300)) ([7cf7ba4](https://github.com/TimSchoenle/terrace-config/commit/7cf7ba440ecb7894dcaa9b6748e1a8c6e1168081))
+
 ## [0.8.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.7.3...terrace-contract-v0.8.0) (2026-10-19)
 
 
