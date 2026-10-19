@@ -53,6 +53,12 @@ pub const CONTRACT_VERSION: u32 = 1;
 /// version whose vocabulary holds what the document carries, so most documents still declare 2.
 pub const SCHEMA_VERSION: u32 = 4;
 
+/// The envelope and schema versions this build reads, as `--version` prints them.
+///
+/// Spelled out because `concat!` cannot read a `const`; the test beside it holds the text to
+/// [`CONTRACT_VERSION`] and [`SCHEMA_VERSION`], so the two cannot drift.
+pub const COMPATIBILITY: &str = "reads terrace_contract 1, schema_version 1 to 4";
+
 /// The default in-image path a contract is published at.
 ///
 /// The value of the `dev.terrace.config.contract.path` label unless a build says otherwise.
@@ -870,6 +876,21 @@ mod tests {
         assert_eq!(
             contract.producer.map(|producer| producer.loader).as_deref(),
             Some("figment")
+        );
+    }
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::{COMPATIBILITY, CONTRACT_VERSION, SCHEMA_VERSION};
+
+    #[test]
+    fn the_printed_compatibility_matches_the_constants() {
+        assert_eq!(
+            COMPATIBILITY,
+            format!(
+                "reads terrace_contract {CONTRACT_VERSION}, schema_version 1 to {SCHEMA_VERSION}"
+            )
         );
     }
 }

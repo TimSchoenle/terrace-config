@@ -70,10 +70,11 @@ pub fn check(data: &str) {
                     rendered.trim_end().ends_with("# terrace-config:labels:end"),
                     "an unterminated block is one a drift check reads past"
                 );
-                let committed = render::image::committed_block(&rendered)
+                let regions = render::image::committed_blocks(&rendered)
                     .expect("a block this crate rendered is one it can read back");
+                assert_eq!(regions.len(), 1, "one rendering is one region");
                 assert!(
-                    committed.contains("LABEL "),
+                    regions[0].block.contains("LABEL "),
                     "the region between the markers must carry the instruction"
                 );
             }

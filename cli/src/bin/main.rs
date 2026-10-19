@@ -17,11 +17,17 @@ use terrace_contract::render::{
 use terrace_contract::report::Report;
 use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, helm, validate};
 
+/// The release, then the document versions it reads, so a pin can be checked against a producer.
+const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (reads terrace_contract 1, schema_version 1 to 4)"
+);
+
 /// Read, render and check configuration contracts.
 #[derive(Parser)]
 #[command(
     name = "terrace-contract",
-    version,
+    version = VERSION,
     about = "Read, render and check configuration contracts, whatever produced them.",
     long_about = "Everything the configuration contract needs after a document exists.\n\n\
                   Producing a contract needs the service's own types and is per-language. \
@@ -1780,19 +1786,33 @@ fn verify_command(
 
     if let Some(path_to_dockerfile) = dockerfile {
         let text = read(path_to_dockerfile)?;
-        // A Dockerfile checked out with CRLF would otherwise never match a block rendered
-        // with LF, and the diff would be invisible in every terminal that shows it.
-        let committed = image::committed_block(&text)?.replace("\r\n", "\n");
         let expected = image::dockerfile_labels(&contract, path);
-        if committed.trim_end() != expected.trim_end() {
-            eprintln!(
-                "{}: the committed label block is not the one this document renders.\n\
-                 --- committed\n{committed}\n\
-                 --- expected\n{}",
-                path_to_dockerfile.display(),
-                expected.trim_end()
-            );
-            failed = true;
+        // Every region is compared: a Dockerfile building several images carries one per stage,
+        // and each is a place the contract is published from.
+        for region in image::committed_blocks(&text)? {
+            // A Dockerfile checked out with CRLF would otherwise never match a block rendered
+            // with LF, and the diff would be invisible in every terminal that shows it.
+            let committed = region.block.replace("\r\n", "\n");
+            if committed.is_empty() {
+                eprintln!(
+                    "{}:{}: the `{}` region is empty, so it publishes no labels. Paste the output \
+                     of `render --format dockerfile`, markers included.",
+                    path_to_dockerfile.display(),
+                    region.line,
+                    terrace_contract::document::MARKER_BEGIN
+                );
+                failed = true;
+            } else if committed.trim_end() != expected.trim_end() {
+                eprintln!(
+                    "{}:{}: the committed label block is not the one this document renders.\n\
+                     --- committed\n{committed}\n\
+                     --- expected\n{}",
+                    path_to_dockerfile.display(),
+                    region.line,
+                    expected.trim_end()
+                );
+                failed = true;
+            }
         }
     }
 
@@ -1802,4 +1822,13 @@ fn verify_command(
     } else {
         ExitCode::SUCCESS
     })
+}
+
+#[cfg(test)]
+mod version_tests {
+    #[test]
+    fn the_version_line_states_what_the_library_reads() {
+        let suffix = format!("({})", terrace_contract::document::COMPATIBILITY);
+        assert!(super::VERSION.ends_with(&suffix), "{}", super::VERSION);
+    }
 }
