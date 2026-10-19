@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.7.3...terrace-contract-v0.8.0) (2026-10-19)
+
+
+### Features
+
+* **cli:** terrace.yaml repository settings; verify every Dockerfile label region; fix Java release paths ([#299](https://github.com/TimSchoenle/terrace-config/issues/299)) ([c54e8c3](https://github.com/TimSchoenle/terrace-config/commit/c54e8c340612e5710c90d1bfb53d4b6296eedf9b))
+
+
+### Dependencies
+
+* **deps:** lock file maintenance ([#296](https://github.com/TimSchoenle/terrace-config/issues/296)) ([7138d26](https://github.com/TimSchoenle/terrace-config/commit/7138d2655f75203591e519bc3eca6a6fefd4343b))
+
 ## [0.7.3](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.7.2...terrace-contract-v0.7.3) (2026-10-16)
 
 
