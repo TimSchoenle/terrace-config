@@ -47,11 +47,16 @@ terrace-contract stamp --app-version "v2.5.0" --revision "$GIT_SHA" contract.jso
 terrace-contract image verify --labels labels.json --dockerfile Dockerfile contract.json
 ```
 
+`image verify --dockerfile` compares every `# terrace-config:labels:begin`/`:end` region in the file,
+because a Dockerfile building several images carries one region per stage. An empty region is a
+finding on its line; a file with no region, an unterminated or nested one, or more than 32 is
+refused.
+
 Every command reads a document from a path or from `-`, so the producing step and the rendering
 step compose without a temporary file between them:
 
 ```bash
-./gradlew -q terraceContract | terrace-contract conform --tier 1 -
+./gradlew -q :terrace-config-example-service:run --args=--contract | terrace-contract conform --tier 1 -
 ```
 
 | Format | What it is |
@@ -74,13 +79,13 @@ the last two cannot tell a failing gate from a broken one.
 The contract-producing stage is the only language-specific part:
 
 ```dockerfile
-FROM ghcr.io/timschoenle/terrace-contract:0.4 AS contract
+FROM ghcr.io/timschoenle/terrace-contract:0.7 AS contract
 COPY --from=contract-builder /out/contract.json /in/contract.json
 RUN terrace-contract conform --tier 2 /in/contract.json \
  && terrace-contract render --format labels /in/contract.json > /out/labels
 ```
 
-Pin the minor while the version is below `1.0`: a minor release may break, so `0.4` takes every fix
+Pin the minor while the version is below `1.0`: a minor release may break, so `0.7` takes every fix
 and nothing else, where `0` would take the breaking releases too.
 
 A Spring Boot service's Dockerfile is that same file with a different `contract-builder` stage.
@@ -105,6 +110,32 @@ and never remove one. `explain` prints what a change to each setting costs.
 
 Nothing changes for a chart until one of its images declares a rebuild. The rules are in
 [`FORMAT.md`](../spec/v1/FORMAT.md#reloading).
+
+## Repository settings: `terrace.yaml`
+
+A chart repository keeps its settings in `terrace.yaml` at the root of its Git repository, instead
+of repeating flags in every script:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/TimSchoenle/terrace-config/main/spec/helm/v1/repo.schema.json
+version: 1
+cli: "0.8"
+helm:
+  charts: charts
+  firstParty: [ghcr.io/example/*]
+  signer: https://github.com/example/[^/]+/.github/workflows/release.yaml@refs/heads/main
+```
+
+```bash
+terrace-contract config init   # writes one, moving .github/configs/first-party-images.txt into it
+terrace-contract config show   # every setting, its value, and where it came from
+terrace-contract doctor        # the settings, the pinned CLI and the tools, one line each
+```
+
+A flag wins over its environment variable, which wins over the file, which wins over the default.
+The file is optional, and a repository without one behaves as before. A key this release does not
+read is a warning, and fails the command under `--strict` or `TERRACE_STRICT=1`. Every key, its
+flag and its default are in [`spec/helm/v1/REPO.md`](../spec/helm/v1/REPO.md).
 
 ## Checking only the charts a change touched
 

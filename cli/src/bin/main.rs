@@ -10,18 +10,25 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use terrace_contract::helm::{CHARTS_DIR, FIRST_PARTY, Selection};
+use terrace_contract::helm::Selection;
 use terrace_contract::render::{
     self, Column, Docs, Format, JsonSchema, Options, TomlExample, image,
 };
+use terrace_contract::repo::{self, Settings, Source};
 use terrace_contract::report::Report;
 use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, helm, validate};
+
+/// The release, then the document versions it reads, so a pin can be checked against a producer.
+const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (reads terrace_contract 1, schema_version 1 to 4)"
+);
 
 /// Read, render and check configuration contracts.
 #[derive(Parser)]
 #[command(
     name = "terrace-contract",
-    version,
+    version = VERSION,
     about = "Read, render and check configuration contracts, whatever produced them.",
     long_about = "Everything the configuration contract needs after a document exists.\n\n\
                   Producing a contract needs the service's own types and is per-language. \
@@ -29,6 +36,9 @@ use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, helm, valid
                   which is this. See spec/v1/FORMAT.md for what a document is."
 )]
 struct Cli {
+    #[command(flatten)]
+    repo: Repo,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -159,9 +169,9 @@ enum Command {
         #[arg(long, value_name = "DIR", default_value = "rendered")]
         manifests: PathBuf,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// How to write the findings.
         #[arg(long, default_value = "text")]
@@ -181,9 +191,9 @@ enum Command {
         #[arg(value_name = "CHART")]
         only: Vec<String>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// How to write the findings.
         #[arg(long, default_value = "text")]
@@ -206,9 +216,9 @@ enum Command {
         #[arg(value_name = "CHART")]
         only: Vec<String>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Report what would change instead of writing it.
         #[arg(long)]
@@ -238,9 +248,9 @@ enum Command {
         #[arg(long, default_value = "origin/main")]
         since: String,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Emit the whole comparison as JSON, for something that is not a person.
         #[arg(long)]
@@ -266,13 +276,16 @@ enum Command {
     /// What still fails is a chart contradicting itself: one that declares documents and leaves one
     /// of its own first-party images unaccounted for.
     Coverage {
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
-        /// The list of repositories this organisation builds.
-        #[arg(long, value_name = "FILE", default_value = FIRST_PARTY)]
-        first_party: PathBuf,
+        /// A file listing the repositories this organisation builds, one pattern per line.
+        ///
+        /// Default: `helm.firstParty` in terrace.yaml, else
+        /// `.github/configs/first-party-images.txt`.
+        #[arg(long, value_name = "FILE")]
+        first_party: Option<PathBuf>,
 
         /// How to write the findings.
         #[arg(long, default_value = "text")]
@@ -294,9 +307,9 @@ enum Command {
         #[arg(long, value_name = "RENDERED")]
         reconcile: Option<PathBuf>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Emit the whole answer as JSON, for something that is not a person.
         #[arg(long)]
@@ -320,9 +333,9 @@ enum Command {
         #[arg(value_name = "CHART")]
         only: Vec<String>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Fail when a reference is behind its contract, rather than writing it.
         #[arg(long)]
@@ -337,9 +350,9 @@ enum Command {
     /// changed on disk and never applied. This writes `templates/_config-reload.tpl`, naming the
     /// restart-only part of each document, for the chart's checksum to hash and nothing else.
     Reload {
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Fail when a chart's restart sets are behind its contracts, rather than writing them.
         #[arg(long)]
@@ -361,9 +374,9 @@ enum Command {
         #[arg(value_name = "CHART")]
         only: Vec<String>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Report drifted suites and exit non-zero instead of writing them.
         #[arg(long)]
@@ -392,9 +405,9 @@ enum Command {
         #[arg(value_name = "PATTERN")]
         pattern: Option<String>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// Print full entries even without a pattern.
         #[arg(long)]
@@ -419,16 +432,17 @@ enum Command {
         #[arg(value_name = "CHART")]
         chart: Option<String>,
 
-        /// The chart tree.
-        #[arg(long, value_name = "DIR", default_value = CHARTS_DIR)]
-        charts: PathBuf,
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
 
         /// The signing identity a contract must carry, as a regular expression.
         ///
-        /// Required, and required to be given rather than defaulted: without it the verification
-        /// would accept any signature at all, which is the same as accepting none.
+        /// Required, from this flag, `CONTRACT_SIGNER` or `helm.signer` in terrace.yaml, and never
+        /// defaulted: without it the verification would accept any signature at all, which is the
+        /// same as accepting none.
         #[arg(long, value_name = "IDENTITY", env = "CONTRACT_SIGNER")]
-        signer: String,
+        signer: Option<String>,
 
         /// Report what would be written, and write nothing.
         ///
@@ -442,6 +456,40 @@ enum Command {
     Image {
         #[command(subcommand)]
         command: ImageCommand,
+    },
+
+    /// Read or write the repository's terrace.yaml.
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+
+    /// Check that this repository and this machine can run every gate, and say what is missing.
+    ///
+    /// Reads terrace.yaml strictly: a key this release does not read is a failure here, because a
+    /// repository relying on a setting its CLI ignores is exactly what this is for finding. Exits 1
+    /// on any failure; a warning is something only some commands need.
+    Doctor,
+}
+
+#[derive(Clone, Copy, Subcommand)]
+enum ConfigCommand {
+    /// Print every setting, its value, and where the value came from.
+    Show {
+        /// Print one JSON object instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Write a terrace.yaml at the root of the Git repository.
+    ///
+    /// Pins `cli` to this release's minor, and carries the patterns of an existing
+    /// `.github/configs/first-party-images.txt` into `helm.firstParty`, after which that file can
+    /// be deleted.
+    Init {
+        /// Replace an existing file.
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -537,8 +585,7 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<ExitCode, Error> {
-    // One arm per subcommand and nothing else: each of the three below owns its own arguments, so
-    // adding a fourth is a function rather than another branch in a growing match.
+    let repo = cli.repo;
     match cli.command {
         Command::Render { .. } => render_command(cli.command),
         Command::Stamp { .. } => stamp_command(cli.command),
@@ -548,33 +595,32 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             no_schema,
         } => conform_command(&input, tier, no_schema),
 
-        Command::Validate { input } => {
-            let errors = validate::validate(&input.read_text()?)?;
-            Ok(report_lines(
-                &errors,
-                "the document does not satisfy `spec/v1/contract.schema.json`:",
-            ))
-        }
+        Command::Validate { input } => validate_command(&input),
 
         Command::Check {
             only,
             manifests,
             charts,
             format,
-        } => check_command(&charts, &Selection::of(only), &manifests, format),
+        } => check_command(
+            &repo.charts(charts)?,
+            &Selection::of(only),
+            &manifests,
+            format,
+        ),
 
         Command::Bindings {
             only,
             charts,
             format,
-        } => bindings_command(&charts, &Selection::of(only), format),
+        } => bindings_command(&repo.charts(charts)?, &Selection::of(only), format),
 
         Command::Shapes {
             only,
             charts,
             check,
             format,
-        } => shapes_command(&charts, &Selection::of(only), check, format),
+        } => shapes_command(&repo.charts(charts)?, &Selection::of(only), check, format),
 
         Command::Diff {
             chart,
@@ -582,27 +628,33 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             charts,
             json,
             exit_code,
-        } => diff_command(&charts, &since, chart.as_deref(), json, exit_code),
+        } => diff_command(
+            &repo.charts(charts)?,
+            &since,
+            chart.as_deref(),
+            json,
+            exit_code,
+        ),
 
         Command::Secrets {
             reconcile,
             charts,
             json,
             exit_code,
-        } => secrets_command(&charts, reconcile.as_deref(), json, exit_code),
+        } => secrets_command(&repo.charts(charts)?, reconcile.as_deref(), json, exit_code),
 
         Command::Readme {
             only,
             charts,
             check,
-        } => readme_command(&charts, &Selection::of(only), check),
-        Command::Reload { charts, check } => reload_command(&charts, check),
+        } => readme_command(&repo.charts(charts)?, &Selection::of(only), check),
+        Command::Reload { charts, check } => reload_command(&repo.charts(charts)?, check),
 
         Command::Tests {
             only,
             charts,
             check,
-        } => tests_command(&charts, &Selection::of(only), check),
+        } => tests_command(&repo.charts(charts)?, &Selection::of(only), check),
 
         Command::Explain {
             chart,
@@ -610,20 +662,25 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             charts,
             full,
             json,
-        } => explain_command(&charts, chart.as_deref(), pattern.as_deref(), full, json),
+        } => explain_command(
+            &repo.charts(charts)?,
+            chart.as_deref(),
+            pattern.as_deref(),
+            full,
+            json,
+        ),
 
         Command::Pull {
             chart,
             charts,
             signer,
             check,
-        } => pull_command(&charts, chart.as_deref(), &signer, check),
-
+        } => pull_command(&repo, charts, chart.as_deref(), signer, check),
         Command::Coverage {
             charts,
             first_party,
             format,
-        } => coverage_command(&charts, &first_party, format),
+        } => coverage_command(&repo, charts, first_party.as_deref(), format),
 
         Command::Image { command } => {
             let ImageCommand::Verify {
@@ -634,6 +691,366 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             } = command;
             verify_command(&input, labels.as_deref(), dockerfile.as_deref(), &path)
         }
+
+        Command::Config { command } => config_command(command, &repo),
+
+        Command::Doctor => doctor_command(&repo),
+    }
+}
+
+/// Hold a document to the published meta-schema.
+fn validate_command(input: &Input) -> Result<ExitCode, Error> {
+    let errors = validate::validate(&input.read_text()?)?;
+    Ok(report_lines(
+        &errors,
+        "the document does not satisfy `spec/v1/contract.schema.json`:",
+    ))
+}
+
+fn config_command(command: ConfigCommand, repo: &Repo) -> Result<ExitCode, Error> {
+    match command {
+        ConfigCommand::Show { json } => config_show_command(&repo.settings()?, json),
+        ConfigCommand::Init { force } => config_init_command(repo.named.as_deref(), force),
+    }
+}
+
+/// The signing identity `pull` verifies against, from whichever layer sets one.
+fn required_signer(settings: &Settings, given: Option<String>) -> Result<String, Error> {
+    const MISSING: &str = "no signing identity: pass --signer, set CONTRACT_SIGNER, or set \
+                           helm.signer in terrace.yaml. There is no default, because one would \
+                           accept a signature nobody chose to trust.";
+    settings
+        .signer(given)
+        .map(|(signer, _)| signer)
+        .ok_or_else(|| Error::Invalid(MISSING.to_owned()))
+}
+
+/// How this run finds terrace.yaml, before it has been read.
+///
+/// Only the commands that take a setting from the file read it, so a document-only command
+/// (`render`, `conform`, ...) never fails over a repository file it does not use.
+#[derive(Args)]
+struct Repo {
+    /// The terrace.yaml to read, instead of the one at the root of the Git repository.
+    #[arg(
+        id = "config",
+        long = "config",
+        global = true,
+        value_name = "FILE",
+        env = "TERRACE_CONFIG"
+    )]
+    named: Option<PathBuf>,
+
+    /// Fail, rather than warn, on a key in terrace.yaml this release does not read.
+    ///
+    /// `TERRACE_STRICT` takes 1/0, true/false, yes/no or on/off.
+    #[arg(
+        long,
+        global = true,
+        env = "TERRACE_STRICT",
+        action = clap::ArgAction::SetTrue,
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    strict: bool,
+}
+
+impl Repo {
+    /// The file this run reads: the one named, else the one at the Git root, else none.
+    fn path(&self) -> Result<Option<PathBuf>, Error> {
+        if let Some(named) = &self.named {
+            // Named and missing is an error, where absent from the repository is not: a name is a
+            // statement that the file exists, and silently running on defaults would hide a typo.
+            if !named.is_file() {
+                return Err(Error::Invalid(format!(
+                    "{}: no such file, named by --config or TERRACE_CONFIG",
+                    named.display()
+                )));
+            }
+            return Ok(Some(named.clone()));
+        }
+        let here = std::env::current_dir().map_err(|e| Error::io(".", e))?;
+        Ok(repo::discover(&here))
+    }
+
+    /// The file, read without judging its unknown keys.
+    fn load(&self) -> Result<Settings, Error> {
+        Ok(Settings {
+            file: self.path()?.as_deref().map(repo::load).transpose()?,
+        })
+    }
+
+    /// The file, read, with every unknown key warned about or, under `--strict`, refused.
+    fn settings(&self) -> Result<Settings, Error> {
+        let settings = self.load()?;
+        if let Some(file) = &settings.file
+            && !file.unknown.is_empty()
+        {
+            let lines = unknown_key_lines(file)?;
+            if self.strict {
+                return Err(Error::Invalid(format!(
+                    "{} (refused under --strict):\n  {}",
+                    file.path.display(),
+                    lines.join("\n  ")
+                )));
+            }
+            for line in &lines {
+                eprintln!("warning: {}: ignored: {line}", file.path.display());
+            }
+        }
+        Ok(settings)
+    }
+
+    fn charts(&self, given: Option<PathBuf>) -> Result<PathBuf, Error> {
+        Ok(self.settings()?.charts(given).0)
+    }
+}
+
+/// One line per key this release does not read, saying why it might be there.
+fn unknown_key_lines(file: &repo::RepoConfig) -> Result<Vec<String>, Error> {
+    let running = repo::running()?;
+    // An older CLI cannot know which release introduced a key, but the file's own pin can say the
+    // repository expects a newer one, which is the likeliest reason and the actionable one.
+    let hint = file
+        .cli
+        .filter(|pin| pin.is_newer_than(running))
+        .map(|pin| format!("; the file pins cli {pin} and this is {running}, so upgrade"))
+        .unwrap_or_default();
+    Ok(file
+        .unknown
+        .iter()
+        .map(|key| format!("`{key}` is not a key this terrace-contract reads{hint}"))
+        .collect())
+}
+
+/// A variable's value, treating an empty one as unset the way clap does.
+fn variable(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+/// The chart tree for a command with no `--charts` flag of its own, attributed to its layer.
+fn environment_charts(settings: &Settings) -> (PathBuf, Source) {
+    variable("TERRACE_CHARTS").map_or_else(
+        || settings.charts(None),
+        |value| (PathBuf::from(value), Source::Environment),
+    )
+}
+
+/// The signing identity for a command with no `--signer` flag of its own, attributed to its layer.
+fn environment_signer(settings: &Settings) -> Option<(String, Source)> {
+    variable("CONTRACT_SIGNER")
+        .map(|value| (value, Source::Environment))
+        .or_else(|| settings.signer(None))
+}
+
+/// Print every setting with its value and the layer it came from.
+fn config_show_command(settings: &Settings, json: bool) -> Result<ExitCode, Error> {
+    let file = settings
+        .file
+        .as_ref()
+        .map(|file| file.path.display().to_string());
+    let cli = settings
+        .file
+        .as_ref()
+        .and_then(|file| file.cli)
+        .map(|pin| pin.to_string());
+    let charts = environment_charts(settings);
+    let charts = (charts.0.display().to_string(), charts.1);
+    // Shown as the patterns themselves rather than the file holding them: the question is which
+    // repositories count, and a missing default file is a finding here, not a reason to fail.
+    let first_party = settings.first_party(None).map_or_else(
+        |error| (Err(error.to_string()), Source::Default),
+        |(patterns, source)| (Ok(patterns), source),
+    );
+    let signer = environment_signer(settings);
+
+    if json {
+        let first_party_value = match &first_party.0 {
+            Ok(patterns) => serde_json::json!(patterns),
+            Err(_) => serde_json::Value::Null,
+        };
+        let shown = serde_json::json!({
+            "file": file,
+            "cli": cli,
+            "running": repo::running()?.to_string(),
+            "charts": { "value": charts.0, "source": charts.1.name() },
+            "firstParty": { "value": first_party_value, "source": first_party.1.name() },
+            "signer": signer.as_ref().map(|(value, source)| {
+                serde_json::json!({ "value": value, "source": source.name() })
+            }),
+            "unknown": settings.file.as_ref().map(|file| file.unknown.clone()).unwrap_or_default(),
+        });
+        println!("{shown:#}");
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    println!("file          {}", file.as_deref().unwrap_or("(none)"));
+    println!(
+        "cli           {} (running {})",
+        cli.as_deref().unwrap_or("(not pinned)"),
+        repo::running()?
+    );
+    println!("helm.charts   {}  [{}]", charts.0, charts.1.name());
+    match &first_party.0 {
+        Ok(patterns) if patterns.is_empty() => {
+            println!("firstParty    (none)  [{}]", first_party.1.name());
+        }
+        Ok(patterns) => {
+            println!(
+                "firstParty    {}  [{}]",
+                patterns.join(", "),
+                first_party.1.name()
+            );
+        }
+        Err(error) => println!("firstParty    (unavailable: {error})"),
+    }
+    match &signer {
+        Some((value, source)) => println!("helm.signer   {value}  [{}]", source.name()),
+        None => println!("helm.signer   (none; `pull` refuses to run without one)"),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Write a terrace.yaml, carrying over an existing first-party list.
+fn config_init_command(named: Option<&Path>, force: bool) -> Result<ExitCode, Error> {
+    let target = if let Some(path) = named {
+        path.to_path_buf()
+    } else {
+        let here = std::env::current_dir().map_err(|e| Error::io(".", e))?;
+        repo::git_root(&here)
+            .ok_or_else(|| {
+                Error::Invalid(
+                    "not inside a Git repository: terrace.yaml belongs at its root. Run this from \
+                     inside one, or name the file with --config."
+                        .to_owned(),
+                )
+            })?
+            .join(repo::FILE_NAME)
+    };
+    if target.exists() && !force {
+        return Err(Error::Invalid(format!(
+            "{}: already exists; pass --force to replace it",
+            target.display()
+        )));
+    }
+
+    let root = target
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let list = root.join(helm::FIRST_PARTY);
+    let patterns = if list.is_file() {
+        helm::coverage::first_party_patterns(&list)?
+    } else {
+        Vec::new()
+    };
+
+    let text = repo::template(repo::running()?, &patterns);
+    std::fs::write(&target, text).map_err(|e| Error::io(target.display(), e))?;
+    println!("==> wrote {}", target.display());
+    if !patterns.is_empty() {
+        println!(
+            "==> carried {} pattern(s) over from {}; that file is no longer read and can be deleted",
+            patterns.len(),
+            list.display()
+        );
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Check the repository's settings and this machine's tools, one line each.
+fn doctor_command(repo: &Repo) -> Result<ExitCode, Error> {
+    let mut failures = 0_usize;
+    let mut say = |level: &str, line: String| {
+        if level == "fail" {
+            failures += 1;
+        }
+        println!("{level:<4}  {line}");
+    };
+
+    // A file that cannot be read is the first thing to report, not a reason to stop: the checks
+    // below still say what the defaults would do.
+    let settings = repo.load().unwrap_or_else(|error| {
+        say("fail", error.to_string());
+        Settings::none()
+    });
+    let running = repo::running()?;
+    match &settings.file {
+        None => say(
+            "warn",
+            format!(
+                "no {}: every setting comes from flags, the environment or defaults \
+                 (`terrace-contract config init` writes one)",
+                repo::FILE_NAME
+            ),
+        ),
+        Some(file) => {
+            say(
+                "ok",
+                format!("{}: version {}", file.path.display(), repo::VERSION),
+            );
+            for line in unknown_key_lines(file)? {
+                say("fail", line);
+            }
+            match file.cli {
+                None => say("warn", format!("no `cli` pin; running {running}")),
+                Some(pin) if pin.accepts(running) => {
+                    say("ok", format!("cli {pin} pinned, {running} running"));
+                }
+                Some(pin) => say(
+                    "fail",
+                    format!("cli {pin} pinned, but {running} is running: install {pin}"),
+                ),
+            }
+        }
+    }
+
+    let (charts, source) = environment_charts(&settings);
+    match helm::declaration::chart_dirs(&charts) {
+        Ok(found) => say(
+            "ok",
+            format!(
+                "charts: {} ({} chart(s), {})",
+                charts.display(),
+                found.len(),
+                source.name()
+            ),
+        ),
+        Err(error) => say("fail", format!("charts: {error}")),
+    }
+
+    match settings.first_party(None) {
+        Ok((patterns, source)) => say(
+            "ok",
+            format!(
+                "firstParty: {} pattern(s) ({})",
+                patterns.len(),
+                source.name()
+            ),
+        ),
+        Err(error) => say(
+            "warn",
+            format!("firstParty: {error}; only `coverage` needs it"),
+        ),
+    }
+
+    match environment_signer(&settings) {
+        Some((_, source)) => say("ok", format!("signer: set ({})", source.name())),
+        None => say("warn", "signer: none; only `pull` needs it".to_owned()),
+    }
+
+    match helm::pull::Tools::found() {
+        Ok(_) => say("ok", "oras and cosign: found".to_owned()),
+        Err(error) => say("warn", format!("{error}")),
+    }
+
+    if failures == 0 {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        eprintln!(
+            "\n{failures} {}",
+            if failures == 1 { "failure" } else { "failures" }
+        );
+        Ok(ExitCode::FAILURE)
     }
 }
 
@@ -981,8 +1398,15 @@ fn check_command(
 }
 
 /// Which charts a contract covers, and which pin a first-party image without one.
-fn coverage_command(charts: &Path, first_party: &Path, format: Output) -> Result<ExitCode, Error> {
-    let found = helm::coverage(charts, first_party)?;
+fn coverage_command(
+    repo: &Repo,
+    charts: Option<PathBuf>,
+    first_party: Option<&Path>,
+    format: Output,
+) -> Result<ExitCode, Error> {
+    let settings = repo.settings()?;
+    let (patterns, _) = settings.first_party(first_party)?;
+    let found = helm::coverage(&settings.charts(charts).0, &patterns)?;
     if format == Output::Text || format == Output::Github {
         for name in &found.covered {
             println!("covered: {name}");
@@ -1562,11 +1986,17 @@ fn setting_json(setting: &helm::explain::Setting, derive: bool) -> serde_json::V
 
 /// Refresh the vendored contracts, or say which of them are behind their image.
 fn pull_command(
-    charts: &Path,
+    repo: &Repo,
+    charts: Option<PathBuf>,
     chart: Option<&str>,
-    signer: &str,
+    signer: Option<String>,
     check: bool,
 ) -> Result<ExitCode, Error> {
+    let settings = repo.settings()?;
+    let signer = required_signer(&settings, signer)?;
+    let signer = signer.as_str();
+    let charts = settings.charts(charts).0;
+    let charts = charts.as_path();
     let tools = helm::pull::Tools::found()?;
     let refreshed = if check {
         // Written into a scratch tree rather than over the chart's own: `--check` answers whether
@@ -1780,19 +2210,41 @@ fn verify_command(
 
     if let Some(path_to_dockerfile) = dockerfile {
         let text = read(path_to_dockerfile)?;
-        // A Dockerfile checked out with CRLF would otherwise never match a block rendered
-        // with LF, and the diff would be invisible in every terminal that shows it.
-        let committed = image::committed_block(&text)?.replace("\r\n", "\n");
         let expected = image::dockerfile_labels(&contract, path);
-        if committed.trim_end() != expected.trim_end() {
-            eprintln!(
-                "{}: the committed label block is not the one this document renders.\n\
-                 --- committed\n{committed}\n\
-                 --- expected\n{}",
-                path_to_dockerfile.display(),
-                expected.trim_end()
-            );
-            failed = true;
+        // Every region is compared: a Dockerfile building several images carries one per stage,
+        // and each is a place the contract is published from.
+        // Named here because the parser only knows lines: a refusal that does not say which file
+        // is no help in a build checking several.
+        let regions = image::committed_blocks(&text).map_err(|error| match error {
+            Error::Invalid(message) => {
+                Error::Invalid(format!("{}: {message}", path_to_dockerfile.display()))
+            }
+            other => other,
+        })?;
+        for region in regions {
+            // A Dockerfile checked out with CRLF would otherwise never match a block rendered
+            // with LF, and the diff would be invisible in every terminal that shows it.
+            let committed = region.block.replace("\r\n", "\n");
+            if committed.is_empty() {
+                eprintln!(
+                    "{}:{}: the `{}` region is empty, so it publishes no labels. Paste the output \
+                     of `render --format dockerfile`, markers included.",
+                    path_to_dockerfile.display(),
+                    region.line,
+                    terrace_contract::document::MARKER_BEGIN
+                );
+                failed = true;
+            } else if committed.trim_end() != expected.trim_end() {
+                eprintln!(
+                    "{}:{}: the committed label block is not the one this document renders.\n\
+                     --- committed\n{committed}\n\
+                     --- expected\n{}",
+                    path_to_dockerfile.display(),
+                    region.line,
+                    expected.trim_end()
+                );
+                failed = true;
+            }
         }
     }
 
@@ -1802,4 +2254,19 @@ fn verify_command(
     } else {
         ExitCode::SUCCESS
     })
+}
+
+#[cfg(test)]
+mod version_tests {
+    #[test]
+    fn the_command_line_is_well_formed() {
+        use clap::CommandFactory as _;
+        super::Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn the_version_line_states_what_the_library_reads() {
+        let suffix = format!("({})", terrace_contract::document::COMPATIBILITY);
+        assert!(super::VERSION.ends_with(&suffix), "{}", super::VERSION);
+    }
 }

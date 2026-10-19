@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://terrace.dev/spec/helm/v1/repo.schema.json",
+  "title": "terrace.yaml, Helm layer version 1",
+  "description": "A repository's settings for terrace-contract, at the root of the Git repository. Normative prose is in REPO.md. Sections are open: a key this version does not define is not refused here, because an older terrace-contract must be able to read a file written for a newer one. The CLI reports such keys instead, and fails on them under --strict.",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "description": "The layer version this file is written against. Read before anything else; a CLI that does not support it refuses the file.",
+      "const": 1
+    },
+    "cli": {
+      "description": "The terrace-contract release this repository is checked with, as MAJOR.MINOR or MAJOR.MINOR.PATCH. Read by the setup action and by `terrace-contract doctor`.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*))?$"
+    },
+    "helm": { "$ref": "#/$defs/helm" }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Reserved for extensions. Never read and never reported by terrace-contract." }
+  },
+  "$defs": {
+    "helm": {
+      "title": "Chart repository settings",
+      "type": "object",
+      "properties": {
+        "charts": {
+          "description": "The chart tree, relative to the directory holding this file. Default `charts`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "firstParty": {
+          "description": "Image repositories this organisation builds, and so the ones expected to publish a contract. A trailing `*` matches any suffix; anything else is an exact repository, matched against `image.repository` as written in a chart's values.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "signer": {
+          "description": "The certificate identity, as a regular expression, every image's signature must carry before its contract is fetched. Organisation-specific; there is no default.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "patternProperties": {
+        "^x-": { "description": "Reserved for extensions." }
+      }
+    }
+  }
+}

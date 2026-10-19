@@ -513,7 +513,7 @@ Both gates and the image check together are one action, if you use GitHub Action
 
 ```yaml
 - name: Config contract
-  uses: TimSchoenle/actions/actions/rust/config-contract@<sha> # tag=actions-rust-config-contract-v1.0.0
+  uses: TimSchoenle/actions/actions/rust/config-contract@eaf935674fec7116856ca5e138e1a2dca3f8146d # tag=actions-rust-config-contract-v1.3.8
   with:
     features: config-schema
     image: myservice:test    # omit to run only the two checks that need no image
