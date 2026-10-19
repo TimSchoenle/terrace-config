@@ -20,6 +20,7 @@ pub mod coverage;
 pub mod declaration;
 pub mod diff;
 pub mod explain;
+pub mod files;
 #[cfg(feature = "oci")]
 pub mod init;
 pub mod markers;

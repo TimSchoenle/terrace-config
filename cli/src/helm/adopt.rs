@@ -165,6 +165,7 @@ use crate::union::Merged;
 
 use super::bindings::{has_path, missing_keys, premises};
 use super::declaration::{Bound, Declaration, load_declaration, read_yaml};
+use super::files;
 use super::markers::{MARKER, Marker, read as read_markers};
 use super::patch::{Row, unified};
 use super::regions::{Region, regions, split_lines};
@@ -1515,85 +1516,26 @@ pub fn write(adoption: &Adoption) -> Result<(), Error> {
 
 /// Apply every chart's edits, all of them or none.
 ///
-/// Three phases, so that a failure leaves the tree as it was rather than half adopted. Every
-/// splice of every chart is planned first, reading each file once. Each result is then written to
-/// a temporary file beside the file it replaces, so the rename that follows stays on one
-/// filesystem; a failure in either phase removes the temporaries and has touched nothing. Only
-/// then is each temporary renamed over its file — a rename is atomic, so no reader ever sees half
-/// a file, and nothing that can fail for want of space or permission is left for this last phase.
-///
-/// A file is written at its canonical path, and only when that path is inside the chart's own
-/// directory. A `templates/_helpers.tpl` that is a symbolic link to somewhere else is somebody
-/// else's file, and an edit planned from one chart has no business landing in it.
+/// Every splice of every chart is planned first, reading each file once, and the whole set is
+/// handed to [`files::write_all`], which refuses a file that resolves outside its chart and
+/// replaces the rest atomically or not at all.
 ///
 /// # Errors
 /// [`Error::Io`] when a file cannot be read, resolved or written, and [`Error::Invalid`] when one
-/// resolves outside its chart.
+/// resolves outside its chart. In every case no file has changed.
 pub fn write_all(adoptions: &[Adoption]) -> Result<(), Error> {
-    let mut planned: Vec<(PathBuf, String)> = Vec::new();
+    let mut planned = Vec::new();
     for adoption in adoptions.iter().filter(|item| item.writes()) {
-        let chart_dir = adoption.values.parent().unwrap_or_else(|| Path::new("."));
-        let root = chart_dir
-            .canonicalize()
-            .map_err(|e| Error::io(chart_dir.display(), e))?;
+        let chart = adoption.values.parent().unwrap_or_else(|| Path::new("."));
         for splice in splices(adoption)? {
-            let target = splice
-                .path
-                .canonicalize()
-                .map_err(|e| Error::io(splice.path.display(), e))?;
-            if !target.starts_with(&root) {
-                return Err(Error::Invalid(format!(
-                    "{}: resolves to {}, outside the chart {}; nothing was written",
-                    posix(&splice.path),
-                    target.display(),
-                    root.display()
-                )));
-            }
-            planned.push((target, splice.apply()));
+            planned.push(files::Planned {
+                chart: chart.to_path_buf(),
+                text: splice.apply(),
+                path: splice.path,
+            });
         }
     }
-
-    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new();
-    let discard = |staged: &[(PathBuf, PathBuf)]| {
-        for (temporary, _) in staged {
-            let _ = std::fs::remove_file(temporary);
-        }
-    };
-    for (index, (target, text)) in planned.iter().enumerate() {
-        match stage(target, text, index) {
-            Ok(temporary) => staged.push((temporary, target.clone())),
-            Err(error) => {
-                discard(&staged);
-                return Err(error);
-            }
-        }
-    }
-
-    for (position, (temporary, target)) in staged.iter().enumerate() {
-        if let Err(error) = std::fs::rename(temporary, target) {
-            discard(&staged[position..]);
-            return Err(Error::io(target.display(), error));
-        }
-    }
-    Ok(())
-}
-
-/// Write one file's new text to a temporary beside it, with the file's own permissions.
-fn stage(target: &Path, text: &str, index: usize) -> Result<PathBuf, Error> {
-    let name = target
-        .file_name()
-        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-    let temporary =
-        target.with_file_name(format!(".{name}.adopt-{}-{index}.tmp", std::process::id()));
-    let written = std::fs::write(&temporary, text).and_then(|()| {
-        let permissions = std::fs::metadata(target)?.permissions();
-        std::fs::set_permissions(&temporary, permissions)
-    });
-    if let Err(error) = written {
-        let _ = std::fs::remove_file(&temporary);
-        return Err(Error::io(temporary.display(), error));
-    }
-    Ok(temporary)
+    files::write_all(&planned)
 }
 
 // ------------------------------------------------------------------------------------------
@@ -3426,7 +3368,7 @@ auth:
                 for entry in std::fs::read_dir(&directory).expect("a directory") {
                     let name = entry.expect("an entry").file_name();
                     assert!(
-                        !name.to_string_lossy().contains(".adopt-"),
+                        !name.to_string_lossy().ends_with(".tmp"),
                         "a temporary was left: {name:?}"
                     );
                 }

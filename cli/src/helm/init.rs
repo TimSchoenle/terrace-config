@@ -75,6 +75,7 @@ use crate::union::union_contracts;
 use super::DECLARATION;
 use super::adopt::posix;
 use super::declaration::parse_declaration;
+use super::files;
 use super::patch::{created, replaced, unified};
 use super::pull::{Fetched, same_contract};
 use super::scaffold::chart::{
@@ -579,22 +580,30 @@ impl Init {
             .collect()
     }
 
-    /// Write every file that changes, creating the directories it needs.
+    /// Write every file that changes, creating the directories it needs, all of them or none.
     ///
     /// # Errors
-    /// [`Error::Io`] when a directory or a file cannot be written.
+    /// [`Error::Io`] when a directory or a file cannot be written, and [`Error::Invalid`] when one
+    /// resolves outside the chart. In every case no file has changed.
     pub fn write(&self) -> Result<(), Error> {
-        for change in &self.changes {
-            if change.action == Action::Unchanged {
-                continue;
-            }
-            if let Some(parent) = change.path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
-            }
-            std::fs::write(&change.path, &change.after)
-                .map_err(|e| Error::io(change.path.display(), e))?;
+        let planned: Vec<files::Planned> = self
+            .changes
+            .iter()
+            .filter(|change| change.action != Action::Unchanged)
+            .map(|change| files::Planned {
+                chart: self.chart_dir.clone(),
+                path: change.path.clone(),
+                text: change.after.clone(),
+            })
+            .collect();
+        if planned.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        // The chart directory is the boundary every file is held inside, so it has to exist
+        // before anything can be resolved against it.
+        std::fs::create_dir_all(&self.chart_dir)
+            .map_err(|e| Error::io(self.chart_dir.display(), e))?;
+        files::write_all(&planned)
     }
 
     /// The ordered list of what a person still has to do, once the files are written.
