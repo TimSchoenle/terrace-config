@@ -10,6 +10,32 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::Value as Json;
 
+/// What a test process must not inherit: Git's repository-locating variables, which a hook exports
+/// and which would point every command at the caller's repository, and the variables that would
+/// make the binary read the caller's configuration or write into the caller's job summary.
+const INHERITED: [&str; 12] = [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_PREFIX",
+    "TERRACE_CONFIG",
+    "TERRACE_STRICT",
+    "TERRACE_CHARTS",
+    "CONTRACT_SIGNER",
+    "GITHUB_STEP_SUMMARY",
+];
+
+/// `command` without anything [`INHERITED`] names.
+fn isolated(mut command: Command) -> Command {
+    for name in INHERITED {
+        command.env_remove(name);
+    }
+    command
+}
+
 /// A Git repository in the temporary directory with one commit on `main`, removed when dropped.
 struct Repository(PathBuf);
 
@@ -35,7 +61,7 @@ impl Repository {
     }
 
     fn git(&self, args: &[&str]) {
-        let output = Command::new("git")
+        let output = isolated(Command::new("git"))
             .current_dir(&self.0)
             .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
             .args(["-c", "commit.gpgsign=false"])
@@ -73,17 +99,11 @@ impl Repository {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_terrace-contract"));
-        command.current_dir(&self.0).args(args);
-        for name in [
-            "TERRACE_CONFIG",
-            "TERRACE_STRICT",
-            "TERRACE_CHARTS",
-            "CONTRACT_SIGNER",
-        ] {
-            command.env_remove(name);
-        }
-        command.output().expect("the binary runs")
+        isolated(Command::new(env!("CARGO_BIN_EXE_terrace-contract")))
+            .current_dir(&self.0)
+            .args(args)
+            .output()
+            .expect("the binary runs")
     }
 
     fn scope(&self, since: &str) -> Json {
@@ -164,6 +184,48 @@ fn scope_widens_on_a_library_chart_and_on_an_unknown_revision() {
             .as_str()
             .is_some_and(|reason| reason.contains("could not be read")),
         "{unknown}"
+    );
+}
+
+#[test]
+fn scope_widens_on_a_chart_that_was_a_library_at_the_base() {
+    // Deleted: the charts that depended on it are what break.
+    let repository = Repository::new();
+    repository.git(&["checkout", "--quiet", "-B", "change", "main"]);
+    repository.git(&["rm", "--quiet", "-r", "charts/common"]);
+    repository.write("charts/web/values.yaml", "replicas: 2\n");
+    repository.commit("drop the library");
+    assert_eq!(repository.scope("main")["every"], true);
+
+    // Turned into an application chart: its dependents were built against the library.
+    let repository = Repository::new();
+    repository.branch_with(
+        "charts/common/Chart.yaml",
+        "apiVersion: v2\nname: common\ntype: application\nversion: 1.0.0\n",
+    );
+    assert_eq!(repository.scope("main")["every"], true);
+}
+
+#[test]
+fn scope_leaves_out_a_deleted_application_chart() {
+    let repository = Repository::new();
+    repository.git(&["checkout", "--quiet", "-B", "change", "main"]);
+    repository.git(&["rm", "--quiet", "-r", "charts/api"]);
+    repository.write("charts/web/values.yaml", "replicas: 2\n");
+    repository.commit("drop api");
+    assert_eq!(
+        repository.scope("main")["charts"],
+        serde_json::json!(["web"])
+    );
+}
+
+#[test]
+fn scope_reads_a_path_git_would_otherwise_quote() {
+    let repository = Repository::new();
+    repository.branch_with("charts/web/files/größe.txt", "x\n");
+    assert_eq!(
+        repository.scope("main")["charts"],
+        serde_json::json!(["web"])
     );
 }
 
@@ -287,35 +349,58 @@ fn vendored(app_version: &str) -> String {
 
 #[test]
 fn diff_reads_the_base_revision_of_a_chart_tree_below_the_repository_root() {
-    let repository = Repository::new();
-    repository
-        .write(
-            "deploy/terrace.yaml",
-            "version: 1\nhelm:\n  charts: charts\n",
-        )
-        .write(
-            "deploy/charts/web/Chart.yaml",
-            "apiVersion: v2\nname: web\nversion: 1.0.0\n",
-        )
-        .write("deploy/charts/web/contracts/app.json", &vendored("1"));
-    repository.commit("nested tree");
-    repository.branch_with("deploy/charts/web/contracts/app.json", &vendored("2"));
+    // The second parent has a byte Git prints quoted unless asked not to.
+    for parent in ["deploy", "déploiement"] {
+        let repository = Repository::new();
+        repository
+            .write(
+                &format!("{parent}/terrace.yaml"),
+                "version: 1\nhelm:\n  charts: charts\n",
+            )
+            .write(
+                &format!("{parent}/charts/web/Chart.yaml"),
+                "apiVersion: v2\nname: web\nversion: 1.0.0\n",
+            )
+            .write(
+                &format!("{parent}/charts/web/contracts/app.json"),
+                &vendored("1"),
+            )
+            .write(
+                &format!("{parent}/charts/web/contracts/gone.json"),
+                &vendored("1"),
+            );
+        repository.commit("nested tree");
+        repository.git(&["checkout", "--quiet", "-B", "change", "main"]);
+        repository.git(&[
+            "rm",
+            "--quiet",
+            &format!("{parent}/charts/web/contracts/gone.json"),
+        ]);
+        repository.write(
+            &format!("{parent}/charts/web/contracts/app.json"),
+            &vendored("2"),
+        );
+        repository.commit("change");
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_terrace-contract"));
-    let output = command
-        .current_dir(repository.path())
-        .env(
-            "TERRACE_CONFIG",
-            repository.path().join("deploy/terrace.yaml"),
-        )
-        .env_remove("TERRACE_CHARTS")
-        .args(["diff", "--since", "main", "--exit-code"])
-        .output()
-        .expect("the binary runs");
-    let shown = text(&output);
-    assert_eq!(code(&output), 2, "{shown}");
-    // Read at the base, not reported as added: the chart's version there is known, and the
-    // contract is a change rather than a new file.
-    assert!(shown.contains("1.0.0 at main"), "{shown}");
-    assert!(shown.contains("(changed)"), "{shown}");
+        let output = isolated(Command::new(env!("CARGO_BIN_EXE_terrace-contract")))
+            .current_dir(repository.path())
+            .env(
+                "TERRACE_CONFIG",
+                repository.path().join(format!("{parent}/terrace.yaml")),
+            )
+            .args(["diff", "--since", "main", "--exit-code"])
+            .output()
+            .expect("the binary runs");
+        let shown = text(&output);
+        assert_eq!(code(&output), 2, "{parent}: {shown}");
+        // Read at the base, not reported as added: the chart's version there is known, the
+        // contract is a change rather than a new file, and the one deleted since is found only by
+        // listing the base.
+        assert!(shown.contains("1.0.0 at main"), "{parent}: {shown}");
+        assert!(shown.contains("(changed)"), "{parent}: {shown}");
+        assert!(
+            shown.contains("contracts/gone.json  (removed)"),
+            "{parent}: {shown}"
+        );
+    }
 }

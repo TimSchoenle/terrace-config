@@ -160,7 +160,9 @@ terrace-contract scope --since origin/main --json   # the same, with the reason 
 
 The line is empty, meaning every chart, whenever narrowing could miss a chart the change breaks:
 a changed path outside the charts' own directories (the pinned CLI, `terrace.yaml`, a workflow), a
-change to a library chart, or a change that cannot be read, such as in a shallow clone. Why it
+change to a chart that is a library at the base or at `HEAD` (deleting a library, or turning one
+into an application chart, still widens), or a change that cannot be read, such as in a shallow
+clone. Why it
 widened goes to stderr. It can therefore widen a gate and never narrow one by mistake.
 
 ## One command for CI: `sync`

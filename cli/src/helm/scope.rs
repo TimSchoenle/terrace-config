@@ -69,13 +69,16 @@ pub enum Kind {
     Library,
     /// No chart: the change deleted it, so nothing is left to check.
     Absent,
+    /// A `Chart.yaml` that is not valid YAML, so what the chart is cannot be told.
+    Unreadable,
 }
 
 /// The scope of a change, from the paths it touched.
 ///
 /// `paths` are relative to the repository root, as `git diff --name-only` prints them, and
 /// `prefix` is the chart tree's path relative to the same root, without a trailing slash.
-/// `kind` says what a chart directory, named by its directory name, holds now.
+/// `kind` says what a chart directory, named by its directory name, holds: a library at either end
+/// of the change is a library, since a chart that stopped being one still had dependents.
 #[must_use]
 pub fn classify<I, S>(paths: I, prefix: &str, kind: impl Fn(&str) -> Kind) -> Scope
 where
@@ -113,6 +116,11 @@ where
                 touched.insert(name.to_owned());
             }
             Kind::Library => return Scope::Every(Widened::Library(name.to_owned())),
+            Kind::Unreadable => {
+                return Scope::Every(Widened::Unreadable(format!(
+                    "{name}/Chart.yaml is not valid YAML"
+                )));
+            }
             Kind::Absent => {}
         }
     }
@@ -142,30 +150,70 @@ fn is_chart_name(name: &str) -> bool {
 ///
 /// Compares `HEAD` with its merge base with `base`, so a base branch that moved on since the branch
 /// was cut does not count its own changes as this one's. Only committed changes count: this answers
-/// what a pull request changes, and an uncommitted edit is not part of one.
+/// what a pull request changes, and an uncommitted edit is not part of one. For the same reason a
+/// chart's kind is read from its `Chart.yaml` at both commits, never from the working tree.
 #[must_use]
 pub fn since(charts: &Path, base: &str) -> Scope {
-    match changed_paths(charts, base) {
-        Ok((paths, prefix)) => classify(&paths, &prefix, |name| kind_of(&charts.join(name))),
+    match Change::read(charts, base) {
+        Ok(change) => classify(&change.paths, &change.prefix, |name| change.kind_of(name)),
         Err(error) => Scope::Every(Widened::Unreadable(error.to_string())),
     }
 }
 
-/// The paths changed since the merge base, and the chart tree's path, both relative to the root.
-fn changed_paths(charts: &Path, base: &str) -> Result<(Vec<String>, String), Error> {
-    let here = if charts.is_dir() {
-        charts.to_path_buf()
-    } else {
-        PathBuf::from(".")
-    };
-    let root = PathBuf::from(git(&["rev-parse", "--show-toplevel"], &here)?.trim());
-    let prefix = relative_to(&root, charts)?;
-    let fork = git(&["merge-base", base, "HEAD"], &root)?;
-    let listed = git(
-        &["diff", "--name-only", "--no-renames", fork.trim(), "HEAD"],
-        &root,
-    )?;
-    Ok((listed.lines().map(str::to_owned).collect(), prefix))
+/// The commits a change spans and the paths it touched, all relative to the repository root.
+struct Change {
+    root: PathBuf,
+    fork: String,
+    prefix: String,
+    paths: Vec<String>,
+}
+
+impl Change {
+    fn read(charts: &Path, base: &str) -> Result<Self, Error> {
+        let here = if charts.is_dir() {
+            charts.to_path_buf()
+        } else {
+            PathBuf::from(".")
+        };
+        let root = PathBuf::from(git(&["rev-parse", "--show-toplevel"], &here)?.trim());
+        let prefix = relative_to(&root, charts)?;
+        let fork = git(&["merge-base", base, "HEAD"], &root)?.trim().to_owned();
+        // NUL-separated, because a path with a non-ASCII byte is otherwise printed quoted and
+        // escaped, and would match no chart.
+        let listed = git(
+            &["diff", "--name-only", "-z", "--no-renames", &fork, "HEAD"],
+            &root,
+        )?;
+        let paths = listed
+            .split('\0')
+            .filter(|path| !path.is_empty())
+            .map(str::to_owned)
+            .collect();
+        Ok(Self {
+            root,
+            fork,
+            prefix,
+            paths,
+        })
+    }
+
+    /// What the chart directory `name` holds, judged at the merge base and at `HEAD`.
+    fn kind_of(&self, name: &str) -> Kind {
+        let path = if self.prefix.is_empty() {
+            format!("{name}/Chart.yaml")
+        } else {
+            format!("{}/{name}/Chart.yaml", self.prefix)
+        };
+        let at = |commit: &str| git(&["show", &format!("{commit}:{path}")], &self.root).ok();
+        let base = at(&self.fork).map(|text| kind_in(&text));
+        let head = at("HEAD").map(|text| kind_in(&text));
+        match (base, head) {
+            (Some(Kind::Unreadable), _) | (_, Some(Kind::Unreadable)) => Kind::Unreadable,
+            (Some(Kind::Library), _) | (_, Some(Kind::Library)) => Kind::Library,
+            (_, Some(kind)) => kind,
+            (_, None) => Kind::Absent,
+        }
+    }
 }
 
 /// `charts` relative to `root`, with forward slashes, as Git prints paths.
@@ -190,19 +238,14 @@ fn relative_to(root: &Path, charts: &Path) -> Result<String, Error> {
         .join("/"))
 }
 
-/// What the directory holds now.
-fn kind_of(chart_dir: &Path) -> Kind {
-    let Ok(text) = std::fs::read_to_string(chart_dir.join("Chart.yaml")) else {
-        return Kind::Absent;
-    };
-    let library = text.lines().any(|line| {
-        line.strip_prefix("type:")
-            .is_some_and(|value| value.trim().trim_matches(['"', '\'']) == "library")
-    });
-    if library {
-        Kind::Library
-    } else {
-        Kind::Application
+/// What a `Chart.yaml` declares, read as YAML so quoting and comments mean what Helm takes them to.
+fn kind_in(chart_yaml: &str) -> Kind {
+    match serde_norway::from_str::<serde_json::Value>(chart_yaml) {
+        Ok(chart) if chart.get("type").and_then(serde_json::Value::as_str) == Some("library") => {
+            Kind::Library
+        }
+        Ok(_) => Kind::Application,
+        Err(_) => Kind::Unreadable,
     }
 }
 
@@ -226,7 +269,7 @@ fn git(arguments: &[&str], directory: &Path) -> Result<String, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kind, Scope, Widened, classify};
+    use super::{Kind, Scope, Widened, classify, kind_in};
 
     fn apps(name: &str) -> Kind {
         match name {
@@ -319,6 +362,38 @@ mod tests {
             classify(["charts/web/values.yaml"], "deploy/charts", apps),
             Scope::Every(Widened::Outside("charts/web/values.yaml".to_owned()))
         );
+    }
+
+    #[test]
+    fn widens_on_a_chart_whose_kind_cannot_be_read() {
+        let scope = classify(["charts/broken/values.yaml"], "charts", |_| {
+            Kind::Unreadable
+        });
+        assert!(
+            matches!(&scope, Scope::Every(Widened::Unreadable(reason)) if reason.contains("broken")),
+            "{scope:?}"
+        );
+    }
+
+    #[test]
+    fn reads_the_chart_type_as_yaml() {
+        for text in [
+            "type: library\n",
+            "type: \"library\"\n",
+            "type: 'library'\n",
+            "type: library # shared helpers\n",
+            "name: x\ntype:   library\n",
+        ] {
+            assert_eq!(kind_in(text), Kind::Library, "{text}");
+        }
+        for text in [
+            "type: application\n",
+            "name: x\n",
+            "# type: library\nname: x\n",
+        ] {
+            assert_eq!(kind_in(text), Kind::Application, "{text}");
+        }
+        assert_eq!(kind_in("type: [\n"), Kind::Unreadable);
     }
 
     #[test]

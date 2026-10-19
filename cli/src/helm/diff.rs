@@ -411,21 +411,28 @@ impl Revision for Committed {
     }
 
     fn contracts(&self, charts: &Path) -> BTreeSet<String> {
-        let pattern = format!(
-            "{}{}/*/contracts/*.json",
-            self.prefix,
-            spec_of(charts, charts.parent().unwrap_or(charts))
-        );
+        let tree = spec_of(charts, charts);
+        let directory = format!("{}{tree}", self.prefix);
+        // The whole tree, filtered here: `ls-tree` takes a pathspec as a literal prefix, so a
+        // `*/contracts/*.json` glob would match nothing. NUL-separated, because a path with a
+        // non-ASCII byte is otherwise printed quoted and escaped.
         let listed = run(
-            &["ls-tree", "-r", "--name-only", &self.commit, "--", &pattern],
+            &[
+                "ls-tree",
+                "-r",
+                "-z",
+                "--name-only",
+                &self.commit,
+                "--",
+                &directory,
+            ],
             &self.root,
         );
         listed
             .unwrap_or_default()
-            .lines()
-            .map(str::trim)
-            .filter_map(|line| line.strip_prefix(self.prefix.as_str()))
-            .filter(|line| !line.is_empty())
+            .split('\0')
+            .filter_map(|path| path.strip_prefix(self.prefix.as_str()))
+            .filter(|path| is_vendored_contract(path, &tree))
             .map(str::to_owned)
             .collect()
     }
@@ -433,6 +440,25 @@ impl Revision for Committed {
     fn name(&self) -> &str {
         &self.reference
     }
+}
+
+/// Whether `path` is `<tree>/<chart>/contracts/<name>.json`, the one place a vendored contract lives.
+fn is_vendored_contract(path: &str, tree: &str) -> bool {
+    let Some(rest) = path
+        .strip_prefix(tree)
+        .and_then(|rest| rest.strip_prefix('/'))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('/').collect();
+    matches!(
+        parts.as_slice(),
+        [chart, "contracts", file]
+            // The rule `vendored_paths` applies to the working tree, so both sides agree.
+            if !chart.is_empty()
+                && Path::new(file).file_stem().is_some_and(|stem| !stem.is_empty())
+                && Path::new(file).extension().and_then(std::ffi::OsStr::to_str) == Some("json")
+    )
 }
 
 /// One version-control command, with its output.
@@ -465,7 +491,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{ChartDiff, Revision, chart_of, chart_version};
+    use super::{ChartDiff, Revision, chart_of, chart_version, is_vendored_contract};
     use crate::diff::{Severity, diff_contract};
 
     /// A revision that is a map, which is what makes every rule above testable without a
@@ -508,6 +534,27 @@ mod tests {
             contracts,
             old_version: old.map(str::to_owned),
             new_version: new.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn a_vendored_contract_sits_exactly_one_chart_deep() {
+        for path in [
+            "charts/web/contracts/app.json",
+            "charts/w-1/contracts/a.b.json",
+        ] {
+            assert!(is_vendored_contract(path, "charts"), "{path}");
+        }
+        for path in [
+            "charts/web/contracts/app.yaml",
+            "charts/web/contracts/.json",
+            "charts/web/contracts/nested/app.json",
+            "charts/web/values.json",
+            "charts/contracts/app.json",
+            "chartsx/web/contracts/app.json",
+            "other/web/contracts/app.json",
+        ] {
+            assert!(!is_vendored_contract(path, "charts"), "{path}");
         }
     }
 
