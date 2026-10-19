@@ -184,9 +184,21 @@ pub fn load_enrolment(chart_dir: &Path) -> Result<Option<BTreeMap<String, Enrolm
     if !path.is_file() {
         return Ok(None);
     }
+    let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
+    parse_enrolment(&text, chart_dir).map(Some)
+}
+
+/// Read one chart's enrolment from its text, as if it were the chart's own file.
+///
+/// The half of [`load_enrolment`] that does not touch a disk, so a scaffold can hold an enrolment
+/// it has not written yet to the reader every later run will use.
+///
+/// # Errors
+/// As [`load_enrolment`].
+pub fn parse_enrolment(text: &str, chart_dir: &Path) -> Result<BTreeMap<String, Enrolment>, Error> {
+    let path = chart_dir.join(ENROLMENT);
     let at = path.display().to_string();
-    let text = std::fs::read_to_string(&path).map_err(|e| Error::io(&at, e))?;
-    let document = read_yaml(&text, &path)?;
+    let document = read_yaml(text, &path)?;
     if !document.is_object() {
         return Err(Error::Invalid(format!(
             "{at}: expected a mapping at the top level"
@@ -248,7 +260,7 @@ pub fn load_enrolment(chart_dir: &Path) -> Result<Option<BTreeMap<String, Enrolm
             },
         );
     }
-    Ok(Some(enrolments))
+    Ok(enrolments)
 }
 
 /// The values path this document's cases write into, defaulting to the configuration tree.

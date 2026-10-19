@@ -202,7 +202,20 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
         return Ok(None);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
-    let document: Json = read_yaml(&text, &path)?;
+    parse_declaration(&text, chart_dir).map(Some)
+}
+
+/// Read one chart's declaration from its text, as if it were the chart's own file.
+///
+/// The half of [`load_declaration`] that does not touch a disk, for a caller holding a declaration
+/// it has not written yet: a scaffold that hands a contributor a file no reader accepts has failed
+/// on their first run rather than on its own, so it reads what it is about to write first.
+///
+/// # Errors
+/// As [`load_declaration`].
+pub fn parse_declaration(text: &str, chart_dir: &Path) -> Result<Declaration, Error> {
+    let path = chart_dir.join(DECLARATION);
+    let document: Json = read_yaml(text, &path)?;
     let at = path.display().to_string();
 
     let Some(fields) = document.as_object() else {
@@ -246,7 +259,7 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
     }
     let names: BTreeSet<&str> = documents.iter().map(|entry| entry.name.as_str()).collect();
 
-    Ok(Some(Declaration {
+    Ok(Declaration {
         chart: chart_dir
             .file_name()
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
@@ -257,7 +270,7 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
         unbound: load_unbound(&at, fields.get("unbound"), &names)?,
         credentials: load_credentials(&at, fields.get("credentials"))?,
         documents,
-    }))
+    })
 }
 
 /// One document entry.

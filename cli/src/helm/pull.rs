@@ -605,7 +605,7 @@ pub fn read_from_layer(blob: &[u8], wanted: &str) -> Option<Vec<u8>> {
 }
 
 /// One payload's hash, spelled the way a descriptor spells it.
-fn hex_sha256(payload: &[u8]) -> String {
+pub(crate) fn hex_sha256(payload: &[u8]) -> String {
     use std::fmt::Write as _;
 
     let mut held = Sha256::new();
@@ -616,7 +616,7 @@ fn hex_sha256(payload: &[u8]) -> String {
     })
 }
 
-/// Write the wrapper, and report whether the file changed.
+/// The vendored file for one fetched document: the published bytes inside a `source` envelope.
 ///
 /// `source.sha256` is over the document as published — the same value the registry addressed the
 /// blob by, minus the prefix. It is deliberately *not* recomputable from this file: the published
@@ -626,19 +626,18 @@ fn hex_sha256(payload: &[u8]) -> String {
 /// that also carries the digest bump, by design.
 ///
 /// # Errors
-/// [`Error::Invalid`] when the payload is not a JSON document, [`Error::Io`] when it cannot be
-/// written.
+/// [`Error::Invalid`] when the payload is not a JSON document; `path` names it in the message.
 ///
 /// # Panics
 /// Never: the wrapper is built here out of owned values a moment before it is serialised.
-pub fn write_vendored(
+pub fn vendored_text(
     path: &Path,
     image: &str,
     digest: &str,
     payload: &[u8],
     sha256: &str,
     fetched: &str,
-) -> Result<bool, Error> {
+) -> Result<String, Error> {
     let contract: Json = serde_json::from_slice(payload)
         .map_err(|failure| Error::Invalid(format!("{}: {failure}", path.display())))?;
     let mut source = Map::new();
@@ -649,12 +648,26 @@ pub fn write_vendored(
     let mut wrapper = Map::new();
     wrapper.insert("source".to_owned(), Json::Object(source));
     wrapper.insert("contract".to_owned(), contract);
-    let rendered = format!(
+    Ok(format!(
         "{}\n",
         serde_json::to_string_pretty(&Json::Object(wrapper))
             .expect("a wrapper of owned values serialises")
-    );
+    ))
+}
 
+/// Write the wrapper [`vendored_text`] renders, and report whether the file changed.
+///
+/// # Errors
+/// As [`vendored_text`], and [`Error::Io`] when the file cannot be written.
+pub fn write_vendored(
+    path: &Path,
+    image: &str,
+    digest: &str,
+    payload: &[u8],
+    sha256: &str,
+    fetched: &str,
+) -> Result<bool, Error> {
+    let rendered = vendored_text(path, image, digest, payload, sha256, fetched)?;
     if let Ok(previous) = std::fs::read_to_string(path)
         && same_contract(&previous, &rendered)
     {
@@ -672,7 +685,7 @@ pub fn write_vendored(
 /// `fetched` moves on every run by construction. Rewriting the file for it alone would put a commit
 /// on every scheduled run — noise in exactly the place a real contract change is supposed to stand
 /// out.
-fn same_contract(previous: &str, rendered: &str) -> bool {
+pub fn same_contract(previous: &str, rendered: &str) -> bool {
     let held = |text: &str| -> Option<Json> {
         let mut document: Json = serde_json::from_str(text).ok()?;
         if let Some(source) = document.get_mut("source").and_then(Json::as_object_mut) {
@@ -730,6 +743,98 @@ pub fn reference_for(
     };
     let digest = tag.split_once('@').map(|(_, held)| held.to_owned());
     Ok((normalized, reference, digest))
+}
+
+/// One image's contract, fetched and proven to belong to the digest it was asked for.
+///
+/// The unit [`refresh_chart`] writes per declared image, held in memory: a caller that has to show
+/// what it would write before writing it — a scaffold's `--diff` — needs the wrapper's text without
+/// the file, and must never have a way to come by one that skipped the proofs. So the fields are
+/// private to this crate and [`fetch_pinned`] is the only way to hold one: a value of this type
+/// *is* the statement that the signature, the labels and the carriers were checked.
+#[derive(Debug, Clone)]
+pub struct Fetched {
+    /// The image, registry and repository, in the fully qualified form.
+    pub(crate) image: String,
+    /// The digest the contract was proven against.
+    pub(crate) digest: String,
+    /// The document exactly as published.
+    pub(crate) payload: Vec<u8>,
+    /// The hash of the payload, as a descriptor spells it.
+    pub(crate) sha256: String,
+}
+
+impl Fetched {
+    /// The image, registry and repository, in the fully qualified form.
+    pub fn image(&self) -> &str {
+        &self.image
+    }
+
+    /// The digest the contract was proven against.
+    pub fn digest(&self) -> &str {
+        &self.digest
+    }
+
+    /// The published document, parsed.
+    ///
+    /// # Errors
+    /// [`Error::Invalid`] when the payload is not JSON, which [`fetch_contract`] has already
+    /// refused — so in practice never.
+    pub fn contract(&self) -> Result<Json, Error> {
+        serde_json::from_slice(&self.payload).map_err(|failure| {
+            Error::Invalid(format!(
+                "{}@{} published a document that is not JSON: {failure}",
+                self.image, self.digest
+            ))
+        })
+    }
+
+    /// The vendored file's text, as [`vendored_text`] renders it for `path`.
+    ///
+    /// # Errors
+    /// As [`vendored_text`].
+    pub fn vendored(&self, path: &Path, fetched: &str) -> Result<String, Error> {
+        vendored_text(
+            path,
+            &self.image,
+            &self.digest,
+            &self.payload,
+            &self.sha256,
+            fetched,
+        )
+    }
+}
+
+/// Fetch the contract one image block pins, through every proof [`fetch_contract`] makes.
+///
+/// `image` is the block as a values file spells it — `registry`, `repository`, `tag` — with
+/// `app_version` standing in for an empty tag, as a chart's own `appVersion` does. Every refresh
+/// goes through here, so a contract fetched for a chart that does not exist yet is the one a later
+/// refresh of the same pin would write. A tag with no digest is resolved to one
+/// first; the proofs are then made against the digest, never against the tag.
+///
+/// # Errors
+/// As [`reference_for`], [`Registry::resolve`] and [`fetch_contract`].
+pub fn fetch_pinned(
+    registry: &dyn Registry,
+    image: &Json,
+    app_version: Option<&str>,
+    signer: &str,
+) -> Result<Fetched, Error> {
+    let (normalized, reference, digest) = reference_for(image, app_version)?;
+    let digest = match digest {
+        Some(held) => held,
+        // Resolving a tag is a second network call and a second answer; a chart that pins by
+        // digest never reaches this, so it is a fallback rather than the path.
+        None => registry.resolve(&reference)?,
+    };
+    let (payload, sha256) = fetch_contract(registry, &normalized, &digest, signer)?;
+    Ok(Fetched {
+        image: normalized,
+        digest,
+        payload,
+        sha256,
+    })
 }
 
 /// What one chart's refresh did.
@@ -802,16 +907,15 @@ pub fn refresh_chart(
                 )));
             };
 
-            let (normalized, reference, digest) = reference_for(image, app_version)?;
-            let digest = match digest {
-                Some(held) => held,
-                // Resolving a tag is a second network call and a second answer; a chart that pins
-                // by digest never reaches this, so it is a fallback rather than the path.
-                None => registry.resolve(&reference)?,
-            };
-
-            let (payload, sha256) = fetch_contract(registry, &normalized, &digest, signer)?;
-            if write_vendored(&target, &normalized, &digest, &payload, &sha256, fetched)? {
+            let held = fetch_pinned(registry, image, app_version, signer)?;
+            if write_vendored(
+                &target,
+                &held.image,
+                &held.digest,
+                &held.payload,
+                &held.sha256,
+                fetched,
+            )? {
                 into.changed.push(target);
             } else {
                 into.unchanged.push(target);

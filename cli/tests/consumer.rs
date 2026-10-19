@@ -339,6 +339,12 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
         // Prints the separator in the header of an explanation, which is the one place a person is
         // told what it is. Printing a published field is the opposite of deriving from it.
         "explain.rs",
+        // `helm init`'s renderers and its placeholder fill, which copy the published separator into
+        // generated prose: the `secretData` comment in `_helpers.tpl` and `%%SEPARATOR%%` in a
+        // template's comment. Every name they write — a secret file, a variable — is the key's own
+        // published `secrets_file` or `env`, never one spelt with the separator.
+        "chart.rs",
+        "init.rs",
     ];
 
     let mut found: Vec<String> = Vec::new();

@@ -44,12 +44,15 @@
 //! direction is the only defensible default — moving one key from the Secret into the `ConfigMap`
 //! afterwards is a deliberate edit somebody signs, where the opposite mistake is silent.
 //!
-//! # What is not here yet
+//! # Two layers
 //!
-//! The whole-chart renderers — `values.yaml` from the image block to the chassis, the helper file,
-//! the declaration, the round-trip enrolment and the fixtures — belong to the scaffold for a new
-//! chart and arrive with it. Everything below is what writing *into* a chart needs, shaped so that
-//! those renderers are compositions of it rather than second copies.
+//! Everything in this file is what writing *into* a chart needs: one key's block, one key's template
+//! line, one write-off group. [`chart`] composes them into the whole files a new chart starts with
+//! — `values.yaml` from the image block to the chassis, the helper file, the declaration, the
+//! round-trip enrolment and the fixtures — so each of those is a composition of the rules here
+//! rather than a second copy of them.
+
+pub mod chart;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -71,6 +74,42 @@ pub const WIDTH: usize = 96;
 // ------------------------------------------------------------------------------------------
 // Naming
 // ------------------------------------------------------------------------------------------
+
+/// Refuse a chart name Helm, Kubernetes or the generated files would reject later.
+///
+/// Lower-case alphanumerics and hyphens, starting and ending with an alphanumeric — the rule a
+/// release name and a DNS label share. Checked before anything is planned rather than left to
+/// `helm lint`, because every generated file embeds the name: the helper names, the release
+/// selector in the declaration, the container the declaration names. A name that fails at lint
+/// fails after all of it is on disk.
+///
+/// # Errors
+/// [`Error::Invalid`] naming the rule.
+pub fn check_chart_name(name: &str) -> Result<(), Error> {
+    let alphanumeric = |held: char| held.is_ascii_lowercase() || held.is_ascii_digit();
+    let valid = name.starts_with(alphanumeric)
+        && name.ends_with(alphanumeric)
+        && name.chars().all(|held| alphanumeric(held) || held == '-');
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::Invalid(format!(
+            "{} is not a valid chart name: lower-case alphanumerics and hyphens, starting and \
+             ending with an alphanumeric",
+            quoted(name)
+        )))
+    }
+}
+
+/// The dialect prefix as the library's environment partial wants it: without the trailing
+/// separator.
+///
+/// A contract states `NETCUP_OFFER_BOT_` because that is what it prepends to a variable name; the
+/// partial appends the separator itself, so passing the contract's spelling through would produce
+/// `NETCUP_OFFER_BOT__CONFIG`.
+pub fn env_prefix(prefix: &str) -> &str {
+    prefix.trim_end_matches('_')
+}
 
 /// `check_interval_secs` as `checkIntervalSecs`: one contract path segment as a chart value.
 ///
@@ -1013,9 +1052,9 @@ mod tests {
     use serde_json::{Map, Value as Json, json};
 
     use super::{
-        Destination, Key, Node, Placement, Plan, default_for, derived_for, invented, plan_keys,
-        schema_lines, secret_data_for, service_key_for, tree_at, value_block, values_path_for,
-        write_off_groups,
+        Destination, Key, Node, Placement, Plan, check_chart_name, default_for, derived_for,
+        env_prefix, invented, plan_keys, schema_lines, secret_data_for, service_key_for, tree_at,
+        value_block, values_path_for, write_off_groups,
     };
     use crate::helm::declaration::read_yaml;
     use crate::union::Merged;
@@ -1101,6 +1140,24 @@ mod tests {
         );
         assert_eq!(service_key_for("image"), None);
         assert_eq!(service_key_for("services.worker.sidecar.image"), None);
+    }
+
+    #[test]
+    fn the_env_prefix_drops_the_separator_the_partial_appends() {
+        // `common.fileConfig.env` appends the separator itself, so passing the contract's own
+        // spelling through would produce `APP__CONFIG`.
+        assert_eq!(env_prefix("APP_"), "APP");
+        assert_eq!(env_prefix("NETCUP_OFFER_BOT_"), "NETCUP_OFFER_BOT");
+    }
+
+    #[test]
+    fn a_name_helm_would_refuse_is_refused_here() {
+        for name in ["Foo", "foo_bar", "-foo", "foo-", "", "foo\n"] {
+            assert!(check_chart_name(name).is_err(), "{name:?} was accepted");
+        }
+        for name in ["foo-bar-1", "a", "0"] {
+            check_chart_name(name).unwrap_or_else(|failure| panic!("{name:?}: {failure}"));
+        }
     }
 
     // --------------------------------------------------------------------------------------
