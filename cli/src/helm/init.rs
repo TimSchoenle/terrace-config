@@ -584,7 +584,8 @@ impl Init {
     ///
     /// # Errors
     /// [`Error::Io`] when a directory or a file cannot be written, and [`Error::Invalid`] when one
-    /// resolves outside the chart. In every case no file has changed.
+    /// resolves outside the chart. No file has changed, unless putting one back failed too, as
+    /// [`files::write_all`] describes.
     pub fn write(&self) -> Result<(), Error> {
         let planned: Vec<files::Planned> = self
             .changes

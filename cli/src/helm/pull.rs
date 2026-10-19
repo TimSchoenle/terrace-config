@@ -66,6 +66,7 @@ use sha2::{Digest, Sha256};
 use crate::document::{CONTRACT_VERSION, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION};
 use crate::error::Error;
 
+pub use super::declaration::normalized_image;
 use super::declaration::read_yaml;
 use super::{DECLARATION, dig};
 
@@ -697,24 +698,6 @@ pub fn same_contract(previous: &str, rendered: &str) -> bool {
         (Some(old), Some(new)) => old == new,
         _ => false,
     }
-}
-
-/// A chart's spelling of an image, in the fully qualified form.
-///
-/// A chart writes a bare Docker Hub name because that is what a templating engine and a container
-/// CLI accept; a registry client reads a bare first segment as a hostname and tries to resolve it by
-/// DNS. Signature verification normalises and the registry client does not, so passing the chart's
-/// spelling around would have the two disagree about which image was verified.
-#[must_use]
-pub fn normalized_image(registry: &str, repository: &str) -> String {
-    format!(
-        "{}/{repository}",
-        if registry.is_empty() {
-            "docker.io"
-        } else {
-            registry
-        }
-    )
 }
 
 /// `(repository, tagged reference, inline digest)` for one image block.
@@ -1564,6 +1547,24 @@ mod tests {
         // around would have the two disagree about which image was verified.
         assert_eq!(normalized_image("", "demo/api"), "docker.io/demo/api");
         assert_eq!(normalized_image("ghcr.io", "demo/api"), "ghcr.io/demo/api");
+        assert_eq!(normalized_image("", "redis"), "docker.io/library/redis");
+    }
+
+    #[test]
+    fn a_registry_written_into_the_repository_is_kept_rather_than_put_under_docker_hub() {
+        // The helm-charts convention: `registry` stays empty and a non-Docker-Hub repository is
+        // written fully qualified, which is what the image template renders and the runtime pulls.
+        assert_eq!(normalized_image("", "ghcr.io/org/app"), "ghcr.io/org/app");
+        assert_eq!(
+            normalized_image("", "registry:5000/app"),
+            "registry:5000/app"
+        );
+        assert_eq!(normalized_image("", "localhost/app"), "localhost/app");
+        let image = serde_json::json!({"registry": "", "repository": "ghcr.io/org/app", "tag": "v1@sha256:ab"});
+        let (normalized, reference, digest) = reference_for(&image, None).expect("it resolves");
+        assert_eq!(normalized, "ghcr.io/org/app");
+        assert_eq!(reference, "ghcr.io/org/app:v1@sha256:ab");
+        assert_eq!(digest.as_deref(), Some("sha256:ab"));
     }
 
     #[test]

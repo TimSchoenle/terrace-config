@@ -1518,11 +1518,12 @@ pub fn write(adoption: &Adoption) -> Result<(), Error> {
 ///
 /// Every splice of every chart is planned first, reading each file once, and the whole set is
 /// handed to [`files::write_all`], which refuses a file that resolves outside its chart and
-/// replaces the rest atomically or not at all.
+/// replaces the rest, putting back what it replaced if a later replacement fails.
 ///
 /// # Errors
 /// [`Error::Io`] when a file cannot be read, resolved or written, and [`Error::Invalid`] when one
-/// resolves outside its chart. In every case no file has changed.
+/// resolves outside its chart. No file has changed, unless putting one back failed too, as
+/// [`files::write_all`] describes.
 pub fn write_all(adoptions: &[Adoption]) -> Result<(), Error> {
     let mut planned = Vec::new();
     for adoption in adoptions.iter().filter(|item| item.writes()) {

@@ -75,27 +75,33 @@ pub const WIDTH: usize = 96;
 // Naming
 // ------------------------------------------------------------------------------------------
 
+/// Helm's limit on a release name. `helm install` enforces it, and the generated declaration
+/// selects the release by the chart's name, so a chart named past it cannot be installed.
+const MAX_CHART_NAME: usize = 53;
+
 /// Refuse a chart name Helm, Kubernetes or the generated files would reject later.
 ///
-/// Lower-case alphanumerics and hyphens, starting and ending with an alphanumeric — the rule a
-/// release name and a DNS label share. Checked before anything is planned rather than left to
-/// `helm lint`, because every generated file embeds the name: the helper names, the release
-/// selector in the declaration, the container the declaration names. A name that fails at lint
-/// fails after all of it is on disk.
+/// At most 53 lower-case alphanumerics and hyphens, starting and ending with an alphanumeric: the
+/// rule a release name and a DNS label share, with Helm's release-name limit, the tighter of the
+/// two. Checked before anything is planned rather than left to `helm lint` or `helm install`,
+/// because every generated file embeds the name: the helper names, the release selector in the
+/// declaration, the container the declaration names. A name that fails there fails after all of it
+/// is on disk.
 ///
 /// # Errors
 /// [`Error::Invalid`] naming the rule.
 pub fn check_chart_name(name: &str) -> Result<(), Error> {
     let alphanumeric = |held: char| held.is_ascii_lowercase() || held.is_ascii_digit();
-    let valid = name.starts_with(alphanumeric)
+    let valid = name.len() <= MAX_CHART_NAME
+        && name.starts_with(alphanumeric)
         && name.ends_with(alphanumeric)
         && name.chars().all(|held| alphanumeric(held) || held == '-');
     if valid {
         Ok(())
     } else {
         Err(Error::Invalid(format!(
-            "{} is not a valid chart name: lower-case alphanumerics and hyphens, starting and \
-             ending with an alphanumeric",
+            "{} is not a valid chart name: at most {MAX_CHART_NAME} lower-case alphanumerics and \
+             hyphens, starting and ending with an alphanumeric",
             quoted(name)
         )))
     }
@@ -1158,6 +1164,13 @@ mod tests {
         for name in ["foo-bar-1", "a", "0"] {
             check_chart_name(name).unwrap_or_else(|failure| panic!("{name:?}: {failure}"));
         }
+    }
+
+    #[test]
+    fn a_name_past_helms_release_limit_is_refused_at_the_limit_and_not_before() {
+        check_chart_name(&"a".repeat(53)).expect("53 is Helm's limit, and allowed");
+        let error = check_chart_name(&"a".repeat(54)).expect_err("54 is one past it");
+        assert!(error.to_string().contains("at most 53"), "{error}");
     }
 
     // --------------------------------------------------------------------------------------
