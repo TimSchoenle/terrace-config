@@ -111,6 +111,32 @@ and never remove one. `explain` prints what a change to each setting costs.
 Nothing changes for a chart until one of its images declares a rebuild. The rules are in
 [`FORMAT.md`](../spec/v1/FORMAT.md#reloading).
 
+## Repository settings: `terrace.yaml`
+
+A chart repository keeps its settings in `terrace.yaml` at the root of its Git repository, instead
+of repeating flags in every script:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/TimSchoenle/terrace-config/main/spec/helm/v1/repo.schema.json
+version: 1
+cli: "0.8"
+helm:
+  charts: charts
+  firstParty: [ghcr.io/example/*]
+  signer: https://github.com/example/[^/]+/.github/workflows/release.yaml@refs/heads/main
+```
+
+```bash
+terrace-contract config init   # writes one, moving .github/configs/first-party-images.txt into it
+terrace-contract config show   # every setting, its value, and where it came from
+terrace-contract doctor        # the settings, the pinned CLI and the tools, one line each
+```
+
+A flag wins over its environment variable, which wins over the file, which wins over the default.
+The file is optional, and a repository without one behaves as before. A key this release does not
+read is a warning, and fails the command under `--strict` or `TERRACE_STRICT=1`. Every key, its
+flag and its default are in [`spec/helm/v1/REPO.md`](../spec/helm/v1/REPO.md).
+
 ## Checking only the charts a change touched
 
 By default, `check`, `bindings`, `shapes`, `readme` and `tests` read every chart under `--charts`.

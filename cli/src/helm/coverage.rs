@@ -52,10 +52,13 @@ pub struct Coverage {
 /// Report which charts are covered by a contract, failing only on a chart that contradicts itself.
 ///
 /// # Errors
-/// [`Error::Io`] when the tree or the first-party list cannot be read, [`Error::Invalid`] when a
-/// declaration cannot be read as one.
-pub fn coverage(charts: &Path, first_party: &Path) -> Result<Coverage, Error> {
-    let patterns = first_party_patterns(first_party)?;
+/// [`Error::Io`] when the tree cannot be read, [`Error::Invalid`] when a declaration cannot be read
+/// as one.
+///
+/// `first_party` is the organisation's repository patterns, from wherever the caller resolved them:
+/// [`first_party_patterns`] reads the list file, and `terrace.yaml` carries them inline.
+pub fn coverage(charts: &Path, first_party: &[String]) -> Result<Coverage, Error> {
+    let patterns = first_party;
     let mut report = Report::new();
     let mut covered: Vec<String> = Vec::new();
     let mut uncovered: Vec<String> = Vec::new();
