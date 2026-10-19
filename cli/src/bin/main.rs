@@ -200,6 +200,25 @@ enum Command {
         format: Output,
     },
 
+    /// Write the chart values an enrolled chart's unbound contract keys are owed, from the contract.
+    ///
+    /// The repair `bindings` asks for, done for the case that needs no judgement: a key no chart
+    /// value surfaces gets a value typed, defaulted and documented from the contract, with the
+    /// marker that binds it; a credential gets a value delivered as a file and its write-off; a
+    /// reserved key gets its write-off. The template lines that project a new value are appended
+    /// where the define does not already carry the key's root, and printed for a person where it
+    /// does.
+    ///
+    /// It never touches a value that exists. A key whose chart value is already there is refused,
+    /// with the marker to write by hand: on an existing value, which key it feeds is a claim only a
+    /// person can make.
+    ///
+    /// Without a mode it plans and prints, and exits 1 only when a key was refused or a chart is
+    /// blocked by a broken marker. `--check` prints the same plan and exits 1 when any enrolled
+    /// chart owes anything at all, 2 when it could not answer. `--diff` prints the unified diff
+    /// `--write` would apply. `--write` applies it.
+    Adopt(Adopt),
+
     /// Write every bound value's `@schema` block from the contract that describes it.
     ///
     /// A contract states a key's type as JSON Schema, and since `schema_version: 2` it states what
@@ -652,6 +671,11 @@ fn main() -> ExitCode {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one arm per subcommand, each a single call into its handler; the length is the \
+              number of subcommands, and splitting the match would only hide that list"
+)]
 fn run(cli: Cli) -> Result<ExitCode, Error> {
     let repo = cli.repo;
     match cli.command {
@@ -682,6 +706,8 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             charts,
             format,
         } => bindings_command(&repo.charts(charts)?, &Selection::of(only), format),
+
+        Command::Adopt(adopt) => adopt_command(&repo, adopt),
 
         Command::Shapes {
             only,
@@ -1195,6 +1221,126 @@ fn bindings_command(
         "Configuration bindings",
         "Every contract key of every enrolled chart is bound by a value, or written off with a reason.",
     ))
+}
+
+/// The options of `adopt`, held apart so that its dispatch stays one line.
+#[derive(Args)]
+struct Adopt {
+    /// One chart, or every enrolled chart when none is named.
+    #[arg(value_name = "CHART")]
+    chart: Option<String>,
+
+    /// Adopt only this contract key; repeatable. Keys belong to one chart, so name the chart.
+    #[arg(long = "key", value_name = "PATH")]
+    keys: Vec<String>,
+
+    /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+    #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+    charts: Option<PathBuf>,
+
+    /// Write nothing, and exit 1 when any enrolled chart owes a value, a write-off or a fix.
+    #[arg(long, conflicts_with_all = ["diff", "write"])]
+    check: bool,
+
+    /// Write nothing, and print a unified diff of every file `--write` would change.
+    #[arg(long, conflicts_with = "write")]
+    diff: bool,
+
+    /// Insert the blocks rather than printing them.
+    #[arg(long)]
+    write: bool,
+}
+
+/// Plan, check, diff or write the values every selected enrolled chart is owed.
+///
+/// At most one of `check`, `diff` and `write` is set. The exit codes are the ones the
+/// command this replaced used, so the recipes that call it need no change: 2 for a selection that
+/// names no chart or a `--key` with no chart, 1 for a refused key, a blocked chart or a tree that
+/// could not be read, 0 otherwise. `--check` alone departs from that, to the convention `sync
+/// --check` reads: 1 for anything owed, 2 for a tree it could not read.
+fn adopt_command(repo: &Repo, options: Adopt) -> Result<ExitCode, Error> {
+    use helm::adopt;
+
+    let Adopt {
+        chart,
+        keys,
+        charts,
+        check,
+        diff,
+        write,
+    } = options;
+    let charts = &repo.charts(charts)?;
+    // An empty name selects every chart, as the recipe that passes `''` through expects.
+    let chart = chart.as_deref().filter(|name| !name.is_empty());
+    let chart_dirs: Vec<PathBuf> = helm::declaration::chart_dirs(charts)?
+        .into_iter()
+        .filter(|dir| chart.is_none_or(|name| dir.file_name() == Some(name.as_ref())))
+        .collect();
+    if let Some(name) = chart
+        && chart_dirs.is_empty()
+    {
+        eprintln!("error: {} is not a chart", adopt::posix(&charts.join(name)));
+        return Ok(ExitCode::from(2));
+    }
+    if !keys.is_empty() && chart.is_none() {
+        eprintln!("error: --key selects keys of one chart, so name the chart");
+        return Ok(ExitCode::from(2));
+    }
+
+    let run = || -> Result<ExitCode, Error> {
+        let wanted = keys.iter().cloned().collect();
+        let adoptions = adopt::adopt_all(&chart_dirs, &wanted)?;
+        if adoptions.is_empty() {
+            if !diff {
+                println!("==> every contract key of every enrolled chart is bound or written off");
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+        let refused = adoptions
+            .iter()
+            .any(|item| !item.blocked.is_empty() || !item.refusals.is_empty());
+
+        if diff {
+            for adoption in &adoptions {
+                for splice in adopt::splices(adoption)? {
+                    print!("{}", splice.diff());
+                }
+                for message in &adoption.blocked {
+                    eprintln!("{}: blocked: {message}", adoption.chart);
+                }
+                for refusal in &adoption.refusals {
+                    eprintln!(
+                        "{}: refused: {} {}",
+                        adoption.chart, refusal.path, refusal.reason
+                    );
+                }
+            }
+        } else {
+            for adoption in &adoptions {
+                if write && adoption.writes() {
+                    adopt::write(adoption)?;
+                }
+                print!("{}", adopt::report(adoption, write)?);
+            }
+            let rows = if write {
+                adopt::counted(charts, &adoptions)?
+            } else {
+                Vec::new()
+            };
+            print!("{}", adopt::closing(&adoptions, write, &rows));
+        }
+
+        Ok(if check || refused {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        })
+    };
+
+    Ok(run().unwrap_or_else(|failure| {
+        eprintln!("error: {failure}");
+        ExitCode::from(if check { 2 } else { 1 })
+    }))
 }
 
 /// Write or check every generated `@schema` block.

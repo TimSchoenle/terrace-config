@@ -13,6 +13,7 @@
 //! chart free. A chart with no declaration is skipped; a chart with `documents: []` has opted out
 //! explicitly and must say why, and that is the only permitted opt-out.
 
+pub mod adopt;
 pub mod bindings;
 pub mod check;
 pub mod coverage;
@@ -23,8 +24,10 @@ pub mod markers;
 #[cfg(feature = "oci")]
 pub mod pull;
 pub mod readme;
+pub mod regions;
 pub mod restarts;
 pub mod rollout;
+pub mod scaffold;
 pub mod scope;
 pub mod secrets;
 pub mod shapes;
