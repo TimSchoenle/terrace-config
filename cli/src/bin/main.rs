@@ -418,6 +418,74 @@ enum Command {
         json: bool,
     },
 
+    /// Print the charts the commits since a revision touched, for a pipeline to narrow its gates.
+    ///
+    /// One line of chart names separated by spaces, or an empty line when every chart has to be
+    /// checked. The line is empty whenever the change reaches outside the application charts' own
+    /// directories (the pinned CLI, `terrace.yaml`, a workflow, a library chart), and whenever the
+    /// change cannot be read, as in a shallow clone. It can therefore widen a gate and never narrow
+    /// one by mistake. Why it widened goes to stderr.
+    Scope {
+        /// The revision the change is measured from, through its merge base with `HEAD`.
+        #[arg(long, value_name = "REF", default_value = "origin/main")]
+        since: String,
+
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
+
+        /// Print one JSON object instead of the line.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Bring every file derived from the vendored contracts up to date, or check them all.
+    ///
+    /// Without `--check` it writes: `pull` refreshes the vendored contracts from the images the
+    /// charts pin, then `shapes` and `readme` rewrite what derives from them. The round-trip suites
+    /// are not written: a generated test that lands without its author reading it is a test nobody
+    /// has read, so `tests` stays a command a person runs.
+    ///
+    /// With `--check` it writes nothing and needs no network: `bindings`, `shapes --check`,
+    /// `readme --check`, `tests --check` and `coverage`, plus `check` when `--manifests` names a
+    /// render. Every step runs even when an earlier one failed, so one run reports everything.
+    /// Exits 0 when every step passed, 1 when any step found something, 2 when any step could not
+    /// run.
+    Sync {
+        /// Only these charts, by directory name; every chart when none is named. A name the
+        /// tree does not hold is refused, so a typo cannot select nothing and pass.
+        #[arg(value_name = "CHART", conflicts_with = "since")]
+        only: Vec<String>,
+
+        /// Only the charts the commits since this revision touched, as `scope` prints them.
+        #[arg(long, value_name = "REF")]
+        since: Option<String>,
+
+        /// Run the gates instead of the writers.
+        #[arg(long)]
+        check: bool,
+
+        /// A directory a render wrote into, so that `--check` also runs `check` on it.
+        #[arg(long, value_name = "DIR", requires = "check")]
+        manifests: Option<PathBuf>,
+
+        /// Skip `pull`, and write only from the contracts already vendored.
+        #[arg(long, conflicts_with = "check")]
+        no_pull: bool,
+
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
+
+        /// The signing identity `pull` verifies against, as a regular expression.
+        #[arg(long, value_name = "IDENTITY", env = "CONTRACT_SIGNER")]
+        signer: Option<String>,
+
+        /// How to write the findings: `text` or `github`.
+        #[arg(long, default_value = "text")]
+        format: Output,
+    },
+
     /// Refresh every vendored contract from the image its chart pins.
     ///
     /// The one subcommand that talks to a container registry. Everything else reads the committed
@@ -669,6 +737,10 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             full,
             json,
         ),
+
+        Command::Scope { .. } => scope_command(&repo, cli.command),
+
+        Command::Sync { .. } => sync_command(&repo, cli.command),
 
         Command::Pull {
             chart,
@@ -1982,6 +2054,219 @@ fn setting_json(setting: &helm::explain::Setting, derive: bool) -> serde_json::V
         );
     }
     serde_json::Value::Object(held)
+}
+
+/// Print the charts a change touched, or an empty line for every chart.
+fn scope_command(repo: &Repo, command: Command) -> Result<ExitCode, Error> {
+    let Command::Scope {
+        since,
+        charts,
+        json: as_json,
+    } = command
+    else {
+        unreachable!("dispatched on the variant")
+    };
+    let charts = repo.charts(charts)?;
+    let since = since.as_str();
+    let scope = helm::scope::since(&charts, since);
+    if as_json {
+        let (every, reason) = match &scope {
+            helm::Scope::Every(why) => (true, Some(why.to_string())),
+            helm::Scope::Charts(_) => (false, None),
+        };
+        println!(
+            "{:#}",
+            serde_json::json!({
+                "since": since,
+                "every": every,
+                "charts": scope.names(),
+                "reason": reason,
+            })
+        );
+    } else {
+        if let helm::Scope::Every(why) = &scope {
+            eprintln!("==> every chart: {why}");
+        }
+        println!("{}", scope.names().join(" "));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The steps of one `sync` run and how each ended.
+struct Steps {
+    format: Output,
+    failed: Vec<&'static str>,
+    broken: Vec<&'static str>,
+    ran: usize,
+}
+
+impl Steps {
+    const fn new(format: Output) -> Self {
+        Self {
+            format,
+            failed: Vec::new(),
+            broken: Vec::new(),
+            ran: 0,
+        }
+    }
+
+    /// Run one step under a heading, and record how it ended without stopping the run.
+    fn run(&mut self, name: &'static str, step: impl FnOnce() -> Result<ExitCode, Error>) {
+        self.ran += 1;
+        if self.format == Output::Github {
+            println!("::group::sync: {name}");
+        } else {
+            println!("==> sync: {name}");
+        }
+        match step() {
+            Ok(code) if code == ExitCode::SUCCESS => {}
+            Ok(_) => self.failed.push(name),
+            Err(error) => {
+                eprintln!("{error}");
+                self.broken.push(name);
+            }
+        }
+        if self.format == Output::Github {
+            println!("::endgroup::");
+        }
+    }
+
+    /// The exit code: 2 when a step could not run, else 1 when a step found something, else 0.
+    fn finish(self, mode: &str) -> ExitCode {
+        let unclean = self.failed.len() + self.broken.len();
+        if unclean == 0 {
+            println!("==> {mode}: {} step(s) passed", self.ran);
+            return ExitCode::SUCCESS;
+        }
+        let mut names: Vec<&str> = self.broken.clone();
+        names.extend(&self.failed);
+        eprintln!(
+            "==> {mode}: {unclean} of {} step(s) did not pass: {}",
+            self.ran,
+            names.join(", ")
+        );
+        if self.broken.is_empty() {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// Write every contract-derived file, or run every offline gate over the selected charts.
+fn sync_command(repo: &Repo, command: Command) -> Result<ExitCode, Error> {
+    let Command::Sync {
+        only,
+        since,
+        check,
+        manifests,
+        no_pull,
+        charts,
+        signer,
+        format,
+    } = command
+    else {
+        unreachable!("dispatched on the variant")
+    };
+    if format == Output::Json {
+        return Err(Error::Invalid(
+            "sync writes several reports, which one JSON object cannot hold; pass --format text \
+             or --format github, or run the gates one at a time for JSON"
+                .to_owned(),
+        ));
+    }
+    let charts = repo.charts(charts)?;
+    let selection = match &since {
+        Some(base) => {
+            let scope = helm::scope::since(&charts, base);
+            match &scope {
+                helm::Scope::Every(why) => println!("==> sync: every chart, because {why}"),
+                helm::Scope::Charts(names) => println!("==> sync: {}", names.join(" ")),
+            }
+            Selection::of(scope.names().to_vec())
+        }
+        None => Selection::of(only),
+    };
+    // Resolved before any step runs, so a name the tree does not hold is refused up front rather
+    // than after a write step already ran for the other charts.
+    let names: Vec<String> = selection
+        .dirs(&charts)?
+        .iter()
+        .filter_map(|dir| {
+            dir.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect();
+
+    let mut steps = Steps::new(format);
+
+    if check {
+        steps.run("bindings", || bindings_command(&charts, &selection, format));
+        steps.run("shapes", || {
+            shapes_command(&charts, &selection, true, format)
+        });
+        steps.run("readme", || readme_command(&charts, &selection, true));
+        steps.run("tests", || tests_command(&charts, &selection, true));
+        if let Some(manifests) = &manifests {
+            steps.run("check", || {
+                check_command(&charts, &selection, manifests, format)
+            });
+        }
+        // Estate-wide whatever the selection: whether any chart pins a first-party image without
+        // a contract is a question about the tree, not about the charts a change touched. Only
+        // when the repository names its first-party images: without that list the question has
+        // no answer, and a repository that never configured one is not misconfigured.
+        let settings = repo.load()?;
+        let configured = settings
+            .file
+            .as_ref()
+            .is_some_and(|file| file.helm.first_party.is_some())
+            || settings.default_first_party().is_file();
+        if configured {
+            steps.run("coverage", || {
+                coverage_command(repo, Some(charts.clone()), None, format)
+            });
+        } else {
+            println!("==> sync: coverage skipped, because terrace.yaml sets no helm.firstParty");
+        }
+        return Ok(steps.finish("sync --check"));
+    }
+
+    if !no_pull {
+        steps.run("pull", || {
+            if selection.is_all() {
+                return pull_command(repo, Some(charts.clone()), None, signer.clone(), false);
+            }
+            // One chart per call, which is what `pull` takes. Every chart is attempted; the step
+            // then reports the first chart that could not run, else whether any found a problem.
+            let mut worst = ExitCode::SUCCESS;
+            let mut first_error = None;
+            for name in &names {
+                match pull_command(
+                    repo,
+                    Some(charts.clone()),
+                    Some(name),
+                    signer.clone(),
+                    false,
+                ) {
+                    Ok(code) if code == ExitCode::SUCCESS => {}
+                    Ok(code) => worst = code,
+                    // The first is returned for the step to report; any later one is reported
+                    // here, so no chart's failure goes unsaid.
+                    Err(error) if first_error.is_none() => first_error = Some(error),
+                    Err(error) => eprintln!("{error}"),
+                }
+            }
+            first_error.map_or(Ok(worst), Err)
+        });
+    }
+    // After `pull` and in this order, because each reads what the one before it wrote: the
+    // schemas derive from the refreshed contracts, and the README reference from the same.
+    steps.run("shapes", || {
+        shapes_command(&charts, &selection, false, format)
+    });
+    steps.run("readme", || readme_command(&charts, &selection, false));
+    Ok(steps.finish("sync"))
 }
 
 /// Refresh the vendored contracts, or say which of them are behind their image.

@@ -60,10 +60,12 @@ its network half.
 | phase 3 | `check` | 444 findings agreeing over a mutant of the rendered tree |
 | phase 4 | `bindings`, `shapes`, `coverage` | 232 markers read identically; every derived `@schema` block reproduced byte for byte |
 | phase 5 | `diff`, `secrets`, `readme`, `tests`, `explain` | four revisions byte-identical; 151 unclaimed and 24 over-projected mounts agreeing over a mutant render; 7 credential references and 15 generated suites reproduced byte for byte; 28 explanations agreeing field for field |
-| phase 6 | `pull` | 25 cases against a recorded registry, behind the `Registry` seam |
+| phase 6 | `pull`, `scope`, `sync` | 25 cases against a recorded registry, behind the `Registry` seam; `sync --check` passing over the `helm-charts` tree, as the five gates it runs do one at a time |
 
-Still to come: phase 2's Java cutover, and phase 6's writers — `scaffold`, the adopt path and the
-`sync` that composes them. Those are last for the reason §11 gives, and the reason has not changed:
+`sync` composes the commands that exist: `pull`, `shapes` and `readme` to write, every offline gate
+with `--check`. It gains the adopt path when that is ported.
+
+Still to come: phase 2's Java cutover, and phase 6's writers — `scaffold` and the adopt path. Those are last for the reason §11 gives, and the reason has not changed:
 a generator that is wrong writes its mistake into the tree, where a parity harness cannot see it as
 a diff. `config_scaffold.py` and `adopt-config.py` stay in `helm-charts` until they are ported, and
 `config_testgen.py` keeps `satisfying` and `VALUES_ROOT` for the first of them to read.
