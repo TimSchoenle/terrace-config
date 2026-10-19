@@ -21,15 +21,18 @@ They move independently, and the directory is named after the first.
 | Field | Now | Versions | Bumped when |
 |---|---|---|---|
 | `terrace_contract` | **1** | the envelope — which fields the document has at all | a change no consumer written against the old shape can read |
-| `schema.schema_version` | **2** | the `schema` half — what a key may carry | a consumer walking `constraint`'s keywords itself has to widen its allowlist |
+| `schema.schema_version` | **4** | the `schema` half — what a key may carry | a consumer walking `constraint`'s keywords itself has to widen its allowlist |
 
-So a document in `spec/v1/` declares `"terrace_contract": 1` and, inside it, `"schema_version": 2`.
-That is not a mismatch: the schema half reached 2 when `constraint` learned to nest, which added
-nothing to the envelope around it and so did not move the envelope's number.
+So a document in `spec/v1/` declares `"terrace_contract": 1` and, inside it, a `schema_version`
+between 1 and 4. That is not a mismatch: the schema half reached 2 when `constraint` learned to
+nest, 3 when it learned entry names (`propertyNames`) and 4 when it learned conditions between a
+struct's fields, and none of that added anything to the envelope around it. A producer publishes
+the lowest version whose vocabulary holds what the document carries
+([`FORMAT.md`](v1/FORMAT.md#versioning)), so most documents still declare 2.
 
 `spec/v1/` is the envelope's, because `terrace_contract` is what a consumer gates on before reading
 anything else — a version it was not written against is a document it refuses, and that decision is
-made from the outermost field. A second envelope version gets `spec/v2/`; a third `schema_version`
+made from the outermost field. A second envelope version gets `spec/v2/`; a new `schema_version`
 does not.
 
 ## Layout
