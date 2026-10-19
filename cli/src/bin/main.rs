@@ -574,6 +574,12 @@ enum Command {
         check: bool,
     },
 
+    /// Commands that only make sense in a Helm chart repository.
+    Helm {
+        #[command(subcommand)]
+        command: HelmCommand,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -592,6 +598,91 @@ enum Command {
     /// repository relying on a setting its CLI ignores is exactly what this is for finding. Exits 1
     /// on any failure; a warning is something only some commands need.
     Doctor,
+}
+
+#[derive(Subcommand)]
+enum HelmCommand {
+    /// Write the configuration half of a new chart from the contract its image publishes.
+    ///
+    /// The repository copies its own chart template first — `Chart.yaml`, the workload templates,
+    /// the README source — and this writes every file the contract decides: the vendored contract,
+    /// `values.yaml` (the image pin, a block per setting with the marker that binds it, then the
+    /// chassis), `templates/_helpers.tpl`, `config-contract.yaml`, `contract-tests.yaml`,
+    /// `ci/test-values.yaml` and `tests/configmap_test.yaml`. It fills `%%PREFIX%%`,
+    /// `%%ENV_PREFIX%%`, `%%SEPARATOR%%` and `%%DOCUMENT_KEY%%` in the copied templates from the
+    /// contract's dialect, and refuses any other `%%NAME%%` still there.
+    ///
+    /// The contract is fetched and verified exactly as `pull` does it; there is no way to give it
+    /// one. A file already there that says something else is refused, never overwritten: `adopt`
+    /// is what writes into a chart that is configured.
+    ///
+    /// Without a mode it plans and prints. `--check` exits 1 when anything would be written, 0 when
+    /// the chart already holds exactly this, 2 when it could not answer. `--diff` prints a
+    /// `patch -p0` diff of every file `--write` would write. Any other failure exits 1.
+    Init(Init),
+}
+
+/// What `helm init` needs to know about the new chart.
+#[derive(Args)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "clap flags: `no_contract` picks the form and the other three the mode, which clap \
+              already holds mutually exclusive; an enum would re-state that rule by hand"
+)]
+struct Init {
+    /// The chart's name, and its directory under the chart tree.
+    #[arg(value_name = "CHART")]
+    chart: String,
+
+    /// The image the chart pins, as values.yaml spells it: `REPOSITORY:TAG`, ideally followed by
+    /// `@sha256:...`. A Docker Hub image is written without a registry.
+    #[arg(long, value_name = "REPOSITORY:TAG[@DIGEST]")]
+    image: String,
+
+    /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+    #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+    charts: Option<PathBuf>,
+
+    /// The signing identity the contract must carry, as a regular expression. Default:
+    /// `CONTRACT_SIGNER`, else `helm.signer` in terrace.yaml; required unless `--no-contract`.
+    #[arg(long, value_name = "IDENTITY", env = "CONTRACT_SIGNER")]
+    signer: Option<String>,
+
+    /// The configuration document's name in config-contract.yaml. Default: the chart's name.
+    #[arg(long, value_name = "NAME")]
+    document: Option<String>,
+
+    /// The `ConfigMap` key the document is rendered under.
+    #[arg(long, value_name = "KEY", default_value = helm::init::DEFAULT_DOCUMENT_KEY)]
+    document_key: String,
+
+    /// The repository's shared values, appended to values.yaml after the configuration surface.
+    #[arg(long, value_name = "FILE")]
+    chassis: Option<PathBuf>,
+
+    /// Write the plain form, for an image that publishes no configuration contract.
+    ///
+    /// Not a way to skip the network for an image that does publish one: the chart gets no
+    /// configuration surface at all, which is strictly less than what could have been generated.
+    #[arg(long)]
+    no_contract: bool,
+
+    /// Why the image publishes no contract. Required with `--no-contract` when the image is
+    /// first-party (`helm.firstParty` in terrace.yaml), and written as the declaration's opt-out.
+    #[arg(long, value_name = "TEXT", requires = "no_contract")]
+    reason: Option<String>,
+
+    /// Write nothing, and exit 1 when anything would be written.
+    #[arg(long, conflicts_with_all = ["diff", "write"])]
+    check: bool,
+
+    /// Write nothing, and print a unified diff of every file `--write` would write.
+    #[arg(long, conflicts_with = "write")]
+    diff: bool,
+
+    /// Write the files rather than printing the plan.
+    #[arg(long)]
+    write: bool,
 }
 
 #[derive(Clone, Copy, Subcommand)]
@@ -816,6 +907,10 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             first_party,
             format,
         } => coverage_command(&repo, charts, first_party.as_deref(), format),
+
+        Command::Helm { command } => match command {
+            HelmCommand::Init(init) => Ok(helm_init_command(&repo, init)),
+        },
 
         Command::Image { command } => {
             let ImageCommand::Verify {
@@ -1287,6 +1382,110 @@ struct Adopt {
     /// Insert the blocks rather than printing them.
     #[arg(long)]
     write: bool,
+}
+
+/// Plan, check, diff or write the configuration half of one new chart.
+///
+/// The exit codes follow `adopt`'s: 1 for any failure, except under `--check`, where 1 means
+/// "something would be written" and a failure to answer is 2.
+fn helm_init_command(repo: &Repo, options: Init) -> ExitCode {
+    use helm::init::{self, Pin, Request, Source};
+
+    let check = options.check;
+    let run = || -> Result<ExitCode, Error> {
+        let settings = repo.settings()?;
+        let charts = settings.charts(options.charts).0;
+        let pin = Pin::parse(&options.image)?;
+        let chassis = options
+            .chassis
+            .as_deref()
+            .map(read)
+            .transpose()?
+            .unwrap_or_default();
+        let request = Request {
+            chart: &options.chart,
+            pin: &pin,
+            document: options.document.as_deref().unwrap_or(&options.chart),
+            document_key: &options.document_key,
+            chassis: &chassis,
+        };
+
+        let fetched;
+        let at;
+        let source = if options.no_contract {
+            Source::Plain {
+                opt_out: no_contract_opt_out(&settings, &pin, options.reason.as_deref())?,
+            }
+        } else {
+            let signer = required_signer(&settings, options.signer)?;
+            let tools = helm::pull::Tools::found()?;
+            fetched = helm::pull::fetch_pinned(&tools, &pin.block(), None, &signer).map_err(
+                |failure| {
+                    Error::Invalid(format!(
+                        "{failure}\n       pass --no-contract (and --reason, for a first-party \
+                         image) if this image publishes none"
+                    ))
+                },
+            )?;
+            at = helm::pull::now();
+            Source::Contract {
+                fetched: &fetched,
+                at: &at,
+            }
+        };
+
+        let planned = init::plan(&charts, &request, &source)?;
+        if options.diff {
+            print!("{}", planned.diff());
+            return Ok(ExitCode::SUCCESS);
+        }
+        print!("{}", planned.report());
+        if options.write && planned.owed() {
+            planned.write()?;
+            print!("{}", planned.closing());
+        }
+        Ok(if check && planned.owed() {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        })
+    };
+
+    run().unwrap_or_else(|failure| {
+        eprintln!("error: {failure}");
+        ExitCode::from(if check { 2 } else { 1 })
+    })
+}
+
+/// The opt-out a plain chart's declaration carries, when the coverage gate will demand one.
+///
+/// Decided from the same first-party list the gate reads, and refused rather than guessed when no
+/// list resolves: a chart pinning a first-party image owes a declaration, and an opt-out without a
+/// reason is indistinguishable from a chart nobody got round to declaring.
+fn no_contract_opt_out<'a>(
+    settings: &Settings,
+    pin: &helm::init::Pin,
+    reason: Option<&'a str>,
+) -> Result<Option<&'a str>, Error> {
+    let (patterns, _) = settings.first_party(None).map_err(|failure| {
+        Error::Invalid(format!(
+            "no first-party image list resolved, so whether this chart owes a declaration cannot \
+             be decided ({failure}); set `helm.firstParty` in terrace.yaml (`terrace-contract \
+             doctor` says why)"
+        ))
+    })?;
+    if !helm::init::owes_a_declaration(&patterns, &pin.repository) {
+        return Ok(None);
+    }
+    match reason.filter(|held| !held.trim().is_empty()) {
+        Some(reason) => Ok(Some(reason)),
+        None => Err(Error::Invalid(format!(
+            "{} is a first-party image, so the coverage gate will demand a declaration from this \
+             chart. Give --reason to write the opt-out, or drop --no-contract to vendor the \
+             contract it publishes",
+            pin.repository
+        ))),
+    }
 }
 
 /// Plan, check, diff or write the values every selected enrolled chart is owed.

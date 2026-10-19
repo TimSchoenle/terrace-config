@@ -20,8 +20,11 @@ pub mod coverage;
 pub mod declaration;
 pub mod diff;
 pub mod explain;
+#[cfg(feature = "oci")]
+pub mod init;
 pub mod markers;
 pub mod migrate;
+pub(crate) mod patch;
 #[cfg(feature = "oci")]
 pub mod pull;
 pub mod readme;

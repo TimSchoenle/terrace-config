@@ -166,6 +166,7 @@ use crate::union::Merged;
 use super::bindings::{has_path, missing_keys, premises};
 use super::declaration::{Bound, Declaration, load_declaration, read_yaml};
 use super::markers::{MARKER, Marker, read as read_markers};
+use super::patch::{Row, unified};
 use super::regions::{Region, regions, split_lines};
 use super::scaffold::{
     Destination, Key, Placement, Plan, Tree, branch_prefix, branches, default_for, derived_for,
@@ -1415,8 +1416,6 @@ impl Splice {
     /// insertion, so the alignment is known exactly, and a general diff could only rediscover it —
     /// or, where a new blank line matches an old one, choose a different but equally valid one.
     pub fn diff(&self) -> String {
-        const CONTEXT: usize = 3;
-
         let (lines, ending, terminated) = self.lines();
         let mut runs = self.runs(lines.len(), ending);
         let mut rows: Vec<Row> = Vec::new();
@@ -1434,86 +1433,8 @@ impl Splice {
         }
         rows.extend(runs.into_values().flatten().map(Row::Added));
 
-        // Changes closer than twice the context share a hunk, as every unified diff joins them.
-        let mut hunks: Vec<(usize, usize)> = Vec::new();
-        for (index, row) in rows.iter().enumerate() {
-            if matches!(row, Row::Context(_)) {
-                continue;
-            }
-            match hunks.last_mut() {
-                Some(last) if index - last.1 <= 2 * CONTEXT + 1 => last.1 = index,
-                _ => hunks.push((index, index)),
-            }
-        }
-        if hunks.is_empty() {
-            return String::new();
-        }
-
         let shown = posix(&self.path);
-        let mut out = format!("--- {shown}\n+++ {shown}\n");
-        for (first, last) in hunks {
-            let low = first.saturating_sub(CONTEXT);
-            let high = (last + CONTEXT + 1).min(rows.len());
-            let before = &rows[..low];
-            let old_start = before.iter().filter(|row| row.in_old()).count();
-            let new_start = before.iter().filter(|row| row.in_new()).count();
-            let hunk = &rows[low..high];
-            let old_len = hunk.iter().filter(|row| row.in_old()).count();
-            let new_len = hunk.iter().filter(|row| row.in_new()).count();
-            let _ = writeln!(
-                out,
-                "@@ -{} +{} @@",
-                range(old_start, old_len),
-                range(new_start, new_len)
-            );
-            for row in hunk {
-                row.write(&mut out);
-            }
-        }
-        out
-    }
-}
-
-/// One line of a diff, holding its text as the file has it, terminator included.
-enum Row {
-    Context(String),
-    Removed(String),
-    Added(String),
-}
-
-impl Row {
-    const fn in_old(&self) -> bool {
-        matches!(self, Self::Context(_) | Self::Removed(_))
-    }
-
-    const fn in_new(&self) -> bool {
-        matches!(self, Self::Context(_) | Self::Added(_))
-    }
-
-    fn write(&self, out: &mut String) {
-        let (marker, text) = match self {
-            Self::Context(text) => (' ', text),
-            Self::Removed(text) => ('-', text),
-            Self::Added(text) => ('+', text),
-        };
-        out.push(marker);
-        out.push_str(text.strip_suffix('\n').unwrap_or(text));
-        out.push('\n');
-        // Only a removed line can lack a terminator: it is the original last line, and every line
-        // this writes out is terminated.
-        if !text.ends_with('\n') && matches!(self, Self::Removed(_)) {
-            out.push_str("\\ No newline at end of file\n");
-        }
-    }
-}
-
-/// One side of a hunk header: the first line and the count, the count left off when it is one and
-/// the start being the line before when it is zero, as every unified diff writes it.
-fn range(before: usize, length: usize) -> String {
-    match length {
-        0 => format!("{before},0"),
-        1 => format!("{}", before + 1),
-        _ => format!("{},{length}", before + 1),
+        unified(&shown, &shown, &rows)
     }
 }
 
