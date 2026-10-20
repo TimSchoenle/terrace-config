@@ -16,7 +16,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * Holds every document the Java producers emit to {@code terrace-contract conform}, the one
  * implementation of {@code spec/v1/CONFORMANCE.md}, at the tier each producer claims: {@code
- * terrace-java} at tier 2, {@code spring-boot} at tier 1.
+ * terrace-java} at tier 2, {@code spring-boot} at tier 1. The examples' Dockerfiles are held to
+ * their contracts the same way, through {@code terrace-contract image verify}.
  *
  * <p>The meta-schema and tier checks in {@link JavaConformanceTest} and {@link
  * MetaSchemaValidatorTest} stay: they say which field differs, where {@code conform} says only
@@ -97,6 +98,24 @@ class TerraceContractConformTest {
 
         assertConforms(cli.conform(Tier.TIER_2, loader), loader.toString());
         assertConforms(cli.conform(Tier.TIER_1, spring), spring.toString());
+    }
+
+    /**
+     * Each example's Dockerfile carries the label block its committed contract renders, so an
+     * image built from it says where its contract is and under which prefix.
+     */
+    @Test
+    void theExampleDockerfilesCarryTheirContractsLabels() {
+        final TerraceContractCli cli = TerraceContractBinary.require();
+        final Path java = SpecPaths.repositoryRoot().resolve("java");
+        for (final String example :
+                new String[] {"terrace-config-example-service", "terrace-config-example-spring-service"}) {
+            final Path module = java.resolve(example);
+            final TerraceContractCli.Outcome outcome =
+                    cli.verifyDockerfile(module.resolve("contract.json"), module.resolve("Dockerfile"));
+
+            assertConforms(outcome, module.resolve("Dockerfile").toString());
+        }
     }
 
     /**

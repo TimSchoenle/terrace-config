@@ -92,6 +92,8 @@ tasks.test {
         rootProject.file("../cli/target/debug/terrace-contract"),
         rootProject.file("terrace-config-example-service/contract.json"),
         rootProject.file("terrace-config-example-spring-service/contract.json"),
+        rootProject.file("terrace-config-example-service/Dockerfile"),
+        rootProject.file("terrace-config-example-spring-service/Dockerfile"),
     ).withPropertyName("terraceContractInputs").optional()
     // Regenerates java/terrace-config-spec-tck/src/test/resources/conformance-java/<case>/contract.json
     // from what the fixtures render today, instead of asserting against what is checked in. See

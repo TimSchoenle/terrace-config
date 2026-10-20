@@ -134,12 +134,35 @@ record TerraceContractCli(Path executable) {
      */
     @Blocking
     Outcome conform(final Tier tier, final Path contract) {
+        return this.run(List.of(
+                "conform",
+                "--tier",
+                tierArgument(tier),
+                contract.toAbsolutePath().toString()));
+    }
+
+    /**
+     * Runs {@code terrace-contract image verify --dockerfile <dockerfile>} over a document: whether
+     * the label block committed in a Dockerfile is the one the contract renders.
+     *
+     * @param contract   the document the image carries
+     * @param dockerfile the Dockerfile that builds the image
+     * @return the exit status and everything the binary printed
+     */
+    @Blocking
+    Outcome verifyDockerfile(final Path contract, final Path dockerfile) {
+        return this.run(List.of(
+                "image",
+                "verify",
+                "--dockerfile",
+                dockerfile.toAbsolutePath().toString(),
+                contract.toAbsolutePath().toString()));
+    }
+
+    private Outcome run(final List<String> arguments) {
         final List<String> command = new ArrayList<>();
         command.add(this.executable.toString());
-        command.add("conform");
-        command.add("--tier");
-        command.add(tierArgument(tier));
-        command.add(contract.toAbsolutePath().toString());
+        command.addAll(arguments);
         final Path output;
         try {
             output = Files.createTempFile("terrace-tck-", ".out");
