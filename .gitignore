@@ -79,3 +79,9 @@ desktop.ini
 # on.
 !/cli/Cargo.lock
 !/cli/fuzz/Cargo.lock
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+# Bytecode the reference producer under spec/v1/producers/python/ leaves behind when run.
+__pycache__/

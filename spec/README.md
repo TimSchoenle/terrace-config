@@ -43,8 +43,10 @@ spec/
   v1/
     FORMAT.md          normative: what the document means
     CONFORMANCE.md     normative: what an implementation is held to, in three tiers
+    PRODUCER.md        a guide: writing a producer in a language that has none
     contract.schema.json   machine-checkable: what a well-formed document is
     conformance/       reference documents, one directory per case
+    producers/python/  a minimal reference producer, standard library only
 ```
 
 Directory-versioned, because `$id` is a promise. `spec/v1/` describes `terrace_contract: 1` and will
@@ -56,7 +58,7 @@ readable while consumers move.
 | You are | Read |
 |---|---|
 | writing a consumer — a chart gate, a deployment check | [`v1/FORMAT.md`](v1/FORMAT.md), especially *Reading a container* and *Reading a variable* |
-| writing a producer in another language | [`v1/CONFORMANCE.md`](v1/CONFORMANCE.md) first, then the corpus, then `FORMAT.md` |
+| writing a producer in another language | [`v1/PRODUCER.md`](v1/PRODUCER.md), with [`v1/producers/python/`](v1/producers/python/) beside it; then [`v1/CONFORMANCE.md`](v1/CONFORMANCE.md), the corpus and `FORMAT.md` |
 | using the Rust implementation | [`../rust/docs/CONTRACT.md`](../rust/docs/CONTRACT.md) |
 | validating a document you were handed | [`v1/contract.schema.json`](v1/contract.schema.json) |
 

@@ -183,6 +183,9 @@ way you would read one under `rendered/`.
 
 ## Adding an implementation
 
+[`PRODUCER.md`](PRODUCER.md) walks through these steps from an empty repository, with a reference
+producer to read beside it.
+
 1. **Pick `producer.name` and `producer.loader`.** The first identifies your code, the second the
    library whose environment reads you are about to measure. Two implementations wrapping the same
    library share the second and not the first.
