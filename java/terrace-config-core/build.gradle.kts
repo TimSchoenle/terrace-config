@@ -1,5 +1,6 @@
 // The document model and everything true of a contract regardless of loader (PR 4). Knows about
-// documents, not about binders — no Spring, no reflection over user types. Depended on by
+// documents, not about binders — no Spring, and reflection over a user type only in
+// `ConfigurationType`, for a build-time producer that is handed the type by name. Depended on by
 // -loader, -spring-boot and -spec-tck; depends on nothing that knows about either.
 description = "The envelope model, the build-time refusals, and the JSON Schema half a contract " +
     "embeds. Every other rendering is `terrace-contract render`'s. See java/README.md."
