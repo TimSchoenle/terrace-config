@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/TimSchoenle/terrace-config/compare/v0.16.0...v0.17.0) (2026-10-20)
+
+
+### Features
+
+* phase 5 producers (image verify --image, image attach, Dockerfile --write, Rust and Java build-time generators, Gradle plugin, producer guide) ([#312](https://github.com/TimSchoenle/terrace-config/issues/312)) ([cf45df5](https://github.com/TimSchoenle/terrace-config/commit/cf45df5a1864ed096e62681d2518b8e6d0ddc1a4))
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.59.0 ([#307](https://github.com/TimSchoenle/terrace-config/issues/307)) ([1521f1e](https://github.com/TimSchoenle/terrace-config/commit/1521f1e708e6d7025bf36783d23c0196003d5549))
+
 ## [0.16.0](https://github.com/TimSchoenle/terrace-config/compare/v0.15.2...v0.16.0) (2026-10-20)
 
 
