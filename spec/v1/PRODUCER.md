@@ -312,16 +312,20 @@ bytes `conform` accepted.
 terrace-contract image verify contract.json --image registry.example/orders@sha256:…
 terrace-contract image verify contract.json --image registry.example/orders@sha256:… \
   --signer 'https://github.com/example/orders/\.github/workflows/release\.yaml@refs/heads/main'
-terrace-contract image verify contract.json --oci-layout build/oci:orders
+terrace-contract image verify contract.json --oci-layout --image build/orders.oci.tar:latest
 ```
 
-`image verify` reads the image's labels and the embedded file at the labelled path itself, from the
-registry through `oras`, and requires the embedded bytes to equal the document given. For an index,
+`image verify` reads the image's labels and the embedded file itself, from the registry through
+`oras`: the labels must be the ones the document renders for `--path` (default
+`/config/contract.json`), and the file at that path must be the document given, byte for byte. For an index,
 every platform must agree. When a referrer is attached it is checked too, and must be
 byte-identical. `--signer <REGEX>` additionally verifies the image's signature through `cosign`
 against that identity, which is the check a chart repository's `pull` will make. `--oci-layout`
-reads `REF` as an OCI image layout directory, `<dir>[:<tag>|@<digest>]`, instead of a registry, so
-an image that is built but not yet pushed can be verified before it is.
+reads `--image` as an OCI image layout, a directory or a tarball, `<path>[:<tag>|@<digest>]`, instead
+of a registry, so an image that is built but not yet pushed can be verified before it is (`docker
+save` writes one from Docker 25 on, as does `docker buildx build --output type=oci`). A layout
+carries no signature, so it cannot be combined with `--signer`. Registry references are fully
+qualified: `docker.io/library/redis:7`, not `redis:7`.
 
 The document given is the one the image should carry: if the build stamps it, verify against the
 stamped bytes.
@@ -333,8 +337,12 @@ terrace-contract image attach contract.json --image registry.example/orders@sha2
 ```
 
 Attaches the document to the image's digest as an OCI referrer of artifact type
-`application/vnd.terrace.config-schema.v1+json`. Attach the same bytes the image embeds, after the
-push, and verify afterwards: the verification is what holds the two carriers to each other.
+`application/vnd.terrace.config-schema.v1+json`, and prints the referrer's digest, which is what
+`cosign sign` signs. Re-running it is safe: a referrer already holding the same bytes is reported,
+not attached twice, and one holding different bytes is refused. With `--oci-layout` the layout must
+be a directory rather than a tarball, since the referrer is written into it.
+
+Attach the same bytes the image embeds, after the push, and verify afterwards: the verification is what holds the two carriers to each other.
 
 ### In GitHub Actions
 

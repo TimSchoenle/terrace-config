@@ -808,7 +808,8 @@ enum ImageCommand {
         #[arg(long, value_name = "REF")]
         image: String,
 
-        /// Read `--image` as an OCI image layout, `PATH[:TAG][@DIGEST]`, rather than a registry.
+        /// Read `--image` as an OCI image layout directory, `PATH[:TAG][@DIGEST]`, rather than a
+        /// registry. A directory, not a tarball: the referrer is written into the layout.
         #[arg(long)]
         oci_layout: bool,
     },

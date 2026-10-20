@@ -68,7 +68,16 @@ fn blob(layout: &Path, media_type: &str, body: &[u8]) -> serde_json::Value {
 
 /// An OCI image layout holding one single-platform image, tagged `v1`, that carries `labels` and,
 /// when `embedded` is given, that document at the contract's default path.
-fn layout(at: &Path, labels: &BTreeMap<&str, String>, embedded: Option<&[u8]>) -> PathBuf {
+///
+/// `nested` puts the image manifest one index down, the shape `docker save` writes: the tag names
+/// an index whose only platform is the image. A manifest there is found by digest alone, with no
+/// media type in `index.json` to say what it is, which is what a reader has to cope with.
+fn layout(
+    at: &Path,
+    labels: &BTreeMap<&str, String>,
+    embedded: Option<&[u8]>,
+    nested: bool,
+) -> PathBuf {
     let layout = at.join("layout");
     std::fs::create_dir_all(layout.join("blobs/sha256")).expect("the blob store");
     std::fs::write(
@@ -116,6 +125,16 @@ fn layout(at: &Path, labels: &BTreeMap<&str, String>, embedded: Option<&[u8]>) -
         "application/vnd.oci.image.manifest.v1+json",
         &manifest,
     );
+    if nested {
+        manifest["platform"] = json!({"architecture": "amd64", "os": "linux"});
+        let index = serde_json::to_vec(&json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [manifest],
+        }))
+        .expect("an index");
+        manifest = blob(&layout, "application/vnd.oci.image.index.v1+json", &index);
+    }
     manifest["annotations"] = json!({"org.opencontainers.image.ref.name": "v1"});
 
     std::fs::write(
@@ -133,8 +152,11 @@ fn labels() -> BTreeMap<&'static str, String> {
     contract.labels(DEFAULT_PATH).into_iter().collect()
 }
 
-fn run(oras: &Path, args: &[&str], document: &Path) -> Output {
+/// The binary, run from `at` so the layout and the document are named relative to it — as a build
+/// names them — with `oras` supplied explicitly.
+fn run(oras: &Path, at: &Path, args: &[&str], document: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_terrace-contract"))
+        .current_dir(at)
         .env("ORAS_BIN", oras)
         .args(args)
         .arg(document)
@@ -146,16 +168,12 @@ fn run(oras: &Path, args: &[&str], document: &Path) -> Output {
 fn an_image_carrying_the_document_verifies_and_one_carrying_another_does_not() {
     let Some(oras) = oras() else { return };
     let at = Scratch::new("layout-verify");
-    let layout = layout(&at.0, &labels(), Some(&fixture()));
-    let reference = format!("{}:v1", layout.display());
-    let document = at.0.join("contract.json");
-    std::fs::write(&document, fixture()).expect("the document");
+    layout(&at.0, &labels(), Some(&fixture()), true);
+    let verify = ["image", "verify", "--oci-layout", "--image", "layout:v1"];
+    let document = Path::new("contract.json");
+    std::fs::write(at.0.join(document), fixture()).expect("the document");
 
-    let verified = run(
-        &oras,
-        &["image", "verify", "--oci-layout", "--image", &reference],
-        &document,
-    );
+    let verified = run(&oras, &at.0, &verify, document);
     assert_eq!(
         verified.status.code(),
         Some(0),
@@ -166,12 +184,8 @@ fn an_image_carrying_the_document_verifies_and_one_carrying_another_does_not() {
     // One byte more is a different file, whatever it parses to.
     let mut other = fixture();
     other.push(b'\n');
-    std::fs::write(&document, other).expect("the other document");
-    let refused = run(
-        &oras,
-        &["image", "verify", "--oci-layout", "--image", &reference],
-        &document,
-    );
+    std::fs::write(at.0.join(document), other).expect("the other document");
+    let refused = run(&oras, &at.0, &verify, document);
     let said = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(1), "{said}");
     assert!(said.contains("not this document byte for byte"), "{said}");
@@ -181,19 +195,21 @@ fn an_image_carrying_the_document_verifies_and_one_carrying_another_does_not() {
 fn an_image_with_no_carrier_fails_until_the_document_is_attached() {
     let Some(oras) = oras() else { return };
     let at = Scratch::new("layout-attach");
-    let layout = layout(&at.0, &labels(), None);
-    let reference = format!("{}:v1", layout.display());
-    let document = at.0.join("contract.json");
-    std::fs::write(&document, fixture()).expect("the document");
-    let verify = ["image", "verify", "--oci-layout", "--image", &reference];
+    layout(&at.0, &labels(), None, false);
+    // The document in a directory of its own, so `attach` — which hands `oras` the file from its
+    // own directory — has to resolve the layout's path against where it was run, not against that.
+    std::fs::create_dir_all(at.0.join("out")).expect("the output directory");
+    let document = Path::new("out/contract.json");
+    std::fs::write(at.0.join(document), fixture()).expect("the document");
+    let verify = ["image", "verify", "--oci-layout", "--image", "layout:v1"];
 
-    let bare = run(&oras, &verify, &document);
+    let bare = run(&oras, &at.0, &verify, document);
     let said = String::from_utf8_lossy(&bare.stderr);
     assert_eq!(bare.status.code(), Some(1), "{said}");
     assert!(said.contains("publishes no document"), "{said}");
 
-    let attach = ["image", "attach", "--oci-layout", "--image", &reference];
-    let attached = run(&oras, &attach, &document);
+    let attach = ["image", "attach", "--oci-layout", "--image", "layout:v1"];
+    let attached = run(&oras, &at.0, &attach, document);
     assert_eq!(
         attached.status.code(),
         Some(0),
@@ -203,7 +219,7 @@ fn an_image_with_no_carrier_fails_until_the_document_is_attached() {
     let digest = String::from_utf8_lossy(&attached.stdout).trim().to_owned();
     assert!(digest.starts_with("sha256:"), "{digest}");
 
-    let verified = run(&oras, &verify, &document);
+    let verified = run(&oras, &at.0, &verify, document);
     assert_eq!(
         verified.status.code(),
         Some(0),
@@ -212,7 +228,7 @@ fn an_image_with_no_carrier_fails_until_the_document_is_attached() {
     );
 
     // Again: the same referrer, not a second one.
-    let again = run(&oras, &attach, &document);
+    let again = run(&oras, &at.0, &attach, document);
     assert_eq!(again.status.code(), Some(0));
     assert_eq!(String::from_utf8_lossy(&again.stdout).trim(), digest);
     assert!(String::from_utf8_lossy(&again.stderr).contains("already carries"));
@@ -220,8 +236,8 @@ fn an_image_with_no_carrier_fails_until_the_document_is_attached() {
     // A different document is refused rather than attached beside the first.
     let mut other = fixture();
     other.push(b'\n');
-    std::fs::write(&document, other).expect("the other document");
-    let refused = run(&oras, &attach, &document);
+    std::fs::write(at.0.join(document), other).expect("the other document");
+    let refused = run(&oras, &at.0, &attach, document);
     let said = String::from_utf8_lossy(&refused.stderr);
     assert_eq!(refused.status.code(), Some(2), "{said}");
     assert!(

@@ -81,6 +81,7 @@ offline form of the label check, for what `docker inspect` printed. Exit 1 means
 artifact type `application/vnd.terrace.config-schema.v1+json` and prints the referrer's digest, which
 is what `cosign sign` then signs. It is safe to re-run: a referrer already holding the document byte
 for byte is reported rather than attached twice, and one holding a different document is refused.
+With `--oci-layout` the layout must be a directory, since the referrer is written into it.
 
 Every command reads a document from a path or from `-`, so the producing step and the rendering
 step compose without a temporary file between them:

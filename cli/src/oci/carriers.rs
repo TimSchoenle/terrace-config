@@ -152,6 +152,9 @@ pub fn discover_contract(
     if !referrers.is_empty() {
         return Ok(referrers);
     }
+    if !registry.nested_referrers() {
+        return Ok(Vec::new());
+    }
     for platform in registry.platforms(repository, digest)? {
         if platform == digest {
             continue;

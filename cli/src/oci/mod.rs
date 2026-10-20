@@ -99,6 +99,17 @@ pub trait Registry {
     /// [`Error::Invalid`] when the signature is absent, or belongs to somebody else.
     fn verify(&self, reference: &str, identity: &str) -> Result<(), Error>;
 
+    /// Whether the referrers of a platform manifest one index down can be asked for.
+    ///
+    /// A registry answers for any digest it holds. An OCI image layout cannot: a manifest below the
+    /// top-level index is found by digest alone, with no media type to say it is a manifest, so
+    /// `oras` refuses to list its referrers. A referrer in a layout is recorded against a digest
+    /// its `index.json` names, which is where `image attach` puts one, so nothing is lost by not
+    /// asking.
+    fn nested_referrers(&self) -> bool {
+        true
+    }
+
     /// The per-platform image manifests behind a digest, or the digest itself.
     ///
     /// A multi-architecture image is pushed as an index, and the index is what a chart pins — so the
@@ -219,6 +230,20 @@ impl Tools {
             directory
         };
         let file = format!("{name}:application/json");
+        // `oras` runs in the document's directory, so a layout's path — relative to this process,
+        // not to the document — is made absolute first. A registry reference is no path.
+        let reference = if self.layout {
+            let (path, pinned) = reference.rsplit_once('@').unwrap_or((reference, ""));
+            let path = std::path::absolute(path).map_err(|e| Error::io(path, e))?;
+            if pinned.is_empty() {
+                path.display().to_string()
+            } else {
+                format!("{}@{pinned}", path.display())
+            }
+        } else {
+            reference.to_owned()
+        };
+        let reference = reference.as_str();
         let out = self.oras(
             Some(directory),
             &[
@@ -305,6 +330,10 @@ fn run(binary: &Path, directory: Option<&Path>, argv: &[&str]) -> Result<Vec<u8>
 }
 
 impl Registry for Tools {
+    fn nested_referrers(&self) -> bool {
+        !self.layout
+    }
+
     fn resolve(&self, reference: &str) -> Result<String, Error> {
         let out = self.oras(None, &["resolve", reference])?;
         Ok(String::from_utf8_lossy(&out).trim().to_owned())
@@ -326,7 +355,31 @@ impl Registry for Tools {
     }
 
     fn image_labels(&self, reference: &str) -> Result<BTreeMap<String, String>, Error> {
-        let out = self.oras(None, &["manifest", "fetch-config", reference])?;
+        // The manifest, then its config blob, rather than `oras manifest fetch-config`: in an OCI
+        // image layout a manifest one index down is found by digest alone, with no media type to
+        // say it is an image manifest, and `fetch-config` then refuses it. `docker save` writes
+        // exactly that shape, so the two-step read is what makes a saved image checkable at all.
+        let Some((repository, _)) = reference.rsplit_once('@') else {
+            return Err(Error::Invalid(format!(
+                "{reference}: labels are read by digest, and this reference names none"
+            )));
+        };
+        let manifest = self.manifest(reference)?;
+        let Some(config) = manifest
+            .get("config")
+            .and_then(|held| held.get("digest"))
+            .and_then(Json::as_str)
+        else {
+            return Err(Error::Invalid(format!(
+                "{reference} is not an image manifest: it names no config blob"
+            )));
+        };
+        let out = self.blob(&format!("{repository}@{config}"))?;
+        if config != format!("sha256:{}", hex_sha256(&out)) {
+            return Err(Error::Invalid(format!(
+                "the config blob of {reference} does not hash to {config}"
+            )));
+        }
         let config: Json = serde_json::from_slice(&out)
             .map_err(|failure| Error::Invalid(format!("{reference}: {failure}")))?;
         Ok(config
