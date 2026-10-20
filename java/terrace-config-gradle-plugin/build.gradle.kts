@@ -57,3 +57,27 @@ tasks.test {
     systemProperty("terrace.plugin.fixture", fixture.absolutePath)
     systemProperty("terrace.plugin.repositoryRoot", rootProject.file("..").absolutePath)
 }
+
+// Coverage of the plugin's own classes. The functional tests run the plugin in TestKit builds, in
+// a separate Gradle daemon the `jacoco` agent on `test` never reaches, so without this the plugin
+// would report no coverage at all. Only when something applies `jacoco` to this project (the CI
+// coverage action does; this build does not): the same agent, writing to a file of its own beside
+// `test.exec`, is handed to the functional tests, which put it in each TestKit build's
+// `org.gradle.jvmargs`. Without `jacoco`, the tests run exactly as before.
+pluginManager.withPlugin("jacoco") {
+    tasks.test {
+        val testKitExecutionData = layout.buildDirectory.file("jacoco/test-testkit.exec")
+        outputs.file(testKitExecutionData).withPropertyName("testKitExecutionData")
+        doFirst {
+            val test = this as Test
+            val destination = testKitExecutionData.get().asFile
+            // The agent appends, and a previous run's data would count lines this run never ran.
+            destination.delete()
+            // The test JVM's own agent argument, pointed at the TestKit file. Absolute, since the
+            // TestKit daemon's working directory is not this project's.
+            val agent = test.extensions.getByType<JacocoTaskExtension>().asJvmArg
+                .replace(Regex("destfile=[^,]*"), Regex.escapeReplacement("destfile=" + destination.absolutePath))
+            test.systemProperty("terrace.plugin.testKitJacocoAgent", agent)
+        }
+    }
+}

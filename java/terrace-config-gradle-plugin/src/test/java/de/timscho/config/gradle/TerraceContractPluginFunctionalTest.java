@@ -49,7 +49,18 @@ class TerraceContractPluginFunctionalTest {
                 rootProject.name = "orders"
                 buildCache { local { directory = file(".build-cache") } }
                 """);
-        write("gradle.properties", "org.gradle.caching=true\n");
+        final String jacocoAgent = System.getProperty("terrace.plugin.testKitJacocoAgent");
+        if (jacocoAgent == null) {
+            write("gradle.properties", "org.gradle.caching=true\n");
+        } else {
+            // Set only when the build measures coverage: the plugin's classes run in the TestKit
+            // daemon, so the agent goes there. Setting `org.gradle.jvmargs` replaces Gradle's own
+            // default heap settings, which are restated beside it.
+            write(
+                    "gradle.properties",
+                    "org.gradle.caching=true\norg.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=384m "
+                            + jacocoAgent.replace("\\", "\\\\") + "\n");
+        }
     }
 
     @Test
