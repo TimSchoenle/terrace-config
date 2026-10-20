@@ -659,9 +659,9 @@ pub fn vendored_text(
 
 /// Write the wrapper [`vendored_text`] renders, and report whether the file changed.
 ///
-/// The file is replaced by a rename (see [`super::files`]), so a symbolic link at `path` is
-/// replaced rather than written through, and no reader sees half a wrapper. This confines `path`
-/// to its own parent directory only; [`refresh_chart`] confines it to the chart instead.
+/// The file is replaced by a rename (see [`super::files`]), so no reader sees half a wrapper, and
+/// `path` must resolve inside its own parent directory. [`refresh_chart`] confines it to the chart
+/// instead, and refuses a contract that is itself a symbolic link.
 ///
 /// # Errors
 /// As [`vendored_text`], and [`Error::Io`] when the file cannot be written.
@@ -905,7 +905,18 @@ pub fn refresh_chart(
         let (_, reference, _) = reference_for(image, app_version)?;
         // The declaration reader already refuses `..` and absolute paths; this catches a symbolic
         // link inside the chart that points out of it, before anything is fetched or created.
-        let resolved = inside(chart_dir, &chart_dir.join(&entry.contract))?;
+        let declared = chart_dir.join(&entry.contract);
+        let resolved = inside(chart_dir, &declared)?;
+        // A link at the contract itself would hand the write to whatever it names, an in-chart
+        // `values.yaml` included. The file is pull's alone, so it must be a plain file.
+        if std::fs::symlink_metadata(&declared).is_ok_and(|held| held.file_type().is_symlink()) {
+            return Err(Error::Invalid(format!(
+                "{}: contract {} is a symbolic link; `pull` writes the vendored contract there, so \
+                 it must be a plain file or absent",
+                chart_dir.join(DECLARATION).display(),
+                crate::gate::quoted(&entry.contract)
+            )));
+        }
         if let Some((_, first, by)) = seen.iter().find(|(held, _, _)| *held == resolved) {
             if *first == reference {
                 continue;
@@ -922,7 +933,6 @@ pub fn refresh_chart(
             )));
         }
         seen.push((resolved.clone(), reference, at));
-        let target = chart_dir.join(&entry.contract);
 
         let held = fetch_pinned(registry, image, app_version, signer)?;
         if write_vendored_in(
@@ -934,9 +944,9 @@ pub fn refresh_chart(
             &held.sha256,
             fetched,
         )? {
-            into.changed.push(target);
+            into.changed.push(declared);
         } else {
-            into.unchanged.push(target);
+            into.unchanged.push(declared);
         }
     }
     Ok(())
@@ -1859,36 +1869,43 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn a_dangling_link_at_the_contract_is_replaced_rather_than_written_through() {
+    fn a_link_at_the_contract_is_refused_whether_or_not_it_points_anywhere() {
         let declaration = "documents:\n  - name: api\n";
-        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
-        let outside = Vendored::new();
-        std::fs::create_dir_all(&outside.0).expect("a directory");
-        std::fs::create_dir_all(chart.0.join("contracts")).expect("a directory");
-        std::os::unix::fs::symlink(outside.0.join("planted.json"), chart.path()).expect("a link");
-        let registry = Recorded::of(&published());
+        for (target, existing) in [("planted.json", false), ("values.yaml", true)] {
+            let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+            std::fs::create_dir_all(chart.0.join("contracts")).expect("a directory");
+            std::os::unix::fs::symlink(chart.0.join(target), chart.path()).expect("a link");
+            let registry = Recorded::of(&published());
 
-        super::refresh_chart(
-            &chart.0,
-            &registry,
-            SIGNER,
-            "t",
-            &mut super::Refreshed::default(),
-        )
-        .expect("it refreshes");
+            let failure = super::refresh_chart(
+                &chart.0,
+                &registry,
+                SIGNER,
+                "t",
+                &mut super::Refreshed::default(),
+            )
+            .expect_err("the contract is a link");
 
-        assert!(
-            !outside.0.join("planted.json").exists(),
-            "nothing was written through the link"
-        );
-        assert!(
-            !std::fs::symlink_metadata(chart.path())
-                .expect("the contract exists")
-                .file_type()
-                .is_symlink(),
-            "the link was replaced by the file"
-        );
-        assert_eq!(chart.read()["source"]["image"], "docker.io/demo/api");
+            assert!(
+                failure.to_string().contains("symbolic link"),
+                "{target}: {failure}"
+            );
+            assert_eq!(
+                chart.0.join(target).exists(),
+                existing,
+                "{target}: nothing was created through the link"
+            );
+            assert_eq!(
+                std::fs::read_to_string(chart.0.join("values.yaml")).expect("readable"),
+                VALUES.1,
+                "{target}: the values file is untouched"
+            );
+            assert_eq!(
+                *registry.asked.borrow(),
+                Vec::<String>::new(),
+                "{target}: nothing was fetched"
+            );
+        }
     }
 
     #[cfg(unix)]
