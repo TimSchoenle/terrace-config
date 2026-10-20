@@ -4,16 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import de.timscho.config.core.schema.Column;
 import de.timscho.config.core.schema.Defaults;
 import de.timscho.config.core.schema.JsonSchemaOptions;
 import de.timscho.config.core.schema.JsonSchemaRenderer;
-import de.timscho.config.core.schema.MarkdownRenderer;
 import de.timscho.config.core.schema.Refine;
 import de.timscho.config.core.schema.Refinement;
 import de.timscho.config.core.schema.Refiner;
-import de.timscho.config.core.schema.TomlExampleOptions;
-import de.timscho.config.core.schema.TomlExampleRenderer;
 import java.util.List;
 import java.util.Map;
 import lombok.Builder;
@@ -56,75 +52,18 @@ public class Schema {
     List<Key> keys = List.of();
 
     /**
-     * The schema as a JSON Schema document, for an editor or a Helm chart to validate a rendered
-     * document against. Nested keys become nested {@code properties} objects.
+     * The schema as the JSON Schema document a {@link Contract} embeds as {@code json_schema}:
+     * nested keys become nested {@code properties} objects.
      *
-     * <p>Use {@link #toJsonSchemaWith} to choose the dialect, the title, or how strict it is.
-     */
-    @JsonIgnore
-    public Map<String, Object> toJsonSchema() {
-        return this.toJsonSchemaWith(JsonSchemaOptions.standard());
-    }
-
-    /** The same document, with a chosen dialect and set of annotations. See {@link JsonSchemaOptions}.
+     * <p>The contract's own options are {@link JsonSchemaOptions#forContract()}. A standalone
+     * schema for an editor is a rendering of the published document, not of this model: {@code
+     * terrace-contract render --format json-schema}.
      *
      * @param options which dialect, title, and strictness to render with
      */
     @JsonIgnore
     public Map<String, Object> toJsonSchemaWith(final JsonSchemaOptions options) {
         return JsonSchemaRenderer.document(this, options);
-    }
-
-    /**
-     * The schema as GitHub-flavoured Markdown, ready to paste into a README: the loader-variable
-     * table, then the configuration keys under {@link Column#DEFAULT_COLUMNS}. Ends with a
-     * newline. Use {@link #toMarkdownWith} to choose the key columns.
-     */
-    @JsonIgnore
-    public String toMarkdown() {
-        return MarkdownRenderer.toMarkdown(this);
-    }
-
-    /** Both tables, with a chosen set of key columns. See {@link Column}.
-     *
-     * @param columns which columns the configuration-key table shows, and in what order
-     */
-    @JsonIgnore
-    public String toMarkdownWith(final List<Column> columns) {
-        return MarkdownRenderer.toMarkdownWith(this, columns);
-    }
-
-    /** The loader-variable table alone. Empty when this schema has no loader variables. */
-    @JsonIgnore
-    public String toMarkdownLoader() {
-        return MarkdownRenderer.toMarkdownLoader(this);
-    }
-
-    /** The configuration-key table alone, with a chosen set of columns.
-     *
-     * @param columns which columns the table shows, and in what order
-     */
-    @JsonIgnore
-    public String toMarkdownKeys(final List<Column> columns) {
-        return MarkdownRenderer.toMarkdownKeys(this, columns);
-    }
-
-    /**
-     * The schema as a commented {@code config.toml}, ready to be copied and edited. Use
-     * {@link #toTomlExampleWith} for a shorter one.
-     */
-    @JsonIgnore
-    public String toTomlExample() {
-        return TomlExampleRenderer.toTomlExample(this);
-    }
-
-    /** The same file, with a chosen set of parts. See {@link TomlExampleOptions}.
-     *
-     * @param options which parts of the file to render
-     */
-    @JsonIgnore
-    public String toTomlExampleWith(final TomlExampleOptions options) {
-        return TomlExampleRenderer.toTomlExampleWith(this, options);
     }
 
     /**

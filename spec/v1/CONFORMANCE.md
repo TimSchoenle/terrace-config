@@ -181,6 +181,12 @@ cd java
 Then read the diff under `terrace-config-spec-tck/src/test/resources/conformance-java/` the same
 way you would read one under `rendered/`.
 
+The same module's `TerraceContractConformTest` also runs `terrace-contract conform` itself over
+every document the two Java producers emit for those fixtures, at the tier each claims
+(`terrace-java` 2, `spring-boot` 1), so Java's claim is checked by the same implementation of this
+file as every other producer's. It needs the binary (`TERRACE_CONTRACT_BIN`, a `cargo build` in
+`cli/`, or `PATH`), and fails rather than skips without one when `CI=true`.
+
 ## Adding an implementation
 
 [`PRODUCER.md`](PRODUCER.md) walks through these steps from an empty repository, with a reference

@@ -6,9 +6,8 @@ import java.util.List;
 
 /**
  * One level of the configuration: the keys directly under a path, and the levels below it —
- * ported from the Rust crate's {@code tree::Node}, which the Markdown table has no use for but
- * both a TOML and a JSON Schema rendering share, so the two cannot disagree about which keys
- * belong to which table.
+ * ported from the Rust crate's {@code tree::Node}, which groups a flat key list into the nested
+ * {@code properties} objects of the JSON Schema half a contract embeds.
  *
  * <p>Order is first-appearance order at every level, which is declaration order for a schema
  * built from one type. Package-private: only {@link JsonSchemaRenderer} builds and walks one.
@@ -80,22 +79,6 @@ final class Node {
         }
         for (final Node child : this.children) {
             if (child.required()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Whether a level of this name opens below this one.
-     *
-     * <p>The one case where a key and a table collide: a path described as a leaf <i>and</i> a
-     * nested struct beside it -- a field that wanted {@code @Nested} and did not get it. TOML
-     * cannot express both, so a renderer has to know.
-     */
-    boolean opens(final String childSegment) {
-        for (final Node child : this.children) {
-            if (child.segment.equals(childSegment)) {
                 return true;
             }
         }

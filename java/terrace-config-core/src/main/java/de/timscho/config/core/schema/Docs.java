@@ -4,8 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * How much of a key's documentation comment a rendering carries into a JSON Schema {@code
- * description} — ported from the Rust crate's {@code Docs}, which the Markdown and TOML
- * renderings share; this rendering is the only Java consumer so far.
+ * description} — ported from the Rust crate's {@code Docs}.
  */
 public enum Docs {
 

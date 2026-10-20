@@ -87,8 +87,15 @@ Every command reads a document from a path or from `-`, so the producing step an
 step compose without a temporary file between them:
 
 ```bash
-./gradlew -q :terrace-config-example-service:run --args=--contract | terrace-contract conform --tier 1 -
+java -cp "$RUNTIME_CLASSPATH" de.timscho.config.loader.ContractMain \
+    --type com.example.Config --prefix MYAPP_ --app-name my-service \
+  | terrace-contract stamp --app-version v2.5.0 - \
+  | terrace-contract conform --tier 2 -
 ```
+
+The Java side's `de.timscho.terrace-config` Gradle plugin runs the same three steps, through files
+rather than a pipe, as its `terraceContractEmit` and `terraceContract` tasks (see
+[`java/README.md`](../java/README.md#terrace-config-gradle-plugin)).
 
 | Format | What it is |
 |---|---|

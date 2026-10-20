@@ -1,11 +1,7 @@
 package de.timscho.config.core.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
@@ -16,6 +12,11 @@ import lombok.extern.jackson.Jacksonized;
  * <p>This is the model {@code -loader} and {@code -spring-boot} build and {@code -spec-tck}
  * compares against the corpus; it knows nothing about either binder (see {@code
  * java/README.md}'s "Separation of concerns").
+ *
+ * <p>The document is the whole of what this model renders. The image labels, the Dockerfile
+ * block and their read-back are renderings of the published document and belong to {@code
+ * terrace-contract render --format labels|dockerfile} and {@code terrace-contract image verify},
+ * so every producer's image carries the same bytes ({@code docs/contract-cli-plan.md} §5).
  */
 @Value
 @Builder(toBuilder = true)
@@ -25,27 +26,6 @@ public class Contract {
 
     /** The current envelope version. Every {@link Contract} built by this module carries this value. */
     public static final int ENVELOPE_VERSION = 1;
-
-    /** The OCI artifact type a published contract is attached to its image under. */
-    public static final String ARTIFACT_TYPE = "application/vnd.terrace.config-schema.v1+json";
-
-    /** The image label carrying {@link #ENVELOPE_VERSION}. */
-    public static final String LABEL_VERSION = "dev.terrace.config.contract.version";
-
-    /** The image label naming where the contract is embedded in the image's own filesystem. */
-    public static final String LABEL_PATH = "dev.terrace.config.contract.path";
-
-    /** The image label carrying the loader's environment prefix, e.g. {@code PORTFOLIO_}. */
-    public static final String LABEL_PREFIX = "dev.terrace.config.prefix";
-
-    /** Where {@link #LABEL_PATH} points unless a build says otherwise. */
-    public static final String DEFAULT_PATH = "/config/contract.json";
-
-    /** Opens the region of a Dockerfile {@link #toDockerfileBlock} owns. */
-    public static final String MARKER_BEGIN = "# terrace-config:labels:begin";
-
-    /** Closes the region {@link #MARKER_BEGIN} opens. */
-    public static final String MARKER_END = "# terrace-config:labels:end";
 
     /**
      * The version of this envelope's shape. A consumer refuses a version it was not written
@@ -65,95 +45,4 @@ public class Contract {
     JsonSchemaDocument jsonSchema;
 
     External external;
-
-    /**
-     * The image labels that make this contract discoverable, given where it was embedded. All
-     * three are constants for a given service, so a build needs no argument to interpolate and
-     * no host-side generator run to feed {@code --label}.
-     *
-     * @param path where this contract was embedded, e.g. the Dockerfile path
-     */
-    @JsonIgnore
-    public List<Map.Entry<String, String>> labels(final String path) {
-        final List<Map.Entry<String, String>> labels = new ArrayList<>();
-        labels.add(Map.entry(LABEL_VERSION, Integer.toString(this.terraceContract)));
-        labels.add(Map.entry(LABEL_PATH, path));
-        labels.add(Map.entry(LABEL_PREFIX, this.schema.getDialect().getPrefix()));
-        return labels;
-    }
-
-    /**
-     * {@link #labels} as a {@code LABEL} instruction, ready to paste into a Dockerfile. Ends with
-     * a newline; no trailing backslash, so a following instruction needs no separator.
-     *
-     * @param path where this contract was embedded, e.g. the Dockerfile path
-     */
-    @JsonIgnore
-    public String toDockerfileLabels(final String path) {
-        final StringBuilder rendered = new StringBuilder("LABEL ");
-        final List<Map.Entry<String, String>> labels = this.labels(path);
-        for (int index = 0; index < labels.size(); index++) {
-            if (index > 0) {
-                rendered.append(" \\\n      ");
-            }
-            final Map.Entry<String, String> label = labels.get(index);
-            rendered.append(label.getKey()).append("=\"");
-            for (int i = 0; i < label.getValue().length(); i++) {
-                final char character = label.getValue().charAt(i);
-                if (character == '"' || character == '\\') {
-                    rendered.append('\\');
-                }
-                rendered.append(character);
-            }
-            rendered.append('"');
-        }
-        rendered.append('\n');
-        return rendered.toString();
-    }
-
-    /** {@link #toDockerfileLabels} wrapped in {@link #MARKER_BEGIN} and {@link #MARKER_END}.
-     *
-     * @param path where this contract was embedded, e.g. the Dockerfile path
-     */
-    @JsonIgnore
-    public String toDockerfileBlock(final String path) {
-        return MARKER_BEGIN + "\n" + this.toDockerfileLabels(path) + MARKER_END + "\n";
-    }
-
-    /**
-     * Every label of this contract a built image gets wrong, in declaration order. Empty means
-     * the image carries them all; extra labels are ignored.
-     *
-     * @param path        where this contract was embedded, e.g. the Dockerfile path
-     * @param imageLabels the labels a built image actually carries
-     */
-    @JsonIgnore
-    public List<LabelFault> checkLabels(final String path, final Map<String, String> imageLabels) {
-        final List<LabelFault> faults = new ArrayList<>();
-        for (final Map.Entry<String, String> expected : this.labels(path)) {
-            final String found = imageLabels.get(expected.getKey());
-            if (found == null) {
-                faults.add(LabelFault.missing(expected.getKey()));
-            } else if (!found.equals(expected.getValue())) {
-                faults.add(LabelFault.mismatch(expected.getKey(), found, expected.getValue()));
-            }
-        }
-        return faults;
-    }
-
-    /**
-     * Check that a built image carries these labels.
-     *
-     * @param path        where this contract was embedded, e.g. the Dockerfile path
-     * @param imageLabels the labels a built image actually carries
-     * @throws ContractLabelException naming every label that is missing or wrong, all of them,
-     *                                not the first
-     */
-    @JsonIgnore
-    public void verifyLabels(final String path, final Map<String, String> imageLabels) {
-        final List<LabelFault> faults = this.checkLabels(path, imageLabels);
-        if (!faults.isEmpty()) {
-            throw new ContractLabelException(faults);
-        }
-    }
 }

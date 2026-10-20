@@ -3,15 +3,22 @@
 // the vanilla loader. `OrdersPropertiesBindingTest` and
 // `OrdersServiceFileIndirectionIntegrationTest` exercise this module's own `OrdersProperties`
 // through a real Spring context, so — like the other two examples — it is kept correct by real
-// assertions, not merely by compiling. `OrdersProperties` is also `@TerraceConfig`, so
-// `ContractGenerator` can build a real `Contract` through `SpringContractProducer` and
-// `ContractTest` checks `contract.json` fresh on every run.
+// assertions, not merely by compiling. `OrdersProperties` is also `@TerraceConfig`, so the
+// `de.timscho.terrace-config` plugin emits `contract.json` from it through `SpringContractMain` at
+// build time, and `terraceContractCheck` (part of `check`) fails when the committed copy drifts.
 description = "A worked example of terrace-config-spring-boot: the same service configuration " +
     "as terrace-config-example-service, bound through Spring instead. See java/README.md."
 
 plugins {
     application
     id("terrace-config.lombok-conventions")
+    id("de.timscho.terrace-config")
+}
+
+terraceContract {
+    type = "de.timscho.config.example.springservice.OrdersProperties"
+    prefix = "ORDERS_"
+    appName = "orders-service"
 }
 
 dependencies {
@@ -21,19 +28,22 @@ dependencies {
     // it at all.
     implementation(project(":terrace-config-spring-boot"))
     implementation(project(":terrace-config-annotations"))
+    // The generated `*Descriptor` classes are `terrace-config-core`'s `TypeDescriptor`s.
     implementation(project(":terrace-config-core"))
-    implementation(project(":terrace-config-core-jackson2"))
+    // The codec `SpringContractMain` writes the contract with, on the generator's classpath only,
+    // so the service itself does not ship it.
+    terraceContractGenerator(project(":terrace-config-core-jackson2"))
     compileOnly(project(":terrace-config-processor"))
     annotationProcessor(project(":terrace-config-processor"))
     implementation(libs.spring.boot.starter)
     testImplementation(libs.spring.boot.starter.test)
-    // `spring-boot-starter` alone pulls in no Jackson: that only arrives with `-starter-json` (via
-    // `-starter-web`), which this plain, non-web service never depends on. `ContractGenerator`
-    // needs an `ObjectMapper` of its own to convert a default-constructed `OrdersProperties` to
-    // the nested map `SpringContractProducer.produce`'s defaults parameter expects — the same
-    // reason `terrace-config-example-service` declares this explicitly rather than relying on a
-    // transitive `implementation` dependency two modules away.
-    implementation(libs.jackson.databind)
+    // Only for `Database.url`'s `@JsonProperty(access = WRITE_ONLY)`, which Spring's binder ignores
+    // and `SpringContractMain`'s Jackson reads when it converts a default-constructed
+    // `OrdersProperties` to defaults. `compileOnly`: the annotation is needed to compile, and at
+    // build time the generator's own classpath carries it; nothing at runtime reads it. The tests
+    // compile against the same classes, so they see it too.
+    compileOnly(libs.jackson.databind)
+    testCompileOnly(libs.jackson.databind)
 }
 
 application {

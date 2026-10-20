@@ -2,9 +2,8 @@
 // variables, a directory of key-named files, and _FILE indirection. `producer.loader` is
 // `terrace-java`. Depends on -core for the model and -processor (compile-time only) for
 // descriptors; knows nothing about Spring.
-description = "terrace-config-java: the vanilla five-layer loader, target tier 2 — " +
-    "layers, dialect and Jackson binding implemented; schema/explain wiring against the " +
-    "processor's descriptors is open. See java/README.md."
+description = "terrace-config-java: the vanilla five-layer loader, target tier 2, and " +
+    "`ContractMain`, the build-time producer of its contract. See java/README.md."
 
 plugins {
     id("terrace-config.lombok-conventions")
@@ -21,6 +20,9 @@ dependencies {
     // The binder from a merged layer map to the caller's type. An internal detail, exactly as
     // `-core`'s own Jackson 2 dependency is -- not exposed on `TerraceLoader`'s public API.
     implementation(libs.jackson.databind)
+    // The byte-stable writer `ContractMain` emits a contract with: the Jackson 2 codec, matching the
+    // binder above, so this module never brings a second Jackson major onto a service's classpath.
+    implementation(project(":terrace-config-core-jackson2"))
     compileOnly(project(":terrace-config-processor"))
     annotationProcessor(project(":terrace-config-processor"))
     testCompileOnly(project(":terrace-config-processor"))

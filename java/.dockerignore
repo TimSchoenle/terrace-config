@@ -1,0 +1,4 @@
+# The examples' Dockerfiles build from this directory. Local build output and Gradle's own state
+# are left out, so the image is built from the sources alone, as it is in CI.
+**/build/
+**/.gradle/
