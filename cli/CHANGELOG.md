@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.10.0...terrace-contract-v0.11.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** declaration defaults, inferred consumers and enrolment in config-contract.yaml ([#310](https://github.com/TimSchoenle/terrace-config/issues/310)) ([e1e9ca4](https://github.com/TimSchoenle/terrace-config/commit/e1e9ca4557b859e1df38b4adc53b72cdce4ac826))
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.59.0 ([#307](https://github.com/TimSchoenle/terrace-config/issues/307)) ([1521f1e](https://github.com/TimSchoenle/terrace-config/commit/1521f1e708e6d7025bf36783d23c0196003d5549))
+
 ## [0.10.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.9.0...terrace-contract-v0.10.0) (2026-10-20)
 
 
