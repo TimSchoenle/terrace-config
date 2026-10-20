@@ -1656,24 +1656,94 @@ mod tests {
         // The slim declaration names no `images` at all: the image is the one at `image`, and its
         // contract is `contracts/<document>.json`. Reading the raw file found no image here and
         // reported nothing changed, which is a refresh that silently never happens.
-        let chart = Vendored::new();
-        std::fs::create_dir_all(&chart.0).expect("the chart directory is created");
-        for (name, text) in [
+        let chart = chart_with(&[
             (super::DECLARATION, "documents:\n  - name: api\n"),
-            ("Chart.yaml", "name: api\nversion: 1.0.0\n"),
-            (
-                "values.yaml",
-                "image:\n  repository: demo/api\n  tag: v1@sha256:aa\n",
-            ),
-        ] {
-            std::fs::write(chart.0.join(name), text).expect("the chart file is written");
-        }
+            CHART,
+            VALUES,
+        ]);
         let registry = Recorded::of(&published());
         let mut refreshed = super::Refreshed::default();
         super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut refreshed)
             .expect("it refreshes");
         assert_eq!(refreshed.changed, vec![chart.path()]);
         assert_eq!(chart.read()["contract"], contract());
+    }
+
+    /// A chart directory holding the given files, removed with the guard.
+    fn chart_with(files: &[(&str, &str)]) -> Vendored {
+        let chart = Vendored::new();
+        std::fs::create_dir_all(&chart.0).expect("the chart directory is created");
+        for (name, text) in files {
+            std::fs::write(chart.0.join(name), text).expect("the chart file is written");
+        }
+        chart
+    }
+
+    const CHART: (&str, &str) = ("Chart.yaml", "name: api\nversion: 1.0.0\n");
+    const VALUES: (&str, &str) = (
+        "values.yaml",
+        "image:\n  repository: demo/api\n  tag: v1@sha256:aa\n",
+    );
+
+    #[test]
+    fn a_contract_two_documents_share_is_fetched_once_and_then_left_alone() {
+        let declaration = "documents:\n  - name: api\n    images:\n      - values: image\n        \
+                           contract: contracts/api.json\n  - name: worker\n    images:\n      \
+                           - values: image\n        contract: contracts/api.json\n";
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+        let registry = Recorded::of(&published());
+
+        let mut first = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut first).expect("it refreshes");
+        assert_eq!(first.changed, vec![chart.path()]);
+        assert_eq!(
+            first.unchanged,
+            Vec::<std::path::PathBuf>::new(),
+            "the second document names the same file"
+        );
+
+        let mut second = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "later", &mut second)
+            .expect("it refreshes");
+        assert_eq!(second.changed, Vec::<std::path::PathBuf>::new());
+        assert_eq!(second.unchanged, vec![chart.path()]);
+    }
+
+    #[test]
+    fn a_values_path_that_holds_no_image_block_is_refused_by_name() {
+        let declaration = "documents:\n  - name: api\n    images:\n      - values: sidecar\n";
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+        let registry = Recorded::of(&published());
+        let failure = super::refresh_chart(
+            &chart.0,
+            &registry,
+            SIGNER,
+            "t",
+            &mut super::Refreshed::default(),
+        )
+        .expect_err("there is no image at `sidecar`");
+        assert!(failure.to_string().contains("sidecar"), "{failure}");
+        assert_eq!(
+            *registry.asked.borrow(),
+            Vec::<String>::new(),
+            "nothing was fetched"
+        );
+    }
+
+    #[test]
+    fn a_chart_without_a_declaration_is_not_refreshed() {
+        let chart = chart_with(&[CHART, VALUES]);
+        let registry = Recorded::of(&published());
+        let mut refreshed = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut refreshed)
+            .expect("there is nothing to do");
+        assert_eq!(refreshed.changed, Vec::<std::path::PathBuf>::new());
+        assert_eq!(refreshed.unchanged, Vec::<std::path::PathBuf>::new());
+        assert_eq!(
+            *registry.asked.borrow(),
+            Vec::<String>::new(),
+            "nothing was fetched"
+        );
     }
 
     #[test]
