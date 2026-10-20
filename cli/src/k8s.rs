@@ -77,25 +77,33 @@ pub fn select<'a>(
 /// chart with a second `ConfigMap` (scripts, dashboards, a proxy's configuration) would otherwise
 /// make every document ambiguous. The key is part of what names the document, so it breaks the tie.
 /// A single match is returned whether it holds the key or not, so the caller can say the key is
-/// missing rather than that nothing matched.
+/// missing rather than that nothing matched; several matches none of which holds it are returned
+/// unnarrowed, so the caller can say the selector is ambiguous.
 pub fn select_source<'a>(
     manifests: &'a [Json],
     kind: &str,
     selector: &[(String, String)],
     key: &str,
 ) -> Vec<&'a Json> {
-    let mut matched = select(manifests, kind, selector);
-    if matched.len() > 1 {
-        matched.retain(|object| {
+    let matched = select(manifests, kind, selector);
+    if matched.len() < 2 {
+        return matched;
+    }
+    let holding: Vec<&Json> = matched
+        .iter()
+        .copied()
+        .filter(|object| {
             ["data", "stringData"].iter().any(|section| {
                 object
                     .get(*section)
                     .and_then(Json::as_object)
                     .is_some_and(|data| data.contains_key(key))
             })
-        });
-    }
-    matched
+        })
+        .collect();
+    // None holding the key leaves the ambiguity for the caller to report, rather than an empty
+    // match that reads as "not rendered" and skips the document.
+    if holding.is_empty() { matched } else { holding }
 }
 
 /// The names of several matched objects, for a message that has to say which.
@@ -693,6 +701,16 @@ mod tests {
                 "config.toml"
             )),
             vec!["\"config\"".to_owned()]
+        );
+
+        let none_hold_it = [
+            labelled("scripts", json!({"run.sh": ""})),
+            labelled("dashboards", json!({"a.json": ""})),
+        ];
+        assert_eq!(
+            select_source(&none_hold_it, "ConfigMap", &selector, "config.toml").len(),
+            2,
+            "no holder leaves the ambiguity to be reported, not an empty match"
         );
 
         let single = [labelled("scripts", json!({"run.sh": ""}))];
