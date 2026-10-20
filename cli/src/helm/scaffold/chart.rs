@@ -46,9 +46,12 @@ use std::fmt::Write as _;
 use serde_json::{Map, Value as Json};
 
 use crate::error::Error;
+use crate::gate::DocumentFormat;
 use crate::union::Union;
 
-use super::super::declaration::{CONTRACTS_DIR, DECLARATION_SCHEMA_URL, DEFAULT_SOURCE_KEY};
+use super::super::declaration::{
+    CONTRACTS_DIR, DECLARATION_SCHEMA_URL, DEFAULT_SOURCE_KEY, format_of,
+};
 use super::super::shapes::quoted;
 use super::super::testgen::VALUES_ROOT;
 use super::{
@@ -706,7 +709,12 @@ pub fn render_declaration(
     }
 
     lines.extend(["", "documents:", &format!("  - name: {document}")].map(str::to_owned));
-    if document_key != DEFAULT_SOURCE_KEY {
+    // The scaffold always renders TOML, so a key whose extension implies another format says so.
+    if format_of(document_key) != DocumentFormat::Toml {
+        lines.push(format!(
+            "    source: {{ key: {document_key}, format: {FORMAT} }}"
+        ));
+    } else if document_key != DEFAULT_SOURCE_KEY {
         lines.push(format!("    source: {{ key: {document_key} }}"));
     }
     lines.extend(tests_lines(chart, plan)?);
@@ -1769,6 +1777,16 @@ resources: {}
         let declaration =
             parse_declaration(&keyed, Path::new("charts/app")).expect("the loader accepts it");
         assert_eq!(declaration.documents[0].source.key, "settings.toml");
+
+        // The scaffold renders TOML whatever the key is called.
+        let misleading = render_declaration("app", "app", "config.yaml", held.plan())
+            .expect("the declaration renders");
+        let declaration =
+            parse_declaration(&misleading, Path::new("charts/app")).expect("the loader accepts it");
+        assert_eq!(
+            declaration.documents[0].source.format,
+            crate::gate::DocumentFormat::Toml
+        );
     }
 
     /// The scaffolded declaration's first document, as YAML: what its `tests` block says.

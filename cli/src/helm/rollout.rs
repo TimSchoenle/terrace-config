@@ -20,7 +20,7 @@
 use serde_json::Value as Json;
 
 use crate::document::Contract;
-use crate::k8s::{digest_of, pod_spec, select};
+use crate::k8s::{digest_of, pod_spec, select_source};
 use crate::reload::{Channel, Effective, classify, rebuilds};
 use crate::report::{Finding, error, warning};
 
@@ -174,9 +174,14 @@ fn frozen_mounts(
 
     // The document: a subPath mount of the object that holds it, or the object marked immutable.
     if live(Channel::Document).next().is_some()
-        && let Some(object) = select(manifests, &document.source.kind, &document.source.selector)
-            .into_iter()
-            .next()
+        && let Some(object) = select_source(
+            manifests,
+            &document.source.kind,
+            &document.source.selector,
+            &document.source.key,
+        )
+        .into_iter()
+        .next()
     {
         let object_name = object
             .get("metadata")

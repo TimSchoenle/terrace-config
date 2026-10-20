@@ -41,6 +41,10 @@ The value it is matched against is the chart's directory name, because the rende
 gates read are produced with `helm template <chart>`, which uses the chart's name as the release
 name. A repository that renders with a different release name must write `source.selector`.
 
+A chart sets the release label on every object it renders, so the default selector often matches
+several `ConfigMap`s (scripts, dashboards, a proxy's configuration). The one holding `source.key` is
+the source, and only the workloads mounting that one are inferred as consumers.
+
 ## Inferred consumers
 
 When `consumers` is left out, the consumers are found again in each rendered values file. A

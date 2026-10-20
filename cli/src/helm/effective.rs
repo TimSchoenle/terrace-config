@@ -177,7 +177,10 @@ fn document_value(document: &Document, enrolment: Option<&Enrolment>) -> Yaml {
         let consumers = listed.iter().map(|consumer| {
             let mut workload = Mapping::new();
             workload.insert(text("kind"), text(&consumer.kind));
-            workload.insert(text("selector"), pairs(&consumer.selector));
+            // Left out when empty: the schema requires a written selector to name a label.
+            if !consumer.selector.is_empty() {
+                workload.insert(text("selector"), pairs(&consumer.selector));
+            }
             let mut held = Mapping::new();
             held.insert(text("workload"), Yaml::Mapping(workload));
             held.insert(text("containers"), strings(&consumer.containers));
@@ -355,6 +358,8 @@ documents:
     consumers:
       - workload: { kind: Deployment, selector: { app: x } }
         containers: [app]
+      - workload: { kind: Job }
+        containers: [migrate]
     tests:
       prerequisites:
         values: { auth.existingSecret: creds }

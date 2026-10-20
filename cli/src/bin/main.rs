@@ -956,7 +956,12 @@ fn config_command(command: ConfigCommand, repo: &Repo) -> Result<ExitCode, Error
             json,
             chart: Some(chart),
             charts,
-        } => config_show_chart_command(&repo.charts(charts)?, &chart, json),
+        } => {
+            // `--charts` cannot carry `env` here: it requires `--chart`, so a set TERRACE_CHARTS
+            // would refuse a plain `config show`. The variable is read in its place instead.
+            let charts = charts.or_else(|| variable("TERRACE_CHARTS").map(PathBuf::from));
+            config_show_chart_command(&repo.charts(charts)?, &chart, json)
+        }
         ConfigCommand::Show { json, .. } => config_show_command(&repo.settings()?, json),
         ConfigCommand::Init { force } => config_init_command(repo.named.as_deref(), force),
     }

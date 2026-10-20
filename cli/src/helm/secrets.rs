@@ -72,7 +72,9 @@ use serde_json::Value as Json;
 use crate::classify::{Kind, classify};
 use crate::error::Error;
 use crate::gate::container::ContainerView;
-use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec, secret_file_names, select};
+use crate::k8s::{
+    containers_of, digest_of, load_manifests, pod_spec, secret_file_names, select_source,
+};
 use crate::report::{Report, error, warning};
 use crate::union::{Merged, Union};
 
@@ -582,7 +584,12 @@ struct Where<'a> {
 
 /// Record the keys the rendered plaintext document sets, as one delivery channel.
 fn scan_document(document: &Document, binding: &Binding, manifests: &[Json], ledger: &mut Ledger) {
-    let matched = select(manifests, &document.source.kind, &document.source.selector);
+    let matched = select_source(
+        manifests,
+        &document.source.kind,
+        &document.source.selector,
+        &document.source.key,
+    );
     if matched.len() != 1 {
         return;
     }

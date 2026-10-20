@@ -70,6 +70,34 @@ pub fn select<'a>(
         .collect()
 }
 
+/// The rendered objects holding a configuration document: `kind` objects carrying every label in
+/// `selector`, narrowed to those holding `key` when the labels match more than one.
+///
+/// A selector is usually the release label, which a chart sets on every object it renders, so a
+/// chart with a second `ConfigMap` (scripts, dashboards, a proxy's configuration) would otherwise
+/// make every document ambiguous. The key is part of what names the document, so it breaks the tie.
+/// A single match is returned whether it holds the key or not, so the caller can say the key is
+/// missing rather than that nothing matched.
+pub fn select_source<'a>(
+    manifests: &'a [Json],
+    kind: &str,
+    selector: &[(String, String)],
+    key: &str,
+) -> Vec<&'a Json> {
+    let mut matched = select(manifests, kind, selector);
+    if matched.len() > 1 {
+        matched.retain(|object| {
+            ["data", "stringData"].iter().any(|section| {
+                object
+                    .get(*section)
+                    .and_then(Json::as_object)
+                    .is_some_and(|data| data.contains_key(key))
+            })
+        });
+    }
+    matched
+}
+
 /// The names of several matched objects, for a message that has to say which.
 pub fn names_of(manifests: &[&Json]) -> String {
     manifests
@@ -455,11 +483,11 @@ pub fn digest_of(reference: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value as Json, json};
 
     use super::{
         containers_of, digest_of, environment_of, inside_a_mount, load_manifests, mounting,
-        pod_spec, projected_file_names, select, volume_at,
+        pod_spec, projected_file_names, select, select_source, volume_at,
     };
 
     #[test]
@@ -637,5 +665,56 @@ mod tests {
     fn a_reference_without_a_digest_pins_nothing() {
         assert_eq!(digest_of("ghcr.io/x/y:v1@sha256:ab"), Some("sha256:ab"));
         assert_eq!(digest_of("ghcr.io/x/y:v1"), None);
+    }
+
+    #[test]
+    fn a_source_is_narrowed_by_its_key_only_when_its_labels_are_ambiguous() {
+        let labelled = |name: &str, data: Json| {
+            json!({"kind": "ConfigMap", "metadata": {"name": name, "labels": {"a": "b"}},
+                   "data": data})
+        };
+        let selector = [("a".to_owned(), "b".to_owned())];
+        let names = |found: Vec<&Json>| -> Vec<String> {
+            found
+                .iter()
+                .map(|object| object["metadata"]["name"].to_string())
+                .collect()
+        };
+
+        let ambiguous = [
+            labelled("config", json!({"config.toml": ""})),
+            labelled("scripts", json!({"run.sh": ""})),
+        ];
+        assert_eq!(
+            names(select_source(
+                &ambiguous,
+                "ConfigMap",
+                &selector,
+                "config.toml"
+            )),
+            vec!["\"config\"".to_owned()]
+        );
+
+        let single = [labelled("scripts", json!({"run.sh": ""}))];
+        assert_eq!(
+            names(select_source(
+                &single,
+                "ConfigMap",
+                &selector,
+                "config.toml"
+            )),
+            vec!["\"scripts\"".to_owned()],
+            "one match is kept, so the caller can say the key is missing"
+        );
+
+        let secret = [
+            json!({"kind": "Secret", "metadata": {"name": "s", "labels": {"a": "b"}},
+                   "stringData": {"config.toml": ""}}),
+            json!({"kind": "Secret", "metadata": {"name": "t", "labels": {"a": "b"}}}),
+        ];
+        assert_eq!(
+            names(select_source(&secret, "Secret", &selector, "config.toml")),
+            vec!["\"s\"".to_owned()]
+        );
     }
 }

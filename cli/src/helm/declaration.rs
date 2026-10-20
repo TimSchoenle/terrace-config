@@ -281,7 +281,8 @@ impl Document {
 /// and labels alone could also match a workload that mounts nothing.
 fn infer_consumers(manifests: &[Json], source: &Source) -> Vec<Consumer> {
     let mut found = Vec::new();
-    for object in crate::k8s::select(manifests, &source.kind, &source.selector) {
+    for object in crate::k8s::select_source(manifests, &source.kind, &source.selector, &source.key)
+    {
         let Some(name) = object
             .get("metadata")
             .and_then(|metadata| metadata.get("name"))
@@ -653,7 +654,7 @@ fn load_source(
 }
 
 /// The format a key's extension names, and TOML for any other key.
-fn format_of(key: &str) -> DocumentFormat {
+pub(crate) fn format_of(key: &str) -> DocumentFormat {
     let extension = Path::new(key)
         .extension()
         .and_then(std::ffi::OsStr::to_str)
@@ -2223,6 +2224,36 @@ documents:
             document.consumers_in(&manifests[1..]).is_empty(),
             "no object selected, so nothing mounts it"
         );
+    }
+
+    #[test]
+    fn a_second_release_labelled_object_without_the_key_is_not_the_source() {
+        let declaration = parsed("documents:\n  - name: server\n").expect("it reads");
+        let document = &declaration.documents[0];
+        let mounted = |workload: &str, container: &str, object: &str| {
+            json!({"kind": "Deployment", "metadata": {"name": workload}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "v", "configMap": {"name": object}}],
+                    "containers": [
+                        {"name": container, "volumeMounts": [{"name": "v", "mountPath": "/c"}]},
+                    ],
+                },
+            }}})
+        };
+        let manifests = vec![
+            json!({"kind": "ConfigMap", "data": {"config.toml": ""}, "metadata": {
+                "name": "app", "labels": {"app.kubernetes.io/instance": "app"},
+            }}),
+            json!({"kind": "ConfigMap", "data": {"run.sh": ""}, "metadata": {
+                "name": "app-scripts", "labels": {"app.kubernetes.io/instance": "app"},
+            }}),
+            mounted("app", "app", "app"),
+            mounted("app-migrate", "migrate", "app-scripts"),
+        ];
+
+        let consumers = document.consumers_in(&manifests);
+        assert_eq!(consumers.len(), 1, "{consumers:?}");
+        assert_eq!(consumers[0].name.as_deref(), Some("app"));
     }
 
     // -- round-trip enrolment ---------------------------------------------------------------------
