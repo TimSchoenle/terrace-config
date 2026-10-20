@@ -178,3 +178,10 @@ required-features = ["schema-cli"]
 [[example]]
 name = "service"
 required-features = ["loader"]
+
+# The same service's contract generator, in the one-call form a service copies: its configuration
+# module, its loader and its image's identity, and nothing else.
+[[example]]
+name = "service-contract"
+path = "examples/service/contract.rs"
+required-features = ["schema-cli"]

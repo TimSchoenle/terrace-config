@@ -1,8 +1,11 @@
 /**
- * The three renderings a {@link de.timscho.config.core.model.Schema} produces — JSON Schema,
- * GitHub-flavoured Markdown, and a commented {@code config.example.toml} — plus the shared {@link
- * de.timscho.config.core.schema.Node} tree and {@link de.timscho.config.core.schema.Docs} setting
- * they all read.
+ * What a {@link de.timscho.config.core.model.Schema} needs before it can be published: refinements
+ * a type cannot state, observed defaults, environment spellings, and the JSON Schema half a
+ * contract embeds as {@code json_schema}.
+ *
+ * <p>Every other rendering (Markdown, a commented {@code config.toml}, a standalone JSON Schema,
+ * image labels) is a pure function of the published document and is {@code terrace-contract
+ * render}'s, never this package's ({@code docs/contract-cli-plan.md} §2).
  *
  * <p>{@code @NullMarked}: every reference type in this package is non-null unless explicitly
  * marked {@link org.jspecify.annotations.Nullable @Nullable}.

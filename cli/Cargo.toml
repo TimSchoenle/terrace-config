@@ -47,10 +47,12 @@ cli = ["dep:clap", "helm", "oci"]
 helm = ["k8s", "dep:saphyr-parser"]
 # Rendered Kubernetes manifests. Knows what a workload is and not what a chart is.
 k8s = ["dep:serde_norway"]
-# Talking to a container registry, which exactly one subcommand does. Split out rather than folded
-# into `helm` because it is the only thing here that carries an archive reader and a hash
-# implementation, and a library consumer taking the gates should not link either.
-oci = ["helm", "dep:sha2", "dep:flate2", "dep:tar"]
+# Talking to a container registry: `pull` on the chart side, `image verify --image` and `image
+# attach` on the producer side. It sits beside the core rather than above `helm`, because a
+# producer's build reads its own image back and has no chart to speak of; it is a feature of its own
+# because it is the only thing here that carries an archive reader and a hash implementation, and a
+# library consumer taking the gates should not link either.
+oci = ["dep:sha2", "dep:flate2", "dep:tar"]
 
 [[bin]]
 name = "terrace-contract"

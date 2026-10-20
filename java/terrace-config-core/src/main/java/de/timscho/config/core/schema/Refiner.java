@@ -167,7 +167,7 @@ public class Refiner {
     /**
      * Every tightening a key's constraint publishes, in the order a reader meets them: the key's own
      * — entries, entry names, pattern — then its element, then its fields as the constraint lists
-     * them. The single source every rendering reads.
+     * them — what a reader of the published constraint meets, read back from the model.
      *
      * <p>A struct's {@code required} names its fields rather than a map's entries and is not one;
      * neither is a {@code propertyNames} other than a lone pattern.

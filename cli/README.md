@@ -44,20 +44,58 @@ terrace-contract conform --tier 2 contract.json
 terrace-contract validate contract.json
 
 terrace-contract stamp --app-version "v2.5.0" --revision "$GIT_SHA" contract.json
-terrace-contract image verify --labels labels.json --dockerfile Dockerfile contract.json
+terrace-contract render --format dockerfile --write Dockerfile contract.json
+terrace-contract image verify --image ghcr.io/you/api:v2.5.0 --dockerfile Dockerfile contract.json
+terrace-contract image attach --image ghcr.io/you/api:v2.5.0 contract.json
 ```
 
-`image verify --dockerfile` compares every `# terrace-config:labels:begin`/`:end` region in the file,
-because a Dockerfile building several images carries one region per stage. An empty region is a
-finding on its line; a file with no region, an unterminated or nested one, or more than 32 is
-refused.
+### The label block
+
+`render --format dockerfile --write Dockerfile` rewrites every `# terrace-config:labels:begin`/`:end`
+region in the file in place, and `--check Dockerfile` exits 1 when any region is not the block the
+document renders. Write the two marker lines where the labels belong once; `--write` fills them, and
+leaves everything outside the regions byte for byte. `image verify --dockerfile` is the same
+comparison. A Dockerfile building several images carries one region per stage, and every region is
+compared or rewritten. An empty region is a finding on its line; a file with no region, an
+unterminated or nested one, or more than 32 is refused.
+
+### The built image
+
+`image verify --image REF` reads the image itself through `oras`, so no `docker inspect` output has
+to be captured first:
+
+- the contract labels of every platform, which must agree with each other and with the document;
+- the file at the labelled path inside the image, which must be the document byte for byte;
+- the referrer attached to the digest, if there is one, which must be the document byte for byte;
+- at least one of those two carriers, since an image publishing neither publishes no contract.
+
+`REF` is fully qualified (`docker.io/library/redis:7`, not `redis:7`); a tag is resolved once and
+every check is made against the digest. `--oci-layout` reads `REF` as an OCI image layout — a
+directory or tarball, as `docker buildx build --output type=oci` writes — so the image is checked
+after it is built and before it is pushed. `--signer IDENTITY` also verifies the keyless `cosign`
+signature against that identity under the GitHub Actions issuer. `--labels FILE` remains the
+offline form of the label check, for what `docker inspect` printed. Exit 1 means the image is wrong,
+2 that it could not be read.
+
+`image attach --image REF contract.json` attaches the document to the digest as a referrer of
+artifact type `application/vnd.terrace.config-schema.v1+json` and prints the referrer's digest, which
+is what `cosign sign` then signs. It is safe to re-run: a referrer already holding the document byte
+for byte is reported rather than attached twice, and one holding a different document is refused.
+With `--oci-layout` the layout must be a directory, since the referrer is written into it.
 
 Every command reads a document from a path or from `-`, so the producing step and the rendering
 step compose without a temporary file between them:
 
 ```bash
-./gradlew -q :terrace-config-example-service:run --args=--contract | terrace-contract conform --tier 1 -
+java -cp "$RUNTIME_CLASSPATH" de.timscho.config.loader.ContractMain \
+    --type com.example.Config --prefix MYAPP_ --app-name my-service \
+  | terrace-contract stamp --app-version v2.5.0 - \
+  | terrace-contract conform --tier 2 -
 ```
+
+The Java side's `de.timscho.terrace-config` Gradle plugin runs the same three steps, through files
+rather than a pipe, as its `terraceContractEmit` and `terraceContract` tasks (see
+[`java/README.md`](../java/README.md#terrace-config-gradle-plugin)).
 
 | Format | What it is |
 |---|---|
@@ -370,7 +408,8 @@ cargo clippy --all-targets --no-default-features   # the half a language's build
 ```
 
 `--no-default-features` leaves the producer-side half: the document model, the renderers, `conform`,
-`stamp` and `image`. Keeping it compiling is the mechanical check that no consumer-side concept —
+`stamp` and `image`. `--features oci` adds the registry reads and the attach, still without any chart
+concept. Keeping it compiling is the mechanical check that no consumer-side concept —
 a chart, a manifest, a Helm marker — has leaked down into it.
 
 See [`docs/contract-cli-plan.md`](../docs/contract-cli-plan.md) for what is built and what is not.

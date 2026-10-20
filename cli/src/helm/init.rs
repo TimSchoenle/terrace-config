@@ -701,7 +701,8 @@ mod tests {
     use super::{Action, Init, Pin, Request, Source, owes_a_declaration, plan};
     use crate::document::{LABEL_PREFIX, LABEL_VERSION};
     use crate::error::Error;
-    use crate::helm::pull::{ARTIFACT_TYPE, Fetched, Registry, fetch_pinned, hex_sha256};
+    use crate::helm::pull::{Fetched, fetch_pinned};
+    use crate::oci::{ARTIFACT_TYPE, Registry, hex_sha256};
 
     const IMAGE: &str = "org/app:v1.0.0@sha256:0123";
     const ATTACHED: &str = "sha256:attached";

@@ -19,14 +19,12 @@ import java.util.Set;
  * {@code terrace-config-loader}'s {@code TerraceLoader.schemaAt} combines its own {@code Dialect}
  * with the same two.
  *
- * <p><b>Not an auto-configuration.</b> Unlike {@link FileIndirectionEnvironmentPostProcessor},
- * which runs unconditionally because every Spring service needs {@code _FILE} indirection the
- * same way, a service's own {@code @TerraceConfig} type and environment prefix are things only
- * that service knows — there is no annotation on the classpath a starter could scan for that
- * would not also have to invent a place to declare the prefix and the {@link App} metadata. A
- * consuming service calls {@link #produce} from its own {@code @Configuration} class, once, and
- * publishes the result however it publishes any other {@link Contract} (see {@code
- * Contract#toDockerfileBlock}).
+ * <p><b>Built at build time, not at boot.</b> A contract is a build artefact: it describes the
+ * image, ships inside it, and is conformed before the image exists. {@link SpringContractMain}
+ * calls {@link #produce} from the service's build, with the defaults read off a
+ * default-constructed instance of the properties class, and the Gradle plugin's {@code
+ * terraceContract} task runs it. A contract assembled inside a running application would need the
+ * application to boot first, and would be a second, unconformed copy of the same document.
  *
  * <p><b>Schema.loader is empty.</b> {@code terrace-config-loader}'s own three loader-read
  * variables ({@code config}, {@code secrets_dir}, each {@code reserve}d key) have no equivalent

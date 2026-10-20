@@ -15,7 +15,6 @@ import org.springframework.context.ConfigurableApplicationContext;
  * ./gradlew :terrace-config-example-spring-service:run
  * ORDERS_PORT=9090 ./gradlew :terrace-config-example-spring-service:run
  * ORDERS_LOG_LEVEL=debug ./gradlew :terrace-config-example-spring-service:run
- * ./gradlew :terrace-config-example-spring-service:run --args=--contract
  * }</pre>
  *
  * <p>A real deployment never sets {@code ORDERS_DATABASE_URL} in plain environment text — it
@@ -27,10 +26,11 @@ import org.springframework.context.ConfigurableApplicationContext;
  * about serving anything, so {@link SpringApplication} auto-detects a non-web application and
  * opens no port of its own.
  *
- * <p>{@code --contract} is a second, optional job the same binary can do beside its normal boot
- * path — see {@link ContractGenerator}. {@code contract.json} in this module's own directory is
- * that rendering, checked fresh by {@code ContractTest} rather than trusted merely because it
- * once matched.
+ * <p>The contract is the build's, not this application's: the {@code de.timscho.terrace-config}
+ * plugin emits it from {@link OrdersProperties} through {@code SpringContractMain}, with no
+ * application context ({@code ./gradlew :terrace-config-example-spring-service:terraceContract}),
+ * and {@code terraceContractCheck}, part of {@code check}, fails when {@code contract.json} in this
+ * module's directory no longer matches.
  */
 // Deliberately not `final`, unlike every other concrete class under java/ (see java/README.md's
 // "Static analysis" section): `@SpringBootApplication` includes `@Configuration` with
@@ -45,22 +45,16 @@ import org.springframework.context.ConfigurableApplicationContext;
 @EnableConfigurationProperties(OrdersProperties.class)
 public class OrdersServiceApplication {
 
-    // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
-    // binary's actual terminal output for a human running it by hand (the rendered contract, or
-    // the config values it booted with) -- there is no SLF4J-worthy log event to attribute it to,
-    // and no other consumer for it to reach.
-    @SuppressWarnings("checkstyle:BanSystemOut")
     static void main(final String[] args) {
-        if (args.length > 0 && "--contract".equals(args[0])) {
-            System.out.println(ContractGenerator.toJson(ContractGenerator.generate()));
-            return;
-        }
-
         try (ConfigurableApplicationContext context = SpringApplication.run(OrdersServiceApplication.class, args)) {
             report(context.getBean(OrdersProperties.class));
         }
     }
 
+    // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
+    // binary's actual terminal output for a human running it by hand (the config values it booted
+    // with) -- there is no SLF4J-worthy log event to attribute it to, and no other consumer for it
+    // to reach.
     @SuppressWarnings("checkstyle:BanSystemOut")
     static void report(final OrdersProperties properties) {
         System.out.println("listening on " + properties.getBindAddr() + ":" + properties.getPort());

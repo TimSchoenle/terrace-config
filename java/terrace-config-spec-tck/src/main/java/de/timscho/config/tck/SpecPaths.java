@@ -4,7 +4,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Where {@code spec/v1/} lives, relative to this module.
+ * Where {@code spec/v1/}, and the repository root it sits in, live relative to this module.
  *
  * <p>Mirrors {@code spec_dir()} in {@code rust/tests/spec.rs}: both climb from a manifest
  * directory that is not the repository root to the one shared artefact. Here the manifest
@@ -15,8 +15,12 @@ final class SpecPaths {
 
     private SpecPaths() {}
 
+    static Path repositoryRoot() {
+        return Paths.get("").toAbsolutePath().resolve("../..").normalize();
+    }
+
     static Path specV1Dir() {
-        return Paths.get("").toAbsolutePath().resolve("../../spec/v1").normalize();
+        return repositoryRoot().resolve("spec/v1");
     }
 
     static Path metaSchema() {

@@ -195,7 +195,7 @@ class RefinerTest {
         final Map<String, Object> rendered = described()
                 .withDefaultsFromValue(defaults(Map.of()))
                 .refine(DOCUMENTS, imprintAndPrivacy())
-                .toJsonSchema();
+                .toJsonSchemaWith(JsonSchemaOptions.standard());
         assertThat(rendered).containsEntry("required", List.of("legal"));
         final Map<?, ?> legal = (Map<?, ?>) ((Map<?, ?>) rendered.get("properties")).get("legal");
         final Map<?, ?> documents = (Map<?, ?>) ((Map<?, ?>) legal.get("properties")).get("documents");
@@ -267,17 +267,6 @@ class RefinerTest {
                 .refine(DOCUMENTS, Refinement.entryNames(SLUG));
         assertThat(documents(kept).isRequired()).isFalse();
         assertThat(documents(kept).getDefaultValue()).isEqualTo(Map.of("terms", "t"));
-    }
-
-    @Test
-    void theRenderingsSayWhatTheNamesMustMatch() {
-        final Schema refined = described()
-                .withDefaultsFromValue(defaults(Map.of()))
-                .refine(DOCUMENTS, imprintAndPrivacy())
-                .refine(DOCUMENTS, Refinement.entryNames(SLUG));
-        assertThat(refined.toMarkdown())
-                .contains("must contain: `imprint`, `privacy`, entry names match `" + SLUG + "`");
-        assertThat(refined.toTomlExample()).contains("# Must contain: imprint, privacy\n# Entry names match: " + SLUG);
     }
 
     private static final String LOCALE = "^[A-Za-z]{2,3}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$";
@@ -421,26 +410,5 @@ class RefinerTest {
                 || code == 0x202F
                 || code == 0x205F
                 || code == 0x3000;
-    }
-
-    @Test
-    void theRenderingsSayWhereInsideTheKeyEachRefinementIs() {
-        final Schema refined = chapters()
-                .refine("chapters.*.body", Refinement.entryNames("^[a-z]{2}$"))
-                .refine("locale", Refinement.pattern("^[a-z]{2}$"));
-        assertThat(refined.toMarkdown())
-                .contains("at `*.body`: entry names match `^[a-z]{2}$`")
-                .contains("matches `^[a-z]{2}$`");
-        assertThat(refined.toTomlExample())
-                .contains("# Entry names match at *.body: ^[a-z]{2}$")
-                .contains("# Matches: ^[a-z]{2}$");
-    }
-
-    @Test
-    void theRenderingsSayWhatTheMapMustContain() {
-        final Schema refined =
-                described().withDefaultsFromValue(defaults(Map.of())).refine(DOCUMENTS, imprintAndPrivacy());
-        assertThat(refined.toMarkdown()).contains("must contain: `imprint`, `privacy`");
-        assertThat(refined.toTomlExample()).contains("# Must contain: imprint, privacy");
     }
 }

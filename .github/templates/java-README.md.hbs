@@ -35,15 +35,16 @@ shows up as a failing test rather than a document nobody noticed had drifted.
 | Module | What it is | Status |
 |---|---|---|
 | `terrace-config-annotations` | `@TerraceConfig` and the rest of the vocabulary a service's own types carry. Depends on nothing but the JDK. | **implemented** |
-| `terrace-config-core` | The envelope model, the twelve build-time refusals, and the `json-schema` rendering. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the `json` codecs. | **implemented** — validation, a Jackson-version-agnostic model, and `Schema.toJsonSchema()`; `Contract` also renders the `labels` and `dockerfile` forms and `-core` carries `markdown` and `toml` renderers. Those are frozen per `docs/contract-cli-plan.md` §6: a new rendering lands only in `terrace-contract render` |
+| `terrace-config-core` | The envelope model, the twelve build-time refusals, and the JSON Schema half a contract embeds under `json_schema`. Knows about documents, not binders, and about neither Jackson major — see `-core-jackson2`/`-core-jackson3` for the `json` codecs. | **implemented** — validation, a Jackson-version-agnostic model, `Schema.toJsonSchemaWith`, and what the build-time producers share (`ProducerArguments`, `ProducerCommandLine`, `ConfigurationType`). Every other rendering — `markdown`, `toml`, the standalone `json-schema`, `labels`, `dockerfile` — is `terrace-contract render`'s alone (`docs/contract-cli-plan.md` §6) |
 | `terrace-config-core-jackson2` | The byte-stable `json` codec for the `-core` model, built on Jackson 2.x. | **implemented** |
 | `terrace-config-core-jackson3` | The same codec, built on Jackson 3.x instead. | **implemented** |
 | `terrace-config-processor` | The JSR-269 annotation processor generating descriptors from annotated types. A field's key path follows its `@JsonProperty` rename when present, matching whichever binder actually reads that name (`FieldResolver.resolve`), the same way it already follows one for an enum constant. | **implemented** |
-| `terrace-config-loader` | The vanilla five-layer loader. `producer.name` will be `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | **implemented** — layers, dialect and shadow policy; schema/`explain()`/watched-reload wiring against the processor's descriptors is open |
-| `terrace-config-spring-boot` | The Spring Boot starter over Spring's `Binder`. `producer.loader` is `spring-boot`, target **tier 1**. | **implemented** — the `_FILE` indirection `EnvironmentPostProcessor`, the `_`-vs-`__` dialect divergence, and `SpringContractProducer` assembling a full validated `Contract` from a `TypeDescriptor`; a starter auto-configuration is still open |
-| `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`, plus `JavaConformanceTest`: real `@TerraceConfig` fixtures for every named case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`, `entry-names`, `element-patterns`) rendered through the real loader and Jackson 2 codec, checked at tier 1 (meta-schema), tier 2 (dialect spellings against the shared spec corpus) and tier 3 (byte-for-byte against this module's own `conformance-java/` golden corpus — regenerate with `./gradlew :terrace-config-spec-tck:blessJavaConformance`). `JacksonParityTest` proves the Jackson 2 and Jackson 3 codecs render the same bytes. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3; `terrace-config-java` tier 3 against itself and tier 2 against the spec corpus |
-| `terrace-config-example-service` | A worked example: a small "orders" service loading its configuration through `-loader`, mirroring `rust/examples/service/` field for field. `OrdersServiceConfigTest` exercises the example's own `Config` class through `TerraceLoader`, so it stays correct by a real assertion rather than by compiling alone — run it with `./gradlew :terrace-config-example-service:run`. `Config` is also `@TerraceConfig`; `--contract` renders it as a real `Contract`, checked fresh against the committed `contract.json` by `ContractTest` on every run. | **implemented** |
-| `terrace-config-example-spring-service` | The same "orders" service, this time configured through `-spring-boot` instead of `-loader`. `OrdersPropertiesBindingTest` exercises `OrdersProperties` through Spring's own `Binder` via `ApplicationContextRunner`; `OrdersServiceFileIndirectionIntegrationTest` boots the real `SpringApplication` — the one thing a context runner cannot do — to prove `_FILE` indirection actually reaches a bound bean, including the `_`-vs-`__` divergence's own failure mode. Run it with `./gradlew :terrace-config-example-spring-service:run`. `--contract` and `ContractTest` give it the same checked-fresh `contract.json` as the loader example, this time through `SpringContractProducer`. | **implemented** |
+| `terrace-config-loader` | The vanilla five-layer loader. `producer.name` is `terrace-config-java`, `producer.loader` `terrace-java`, target **tier 2**. | **implemented** — layers, dialect, shadow policy, `schema()`, `explain()`, watched reload, and `ContractMain`, which emits the contract at build time |
+| `terrace-config-spring-boot` | The Spring Boot side, over Spring's own `Binder`. `producer.loader` is `spring-boot`, target **tier 1**. | **implemented** — the `_FILE` indirection `EnvironmentPostProcessor`, the `_`-vs-`__` dialect divergence, `SpringContractProducer` assembling a full validated `Contract` from a `TypeDescriptor`, and `SpringContractMain`, which emits it at build time |
+| `terrace-config-spec-tck` | The meta-schema validator and tier comparator, checked against the stored corpus in `spec/v1/conformance/`, plus `JavaConformanceTest`: real `@TerraceConfig` fixtures for every named case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`, `entry-names`, `element-patterns`) rendered through the real loader and Jackson 2 codec, checked at tier 1 (meta-schema), tier 2 (dialect spellings against the shared spec corpus) and tier 3 (byte-for-byte against this module's own `conformance-java/` golden corpus — regenerate with `./gradlew :terrace-config-spec-tck:blessJavaConformance`). `JacksonParityTest` proves the Jackson 2 and Jackson 3 codecs render the same bytes. `TerraceContractConformTest` runs the real `terrace-contract conform` over every document the two producers emit for those fixtures (loader at tier 2, Spring at tier 1), the stored Java goldens, and both examples' committed `contract.json`. | **implemented** — validates every stored case against `contract.schema.json` and its schema-only sub-schema; compares two documents at tier 1/2/3; `terrace-config-java` tier 3 against itself and tier 2 against the spec corpus; conformed by `terrace-contract` |
+| `terrace-config-gradle-plugin` | The `de.timscho.terrace-config` Gradle plugin: emits a service's contract from its types at build time, stamps and conforms it with `terrace-contract`, and fails `check` when the committed copy drifts. See [its section](#terrace-config-gradle-plugin). | **implemented** |
+| `terrace-config-example-service` | A worked example: a small "orders" service loading its configuration through `-loader`, mirroring `rust/examples/service/` field for field. `OrdersServiceConfigTest` exercises the example's own `Config` class through `TerraceLoader`, so it stays correct by a real assertion rather than by compiling alone — run it with `./gradlew :terrace-config-example-service:run`. `Config` is also `@TerraceConfig`; the `de.timscho.terrace-config` plugin emits its contract at build time, and `terraceContractCheck` holds the committed `contract.json` to it on every `check`. Its `Dockerfile` builds an image carrying the stamped contract. | **implemented** |
+| `terrace-config-example-spring-service` | The same "orders" service, this time configured through `-spring-boot` instead of `-loader`. `OrdersPropertiesBindingTest` exercises `OrdersProperties` through Spring's own `Binder` via `ApplicationContextRunner`; `OrdersServiceFileIndirectionIntegrationTest` boots the real `SpringApplication` — the one thing a context runner cannot do — to prove `_FILE` indirection actually reaches a bound bean, including the `_`-vs-`__` divergence's own failure mode. Run it with `./gradlew :terrace-config-example-spring-service:run`. The plugin gives it the same checked `contract.json` and `Dockerfile` as the loader example, this time through `SpringContractMain`. | **implemented** |
 
 ## Building and testing
 
@@ -76,19 +77,19 @@ own suite uses a `MockEnvironment` from `spring-test` rather than a real `Spring
 `terrace-config-example-service`'s own suite is the same shape as `-loader`'s, against the exact
 `Config` class its `OrdersService.main` boots with, rather than a type redeclared for the test.
 `terrace-config-example-spring-service`'s suite splits in two: `OrdersPropertiesBindingTest` binds
-`OrdersProperties` through `ApplicationContextRunner`, the same lightweight-context idiom
-`TerraceContractAutoConfigurationTest` already uses, while
+`OrdersProperties` through `ApplicationContextRunner`, a lightweight context, while
 `OrdersServiceFileIndirectionIntegrationTest` boots a real `SpringApplication` — swapping in a
 fake `SystemEnvironmentPropertySource` before `run()` rather than touching this JVM's own
 environment — because `_FILE` indirection is an `EnvironmentPostProcessor`, which a context runner
 never invokes.
 
-Both example modules also carry a `ContractTest`: it renders a fresh `Contract` from the module's
-own annotated type and compares it, byte for byte, against the `contract.json` checked into that
+Both example modules apply the [`de.timscho.terrace-config`](#terrace-config-gradle-plugin)
+plugin, whose `terraceContractCheck` (part of `check`) emits a fresh contract from the module's own
+annotated type and compares it, byte for byte, against the `contract.json` checked into that
 module's directory — the same "regenerated and diffed, never trusted merely because it once
 matched" guarantee `cargo test`'s `the_checked_in_contract_matches_what_the_types_render_today`
-gives the Rust crate's own `examples/service/`. Regenerate either with the module's own `run` task:
-`./gradlew :terrace-config-example-service:run --args=--contract`. A key whose Java name changes
+gives the Rust crate's own `examples/service/`. Regenerate both with `./gradlew terraceContractUpdate`,
+or one with `./gradlew :<example>:terraceContractUpdate`. A key whose Java name changes
 case in a way the environment fold cannot reverse — `bindAddr`, say — renders with `"env": null`
 and `"unreachable": "unnameable"` rather than a spelling nothing would actually respond to; see
 `terrace-config-example-service`'s own `Config` (which works around it with `@JsonProperty`,
@@ -96,6 +97,21 @@ now that `terrace-config-processor` reads the same rename `-loader`'s binder doe
 `terrace-config-example-spring-service`'s `OrdersProperties` (which does not need to, and so
 leaves `bindAddr`, `database.maxConnections` and `logLevel` genuinely unreachable in the contract
 even though Spring's own relaxed binding happens to tolerate them).
+
+`TerraceContractConformTest` (in `-spec-tck`), the plugin's functional tests and each example's
+`terraceContract` task run the real `terrace-contract` binary. The tests find it at
+`TERRACE_CONTRACT_BIN`, else `../cli/target/release/terrace-contract`, then
+`../cli/target/debug/terrace-contract` (what `cargo build` in `cli/` leaves), else on `PATH`, and
+hand it to the builds they run through `TERRACE_CONTRACT_BIN`. The examples' `terraceContract`
+uses the plugin's own lookup, which is `TERRACE_CONTRACT_BIN` or `PATH` and nothing else, so it
+needs the variable set. Without a binary, the tests **fail when `CI=true`** and are skipped
+through a JUnit assumption otherwise, so CI cannot go green by skipping them while a contributor
+without a Rust toolchain can still run the rest. CI builds the binary from the same commit:
+
+```bash
+(cd ../cli && cargo build --release)
+TERRACE_CONTRACT_BIN="$PWD/../cli/target/release/terrace-contract" ./gradlew check terraceContract
+```
 
 ## Conventions
 
@@ -148,16 +164,16 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   field — wherever the constraint describes one. (Maps publish no element schema from this producer
   yet, so the positions inside one are reachable only on a constraint built by hand.) A library
   implements `Refine` with paths relative to wherever a host mounts it.
-- **`Schema.toJsonSchema()` / `toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`)
-  render a `Schema` as the JSON Schema document an editor or a Helm chart validates a rendered
-  configuration against — a straight port of the Rust crate's `schema::json_schema` module.
-  `Node` groups the flat, dotted `Key.path` list into the nested tree a `properties` object needs
-  (shared with nothing else yet, since the TOML/Markdown renderings aren't built); `leaf` copies
-  each key's own `constraint` in rather than re-deriving it, adds `description`/`default`/
-  `writeOnly`; `JsonSchemaOptions.forContract()` is draft-07, closed, `requirePresent` off — the
-  exact options a `Contract`'s embedded `json_schema` half uses in the Rust crate — ready for a
-  future `Contract` producer to call. Every map returned is a `TreeMap`, so its iteration order is
-  already alphabetical, the same order `serde_json`'s own (non-`preserve_order`) map produces.
+- **`Schema.toJsonSchemaWith(JsonSchemaOptions)`** (`de.timscho.config.core.schema`) renders a
+  `Schema` as the JSON Schema half a `Contract` embeds under `json_schema` — a straight port of
+  the Rust crate's `schema::json_schema` module. `Node` groups the flat, dotted `Key.path` list
+  into the nested tree a `properties` object needs; `leaf` copies each key's own `constraint` in
+  rather than re-deriving it, adds `description`/`default`/`writeOnly`;
+  `JsonSchemaOptions.forContract()` is draft-07, closed, `requirePresent` off — the exact options
+  the Rust crate embeds with, and the ones `ContractAssembler` calls. Every map returned is a
+  `TreeMap`, so its iteration order is already alphabetical, the same order `serde_json`'s own
+  (non-`preserve_order`) map produces. The standalone document an editor validates against is
+  `terrace-contract render --format json-schema`, read off the emitted contract.
 - **`JsonSchemaRendererCorpusTest`** (in `-core-jackson2`, since it needs a real `ObjectMapper` to
   parse the corpus) re-renders each stored case's `schema` and asserts it structurally equals that
   same case's stored `json_schema` field — proving the port against real output rather than only
@@ -185,23 +201,16 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   syntactic `!(opts.has_serde_default || container.field_default || is_option(ty))` check — neither
   language needs a live instance to know a key is optional. Filling in what the default actually
   *is* still needs one; see `Schema.withDefaultsFromValue` below for the piece of `Schema::
-  with_defaults_from_value` that is ported, and `terrace-config-example-service`/
-  `-example-spring-service`'s own `ContractGenerator` for a caller that runs it against a
-  default-constructed instance.
-- **`Schema.toMarkdown()` / `toMarkdownWith(List<Column>)` / `toMarkdownLoader()` /
-  `toMarkdownKeys(List<Column>)`** (`de.timscho.config.core.schema`) render GitHub-flavoured
-  tables — a port of the Rust crate's `schema::markdown` module. `Column` is a 13-value enum
-  (`PATH`, `TYPE`, `ALIASES`, `ENV`, `ENV_FILE`, `SECRETS_FILE`, `DEFAULT`, `DEFAULT_VALUE`,
-  `NOTE`, `FLAGS`, `REQUIRED`, `SECRET`, `DOCS`); `Column.DEFAULT_COLUMNS` is the narrower set
-  `toMarkdown()` actually uses. Every cell escapes `|` and `\`, since a cell is prose with a page
-  width to stay inside, not a value to interpret.
-- **`Schema.toTomlExample()` / `toTomlExampleWith(TomlExampleOptions)`** render a commented
-  `config.toml` — a port of `schema::toml_example`. Everything with a default is commented out (a
-  commented key and a deleted key mean the same thing to the loader); a `Key.secret` key is always
-  written as a placeholder (`<secret>` by default) regardless of its real default, never its
-  actual value; and every literal is rendered as real TOML (strings quoted and escaped, integers
-  bounds-checked against TOML's signed 64 bits, floats never bare digits). `TomlExampleRendererTest`
-  proves this by parsing the generated file with `tomlj`, not just asserting on substrings.
+  with_defaults_from_value` that is ported, and `ContractMain`/`SpringContractMain` (below) for
+  the callers that run it against a default-constructed instance.
+- **Every other rendering is `terrace-contract render`'s.** The Markdown tables, the commented
+  `config.toml`, the standalone JSON Schema, the image labels and the Dockerfile marker block are
+  all read off the emitted document by `terrace-contract render --format
+  markdown|toml|json-schema|labels|dockerfile`, and an image, or a Dockerfile's committed label
+  block, is checked against its contract by `terrace-contract image verify`
+  (`docs/contract-cli-plan.md` §5). This module carried its own copies of those renderers once;
+  they were removed (§6), since a second implementation of a rendering can only drift from the
+  first.
 - **`Schema.withDefaultsFromValue(Map<String, Object>)`** is the Java piece of
   `Schema::with_defaults_from_value` that is portable without a Jackson runtime in `-core`: given
   an already-nested map (e.g. `objectMapper.convertValue(instance, Map.class)` from a caller that
@@ -223,10 +232,16 @@ property. Deliberately builds no `ObjectMapper` of either Jackson major itself �
   finally runs the already-existing `ContractValidator` — written once here so `-loader` and
   `-spring-boot` do not each reimplement assembly. `ProducerIdentity` supplies the one `Producer`
   identity this module is allowed to publish (`name`/`version` are not caller-settable, on the
-  same reasoning the Rust crate's `Producer::current` gives). `Contract` itself grew the
-  label/Dockerfile helpers `labels`/`toDockerfileLabels`/`toDockerfileBlock`/`checkLabels`/
-  `verifyLabels` (throwing `ContractLabelException`, naming every mismatched or missing label at
-  once, not just the first) — a straight port of the Rust crate's own `Contract` methods.
+  same reasoning the Rust crate's `Producer::current` gives).
+- **`ProducerArguments`, `ProducerCommandLine` and `ConfigurationType`**
+  (`de.timscho.config.core.contract`) are what `-loader`'s `ContractMain` and `-spring-boot`'s
+  `SpringContractMain` share: a `--name value` parser with no dependency (the entry points run on a
+  service's own classpath, where every library they brought would be one more version to
+  reconcile), `--out`/`--help` and the exit statuses `terrace-contract` itself uses (`0` written,
+  `1` refused, `2` usage or classpath error), and the generated descriptor and default-constructed
+  instance of a type named by its binary name. `ConfigurationType` loads the type without
+  initialising it; the descriptor is always the binary name plus `Descriptor`, nested types
+  included (see `DescriptorNaming` below).
 
 ## `terrace-config-core-jackson2` / `terrace-config-core-jackson3`
 
@@ -255,22 +270,30 @@ module depends on the other; both depend only on `-core` and their own Jackson m
 ## buildSrc
 
 `java/buildSrc/` is its own standalone Gradle build (a Gradle convention, not something wired up
-by hand) that compiles two *convention plugins* under
+by hand) that compiles three *convention plugins* under
 `buildSrc/src/main/kotlin/terrace-config.*-conventions.gradle.kts` and makes them available, by
 ID, to every module below it:
 
 - **`terrace-config.java-conventions`** — the Java 25 toolchain, UTF-8 source/Javadoc encoding,
   the JUnit 5 + AssertJ test dependencies, and the `org.jetbrains.annotations` `compileOnly`
-  dependency (see "Null-safety" below) every module gets. Applied by all eight modules, either
-  directly (`terrace-config-annotations`, `terrace-config-spec-tck`) or transitively through the
-  plugin below.
+  dependency (see "Null-safety" below) every module gets. Applied by every module, either
+  directly (`terrace-config-annotations`, `terrace-config-spec-tck`,
+  `terrace-config-gradle-plugin`) or transitively through the plugin below.
 - **`terrace-config.lombok-conventions`** — the above, plus `io.freefair.lombok` pre-configured
   with the version from `gradle/libs.versions.toml`. Applied by `terrace-config-core`,
   `terrace-config-processor`, `terrace-config-loader` and `terrace-config-spring-boot`.
 - **`terrace-config.publish-conventions`** — `com.vanniktech.maven.publish` pre-configured with
   the licence/developer/SCM POM metadata common to every published artefact, plus javadoc and
-  sources jars. Applied by the seven modules with a public artefact — see "Publishing to JitPack"
-  below for which those are, and why Maven Central itself isn't wired up (yet).
+  sources jars. Applied by the eight modules with a public artefact — see "Publishing to JitPack"
+  below for which those are, and why Maven Central itself isn't wired up (yet). A module that
+  applies `java-gradle-plugin` before it (only `terrace-config-gradle-plugin`) is published as a
+  Gradle plugin, with the plugin marker publication, instead of as a library.
+
+buildSrc also compiles `terrace-config-gradle-plugin`'s own sources a second time and registers
+the same `de.timscho.terrace-config` id, which is how the two example modules apply the plugin by
+id in this same build: a build cannot apply a plugin one of its own subprojects publishes, and
+buildSrc's classes are on every module's build script classpath. One set of sources, so the copy
+the examples run and the copy JitPack publishes cannot differ.
 
 This replaces what used to be a root `java/build.gradle.kts` `subprojects { ... }` block: the same
 settings, but expressed as plugins a module opts into by ID rather than configuration silently
@@ -280,17 +303,19 @@ shared `group`/`version` (`allprojects`), since there's nothing else left to cen
 `gradle/libs.versions.toml` file the modules use, so there's still exactly one file to bump a
 version in — but note that Gradle's type-safe `libs.xxx` accessors don't work *inside* a
 precompiled script plugin (a documented limitation: the plugin might end up applied to a project
-with a differently-shaped catalog), so the two convention plugins above use the lower-level,
+with a differently-shaped catalog), so the convention plugins above use the lower-level,
 string-keyed `VersionCatalogsExtension` lookup instead (`libs.findLibrary("...")`,
 `libs.findVersion("...")`); ordinary module `build.gradle.kts` files keep using the type-safe
 accessors as before.
 
 ## Publishing to JitPack
 
-Seven of the ten modules carry `terrace-config.publish-conventions` and are published:
+Eight of the eleven modules carry `terrace-config.publish-conventions` and are published:
 `terrace-config-annotations`, `terrace-config-core`, `terrace-config-core-jackson2`,
 `terrace-config-core-jackson3`, `terrace-config-processor`, `terrace-config-loader`,
-`terrace-config-spring-boot`. `terrace-config-spec-tck` and the two `-example-*` modules
+`terrace-config-spring-boot`, `terrace-config-gradle-plugin`. All eight share the one version in
+`build.gradle.kts`, so release-please's `java` package releases the plugin with the libraries.
+`terrace-config-spec-tck` and the two `-example-*` modules
 deliberately do not — the first is a test-only tool against `spec/v1/conformance/`, and the
 other two are worked examples meant to be read, not depended on.
 
@@ -323,7 +348,7 @@ install:
 
 `publishToMavenLocal`: JitPack's whole model is copying whatever lands in `~/.m2/repository` into
 what it serves back to a consumer — confirmed by running the exact command above locally, which
-lands working jars, sources jars, javadoc jars and POMs in `~/.m2` for all seven modules, no
+lands working jars, sources jars, javadoc jars and POMs in `~/.m2` for all eight modules, no
 signing or credentials needed anywhere in the path. The Java 25 toolchain itself is unaffected by
 whatever JDK actually runs the wrapper on JitPack's build image — see
 `org.gradle.toolchains.foojay-resolver-convention` in `settings.gradle.kts`, added for exactly
@@ -346,8 +371,30 @@ dependencies {
 }
 ```
 
-Only the seven modules `terrace-config.publish-conventions` applies are resolvable this way — the
-same seven listed at the top of this section, for the same reason.
+Only the eight modules `terrace-config.publish-conventions` applies are resolvable this way — the
+same eight listed at the top of this section, for the same reason.
+
+The Gradle plugin resolves from JitPack too. JitPack serves every artefact under its own
+`com.github.TimSchoenle.terrace-config` group, not under the `de.timscho.terrace-config` group a
+plugin marker is looked up by, so a consumer's `settings.gradle.kts` maps the id to the module:
+
+```kotlin
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = uri("https://jitpack.io") }
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "de.timscho.terrace-config") {
+                useModule("com.github.TimSchoenle.terrace-config:terrace-config-gradle-plugin:${requested.version}")
+            }
+        }
+    }
+}
+```
+
+and applies it with `id("de.timscho.terrace-config") version "<tag>"`.
 
 ## Formatting
 
@@ -401,7 +448,8 @@ both are already true for anyone who has opened `terrace-config-core` in this se
 
 ## Null-safety
 
-Every package under `src/main/java` (all eleven of them, across all eight modules) carries a
+Every library package under `src/main/java` (all thirteen of them, across the nine modules that
+are not examples) carries a
 `package-info.java` with `@NullMarked` (`org.jspecify.annotations`): every field, parameter and
 return type in the package is non-null unless explicitly annotated `@Nullable`. Nullness is
 jspecify's job alone in this codebase — see the next paragraph for why `org.jetbrains.annotations`
@@ -441,8 +489,7 @@ stays out of it despite also defining `@Nullable`/`@NotNull`.
   `ExternalVar.owner`, `App.version`, ...), a private helper's `null`-sentinel return
   (`SchemaAssembler`'s constraint builders, `Origin.fromSources`, `TomlLayers.fragmentKeys`), an
   `Object.equals(Object)` override's parameter (`JsonSchemaDocument`, per the method's own
-  contract), and a Spring `@ConfigurationProperties` bean's unset-until-bound fields
-  (`TerraceContractProperties`). Two narrow, documented exceptions: (1) the four fields
+  contract), and `ProducerArguments.optional`'s absent option. Two narrow, documented exceptions: (1) the four fields
   `TerraceConfigProcessor` assigns in its overridden `init` rather than a constructor stay
   non-null by convention, the same "initializer method" exemption NullAway grants framework
   lifecycle methods — see that package's own `package-info.java`; (2) `lombok.NonNull` (a
@@ -481,11 +528,13 @@ usable under either major, rather than two model copies.
   and `terrace-config-core-jackson3` (see above), so that depending on `-core` alone pulls in
   neither Jackson major, and a consumer adds exactly one codec module — whichever major it already
   has — as an `implementation` dependency.
-- **`terrace-config-spring-boot`** will declare no Jackson dependency at all, directly or pinned —
-  it only ever touches JSON through Spring's own `Binder`/`ObjectMapper`, so it automatically
-  follows whichever Jackson major the consuming app's own Spring Boot BOM resolves (2.x under Boot
-  3, 3.x's `tools.jackson` coordinates under Boot 4) without needing a `-spring-boot4` sibling —
-  unlike the codec, there is no `ObjectMapper` of its own to fork.
+- **`terrace-config-spring-boot`** declares no Jackson dependency at runtime, directly or pinned —
+  at runtime it only ever touches JSON through Spring's own `Binder`/`ObjectMapper`, so it
+  automatically follows whichever Jackson major the consuming app's own Spring Boot BOM resolves
+  (2.x under Boot 3, 3.x's `tools.jackson` coordinates under Boot 4) without needing a
+  `-spring-boot4` sibling. `SpringContractMain`, which runs at build time, writes the contract with
+  `-core-jackson2`: it compiles against it `compileOnly`, checks for it before first use, and
+  finds it on the Gradle plugin's `terraceContractGenerator` classpath, never on the service's.
 
 ## `terrace-config-annotations` and `terrace-config-processor`
 
@@ -619,6 +668,24 @@ redesigned, since the layering *is* the product this loader exists to offer.
   compared by raw bits rather than `==`, so a configuration holding `NaN` compares equal to
   itself instead of every reload looking like a change. `Sources.toString()` never prints the
   fingerprint — it is every configuration value, secrets included.
+- **`ContractMain`** emits a service's contract at build time without starting it: given the root
+  type's binary name, the prefix and `app.name`, it builds the schema with the same
+  `TerraceLoader` settings the service boots with (`--reserve`, repeatable, `--nesting-separator`,
+  `--file-suffix`, `--config-var`, `--secrets-dir-var`, `--default-config-path`), fills in the
+  defaults from a default-constructed instance converted through Jackson, assembles the contract
+  and writes it to `--out` or standard output. Build identity (`app.version`, `revision`,
+  `created`, `source`) is deliberately not an option: it is `terrace-contract stamp`'s, so the
+  emission is a pure function of the types and can be compared with a committed copy. Run by the
+  Gradle plugin; by hand it is:
+
+  ```bash
+  java -cp <runtime classpath> de.timscho.config.loader.ContractMain \
+      --type com.example.Config --prefix MYAPP_ --app-name my-service \
+      --reserve MYAPP_PROFILE --out build/terrace/contract.unstamped.json
+  ```
+
+  `ContractMainTest` proves the emission byte-identical to assembling the same contract in code,
+  and that every option reaches the document.
 
 ## `terrace-config-spring-boot`
 
@@ -654,22 +721,17 @@ relaxed environment binding); this module only adds what Spring genuinely lacks.
   composition `terrace-config-loader`'s `schemaAt` uses for its own `Schema`, one level further.
   `schema.loader` is always empty for this producer: Spring's `Binder` decides what the layers are
   from its own property sources, unlike the vanilla loader's `config`/`secrets_dir` variables, so
-  there is nothing to publish there. Callable directly from a hand-written `@Configuration` class,
-  or through the starter auto-configuration below.
-- **`TerraceContractProperties`/`TerraceContractAutoConfiguration`** are the zero-hand-written-
-  `@Configuration`-class path: a service states `terrace.contract.type` (the annotated
-  configuration type's fully qualified name) and `terrace.contract.env-prefix`, and
-  `TerraceContractAutoConfiguration` looks up `<Type>Descriptor.DESCRIPTOR` by reflection and
-  calls `SpringContractProducer.produce` itself, publishing a `Contract` bean. Registered through
-  `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` (the
-  mechanism that replaced `spring.factories` for `@Configuration` classes in Spring Boot 3 —
-  unlike `FileIndirectionEnvironmentPostProcessor` above, which still needs `spring.factories`
-  since it has to run before any `@Configuration` class could), and gated on
-  `terrace.contract.type` being set via `@ConditionalOnProperty`, so a service that doesn't set it
-  gets no `Contract` bean and no reflective lookup is even attempted. Only a top-level annotated
-  type is supported this way — a nested one still needs `SpringContractProducer.produce` called
-  by hand, since reconstructing the processor's own `$`-joined naming from a bare class name isn't
-  attempted.
+  there is nothing to publish there. Called at build time by `SpringContractMain`, below.
+- **`SpringContractMain`** emits the contract at build time with no application context: given
+  the properties class's binary name (nested types included), the prefix and `app.name`, plus
+  `--nesting-separator`/`--file-suffix` for a dialect other than Spring's own, it reads the
+  defaults off a default-constructed instance (what the binder leaves a field at when nothing
+  supplies it), converted through Jackson, and writes the contract to `--out` or standard output.
+  Nothing the service does at boot happens while its build emits the contract. It needs
+  `terrace-config-core-jackson2` on the classpath it runs with (see "Dual Jackson 2 / 3 support"
+  above) and says so when it is missing. There is deliberately no boot-time producer: a contract
+  is a build artefact that describes the image, is conformed before the image exists, and ships
+  inside it, and one assembled by a running application would be a second, unconformed copy.
 - **Tested with a `MockEnvironment`** (`spring-test`) standing in for the real system environment
   property source, not a booted `SpringApplication`: `SpringDialectTest` (7 cases) and
   `FileIndirectionEnvironmentPostProcessorTest` (7 cases — a file supplying its target, trailing
@@ -679,6 +741,74 @@ relaxed environment binding); this module only adds what Spring genuinely lacks.
   `SpringContractProducerTest` (2 cases) proves the whole path against a real generated descriptor
   (`ServiceConfig`/`ServiceConfigDescriptor`): a validated `Contract` with the right dialect,
   secret and env spelling, and the empty-prefix refusal still firing through `ContractValidator`.
+  `SpringContractMainTest` (3 cases) proves `SpringContractMain`'s emission byte-identical to
+  `SpringContractProducer.produce` with the defaults a default-constructed instance converts to,
+  and that the dialect options and a missing `--app-name` behave as documented.
+
+## `terrace-config-gradle-plugin`
+
+The `de.timscho.terrace-config` Gradle plugin, `de.timscho.config.gradle`: a service's contract,
+emitted from its own types at build time, stamped with the build's identity, conformed by the real
+`terrace-contract`, and kept equal to the copy committed beside the service. It applies `java`, and
+it is all a service's build needs:
+
+```kotlin
+plugins {
+    id("de.timscho.terrace-config")
+}
+
+terraceContract {
+    type = "com.example.Config"   // the root @TerraceConfig type, by binary name
+    prefix = "MYAPP_"
+    reserve.add("MYAPP_PROFILE")  // terrace-java only
+}
+
+// Spring Boot only: the codec SpringContractMain writes with, on the generator's classpath alone.
+dependencies {
+    terraceContractGenerator("com.github.TimSchoenle.terrace-config:terrace-config-core-jackson2:<tag>")
+}
+```
+
+| Task | What it does |
+|---|---|
+| `terraceContractEmit` | Runs `ContractMain` or `SpringContractMain` on the main source set's runtime classpath (plus `terraceContractGenerator`), on the project's Java toolchain, and writes `build/terrace/contract.unstamped.json`. Cacheable: its inputs are the classes, the entry point, its options and the JVM, and no stamped value, so a new commit or a new timestamp never invalidates it. |
+| `terraceContract` | `terrace-contract stamp` over that document, then `terrace-contract conform --tier <n>` over the result, written to `build/terrace/contract.json`. A document that does not conform is deleted. |
+| `terraceContractCheck` | Fails when the committed `contract.json` is not byte-for-byte the unstamped emission, naming the first differing line. `check` depends on it. |
+| `terraceContractUpdate` | Rewrites the committed `contract.json` with the unstamped emission. |
+
+The `terraceContract { }` extension:
+
+| Property | Default |
+|---|---|
+| `type`, `prefix` | none; both are required |
+| `appName` | the project's name |
+| `reserve` | empty; each is passed as `--reserve` (`terrace-java` only) |
+| `producerArguments` | empty; passed to the entry point as they are, for its other options (`--nesting-separator`, `--file-suffix`, `--config-var`, ...) |
+| `loader` | `terrace-java` when `terrace-config-loader` is on the runtime classpath, `spring-boot` when `terrace-config-spring-boot` is; required when both or neither is |
+| `tier` | the producer's claim: 2 for `terrace-java`, 1 for `spring-boot` |
+| `appVersion` | `-PterraceContract.appVersion`, else the project's version unless it is `unspecified` |
+| `revision` | `-PterraceContract.revision`, else `TERRACE_CONTRACT_REVISION` |
+| `created` | `-PterraceContract.created`, else `TERRACE_CONTRACT_CREATED`; unset by default, so two builds of one commit stamp the same document |
+| `source` | unset |
+| `executable` | `TERRACE_CONTRACT_BIN` (a relative path is resolved against the root project), else `PATH`, and nothing else: no directory nobody named is searched, and nothing is downloaded, since the binary that holds a build's contract to the specification is one the build's owner chose |
+| `output` | `build/terrace/contract.json` |
+| `committedContract` | `contract.json` in the project directory |
+
+The committed copy is compared with the unstamped emission, not the stamped one, so it carries no
+version, commit or timestamp and changes only when the configuration surface does. The plugin is
+compiled for Java 17, the floor Gradle 9 runs on. Each example's `Dockerfile` shows the rest of the
+path: a build stage that copies `terrace-contract` from `ghcr.io/timschoenle/terrace-contract`,
+runs `terraceContract`, and a runtime stage that copies the stamped contract to
+`/config/contract.json` and carries the label block `terrace-contract render --format dockerfile`
+prints for it.
+
+- **Tested with Gradle TestKit** (`TerraceContractPluginFunctionalTest`, 11 cases), in real builds
+  whose stub entry points copy a corpus document to `--out` and record their options: stamping
+  and conforming with the configuration cache on, the emission staying cached across stamp
+  changes, the check and update round trip, the producer and tier inferred from the classpath,
+  and the messages for a refusal, a document below its tier and a missing binary.
+  `ExecutableLocatorTest` and `TerraceContractCheckTest` cover the lookup order and the difference
+  message.
 
 ## Contributing
 
@@ -693,8 +823,10 @@ all of them run locally:
 
 ```bash
 cd java
-./gradlew check
+TERRACE_CONTRACT_BIN=/path/to/terrace-contract ./gradlew check terraceContract
 ```
+
+`check` and `terraceContract` need the `terrace-contract` binary; see "Building and testing" above.
 
 ## Security
 

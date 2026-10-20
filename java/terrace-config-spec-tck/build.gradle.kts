@@ -1,8 +1,8 @@
 // The corpus runner and tier comparator (PR 3). Knows about documents, not about binders — a
 // Spring import here would be a design failure. Testable before any producer exists: it validates
 // the stored corpus against the meta-schema on its own.
-description = "The meta-schema validator and tier comparator checked against spec/v1/. " +
-    "See java/README.md."
+description = "The meta-schema validator and tier comparator checked against spec/v1/, and " +
+    "the Java producers' documents held to `terrace-contract conform`. See java/README.md."
 
 // Only the plain conventions, not terrace-config.lombok-conventions: this module's classes
 // (MetaSchemaValidator, TierComparator, Tier, ConformanceVersion) were written and tested before
@@ -30,6 +30,10 @@ dependencies {
     testImplementation(project(":terrace-config-core"))
     testImplementation(project(":terrace-config-loader"))
     testImplementation(project(":terrace-config-core-jackson2"))
+    // The same fixtures produced through the Spring producer, so TerraceContractConformTest holds
+    // both Java producers' documents to `terrace-contract conform`. Test-only, like the loader: it
+    // brings Spring onto this module's test classpath, never into anything `main` publishes.
+    testImplementation(project(":terrace-config-spring-boot"))
     testCompileOnly(project(":terrace-config-processor"))
     testAnnotationProcessor(project(":terrace-config-processor"))
 }
@@ -76,6 +80,21 @@ tasks.test {
     // version's databind jar on the classpath.
     systemProperty("terrace.tck.jackson2Classpath", jackson2Runtime.asPath)
     systemProperty("terrace.tck.jackson3Classpath", jackson3Runtime.asPath)
+    // TerraceContractConformTest runs the `terrace-contract` binary. Whichever one it finds, and
+    // whether a missing one fails (`CI=true`) or skips, decides the result, so all of it is an
+    // input: a rebuilt binary or a switched `CI` reruns the suite instead of replaying it.
+    val explicitBinary = providers.environmentVariable("TERRACE_CONTRACT_BIN").orElse("")
+    inputs.property("terraceContractBin", explicitBinary)
+    inputs.property("ci", providers.environmentVariable("CI").orElse(""))
+    inputs.files(
+        explicitBinary.map { path -> if (path.isBlank()) emptyList() else listOf(file(path)) },
+        rootProject.file("../cli/target/release/terrace-contract"),
+        rootProject.file("../cli/target/debug/terrace-contract"),
+        rootProject.file("terrace-config-example-service/contract.json"),
+        rootProject.file("terrace-config-example-spring-service/contract.json"),
+        rootProject.file("terrace-config-example-service/Dockerfile"),
+        rootProject.file("terrace-config-example-spring-service/Dockerfile"),
+    ).withPropertyName("terraceContractInputs").optional()
     // Regenerates java/terrace-config-spec-tck/src/test/resources/conformance-java/<case>/contract.json
     // from what the fixtures render today, instead of asserting against what is checked in. See
     // JavaConformanceTest's class Javadoc for when this is the right thing to run.

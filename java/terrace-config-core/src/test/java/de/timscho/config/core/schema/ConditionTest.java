@@ -160,14 +160,6 @@ class ConditionTest {
     }
 
     @Test
-    void theRenderingsSayEachConditionInItsOwnWords() {
-        final Schema refined = documents().refine("documents.*", hostedOrExternal());
-        assertThat(refined.toMarkdown()).contains("at `*`: exactly one of: [`url` is set; `body` is not empty]");
-        assertThat(refined.toTomlExample())
-                .contains("# Holds at *: exactly one of: [`url` is set; `body` is not empty]");
-    }
-
-    @Test
     void anUnsetFieldInADefaultTableIsAbsentNotNull() {
         final Map<String, Object> observed = new TreeMap<>();
         observed.put("url", null);

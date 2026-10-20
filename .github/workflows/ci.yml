@@ -30,6 +30,7 @@ jobs:
       contents: read
     outputs:
       java: ${{ steps.filter.outputs.java }}
+      producer-python: ${{ steps.filter.outputs.producer-python }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -42,8 +43,15 @@ jobs:
         id: filter
         with:
           filters: |
+            # `cli/` and `spec/` too: the Java build conforms every document it emits with the
+            # `terrace-contract` built from this commit, against this commit's specification.
             java:
               - 'java/**'
+              - 'cli/**'
+              - 'spec/**'
+            producer-python:
+              - 'spec/**'
+              - 'cli/**'
 
   fmt:
     name: fmt
@@ -144,8 +152,19 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
+      # The coverage action checks the code out itself, so the local action is read from a
+      # checkout of its own first; `cli`'s tests need oras, as in the `cli` job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: matrix.workspace == 'cli'
+        with:
+          persist-credentials: false
+      - id: oras
+        uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
+        if: matrix.workspace == 'cli'
       - name: Run Coverage
         uses: TimSchoenle/actions/actions/rust/coverage-codecov@81e4009704e0963651bbd8275e31244c1d1e220d # tag=actions-rust-coverage-codecov-v2.0.3
+        env:
+          ORAS_BIN: ${{ steps.oras.outputs.path }}
         with:
           source_directory: ${{ matrix.workspace }}
           test_arguments: --workspace --all-features
@@ -305,9 +324,41 @@ jobs:
   # Gated on the `changes` job: a pure-Rust commit never has anything for Gradle to build, and
   # skipping means this reports as a green "skipped" rather than a required check nobody who
   # touched only `rust/` can satisfy.
+  #
+  # The Java build runs the real `terrace-contract` wherever it checks a contract. It is built
+  # once here from this commit's `cli/` rather than downloaded, so a change to `conform` and the
+  # Java code it checks are held to each other in the same run.
+  terrace-contract-bin:
+    name: terrace-contract (for java)
+    needs: changes
+    if: needs.changes.outputs.java == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          workspaces: cli
+      - run: cargo build --release --locked
+        working-directory: cli
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: terrace-contract-linux
+          path: cli/target/release/terrace-contract
+          if-no-files-found: error
+          retention-days: 1
+
   java:
     name: java
-    needs: changes
+    needs: [changes, terrace-contract-bin]
     if: needs.changes.outputs.java == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -321,6 +372,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # Outside the workspace, and named by `TERRACE_CONTRACT_BIN`, which every lookup in the Java
+      # build reads first. `CI=true` is set by the runner, so a binary missing here fails the
+      # tests that need it instead of skipping them.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: terrace-contract-linux
+          path: ${{ runner.temp }}/terrace-contract
+      - name: Put terrace-contract on TERRACE_CONTRACT_BIN
+        run: |
+          bin="${RUNNER_TEMP}/terrace-contract/terrace-contract"
+          chmod +x "$bin"
+          "$bin" --version
+          echo "TERRACE_CONTRACT_BIN=$bin" >> "$GITHUB_ENV"
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
@@ -329,7 +393,11 @@ jobs:
       # scoping is inferred from the wrapper's own location), and passing it just emits an
       # "unexpected input" warning. The build directory is set on the run step below instead.
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-      - run: ./gradlew clean spotlessCheck checkstyleMain checkstyleTest test --console=plain
+      # `terraceContractCheck` fails when an example's committed contract.json no longer matches
+      # what its types emit; `terraceContract` stamps and conforms that emission.
+      - run: >-
+          ./gradlew clean spotlessCheck checkstyleMain checkstyleTest test
+          terraceContractCheck terraceContract --console=plain
         working-directory: java
 
   # Gated like `java`, so a commit that leaves `java/` alone uploads no Java report. Codecov
@@ -337,7 +405,7 @@ jobs:
   # Kept out of `ci`'s `needs` for the same reason as `coverage-rust`.
   coverage-java:
     name: coverage (java)
-    needs: changes
+    needs: [changes, terrace-contract-bin]
     if: needs.changes.outputs.java == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -349,6 +417,18 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
+      # The same binary `java` runs. Under `RUNNER_TEMP`, since the coverage action checks the
+      # repository out itself and would clean anything placed in the workspace.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: terrace-contract-linux
+          path: ${{ runner.temp }}/terrace-contract
+      - name: Put terrace-contract on TERRACE_CONTRACT_BIN
+        run: |
+          bin="${RUNNER_TEMP}/terrace-contract/terrace-contract"
+          chmod +x "$bin"
+          "$bin" --version
+          echo "TERRACE_CONTRACT_BIN=$bin" >> "$GITHUB_ENV"
       - name: Run Coverage
         uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-java-gradle-coverage-codecov-v1.1.2
         with:
@@ -451,10 +531,11 @@ jobs:
       - name: clippy (no default features)
         run: cargo clippy --all-targets --no-default-features
         working-directory: cli
-      # The stack is `cli` -> `helm` -> `k8s` -> the core, with `oci` beside `helm`. The two ends
-      # above compile every module and none of the middle combinations, so a `helm`-only build
-      # referring to an `oci`-only item — which is the whole reason the registry half is split out
-      # — would reach a consumer that took the gates without the archive reader.
+      # The stack is `cli` -> `helm` -> `k8s` -> the core, with `oci` beside the core: a producer's
+      # build reads its own image back and has no chart. The two ends above compile every module
+      # and none of the middle combinations, so a `helm`-only build referring to an `oci`-only item,
+      # or an `oci`-only build referring to a chart, would reach a consumer that took one half
+      # without the other.
       - name: clippy (each rung of the stack)
         working-directory: cli
         run: |
@@ -463,9 +544,16 @@ jobs:
             cargo clippy --all-targets --no-default-features --features "$features"
             echo "::endgroup::"
           done
+      # `tests/image_layout.rs` drives a real `oras` against an OCI image layout, because what only
+      # a real client can show is that the arguments passed are the ones it reads. It fails rather
+      # than skips in CI when `oras` is missing, so the install is part of the gate.
+      - id: oras
+        uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
       - name: test
         run: cargo test
         working-directory: cli
+        env:
+          ORAS_BIN: ${{ steps.oras.outputs.path }}
       # `cli/` is a workspace of its own, so the `doc`, `deny` and `msrv` jobs above run at the
       # repository root and never reach it. Without these three steps its `[lints.rustdoc]` table
       # is enforced by nothing, its dependencies are licence- and advisory-checked by nothing, and
@@ -503,6 +591,57 @@ jobs:
           fi
           echo "no dependency on any implementation"
 
+  # The claim `spec/v1/PRODUCER.md` rests on: a new language's whole obligation is a document the
+  # shared binary accepts. Held here by a producer that is neither this repository's Rust nor its
+  # Java, a standard-library Python reference, so the claim is checked on every change to the spec
+  # or to the binary rather than asserted once.
+  #
+  # Gated on `spec/**` and `cli/**`: those are the two sides of that claim, and a change to neither
+  # cannot move it. The regenerated document is what `conform` and `validate` read, not the
+  # committed one, so a stale commit cannot pass on bytes the types no longer derive.
+  producer-python:
+    name: producer (python)
+    needs: changes
+    if: needs.changes.outputs.producer-python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          workspaces: cli
+      - name: build the toolchain
+        run: cargo build
+        working-directory: cli
+      # The runner's own interpreter, deliberately: the reference claims the standard library and
+      # nothing else, and a setup step installing one would be the first thing it depended on.
+      - name: test
+        run: |
+          python3 --version
+          python3 -m unittest discover -s spec/v1/producers/python -v
+      - name: conform and validate
+        run: |
+          set -euo pipefail
+          contract="$RUNNER_TEMP/contract.json"
+          bin=cli/target/debug/terrace-contract
+          python3 spec/v1/producers/python/orders.py > "$contract"
+          "$bin" conform --tier 2 "$contract"
+          "$bin" validate "$contract"
+          # Not normative, but what keeps `stamp` from reformatting the copy an image embeds:
+          # the bytes survive the shared model unchanged.
+          "$bin" render --format contract "$contract" | cmp - "$contract"
+          echo "conforms at tier 2 and satisfies the meta-schema"
+
   # The single required check. It fails if any job failed and passes when jobs were skipped, so
   # branch protection needs one entry that cannot silently stop existing.
   ci:
@@ -521,7 +660,9 @@ jobs:
         msrv,
         cli,
         consumer-smoke-test,
+        terrace-contract-bin,
         java,
+        producer-python,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5

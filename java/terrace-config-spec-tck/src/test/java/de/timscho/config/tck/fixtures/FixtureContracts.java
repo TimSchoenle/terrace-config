@@ -25,9 +25,10 @@ import java.util.TreeMap;
  * {@code required-entries}, {@code entry-names}, {@code element-patterns}) as real {@link
  * Contract}s, each from its own fixture type in this package, run through the real {@code
  * terrace-config-loader} and the real Jackson 2 codec — exactly the pipeline a consuming service
- * runs, not a hand-maintained restatement of what one would render. Mirrors {@code
- * terrace-config-example-service}'s {@code ContractGenerator}, generalised from one service to
- * every spec case {@code JavaConformanceTest} checks.
+ * runs, not a hand-maintained restatement of what one would render. Mirrors what {@code
+ * de.timscho.config.loader.ContractMain} does for one service, generalised to every spec case
+ * {@code JavaConformanceTest} checks, and to the refinements and external surface only the library
+ * API reaches.
  */
 public final class FixtureContracts {
 

@@ -26,3 +26,27 @@ dependencies {
     // its coordinates and description, not a hand-rolled `publications {}`/`repositories {}` pair.
     implementation("com.vanniktech:gradle-maven-publish-plugin:${libs.versions.vanniktech.publish.plugin.get()}")
 }
+
+// The `de.timscho.terrace-config` plugin, compiled a second time here from
+// terrace-config-gradle-plugin's own sources so the example modules in this same build can apply
+// it by id: a plugin a build publishes is not on that build's own plugin classpath, and buildSrc
+// is. One set of sources, so the copy the examples run and the copy JitPack publishes cannot
+// differ; terrace-config-gradle-plugin stays the module that tests, documents and publishes it.
+sourceSets {
+    main {
+        java.srcDir("../terrace-config-gradle-plugin/src/main/java")
+    }
+}
+
+dependencies {
+    implementation("org.jspecify:jspecify:${libs.versions.jspecify.get()}")
+}
+
+gradlePlugin {
+    plugins {
+        create("terraceConfig") {
+            id = "de.timscho.terrace-config"
+            implementationClass = "de.timscho.config.gradle.TerraceContractPlugin"
+        }
+    }
+}

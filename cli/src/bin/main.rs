@@ -16,7 +16,7 @@ use terrace_contract::render::{
 };
 use terrace_contract::repo::{self, Settings, Source};
 use terrace_contract::report::Report;
-use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, helm, validate};
+use terrace_contract::{Contract, DEFAULT_PATH, Error, Tier, conform, helm, oci, validate};
 
 /// The release, then the document versions it reads, so a pin can be checked against a producer.
 const VERSION: &str = concat!(
@@ -96,6 +96,21 @@ enum Command {
         /// shape.
         #[arg(long)]
         full_docs: bool,
+
+        /// Rewrite every marked label region of this Dockerfile in place, instead of printing.
+        ///
+        /// With `--format dockerfile` only. Everything outside the regions is left byte for byte,
+        /// and an empty region is filled, so a block is placed by writing the two marker lines
+        /// where the labels belong and running this once. A Dockerfile with no region is refused.
+        #[arg(long, value_name = "DOCKERFILE", conflicts_with = "check")]
+        write: Option<PathBuf>,
+
+        /// Exit 1 when any marked label region of this Dockerfile is not the block this renders.
+        ///
+        /// With `--format dockerfile` only. Writes nothing, and prints each stale region with what
+        /// `--write` would put there.
+        #[arg(long, value_name = "DOCKERFILE")]
+        check: Option<PathBuf>,
     },
 
     /// Write a build's identity onto a document, changing nothing else.
@@ -721,28 +736,82 @@ enum ConfigCommand {
 
 #[derive(Subcommand)]
 enum ImageCommand {
-    /// Hold an image's labels, or a Dockerfile's committed block, against the document.
+    /// Hold an image's labels, its carriers, or a Dockerfile's committed block, against the document.
     ///
-    /// The two checks answer different questions and neither replaces the other. The Dockerfile
-    /// check is cheap and runs in the pull request that renamed a key, in a diff a reviewer reads.
-    /// The label check costs an image and catches what no source diff can: a build argument that
-    /// failed to interpolate, a label a base image overrode, a `LABEL` line deleted on a branch
-    /// nobody diffed.
+    /// The checks answer different questions and none replaces another. The Dockerfile check is
+    /// cheap and runs in the pull request that renamed a key, in a diff a reviewer reads. The image
+    /// checks cost an image and catch what no source diff can: a build argument that failed to
+    /// interpolate, a label a base image overrode, a `LABEL` line deleted on a branch nobody
+    /// diffed, a `COPY` of the wrong file.
+    ///
+    /// `--image` reads the image itself, through `oras`: the labels of every platform, which must
+    /// agree; the file at the labelled path, which must be this document byte for byte; and a
+    /// referrer attached to the digest, which must be too. At least one of the two carriers must be
+    /// there. `--labels` is the offline form of the label check alone, for what `docker inspect`
+    /// printed.
+    ///
+    /// Exits 1 when the image or the Dockerfile is wrong, 2 when it could not be read.
     Verify {
         #[command(flatten)]
         input: Input,
 
         /// What `docker inspect` or `crane config` printed.
-        #[arg(long, value_name = "FILE")]
+        #[arg(long, value_name = "FILE", conflicts_with = "image")]
         labels: Option<PathBuf>,
 
-        /// A Dockerfile whose committed label block should match this document.
+        /// A Dockerfile whose committed label blocks should match this document.
         #[arg(long, value_name = "FILE")]
         dockerfile: Option<PathBuf>,
+
+        /// The image to read, fully qualified: `REGISTRY/REPOSITORY[:TAG][@DIGEST]`.
+        ///
+        /// A tag is resolved to a digest once, and every check is made against the digest.
+        #[arg(long, value_name = "REF")]
+        image: Option<String>,
+
+        /// Read `--image` as an OCI image layout, `PATH[:TAG][@DIGEST]`, rather than a registry.
+        ///
+        /// A directory or a tarball, as `docker buildx build --output type=oci` writes one: the
+        /// image is checked after it is built and before it is pushed. Carries no signature, so it
+        /// cannot be combined with `--signer`.
+        #[arg(long, requires = "image", conflicts_with = "signer")]
+        oci_layout: bool,
+
+        /// Also verify the image's signature, keyless, against this identity regular expression.
+        ///
+        /// Through `cosign`, under the GitHub Actions OIDC issuer. Nothing else is read when the
+        /// signature does not verify.
+        #[arg(long, value_name = "IDENTITY", requires = "image")]
+        signer: Option<String>,
 
         /// Where the document lives inside the image.
         #[arg(long, default_value = DEFAULT_PATH)]
         path: String,
+    },
+
+    /// Attach the document to an image's digest as an OCI referrer, and print the referrer's digest.
+    ///
+    /// Under the artifact type `application/vnd.terrace.config-schema.v1+json`, which is what `pull`
+    /// and `image verify --image` look for. A tag is resolved first, so the document is tied to the
+    /// digest and never to a tag that can move. Running it again is safe: a referrer holding this
+    /// document byte for byte is reported rather than attached a second time, and one holding
+    /// anything else is refused, since a digest with two contracts has none a consumer can trust.
+    ///
+    /// Run after the push. Signing the referrer is a separate step: `cosign sign` on the printed
+    /// digest.
+    Attach {
+        /// The contract document. A file, not stdin: the registry stores it under its file name.
+        #[arg(value_name = "CONTRACT")]
+        contract: PathBuf,
+
+        /// The image to attach to, fully qualified: `REGISTRY/REPOSITORY[:TAG][@DIGEST]`.
+        #[arg(long, value_name = "REF")]
+        image: String,
+
+        /// Read `--image` as an OCI image layout directory, `PATH[:TAG][@DIGEST]`, rather than a
+        /// registry. A directory, not a tarball: the referrer is written into the layout.
+        #[arg(long)]
+        oci_layout: bool,
     },
 }
 
@@ -925,15 +994,32 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             HelmCommand::Init(init) => Ok(helm_init_command(&repo, init)),
         },
 
-        Command::Image { command } => {
-            let ImageCommand::Verify {
+        Command::Image { command } => match command {
+            ImageCommand::Verify {
                 input,
                 labels,
                 dockerfile,
+                image,
+                oci_layout,
+                signer,
                 path,
-            } = command;
-            verify_command(&input, labels.as_deref(), dockerfile.as_deref(), &path)
-        }
+            } => verify_command(
+                &input,
+                &Verify {
+                    labels: labels.as_deref(),
+                    dockerfile: dockerfile.as_deref(),
+                    image: image.as_deref(),
+                    oci_layout,
+                    signer: signer.as_deref(),
+                    path: &path,
+                },
+            ),
+            ImageCommand::Attach {
+                contract,
+                image,
+                oci_layout,
+            } => attach_command(&contract, &image, oci_layout),
+        },
 
         Command::Config { command } => config_command(command, &repo),
 
@@ -1316,7 +1402,7 @@ fn doctor_command(repo: &Repo) -> Result<ExitCode, Error> {
         None => say("warn", "signer: none; only `pull` needs it".to_owned()),
     }
 
-    match helm::pull::Tools::found() {
+    match oci::Tools::found() {
         Ok(_) => say("ok", "oras and cosign: found".to_owned()),
         Err(error) => say("warn", format!("{error}")),
     }
@@ -1466,7 +1552,7 @@ fn helm_init_command(repo: &Repo, options: Init) -> ExitCode {
             }
         } else {
             let signer = required_signer(&settings, options.signer)?;
-            let tools = helm::pull::Tools::found()?;
+            let tools = oci::Tools::found()?;
             fetched = helm::pull::fetch_pinned(&tools, &pin.block(), None, &signer).map_err(
                 |failure| {
                     Error::Invalid(format!(
@@ -2783,7 +2869,7 @@ fn pull_command(
     let signer = signer.as_str();
     let charts = settings.charts(charts).0;
     let charts = charts.as_path();
-    let tools = helm::pull::Tools::found()?;
+    let tools = oci::Tools::found()?;
     let refreshed = if check {
         // Written into a scratch tree rather than over the chart's own: `--check` answers whether
         // the committed bytes are current, and answering it by writing them would make the answer
@@ -2894,12 +2980,28 @@ fn render_command(command: Command) -> Result<ExitCode, Error> {
         open,
         no_header,
         full_docs,
+        write,
+        check,
     } = command
     else {
         unreachable!("dispatched on the variant")
     };
 
     let contract = input.read()?;
+    if let Some(dockerfile) = write.as_deref().or(check.as_deref()) {
+        if format != Format::Dockerfile {
+            return Err(Error::Invalid(
+                "--write and --check edit or compare a Dockerfile's label regions, so they need \
+                 --format dockerfile"
+                    .to_owned(),
+            ));
+        }
+        return if write.is_some() {
+            write_dockerfile(dockerfile, &contract, &path)
+        } else {
+            Ok(exit_for(check_dockerfile(dockerfile, &contract, &path)?))
+        };
+    }
     let columns = if columns.is_empty() {
         Column::DEFAULT.to_vec()
     } else {
@@ -2970,76 +3072,186 @@ fn stamp_command(command: Command) -> Result<ExitCode, Error> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn verify_command(
-    input: &Input,
-    labels: Option<&Path>,
-    dockerfile: Option<&Path>,
-    path: &str,
-) -> Result<ExitCode, Error> {
-    if labels.is_none() && dockerfile.is_none() {
+/// What `image verify` was asked to compare the document against.
+struct Verify<'a> {
+    labels: Option<&'a Path>,
+    dockerfile: Option<&'a Path>,
+    image: Option<&'a str>,
+    oci_layout: bool,
+    signer: Option<&'a str>,
+    path: &'a str,
+}
+
+fn verify_command(input: &Input, verify: &Verify<'_>) -> Result<ExitCode, Error> {
+    if verify.labels.is_none() && verify.dockerfile.is_none() && verify.image.is_none() {
         return Err(Error::Invalid(
-            "nothing to verify against: pass --labels, --dockerfile, or both. A verify with neither would report success without comparing anything, which is the one outcome this check cannot afford."
+            "nothing to verify against: pass --image, --labels, --dockerfile, or a combination. A \
+             verify with none would report success without comparing anything, which is the one \
+             outcome this check cannot afford."
                 .to_owned(),
         ));
     }
 
-    let contract = input.read()?;
+    let document = input.read_text()?;
+    let contract = Contract::from_json(&document)?;
     let mut failed = false;
 
-    if let Some(path_to_labels) = labels {
+    if let Some(path_to_labels) = verify.labels {
         let found = image::labels_from_json(&read(path_to_labels)?)?;
-        if let Some(report) = image::report(&image::check_labels(&contract, path, &found)) {
+        if let Some(report) = image::report(&image::check_labels(&contract, verify.path, &found)) {
             eprintln!("{report}");
             failed = true;
         }
     }
 
-    if let Some(path_to_dockerfile) = dockerfile {
-        let text = read(path_to_dockerfile)?;
-        let expected = image::dockerfile_labels(&contract, path);
-        // Every region is compared: a Dockerfile building several images carries one per stage,
-        // and each is a place the contract is published from.
-        // Named here because the parser only knows lines: a refusal that does not say which file
-        // is no help in a build checking several.
-        let regions = image::committed_blocks(&text).map_err(|error| match error {
-            Error::Invalid(message) => {
-                Error::Invalid(format!("{}: {message}", path_to_dockerfile.display()))
+    if let Some(reference) = verify.image {
+        let reference = oci::Reference::parse(reference, verify.oci_layout)?;
+        let tools = oci::Tools::reading()?;
+        let tools = if verify.oci_layout {
+            tools.in_layout()
+        } else {
+            tools
+        };
+        let digest = reference.digest(&tools)?;
+        let faults = oci::verify_image(
+            &tools,
+            &reference.repository,
+            &digest,
+            document.as_bytes(),
+            &contract,
+            verify.path,
+            verify.signer,
+        )?;
+        if faults.is_empty() {
+            println!(
+                "==> {}@{digest} publishes this document",
+                reference.repository
+            );
+        } else {
+            eprintln!(
+                "{}@{digest} does not publish this document:",
+                reference.repository
+            );
+            for fault in &faults {
+                eprintln!("  {fault}");
             }
-            other => other,
-        })?;
-        for region in regions {
-            // A Dockerfile checked out with CRLF would otherwise never match a block rendered
-            // with LF, and the diff would be invisible in every terminal that shows it.
-            let committed = region.block.replace("\r\n", "\n");
-            if committed.is_empty() {
-                eprintln!(
-                    "{}:{}: the `{}` region is empty, so it publishes no labels. Paste the output \
-                     of `render --format dockerfile`, markers included.",
-                    path_to_dockerfile.display(),
-                    region.line,
-                    terrace_contract::document::MARKER_BEGIN
-                );
-                failed = true;
-            } else if committed.trim_end() != expected.trim_end() {
-                eprintln!(
-                    "{}:{}: the committed label block is not the one this document renders.\n\
-                     --- committed\n{committed}\n\
-                     --- expected\n{}",
-                    path_to_dockerfile.display(),
-                    region.line,
-                    expected.trim_end()
-                );
-                failed = true;
-            }
+            failed = true;
         }
     }
 
-    // 1, not 2: the tool worked and the image is wrong.
-    Ok(if failed {
+    if let Some(path_to_dockerfile) = verify.dockerfile {
+        failed |= check_dockerfile(path_to_dockerfile, &contract, verify.path)?;
+    }
+
+    Ok(exit_for(failed))
+}
+
+/// 1, not 2, for a check that ran and found something wrong: the tool worked and the input is wrong.
+fn exit_for(failed: bool) -> ExitCode {
+    if failed {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
-    })
+    }
+}
+
+/// Compare every marked region of a Dockerfile with the block this document renders, reporting
+/// each stale or empty one; returns whether any was.
+fn check_dockerfile(dockerfile: &Path, contract: &Contract, path: &str) -> Result<bool, Error> {
+    let text = read(dockerfile)?;
+    let expected = image::dockerfile_labels(contract, path);
+    // Every region is compared: a Dockerfile building several images carries one per stage, and
+    // each is a place the contract is published from.
+    let regions = image::committed_blocks(&text).map_err(|error| named(dockerfile, error))?;
+    let mut failed = false;
+    for region in regions {
+        // A Dockerfile checked out with CRLF would otherwise never match a block rendered with LF,
+        // and the diff would be invisible in every terminal that shows it.
+        let committed = region.block.replace("\r\n", "\n");
+        if committed.is_empty() {
+            eprintln!(
+                "{}:{}: the `{}` region is empty, so it publishes no labels. Run `render --format \
+                 dockerfile --write` to fill it.",
+                dockerfile.display(),
+                region.line,
+                terrace_contract::document::MARKER_BEGIN
+            );
+            failed = true;
+        } else if committed.trim_end() != expected.trim_end() {
+            eprintln!(
+                "{}:{}: the committed label block is not the one this document renders.\n\
+                 --- committed\n{committed}\n\
+                 --- expected\n{}",
+                dockerfile.display(),
+                region.line,
+                expected.trim_end()
+            );
+            failed = true;
+        }
+    }
+    Ok(failed)
+}
+
+/// Rewrite every marked region of a Dockerfile with the block this document renders.
+fn write_dockerfile(dockerfile: &Path, contract: &Contract, path: &str) -> Result<ExitCode, Error> {
+    let text = read(dockerfile)?;
+    let rewritten =
+        image::rewrite_blocks(&text, contract, path).map_err(|error| named(dockerfile, error))?;
+    if rewritten == text {
+        println!(
+            "==> {}: every label region is current",
+            dockerfile.display()
+        );
+    } else {
+        std::fs::write(dockerfile, rewritten).map_err(|e| Error::io(dockerfile.display(), e))?;
+        println!("==> {}: label regions rewritten", dockerfile.display());
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// A refusal from the region parser, which only knows lines, prefixed with the file it read: a
+/// message that does not say which file is no help in a build checking several.
+fn named(dockerfile: &Path, error: Error) -> Error {
+    match error {
+        Error::Invalid(message) => Error::Invalid(format!("{}: {message}", dockerfile.display())),
+        other => other,
+    }
+}
+
+/// Attach the document to the image's digest, unless that digest already carries it.
+fn attach_command(contract: &Path, reference: &str, oci_layout: bool) -> Result<ExitCode, Error> {
+    let document = std::fs::read(contract).map_err(|e| Error::io(contract.display(), e))?;
+    // Read before it is published: a referrer is permanent in the sense that matters, since every
+    // later attach of a corrected document would leave the digest carrying two contracts.
+    let text = String::from_utf8(document.clone()).map_err(|failure| {
+        Error::Invalid(format!("{}: not UTF-8: {failure}", contract.display()))
+    })?;
+    Contract::from_json(&text)?;
+
+    let reference = oci::Reference::parse(reference, oci_layout)?;
+    let tools = oci::Tools::reading()?;
+    let tools = if oci_layout { tools.in_layout() } else { tools };
+    let digest = reference.digest(&tools)?;
+    let pinned = format!("{}@{digest}", reference.repository);
+
+    match oci::fetch_referrer(&tools, &reference.repository, &digest)? {
+        Some(held) if held.payload == document => {
+            eprintln!("==> {pinned} already carries this document");
+            println!("{}", held.digest);
+            Ok(ExitCode::SUCCESS)
+        }
+        Some(_) => Err(Error::Invalid(format!(
+            "{pinned} already carries a different contract as a referrer. A digest with two \
+             contracts has none a consumer can trust, so this one is not attached: the image and \
+             the document came from different builds."
+        ))),
+        None => {
+            let attached = tools.attach(&pinned, contract)?;
+            eprintln!("==> attached the contract to {pinned}");
+            println!("{attached}");
+            Ok(ExitCode::SUCCESS)
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 // Applied by every module that ships a publishable artefact: -annotations, -core,
-// -core-jackson2, -core-jackson3, -processor, -loader, -spring-boot. Deliberately not applied to
-// -spec-tck or either example module -- those are internal tooling and demo services, not
-// something a consumer's build should ever depend on. See java/README.md's "Publishing to
-// JitPack" section for the one place this is actually wired up right now.
+// -core-jackson2, -core-jackson3, -processor, -loader, -spring-boot, -gradle-plugin. Deliberately
+// not applied to -spec-tck or either example module -- those are internal tooling and demo
+// services, not something a consumer's build should ever depend on. See java/README.md's
+// "Publishing to JitPack" section for the one place this is actually wired up right now.
 //
 // Maven Central is deliberately NOT configured here for now -- no `publishToMavenCentral(...)`,
 // no `signAllPublications()`, and so no Central Portal account, user token or GPG key is needed
@@ -19,6 +19,7 @@
 // licence, developer, SCM -- lives here; `pom.name`/`pom.description` are filled from the
 // module's own `description` property, already declared per module in its own build.gradle.kts
 // for exactly this purpose.
+import com.vanniktech.maven.publish.GradlePlugin
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
@@ -33,7 +34,16 @@ mavenPublishing {
     // terrace-config.java-conventions), not `java-library`. A real `-javadoc.jar`, not
     // `JavadocJar.Empty()`, since `javadoc.destinationDir` (wired in java-conventions) already
     // gives every module real API docs to publish.
-    configure(JavaLibrary(javadocJar = JavadocJar.Javadoc(), sourcesJar = SourcesJar.Sources()))
+    //
+    // A module that applied `java-gradle-plugin` first (only -gradle-plugin) is published as a
+    // Gradle plugin instead: the same jars, plus the plugin marker publication `java-gradle-plugin`
+    // creates, which is what lets a consumer's `plugins { id(...) }` find it. Read when this
+    // convention is applied, so that module must list `java-gradle-plugin` before it.
+    if (plugins.hasPlugin("java-gradle-plugin")) {
+        configure(GradlePlugin(javadocJar = JavadocJar.Javadoc(), sourcesJar = SourcesJar.Sources()))
+    } else {
+        configure(JavaLibrary(javadocJar = JavadocJar.Javadoc(), sourcesJar = SourcesJar.Sources()))
+    }
 
     pom {
         name.set(project.name)
