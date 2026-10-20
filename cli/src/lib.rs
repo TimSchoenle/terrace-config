@@ -54,6 +54,8 @@ pub mod gate;
 pub mod helm;
 #[cfg(feature = "k8s")]
 pub mod k8s;
+#[cfg(feature = "oci")]
+pub mod oci;
 #[cfg(feature = "helm")]
 pub mod repo;
 

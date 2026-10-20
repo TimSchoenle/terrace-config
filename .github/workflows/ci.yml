@@ -451,10 +451,11 @@ jobs:
       - name: clippy (no default features)
         run: cargo clippy --all-targets --no-default-features
         working-directory: cli
-      # The stack is `cli` -> `helm` -> `k8s` -> the core, with `oci` beside `helm`. The two ends
-      # above compile every module and none of the middle combinations, so a `helm`-only build
-      # referring to an `oci`-only item — which is the whole reason the registry half is split out
-      # — would reach a consumer that took the gates without the archive reader.
+      # The stack is `cli` -> `helm` -> `k8s` -> the core, with `oci` beside the core: a producer's
+      # build reads its own image back and has no chart. The two ends above compile every module
+      # and none of the middle combinations, so a `helm`-only build referring to an `oci`-only item,
+      # or an `oci`-only build referring to a chart, would reach a consumer that took one half
+      # without the other.
       - name: clippy (each rung of the stack)
         working-directory: cli
         run: |
@@ -463,6 +464,23 @@ jobs:
             cargo clippy --all-targets --no-default-features --features "$features"
             echo "::endgroup::"
           done
+      # `tests/image_layout.rs` drives a real `oras` against an OCI image layout, because what only
+      # a real client can show is that the arguments passed are the ones it reads. It fails rather
+      # than skips in CI when `oras` is missing, so the install is part of the gate.
+      - name: install oras
+        env:
+          # renovate: datasource=github-releases depName=oras-project/oras extractVersion=^v(?<version>.*)$
+          ORAS_VERSION: 1.3.4
+        run: |
+          base="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}"
+          archive="oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/oras"
+          cd "$RUNNER_TEMP/oras"
+          curl -fsSLO "$base/$archive"
+          curl -fsSLO "$base/oras_${ORAS_VERSION}_checksums.txt"
+          grep " ${archive}\$" "oras_${ORAS_VERSION}_checksums.txt" | sha256sum --check --strict
+          tar -xzf "$archive" oras
+          echo "ORAS_BIN=$RUNNER_TEMP/oras/oras" >> "$GITHUB_ENV"
       - name: test
         run: cargo test
         working-directory: cli
