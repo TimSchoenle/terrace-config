@@ -95,6 +95,8 @@ The schema covers the shape of the file. The CLI additionally refuses:
 - an `unbound` entry whose `documents` names a document the chart does not declare, or a key
   written off twice in one scope;
 - an `images` entry without `contract` when the document has more than one image;
+- a contract path, written or defaulted, that is absolute or contains `..`, because `pull` writes
+  the vendored contract there and it has to stay inside the chart directory;
 - a document without `consumers` whose source kind is neither `ConfigMap` nor `Secret`;
 - a `prerequisites` entry inside the `probe` tree, two overlapping entries, or a `baseline` entry
   outside it;

@@ -67,7 +67,8 @@ use crate::document::{CONTRACT_VERSION, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION}
 use crate::error::Error;
 
 pub use super::declaration::normalized_image;
-use super::declaration::read_yaml;
+use super::declaration::{load_declaration, read_yaml};
+use super::files::{Planned, inside, write_all};
 use super::{DECLARATION, dig};
 
 /// The artifact type a published contract is attached under.
@@ -658,9 +659,35 @@ pub fn vendored_text(
 
 /// Write the wrapper [`vendored_text`] renders, and report whether the file changed.
 ///
+/// The file is replaced by a rename (see [`super::files`]), so no reader sees half a wrapper, and
+/// `path` must resolve inside its own parent directory. [`refresh_chart`] confines it to the chart
+/// instead, and refuses a contract that is itself a symbolic link.
+///
 /// # Errors
 /// As [`vendored_text`], and [`Error::Io`] when the file cannot be written.
 pub fn write_vendored(
+    path: &Path,
+    image: &str,
+    digest: &str,
+    payload: &[u8],
+    sha256: &str,
+    fetched: &str,
+) -> Result<bool, Error> {
+    let parent = match path.parent() {
+        Some(held) if !held.as_os_str().is_empty() => held,
+        _ => Path::new("."),
+    };
+    std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
+    write_vendored_in(parent, path, image, digest, payload, sha256, fetched)
+}
+
+/// [`write_vendored`], with `path` checked against `chart` again at the write itself.
+///
+/// The check that ran before the fetch is not enough on its own: the write re-resolves `path`
+/// against `chart` and creates the directories it needs only after that, so a directory turned into
+/// a link in the meantime is refused rather than followed.
+fn write_vendored_in(
+    chart: &Path,
     path: &Path,
     image: &str,
     digest: &str,
@@ -674,10 +701,11 @@ pub fn write_vendored(
     {
         return Ok(false);
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
-    }
-    std::fs::write(path, rendered).map_err(|e| Error::io(path.display(), e))?;
+    write_all(&[Planned {
+        chart: chart.to_path_buf(),
+        path: path.to_path_buf(),
+        text: rendered,
+    }])?;
     Ok(true)
 }
 
@@ -848,61 +876,77 @@ pub fn refresh_chart(
         let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
         read_yaml(&text, &path)
     };
-    let (declaration, values, meta) = (
-        read(DECLARATION)?,
-        read("values.yaml")?,
-        read("Chart.yaml")?,
-    );
+    // The typed reader, not the raw file: a declaration that leaves `images` or a contract path to
+    // its defaults (spec/helm/v1/DEFAULTS.md) still names an image, and reading the raw keys would
+    // refresh nothing for it without a word.
+    let Some(declaration) = load_declaration(chart_dir)? else {
+        return Ok(());
+    };
+    let (values, meta) = (read("values.yaml")?, read("Chart.yaml")?);
     let app_version = meta.get("appVersion").and_then(Json::as_str);
 
-    let mut seen: Vec<PathBuf> = Vec::new();
-    for document in declaration
-        .get("documents")
-        .and_then(Json::as_array)
-        .into_iter()
-        .flatten()
+    // One contract file per resolved target. Every entry is checked before a repeat is skipped, so
+    // a second document's bad values path is still refused, and two different images written into
+    // one file are refused rather than left to whichever ran last.
+    let mut seen: Vec<(PathBuf, String, &str)> = Vec::new();
+    for entry in declaration
+        .documents
+        .iter()
+        .flat_map(|document| &document.images)
     {
-        for entry in document
-            .get("images")
-            .and_then(Json::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let contract = entry
-                .get("contract")
-                .and_then(Json::as_str)
-                .unwrap_or_default();
-            let target = chart_dir.join(contract);
-            if seen.contains(&target) {
+        let at = entry.values.as_str();
+        let Some(image) = dig(&values, at).filter(|held| held.is_object()) else {
+            return Err(Error::Invalid(format!(
+                "{}: values path {} resolves to no image block",
+                chart_dir.join(DECLARATION).display(),
+                crate::gate::quoted(at)
+            )));
+        };
+        let (_, reference, _) = reference_for(image, app_version)?;
+        // The declaration reader already refuses `..` and absolute paths; this catches a symbolic
+        // link inside the chart that points out of it, before anything is fetched or created.
+        let declared = chart_dir.join(&entry.contract);
+        let resolved = inside(chart_dir, &declared)?;
+        // A link at the contract itself would hand the write to whatever it names, an in-chart
+        // `values.yaml` included. The file is pull's alone, so it must be a plain file.
+        if std::fs::symlink_metadata(&declared).is_ok_and(|held| held.file_type().is_symlink()) {
+            return Err(Error::Invalid(format!(
+                "{}: contract {} is a symbolic link; `pull` writes the vendored contract there, so \
+                 it must be a plain file or absent",
+                chart_dir.join(DECLARATION).display(),
+                crate::gate::quoted(&entry.contract)
+            )));
+        }
+        if let Some((_, first, by)) = seen.iter().find(|(held, _, _)| *held == resolved) {
+            if *first == reference {
                 continue;
             }
-            seen.push(target.clone());
+            return Err(Error::Invalid(format!(
+                "{}: contract {} is vendored from {} (at {}) and from {} (at {}); one file holds \
+                 one image's contract",
+                chart_dir.join(DECLARATION).display(),
+                crate::gate::quoted(&entry.contract),
+                crate::gate::quoted(first),
+                crate::gate::quoted(by),
+                crate::gate::quoted(&reference),
+                crate::gate::quoted(at)
+            )));
+        }
+        seen.push((resolved.clone(), reference, at));
 
-            let at = entry
-                .get("values")
-                .and_then(Json::as_str)
-                .unwrap_or_default();
-            let Some(image) = dig(&values, at).filter(|held| held.is_object()) else {
-                return Err(Error::Invalid(format!(
-                    "{}: values path {} resolves to no image block",
-                    chart_dir.join(DECLARATION).display(),
-                    crate::gate::quoted(at)
-                )));
-            };
-
-            let held = fetch_pinned(registry, image, app_version, signer)?;
-            if write_vendored(
-                &target,
-                &held.image,
-                &held.digest,
-                &held.payload,
-                &held.sha256,
-                fetched,
-            )? {
-                into.changed.push(target);
-            } else {
-                into.unchanged.push(target);
-            }
+        let held = fetch_pinned(registry, image, app_version, signer)?;
+        if write_vendored_in(
+            chart_dir,
+            &resolved,
+            &held.image,
+            &held.digest,
+            &held.payload,
+            &held.sha256,
+            fetched,
+        )? {
+            into.changed.push(declared);
+        } else {
+            into.unchanged.push(declared);
         }
     }
     Ok(())
@@ -1661,6 +1705,249 @@ mod tests {
         assert_eq!(
             held.read()["source"]["fetched"],
             json!("2026-01-01T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn a_declaration_that_leaves_its_image_to_the_defaults_is_still_refreshed() {
+        // The slim declaration names no `images` at all: the image is the one at `image`, and its
+        // contract is `contracts/<document>.json`. Reading the raw file found no image here and
+        // reported nothing changed, which is a refresh that silently never happens.
+        let chart = chart_with(&[
+            (super::DECLARATION, "documents:\n  - name: api\n"),
+            CHART,
+            VALUES,
+        ]);
+        let registry = Recorded::of(&published());
+        let mut refreshed = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut refreshed)
+            .expect("it refreshes");
+        assert_eq!(refreshed.changed, vec![chart.path()]);
+        assert_eq!(chart.read()["contract"], contract());
+    }
+
+    /// A chart directory holding the given files, removed with the guard.
+    fn chart_with(files: &[(&str, &str)]) -> Vendored {
+        let chart = Vendored::new();
+        std::fs::create_dir_all(&chart.0).expect("the chart directory is created");
+        for (name, text) in files {
+            std::fs::write(chart.0.join(name), text).expect("the chart file is written");
+        }
+        chart
+    }
+
+    const CHART: (&str, &str) = ("Chart.yaml", "name: api\nversion: 1.0.0\n");
+    const VALUES: (&str, &str) = (
+        "values.yaml",
+        "image:\n  repository: demo/api\n  tag: v1@sha256:aa\n",
+    );
+
+    #[test]
+    fn a_contract_two_documents_share_is_fetched_once_and_then_left_alone() {
+        let declaration = "documents:\n  - name: api\n    images:\n      - values: image\n        \
+                           contract: contracts/api.json\n  - name: worker\n    images:\n      \
+                           - values: image\n        contract: contracts/api.json\n";
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+        let registry = Recorded::of(&published());
+
+        let mut first = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut first).expect("it refreshes");
+        assert_eq!(first.changed, vec![chart.path()]);
+        assert_eq!(
+            first.unchanged,
+            Vec::<std::path::PathBuf>::new(),
+            "the second document names the same file"
+        );
+
+        let mut second = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "later", &mut second)
+            .expect("it refreshes");
+        assert_eq!(second.changed, Vec::<std::path::PathBuf>::new());
+        assert_eq!(second.unchanged, vec![chart.path()]);
+    }
+
+    #[test]
+    fn a_values_path_that_holds_no_image_block_is_refused_by_name() {
+        let declaration = "documents:\n  - name: api\n    images:\n      - values: sidecar\n";
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+        let registry = Recorded::of(&published());
+        let failure = super::refresh_chart(
+            &chart.0,
+            &registry,
+            SIGNER,
+            "t",
+            &mut super::Refreshed::default(),
+        )
+        .expect_err("there is no image at `sidecar`");
+        assert!(failure.to_string().contains("sidecar"), "{failure}");
+        assert_eq!(
+            *registry.asked.borrow(),
+            Vec::<String>::new(),
+            "nothing was fetched"
+        );
+    }
+
+    #[test]
+    fn a_second_document_sharing_a_contract_still_has_its_values_path_checked() {
+        let declaration = "documents:\n  - name: api\n    images:\n      - values: image\n        \
+                           contract: contracts/api.json\n  - name: worker\n    images:\n      \
+                           - values: sidecar\n        contract: contracts/api.json\n";
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+        let registry = Recorded::of(&published());
+        let failure = super::refresh_chart(
+            &chart.0,
+            &registry,
+            SIGNER,
+            "t",
+            &mut super::Refreshed::default(),
+        )
+        .expect_err("there is no image at `sidecar`");
+        assert!(failure.to_string().contains("sidecar"), "{failure}");
+    }
+
+    #[test]
+    fn two_images_vendored_into_one_contract_file_are_refused() {
+        let declaration = "documents:\n  - name: api\n    images:\n      - values: image\n        \
+                           contract: contracts/api.json\n  - name: worker\n    images:\n      \
+                           - values: sidecar\n        contract: ./contracts/api.json\n";
+        let values = (
+            "values.yaml",
+            "image:\n  repository: demo/api\n  tag: v1@sha256:aa\nsidecar:\n  repository: \
+             demo/worker\n  tag: v1@sha256:bb\n",
+        );
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, values]);
+        let registry = Recorded::of(&published());
+        let failure = super::refresh_chart(
+            &chart.0,
+            &registry,
+            SIGNER,
+            "t",
+            &mut super::Refreshed::default(),
+        )
+        .expect_err("one file cannot hold two images' contracts");
+        let message = failure.to_string();
+        assert!(
+            message.contains("demo/api") && message.contains("demo/worker"),
+            "{message}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_contracts_link_that_leaves_the_chart_is_refused_before_anything_is_fetched() {
+        let declaration = "documents:\n  - name: api\n";
+        let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+        let outside = Vendored::new();
+        std::fs::create_dir_all(&outside.0).expect("a directory");
+        std::fs::write(outside.0.join("api.json"), "untouched\n").expect("a file");
+        std::os::unix::fs::symlink(&outside.0, chart.0.join("contracts")).expect("a link");
+        let registry = Recorded::of(&published());
+
+        let failure = super::refresh_chart(
+            &chart.0,
+            &registry,
+            SIGNER,
+            "t",
+            &mut super::Refreshed::default(),
+        )
+        .expect_err("the link points out of the chart");
+
+        assert!(
+            failure.to_string().contains("outside the chart"),
+            "{failure}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(outside.0.join("api.json")).expect("readable"),
+            "untouched\n"
+        );
+        assert_eq!(
+            *registry.asked.borrow(),
+            Vec::<String>::new(),
+            "nothing was fetched"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_at_the_contract_is_refused_whether_or_not_it_points_anywhere() {
+        let declaration = "documents:\n  - name: api\n";
+        for (target, existing) in [("planted.json", false), ("values.yaml", true)] {
+            let chart = chart_with(&[(super::DECLARATION, declaration), CHART, VALUES]);
+            std::fs::create_dir_all(chart.0.join("contracts")).expect("a directory");
+            std::os::unix::fs::symlink(chart.0.join(target), chart.path()).expect("a link");
+            let registry = Recorded::of(&published());
+
+            let failure = super::refresh_chart(
+                &chart.0,
+                &registry,
+                SIGNER,
+                "t",
+                &mut super::Refreshed::default(),
+            )
+            .expect_err("the contract is a link");
+
+            assert!(
+                failure.to_string().contains("symbolic link"),
+                "{target}: {failure}"
+            );
+            assert_eq!(
+                chart.0.join(target).exists(),
+                existing,
+                "{target}: nothing was created through the link"
+            );
+            assert_eq!(
+                std::fs::read_to_string(chart.0.join("values.yaml")).expect("readable"),
+                VALUES.1,
+                "{target}: the values file is untouched"
+            );
+            assert_eq!(
+                *registry.asked.borrow(),
+                Vec::<String>::new(),
+                "{target}: nothing was fetched"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_write_itself_refuses_a_directory_that_became_a_link_after_the_check() {
+        let chart = chart_with(&[CHART]);
+        let outside = Vendored::new();
+        std::fs::create_dir_all(&outside.0).expect("a directory");
+        std::os::unix::fs::symlink(&outside.0, chart.0.join("contracts")).expect("a link");
+        let payload = br#"{"version":1}"#;
+
+        let failure = super::write_vendored_in(
+            &chart.0,
+            &chart.path(),
+            IMAGE,
+            INDEX,
+            payload,
+            &digest_of(payload),
+            "t",
+        )
+        .expect_err("the link points out of the chart");
+
+        assert!(
+            failure.to_string().contains("outside the chart"),
+            "{failure}"
+        );
+        assert!(!outside.0.join("api.json").exists(), "nothing was written");
+    }
+
+    #[test]
+    fn a_chart_without_a_declaration_is_not_refreshed() {
+        let chart = chart_with(&[CHART, VALUES]);
+        let registry = Recorded::of(&published());
+        let mut refreshed = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut refreshed)
+            .expect("there is nothing to do");
+        assert_eq!(refreshed.changed, Vec::<std::path::PathBuf>::new());
+        assert_eq!(refreshed.unchanged, Vec::<std::path::PathBuf>::new());
+        assert_eq!(
+            *registry.asked.borrow(),
+            Vec::<String>::new(),
+            "nothing was fetched"
         );
     }
 
