@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.2...terrace-config-java-v0.7.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** terrace.yaml repository settings; verify every Dockerfile label region; fix Java release paths ([#299](https://github.com/TimSchoenle/terrace-config/issues/299)) ([c54e8c3](https://github.com/TimSchoenle/terrace-config/commit/c54e8c340612e5710c90d1bfb53d4b6296eedf9b))
+* phase 5 producers (image verify --image, image attach, Dockerfile --write, Rust and Java build-time generators, Gradle plugin, producer guide) ([#312](https://github.com/TimSchoenle/terrace-config/issues/312)) ([cf45df5](https://github.com/TimSchoenle/terrace-config/commit/cf45df5a1864ed096e62681d2518b8e6d0ddc1a4))
+
+
+### Dependencies
+
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.8.2 ([#293](https://github.com/TimSchoenle/terrace-config/issues/293)) ([bd18edc](https://github.com/TimSchoenle/terrace-config/commit/bd18edc47b9cc8f8fa0b3b7deaba27d33a34ecfa))
+
 ## [0.6.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.1...terrace-config-java-v0.6.2) (2026-10-17)
 
 

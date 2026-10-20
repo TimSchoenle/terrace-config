@@ -5,5 +5,5 @@
 
 allprojects {
     group = "de.timscho"
-    version = "0.6.2" // x-release-please-version
+    version = "0.7.0" // x-release-please-version
 }
