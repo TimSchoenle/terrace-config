@@ -67,7 +67,7 @@ use crate::document::{CONTRACT_VERSION, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION}
 use crate::error::Error;
 
 pub use super::declaration::normalized_image;
-use super::declaration::read_yaml;
+use super::declaration::{load_declaration, read_yaml};
 use super::{DECLARATION, dig};
 
 /// The artifact type a published contract is attached under.
@@ -848,61 +848,48 @@ pub fn refresh_chart(
         let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
         read_yaml(&text, &path)
     };
-    let (declaration, values, meta) = (
-        read(DECLARATION)?,
-        read("values.yaml")?,
-        read("Chart.yaml")?,
-    );
+    // The typed reader, not the raw file: a declaration that leaves `images` or a contract path to
+    // its defaults (spec/helm/v1/DEFAULTS.md) still names an image, and reading the raw keys would
+    // refresh nothing for it without a word.
+    let Some(declaration) = load_declaration(chart_dir)? else {
+        return Ok(());
+    };
+    let (values, meta) = (read("values.yaml")?, read("Chart.yaml")?);
     let app_version = meta.get("appVersion").and_then(Json::as_str);
 
     let mut seen: Vec<PathBuf> = Vec::new();
-    for document in declaration
-        .get("documents")
-        .and_then(Json::as_array)
-        .into_iter()
-        .flatten()
+    for entry in declaration
+        .documents
+        .iter()
+        .flat_map(|document| &document.images)
     {
-        for entry in document
-            .get("images")
-            .and_then(Json::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let contract = entry
-                .get("contract")
-                .and_then(Json::as_str)
-                .unwrap_or_default();
-            let target = chart_dir.join(contract);
-            if seen.contains(&target) {
-                continue;
-            }
-            seen.push(target.clone());
+        let target = chart_dir.join(&entry.contract);
+        if seen.contains(&target) {
+            continue;
+        }
+        seen.push(target.clone());
 
-            let at = entry
-                .get("values")
-                .and_then(Json::as_str)
-                .unwrap_or_default();
-            let Some(image) = dig(&values, at).filter(|held| held.is_object()) else {
-                return Err(Error::Invalid(format!(
-                    "{}: values path {} resolves to no image block",
-                    chart_dir.join(DECLARATION).display(),
-                    crate::gate::quoted(at)
-                )));
-            };
+        let at = entry.values.as_str();
+        let Some(image) = dig(&values, at).filter(|held| held.is_object()) else {
+            return Err(Error::Invalid(format!(
+                "{}: values path {} resolves to no image block",
+                chart_dir.join(DECLARATION).display(),
+                crate::gate::quoted(at)
+            )));
+        };
 
-            let held = fetch_pinned(registry, image, app_version, signer)?;
-            if write_vendored(
-                &target,
-                &held.image,
-                &held.digest,
-                &held.payload,
-                &held.sha256,
-                fetched,
-            )? {
-                into.changed.push(target);
-            } else {
-                into.unchanged.push(target);
-            }
+        let held = fetch_pinned(registry, image, app_version, signer)?;
+        if write_vendored(
+            &target,
+            &held.image,
+            &held.digest,
+            &held.payload,
+            &held.sha256,
+            fetched,
+        )? {
+            into.changed.push(target);
+        } else {
+            into.unchanged.push(target);
         }
     }
     Ok(())
@@ -1662,6 +1649,31 @@ mod tests {
             held.read()["source"]["fetched"],
             json!("2026-01-01T00:00:00Z")
         );
+    }
+
+    #[test]
+    fn a_declaration_that_leaves_its_image_to_the_defaults_is_still_refreshed() {
+        // The slim declaration names no `images` at all: the image is the one at `image`, and its
+        // contract is `contracts/<document>.json`. Reading the raw file found no image here and
+        // reported nothing changed, which is a refresh that silently never happens.
+        let chart = Vendored::new();
+        std::fs::create_dir_all(&chart.0).expect("the chart directory is created");
+        for (name, text) in [
+            (super::DECLARATION, "documents:\n  - name: api\n"),
+            ("Chart.yaml", "name: api\nversion: 1.0.0\n"),
+            (
+                "values.yaml",
+                "image:\n  repository: demo/api\n  tag: v1@sha256:aa\n",
+            ),
+        ] {
+            std::fs::write(chart.0.join(name), text).expect("the chart file is written");
+        }
+        let registry = Recorded::of(&published());
+        let mut refreshed = super::Refreshed::default();
+        super::refresh_chart(&chart.0, &registry, SIGNER, "t", &mut refreshed)
+            .expect("it refreshes");
+        assert_eq!(refreshed.changed, vec![chart.path()]);
+        assert_eq!(chart.read()["contract"], contract());
     }
 
     #[test]
