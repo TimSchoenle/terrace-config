@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.11.1...terrace-contract-v0.12.0) (2026-10-20)
+
+
+### Features
+
+* phase 5 producers (image verify --image, image attach, Dockerfile --write, Rust and Java build-time generators, Gradle plugin, producer guide) ([#312](https://github.com/TimSchoenle/terrace-config/issues/312)) ([cf45df5](https://github.com/TimSchoenle/terrace-config/commit/cf45df5a1864ed096e62681d2518b8e6d0ddc1a4))
+
 ## [0.11.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.11.0...terrace-contract-v0.11.1) (2026-10-20)
 
 
