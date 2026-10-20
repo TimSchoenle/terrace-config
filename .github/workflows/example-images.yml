@@ -1,0 +1,136 @@
+name: Example images
+
+# Builds each example service's image and holds it to its contract through
+# TimSchoenle/actions' terrace/image, the way a service repository would: the committed contract
+# against the generator, the document against the specification at the producer's tier, the
+# Dockerfile label block against the document, and the built image (labels and embedded file)
+# against the document the build stamped.
+#
+# Images are saved as OCI layouts and read from there, so nothing is pushed and no registry is
+# needed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rust/**'
+      - 'java/**'
+      - '.github/workflows/example-images.yml'
+  pull_request:
+    paths:
+      - 'rust/**'
+      - 'java/**'
+      - '.github/workflows/example-images.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The CLI the action installs. The Dockerfiles pin the same line.
+  TERRACE_CONTRACT_VERSION: '0.12'
+
+jobs:
+  rust:
+    name: rust (orders-service)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # to fetch code, and to list terrace-contract releases
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          workspaces: rust
+      - name: Build the image
+        working-directory: rust
+        run: |
+          set -euo pipefail
+          docker build -f examples/service/Dockerfile -t orders-service:ci .
+          docker save orders-service:ci --output "${RUNNER_TEMP}/orders-service.tar"
+      - name: Check the image
+        uses: TimSchoenle/actions/actions/terrace/image@89e6c0ac845e4a785d0bd634a9a8782a4cb9bb3f # main after #1912; repin to tag=actions-terrace-image-v1.1.0 once released
+        with:
+          version: ${{ env.TERRACE_CONTRACT_VERSION }}
+          working_directory: rust
+          contract: examples/service/contract.json
+          generate: cargo run -q --example service-contract --features schema-cli -- --format contract
+          tier: '3'
+          dockerfile: examples/service/Dockerfile
+          image: ${{ runner.temp }}/orders-service.tar:ci
+          oci_layout: 'true'
+
+  # The Java images embed the contract `terraceContract` stamps with the build's identity, so the
+  # committed (unstamped) contract and the image are checked against different documents: the
+  # first call holds the committed one to its generator and the Dockerfile, the second holds the
+  # image to the document this runner stamps from the same commit.
+  java:
+    name: java (${{ matrix.example }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # to fetch code, and to list terrace-contract releases
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - example: terrace-config-example-service
+            tier: '2'
+          - example: terrace-config-example-spring-service
+            tier: '1'
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Build the image
+        working-directory: java
+        env:
+          EXAMPLE: ${{ matrix.example }}
+        run: |
+          set -euo pipefail
+          docker build -f "${EXAMPLE}/Dockerfile" -t "${EXAMPLE}:ci" .
+          docker save "${EXAMPLE}:ci" --output "${RUNNER_TEMP}/${EXAMPLE}.tar"
+      - name: Check the committed contract
+        uses: TimSchoenle/actions/actions/terrace/image@89e6c0ac845e4a785d0bd634a9a8782a4cb9bb3f # main after #1912; repin to tag=actions-terrace-image-v1.1.0 once released
+        with:
+          version: ${{ env.TERRACE_CONTRACT_VERSION }}
+          working_directory: java
+          contract: ${{ matrix.example }}/contract.json
+          generate: >-
+            ./gradlew -q --console=plain :${{ matrix.example }}:terraceContractEmit
+            && cat ${{ matrix.example }}/build/terrace/contract.unstamped.json
+          tier: ${{ matrix.tier }}
+          dockerfile: ${{ matrix.example }}/Dockerfile
+      # terrace-contract is on PATH from the step above, which is where the plugin finds it.
+      - name: Stamp the contract the image should carry
+        working-directory: java
+        env:
+          EXAMPLE: ${{ matrix.example }}
+        run: ./gradlew -q --console=plain ":${EXAMPLE}:terraceContract"
+      - name: Check the image
+        uses: TimSchoenle/actions/actions/terrace/image@89e6c0ac845e4a785d0bd634a9a8782a4cb9bb3f # main after #1912; repin to tag=actions-terrace-image-v1.1.0 once released
+        with:
+          version: ${{ env.TERRACE_CONTRACT_VERSION }}
+          working_directory: java
+          contract: ${{ matrix.example }}/build/terrace/contract.json
+          tier: ${{ matrix.tier }}
+          image: ${{ runner.temp }}/${{ matrix.example }}.tar:ci
+          oci_layout: 'true'

@@ -8,7 +8,7 @@
 # The build stage runs `terraceContract`, which emits the contract from the configuration types,
 # stamps it and conforms it, so an image whose contract does not conform is never built.
 
-FROM ghcr.io/timschoenle/terrace-contract:0.11 AS terrace-contract
+FROM ghcr.io/timschoenle/terrace-contract:0.12 AS terrace-contract
 
 FROM eclipse-temurin:25.0.4.1_1-jdk-noble AS build
 COPY --from=terrace-contract /terrace-contract /usr/local/bin/terrace-contract
