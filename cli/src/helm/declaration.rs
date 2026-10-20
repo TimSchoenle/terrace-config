@@ -12,6 +12,16 @@
 //! ahead rather than wrong. This file is the other case. It is written by hand, in this repository,
 //! and its whole job is to be exhaustive — so a key nobody reads is a typo, and ignoring it in
 //! silence is the worst available failure mode.
+//!
+//! # A key left out means its default, and the default is part of the layer version
+//!
+//! Most of a single-image chart's declaration is the same in every chart: the document is a
+//! `ConfigMap` labelled with the release, under `config.toml`, read by the image pinned at `image`,
+//! whose contract is vendored under the document's name, and mounted by whichever workloads mount
+//! it. Each of those may be left out, and [`Document::defaulted`] records which were, so
+//! `config show --chart` can say what a gate is actually holding the chart to. Every default is
+//! listed in `spec/helm/v1/DEFAULTS.md`; changing one is a breaking change, because a chart relying
+//! on it has written nothing that would reveal the change. A key that is written always wins.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -26,22 +36,60 @@ use crate::union::{Ordered, Union, local_refs_only, union_contracts};
 use super::{DECLARATION, dig, release, shown};
 
 /// Keys the top level may carry.
-const DECLARATION_KEYS: [&str; 6] = [
+const DECLARATION_KEYS: [&str; 7] = [
     "bindings",
     "credentials",
     "documents",
     "reason",
+    "tests",
     "unbound",
     "unconfigured",
 ];
 const CREDENTIAL_KEYS: [&str; 3] = ["key", "note", "value"];
-const DOCUMENT_KEYS: [&str; 6] = ["consumers", "exempt", "images", "name", "restart", "source"];
+const DOCUMENT_KEYS: [&str; 7] = [
+    "consumers",
+    "exempt",
+    "images",
+    "name",
+    "restart",
+    "source",
+    "tests",
+];
 const RESTART_KEYS: [&str; 2] = ["keys", "reason"];
 const SOURCE_KEYS: [&str; 4] = ["format", "key", "kind", "selector"];
 const IMAGE_KEYS: [&str; 2] = ["contract", "values"];
 const CONSUMER_KEYS: [&str; 2] = ["containers", "workload"];
 const EXEMPT_KEYS: [&str; 3] = ["gates", "reason", "values"];
 const UNBOUND_KEYS: [&str; 3] = ["documents", "keys", "reason"];
+
+/// Where an editor finds the schema a declaration is written against.
+///
+/// An identifier as much as an address: the CLI reads the declaration itself and never fetches this.
+pub const DECLARATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/TimSchoenle/terrace-config/main/spec/helm/v1/declaration.schema.json";
+
+/// The kind of object a document is rendered into when `source.kind` is left out.
+pub const DEFAULT_SOURCE_KIND: &str = "ConfigMap";
+
+/// The key a document is rendered under when `source.key` is left out.
+pub const DEFAULT_SOURCE_KEY: &str = "config.toml";
+
+/// The label a default selector matches, valued with the release name.
+///
+/// `.Release.Name` is the one identifier neither `nameOverride` nor `fullnameOverride` can move, so
+/// it is the one label a selector can rely on under every values file.
+pub const RELEASE_LABEL: &str = "app.kubernetes.io/instance";
+
+/// The values path of the image a document is read by when `images` is left out.
+pub const DEFAULT_IMAGE_VALUES: &str = "image";
+
+/// The directory, relative to the chart, a default contract path is written under.
+pub const CONTRACTS_DIR: &str = "contracts";
+
+/// The object kinds whose readers can be found from the rendered manifests.
+///
+/// Both are mounted as volumes by name, which is what inference follows. Any other kind has no
+/// reference a workload's pod spec spells, so its consumers have to be written out.
+const INFERABLE_KINDS: [&str; 2] = ["ConfigMap", "Secret"];
 
 /// Which rendered object holds a document, and where inside it.
 pub type Source = DocumentSource;
@@ -62,8 +110,56 @@ pub struct Consumer {
     pub kind: String,
     /// The labels naming it.
     pub selector: Vec<(String, String)>,
+    /// The workload's rendered name, for a consumer found in one rendered file rather than written
+    /// into the declaration. A declared consumer never carries one: a name override moves it.
+    pub name: Option<String>,
     /// The containers inside it that read the document.
     pub containers: Vec<String>,
+}
+
+impl Consumer {
+    /// The rendered workloads this consumer names.
+    #[must_use]
+    pub fn select<'a>(&self, manifests: &'a [Json]) -> Vec<&'a Json> {
+        let mut matched = crate::k8s::select(manifests, &self.kind, &self.selector);
+        if let Some(name) = &self.name {
+            matched.retain(|workload| {
+                workload
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get("name"))
+                    .and_then(Json::as_str)
+                    == Some(name.as_str())
+            });
+        }
+        matched
+    }
+}
+
+/// The workloads that read a document: written out, or found in each rendered file.
+#[derive(Debug, Clone)]
+pub enum Consumers {
+    /// Listed in the declaration. An empty list is a written decision to check no workload.
+    Declared(Vec<Consumer>),
+    /// Left out: every workload whose pod spec mounts the rendered source object, and the
+    /// containers of it that mount it, found again in every rendered values file.
+    Inferred,
+}
+
+impl Consumers {
+    /// The consumers written in the declaration; none when they are inferred.
+    #[must_use]
+    pub fn declared(&self) -> &[Consumer] {
+        match self {
+            Self::Declared(listed) => listed,
+            Self::Inferred => &[],
+        }
+    }
+
+    /// Whether the consumers are found from the rendered manifests.
+    #[must_use]
+    pub const fn inferred(&self) -> bool {
+        matches!(self, Self::Inferred)
+    }
 }
 
 /// One rendered values file, exempt from some gates, with a written reason.
@@ -131,14 +227,35 @@ pub struct Document {
     /// The images that read it.
     pub images: Vec<ImageRef>,
     /// The workloads that mount it.
-    pub consumers: Vec<Consumer>,
+    pub consumers: Consumers,
     /// The exemptions, per values file.
     pub exempt: Vec<Exemption>,
     /// Keys this chart rolls its pods for although an image applies them live.
     pub restart: Vec<Restarted>,
+    /// How this document's round-trip suite is generated, when the chart is enrolled in them.
+    pub tests: Option<super::suites::Enrolment>,
+    /// The fields this document took from their defaults, as dotted paths under the document, in
+    /// the order the declaration's reference lists them.
+    pub defaulted: Vec<&'static str>,
 }
 
 impl Document {
+    /// The workloads that read this document in one rendered values file.
+    ///
+    /// The declared ones as written, or, when the declaration leaves them out, every workload that
+    /// mounts the object the source selects in this file. Inferred per file rather than once,
+    /// because a values file may switch a reader on or off, and the consumers of that file are the
+    /// ones it renders.
+    #[must_use]
+    pub fn consumers_in(&self, manifests: &[Json]) -> std::borrow::Cow<'_, [Consumer]> {
+        match &self.consumers {
+            Consumers::Declared(listed) => std::borrow::Cow::Borrowed(listed),
+            Consumers::Inferred => {
+                std::borrow::Cow::Owned(infer_consumers(manifests, &self.source))
+            }
+        }
+    }
+
     /// The gates exempted for one rendered values file.
     ///
     /// `values: "*"` covers every one of them. That is for a gap in the *contract* rather than in
@@ -156,6 +273,46 @@ impl Document {
         }
         relaxed
     }
+}
+
+/// Every workload mounting an object the source selects, as the consumer it would be declared as.
+///
+/// Pinned by the rendered name as well as the kind: within one rendered file the name is fixed,
+/// and labels alone could also match a workload that mounts nothing.
+fn infer_consumers(manifests: &[Json], source: &Source) -> Vec<Consumer> {
+    let mut found = Vec::new();
+    for object in crate::k8s::select_source(manifests, &source.kind, &source.selector, &source.key)
+    {
+        let Some(name) = object
+            .get("metadata")
+            .and_then(|metadata| metadata.get("name"))
+            .and_then(Json::as_str)
+        else {
+            continue;
+        };
+        for mounting in crate::k8s::mounting(manifests, &source.kind, name) {
+            let workload = mounting.workload;
+            found.push(Consumer {
+                kind: workload
+                    .get("kind")
+                    .and_then(Json::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                selector: Vec::new(),
+                name: workload
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get("name"))
+                    .and_then(Json::as_str)
+                    .map(str::to_owned),
+                containers: mounting
+                    .containers
+                    .iter()
+                    .map(|held| (*held).to_owned())
+                    .collect(),
+            });
+        }
+    }
+    found
 }
 
 /// The last path segment, whichever separator a declaration was written with.
@@ -190,6 +347,11 @@ pub struct Declaration {
     pub unbound: Vec<Unbound>,
     /// What this chart adds to the credential reference its README carries, keyed by contract path.
     pub credentials: BTreeMap<String, CredentialNote>,
+    /// Whether the chart is enrolled in the generated round-trip suites.
+    ///
+    /// Declared for [`Declaration::bindings`]' reason. Every document of an enrolled chart gets a
+    /// suite; a document's own `tests` block only says how.
+    pub tests: bool,
 }
 
 /// Read one chart's declaration; [`None`] when it has none.
@@ -241,40 +403,55 @@ pub fn parse_declaration(text: &str, chart_dir: &Path) -> Result<Declaration, Er
         )));
     }
 
-    let bindings = match fields.get("bindings") {
-        None | Some(Json::Null) => false,
-        Some(Json::Bool(held)) => *held,
-        other => {
-            return Err(Error::Invalid(format!(
-                "{at}: `bindings` is the chart's enrolment in the marker check and must be true or \
-                 false, not {}",
-                shown(other)
-            )));
-        }
-    };
+    let bindings = enrolment_switch(&at, fields.get("bindings"), "bindings", "the marker check")?;
+    let tests = enrolment_switch(&at, fields.get("tests"), "tests", "the round-trip suites")?;
 
+    let chart = chart_dir
+        .file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
     let mut documents = Vec::new();
     for entry in raw {
-        documents.push(load_document(&at, entry)?);
+        let document = load_document(&at, &chart, entry, tests)?;
+        if documents
+            .iter()
+            .any(|held: &Document| held.name == document.name)
+        {
+            return Err(Error::Invalid(format!(
+                "{at}: the document {} is declared twice",
+                crate::gate::quoted(&document.name)
+            )));
+        }
+        documents.push(document);
     }
     let names: BTreeSet<&str> = documents.iter().map(|entry| entry.name.as_str()).collect();
 
     Ok(Declaration {
-        chart: chart_dir
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+        chart,
         path: path.clone(),
         reason,
         unconfigured: strings(fields.get("unconfigured")),
         bindings,
         unbound: load_unbound(&at, fields.get("unbound"), &names)?,
         credentials: load_credentials(&at, fields.get("credentials"))?,
+        tests,
         documents,
     })
 }
 
-/// One document entry.
-fn load_document(at: &str, entry: &Json) -> Result<Document, Error> {
+/// One of the declaration's enrolment switches: absent is off, and anything but a boolean is wrong.
+fn enrolment_switch(at: &str, value: Option<&Json>, key: &str, what: &str) -> Result<bool, Error> {
+    match value {
+        None | Some(Json::Null) => Ok(false),
+        Some(Json::Bool(held)) => Ok(*held),
+        other => Err(Error::Invalid(format!(
+            "{at}: `{key}` is the chart's enrolment in {what} and must be true or false, not {}",
+            shown(other)
+        ))),
+    }
+}
+
+/// One document entry, with every field it leaves out taken from its default.
+fn load_document(at: &str, chart: &str, entry: &Json, enrolled: bool) -> Result<Document, Error> {
     let Some(fields) = entry.as_object() else {
         return Err(Error::Invalid(format!(
             "{at}: every entry of `documents` must be a mapping"
@@ -288,14 +465,54 @@ fn load_document(at: &str, entry: &Json) -> Result<Document, Error> {
         .filter(|name| !name.is_empty())
         .ok_or_else(|| Error::Invalid(format!("{at}: a document has no `name`")))?;
 
+    let mut defaulted = Vec::new();
+    let source = load_source(at, name, chart, fields.get("source"), &mut defaulted)?;
+    let images = load_images(at, name, fields.get("images"), &mut defaulted)?;
+    let consumers = load_consumers(at, name, &source, fields.get("consumers"), &mut defaulted)?;
+    let tests = load_tests(at, name, fields.get("tests"), enrolled)?;
+
     Ok(Document {
         name: name.to_owned(),
-        source: load_source(at, name, fields.get("source"))?,
-        images: load_images(at, name, fields.get("images"))?,
-        consumers: load_consumers(at, name, fields.get("consumers"))?,
+        source,
+        images,
+        consumers,
         exempt: load_exemptions(at, name, fields.get("exempt"))?,
         restart: load_restarted(at, name, fields.get("restart"))?,
+        tests,
+        defaulted,
     })
+}
+
+/// How one document's suite is generated: its own block, or the defaults when the chart is enrolled.
+///
+/// A block on a chart that is not enrolled is refused rather than read as an enrolment: the switch
+/// is declared at the top for the reason `bindings` is, and a block that configures a suite nothing
+/// generates is a file describing a gate that does not run.
+fn load_tests(
+    at: &str,
+    name: &str,
+    block: Option<&Json>,
+    enrolled: bool,
+) -> Result<Option<super::suites::Enrolment>, Error> {
+    let block = block.filter(|held| !held.is_null());
+    match (enrolled, block) {
+        (false, None) => Ok(None),
+        (false, Some(_)) => Err(Error::Invalid(format!(
+            "{at}: {name}: configures a round-trip suite with `tests`, but the chart is not \
+             enrolled in them; set `tests: true` at the top of the file"
+        ))),
+        (true, None) => Ok(Some(super::suites::Enrolment::default())),
+        (true, Some(block)) => {
+            if !block.is_object() {
+                return Err(Error::Invalid(format!(
+                    "{at}: {name}: `tests` must be a mapping; enrolment is the top-level `tests: \
+                     true`"
+                )));
+            }
+            super::suites::parse_entry(at, name, &format!("documents[{name}].tests"), block)
+                .map(Some)
+        }
+    }
 }
 
 /// The keys a document's chart rolls its pods for although an image applies them live.
@@ -362,10 +579,27 @@ fn load_restarted(at: &str, name: &str, entries: Option<&Json>) -> Result<Vec<Re
     Ok(loaded)
 }
 
-/// Where the document is rendered.
-fn load_source(at: &str, name: &str, source: Option<&Json>) -> Result<Source, Error> {
-    let Some(fields) = source.and_then(Json::as_object) else {
-        return Err(Error::Invalid(format!("{at}: {name}: `source` is missing")));
+/// Where the document is rendered, each field it leaves out taken from its default.
+///
+/// The format follows the key's extension before it falls back to TOML, so a chart rendering
+/// `config.yaml` writes one key rather than two that have to agree.
+fn load_source(
+    at: &str,
+    name: &str,
+    chart: &str,
+    source: Option<&Json>,
+    defaulted: &mut Vec<&'static str>,
+) -> Result<Source, Error> {
+    let empty = serde_json::Map::new();
+    let fields = match source {
+        None | Some(Json::Null) => &empty,
+        Some(Json::Object(fields)) => fields,
+        Some(other) => {
+            return Err(Error::Invalid(format!(
+                "{at}: {name}: `source` must be a mapping, not {}",
+                shown(Some(other))
+            )));
+        }
     };
     reject_unknown(
         at,
@@ -373,42 +607,114 @@ fn load_source(at: &str, name: &str, source: Option<&Json>) -> Result<Source, Er
         source.unwrap_or(&Json::Null),
         &SOURCE_KEYS,
     )?;
-    for required in ["kind", "key"] {
-        if fields.get(required).and_then(Json::as_str).is_none() {
+
+    let kind = text_field(at, name, fields, "kind")?.unwrap_or_else(|| {
+        defaulted.push("source.kind");
+        DEFAULT_SOURCE_KIND.to_owned()
+    });
+
+    let selector = match fields.get("selector") {
+        None | Some(Json::Null) => {
+            defaulted.push("source.selector");
+            vec![(RELEASE_LABEL.to_owned(), chart.to_owned())]
+        }
+        Some(Json::Object(labels)) if !labels.is_empty() => selector(fields.get("selector")),
+        Some(other) => {
             return Err(Error::Invalid(format!(
-                "{at}: {name}: `source.{required}` is missing"
+                "{at}: {name}: `source.selector` must be a non-empty mapping of labels, not {}; \
+                 leave it out to match `{RELEASE_LABEL}: {chart}`",
+                shown(Some(other))
             )));
         }
-    }
+    };
 
-    let spelling = fields
-        .get("format")
-        .and_then(Json::as_str)
-        .unwrap_or("toml");
-    let format = DocumentFormat::parse(spelling).ok_or_else(|| {
-        Error::Invalid(format!(
-            "{at}: {name}: `source.format` {} is not one of toml, json, yaml",
-            crate::gate::quoted(spelling)
-        ))
-    })?;
+    let key = text_field(at, name, fields, "key")?.unwrap_or_else(|| {
+        defaulted.push("source.key");
+        DEFAULT_SOURCE_KEY.to_owned()
+    });
+
+    let format = if let Some(spelling) = text_field(at, name, fields, "format")? {
+        DocumentFormat::parse(&spelling).ok_or_else(|| {
+            Error::Invalid(format!(
+                "{at}: {name}: `source.format` {} is not one of toml, json, yaml",
+                crate::gate::quoted(&spelling)
+            ))
+        })?
+    } else {
+        defaulted.push("source.format");
+        format_of(&key)
+    };
 
     Ok(Source {
-        kind: fields["kind"].as_str().unwrap_or_default().to_owned(),
-        selector: selector(fields.get("selector")),
-        key: fields["key"].as_str().unwrap_or_default().to_owned(),
+        kind,
+        selector,
+        key,
         format,
     })
 }
 
+/// The format a key's extension names, and TOML for any other key.
+pub(crate) fn format_of(key: &str) -> DocumentFormat {
+    let extension = Path::new(key)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(str::to_ascii_lowercase);
+    match extension.as_deref() {
+        Some("json") => DocumentFormat::Json,
+        Some("yaml" | "yml") => DocumentFormat::Yaml,
+        _ => DocumentFormat::Toml,
+    }
+}
+
+/// One optional, non-empty string field of `source`.
+fn text_field(
+    at: &str,
+    name: &str,
+    fields: &serde_json::Map<String, Json>,
+    field: &str,
+) -> Result<Option<String>, Error> {
+    match fields.get(field) {
+        None | Some(Json::Null) => Ok(None),
+        Some(Json::String(held)) if !held.is_empty() => Ok(Some(held.clone())),
+        Some(other) => Err(Error::Invalid(format!(
+            "{at}: {name}: `source.{field}` must be a non-empty string, not {}; leave it out for \
+             the default",
+            shown(Some(other))
+        ))),
+    }
+}
+
+/// The contract path a document's only image takes when its entry leaves `contract` out.
+fn default_contract(document: &str) -> String {
+    format!("{CONTRACTS_DIR}/{document}.json")
+}
+
 /// The images a document is read by.
-fn load_images(at: &str, name: &str, images: Option<&Json>) -> Result<Vec<ImageRef>, Error> {
-    let entries = images
-        .and_then(Json::as_array)
-        .filter(|list| !list.is_empty());
-    let Some(entries) = entries else {
-        return Err(Error::Invalid(format!(
-            "{at}: {name}: `images` is missing or empty"
-        )));
+///
+/// Left out, the document is read by the one image pinned at [`DEFAULT_IMAGE_VALUES`]. An entry may
+/// leave its `contract` out only when it is the document's one image: the default path is spelled
+/// from the document's name, and two images cannot both be vendored at it.
+fn load_images(
+    at: &str,
+    name: &str,
+    images: Option<&Json>,
+    defaulted: &mut Vec<&'static str>,
+) -> Result<Vec<ImageRef>, Error> {
+    let entries = match images {
+        None | Some(Json::Null) => {
+            defaulted.push("images");
+            return Ok(vec![ImageRef {
+                values: DEFAULT_IMAGE_VALUES.to_owned(),
+                contract: default_contract(name),
+            }]);
+        }
+        Some(Json::Array(list)) if !list.is_empty() => list,
+        Some(_) => {
+            return Err(Error::Invalid(format!(
+                "{at}: {name}: `images` must be a non-empty list; leave it out for the one image \
+                 at `{DEFAULT_IMAGE_VALUES}`"
+            )));
+        }
     };
 
     let mut loaded = Vec::new();
@@ -419,25 +725,65 @@ fn load_images(at: &str, name: &str, images: Option<&Json>) -> Result<Vec<ImageR
             )));
         };
         reject_unknown(at, &format!("{name}.images[]"), image, &IMAGE_KEYS)?;
-        for required in ["values", "contract"] {
-            if fields.get(required).and_then(Json::as_str).is_none() {
+        let Some(values) = fields.get("values").and_then(Json::as_str) else {
+            return Err(Error::Invalid(format!(
+                "{at}: {name}: `images[].values` is missing"
+            )));
+        };
+        let contract = match fields.get("contract").and_then(Json::as_str) {
+            Some(contract) => contract.to_owned(),
+            None if entries.len() == 1 => {
+                defaulted.push("images[].contract");
+                default_contract(name)
+            }
+            None => {
                 return Err(Error::Invalid(format!(
-                    "{at}: {name}: `images[].{required}` is missing"
+                    "{at}: {name}: `images[].contract` is missing for `{values}`; it may be left \
+                     out only when the document has one image, since the default path is spelled \
+                     from the document's name"
                 )));
             }
-        }
+        };
         loaded.push(ImageRef {
-            values: fields["values"].as_str().unwrap_or_default().to_owned(),
-            contract: fields["contract"].as_str().unwrap_or_default().to_owned(),
+            values: values.to_owned(),
+            contract,
         });
     }
     Ok(loaded)
 }
 
-/// The workloads that mount a document.
-fn load_consumers(at: &str, name: &str, consumers: Option<&Json>) -> Result<Vec<Consumer>, Error> {
+/// The workloads that mount a document: the declared ones, or [`Consumers::Inferred`].
+fn load_consumers(
+    at: &str,
+    name: &str,
+    source: &Source,
+    consumers: Option<&Json>,
+    defaulted: &mut Vec<&'static str>,
+) -> Result<Consumers, Error> {
+    let entries = match consumers {
+        None | Some(Json::Null) => {
+            if !INFERABLE_KINDS.contains(&source.kind.as_str()) {
+                return Err(Error::Invalid(format!(
+                    "{at}: {name}: `consumers` is missing, and the readers of a {} cannot be \
+                     found from the manifests: only a {} is mounted by name. Write them out",
+                    source.kind,
+                    INFERABLE_KINDS.join(" or ")
+                )));
+            }
+            defaulted.push("consumers");
+            return Ok(Consumers::Inferred);
+        }
+        Some(Json::Array(list)) => list,
+        Some(other) => {
+            return Err(Error::Invalid(format!(
+                "{at}: {name}: `consumers` must be a list, not {}",
+                shown(Some(other))
+            )));
+        }
+    };
+
     let mut loaded = Vec::new();
-    for consumer in consumers.and_then(Json::as_array).into_iter().flatten() {
+    for consumer in entries {
         let Some(fields) = consumer.as_object() else {
             return Err(Error::Invalid(format!(
                 "{at}: {name}: every entry of `consumers` must be a mapping"
@@ -466,10 +812,11 @@ fn load_consumers(at: &str, name: &str, consumers: Option<&Json>) -> Result<Vec<
         loaded.push(Consumer {
             kind: kind.to_owned(),
             selector: selector(workload.and_then(|workload| workload.get("selector"))),
+            name: None,
             containers: containers.iter().map(text_of).collect(),
         });
     }
-    Ok(loaded)
+    Ok(Consumers::Declared(loaded))
 }
 
 /// The per-values-file exemptions.
@@ -641,7 +988,8 @@ fn unbound_scope(
     };
     let Some(listed) = scope.as_array().filter(|list| !list.is_empty()) else {
         return Err(Error::Invalid(format!(
-            "{at}: {where_}: `documents` scopes the write-off and must be a non-empty list; leave              it out to write the keys off wherever they are declared"
+            "{at}: {where_}: `documents` scopes the write-off and must be a non-empty list; leave \
+             it out to write the keys off wherever they are declared"
         )));
     };
 
@@ -658,7 +1006,8 @@ fn unbound_scope(
     };
     if !unknown.is_empty() {
         return Err(Error::Invalid(format!(
-            "{at}: {where_}: `documents` names {}, which this chart does not declare (declared:              {})",
+            "{at}: {where_}: `documents` names {}, which this chart does not declare (declared: \
+             {})",
             unknown.join(", "),
             documents.iter().copied().collect::<Vec<_>>().join(", ")
         )));
@@ -793,6 +1142,27 @@ fn text_of(value: &Json) -> String {
     value
         .as_str()
         .map_or_else(|| value.to_string(), str::to_owned)
+}
+
+/// `spec/helm/v1/declaration.schema.json`, which an editor validates a declaration against.
+///
+/// Embedded for the tests only. The reader above is the authority and states rules the schema
+/// cannot, and running both would give one defect two messages; what the tests hold is that the two
+/// agree on every key and on what each refuses.
+#[cfg(test)]
+pub(crate) const DECLARATION_SCHEMA: &str =
+    include_str!("../../../spec/helm/v1/declaration.schema.json");
+
+/// Every way one declaration's text breaks [`DECLARATION_SCHEMA`], as `pointer: message` lines.
+#[cfg(test)]
+pub(crate) fn schema_violations(text: &str) -> Vec<String> {
+    let schema: Json = serde_json::from_str(DECLARATION_SCHEMA).expect("the schema is JSON");
+    let validator = jsonschema::validator_for(&schema).expect("the schema compiles");
+    let document = read_yaml(text, Path::new(DECLARATION)).expect("the declaration is YAML");
+    validator
+        .iter_errors(&document)
+        .map(|error| format!("{}: {error}", error.instance_path()))
+        .collect()
 }
 
 /// One YAML file as JSON, with an absent or empty document reading as an empty mapping.
@@ -1407,7 +1777,166 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{Selection, load_declaration, read_yaml, resolve_image};
+    use super::{
+        Consumers, Declaration, Selection, load_declaration, parse_declaration, read_yaml,
+        resolve_image, schema_violations,
+    };
+    use crate::gate::DocumentFormat;
+
+    /// One declaration read as `charts/app`'s, with nothing on disk.
+    fn parsed(body: &str) -> Result<Declaration, crate::error::Error> {
+        parse_declaration(body, Path::new("charts/app"))
+    }
+
+    fn refused(body: &str) -> String {
+        parsed(body)
+            .expect_err("the declaration is refused")
+            .to_string()
+    }
+
+    /// Every key the reader accepts, at one level of the file, against the schema's for that level.
+    fn schema_keys(pointer: &str) -> Vec<String> {
+        let schema: serde_json::Value =
+            serde_json::from_str(super::DECLARATION_SCHEMA).expect("the schema is JSON");
+        let mut keys: Vec<String> = schema
+            .pointer(pointer)
+            .and_then(serde_json::Value::as_object)
+            .unwrap_or_else(|| panic!("the schema has {pointer}"))
+            .keys()
+            .cloned()
+            .collect();
+        keys.sort();
+        keys
+    }
+
+    fn sorted(keys: &[&str]) -> Vec<String> {
+        let mut held: Vec<String> = keys.iter().map(|key| (*key).to_owned()).collect();
+        held.sort();
+        held
+    }
+
+    #[test]
+    fn the_schema_names_exactly_the_keys_the_reader_accepts() {
+        use super::{
+            CONSUMER_KEYS, CREDENTIAL_KEYS, DECLARATION_KEYS, DOCUMENT_KEYS, EXEMPT_KEYS,
+            IMAGE_KEYS, RESTART_KEYS, SOURCE_KEYS, UNBOUND_KEYS,
+        };
+        use crate::helm::suites::{ENTRY_KEYS, PREREQUISITE_KEYS, UNROUTED_KEYS};
+
+        let levels: [(&str, &[&str]); 12] = [
+            ("/properties", &DECLARATION_KEYS),
+            ("/$defs/document/properties", &DOCUMENT_KEYS),
+            ("/$defs/source/properties", &SOURCE_KEYS),
+            ("/$defs/image/properties", &IMAGE_KEYS),
+            ("/$defs/consumer/properties", &CONSUMER_KEYS),
+            (
+                "/$defs/consumer/properties/workload/properties",
+                &["kind", "selector"],
+            ),
+            ("/$defs/exemption/properties", &EXEMPT_KEYS),
+            ("/$defs/restart/properties", &RESTART_KEYS),
+            ("/$defs/unbound/properties", &UNBOUND_KEYS),
+            ("/$defs/credential/properties", &CREDENTIAL_KEYS),
+            ("/$defs/tests/properties", &ENTRY_KEYS),
+            (
+                "/$defs/tests/properties/unrouted/items/properties",
+                &UNROUTED_KEYS,
+            ),
+        ];
+        for (pointer, keys) in levels {
+            assert_eq!(schema_keys(pointer), sorted(keys), "{pointer}");
+        }
+        assert_eq!(
+            schema_keys("/$defs/tests/properties/prerequisites/properties"),
+            sorted(&PREREQUISITE_KEYS)
+        );
+
+        let gates: Vec<&str> = crate::gate::Relaxed::GATES
+            .iter()
+            .map(|(gate, _)| *gate)
+            .collect();
+        let schema: serde_json::Value =
+            serde_json::from_str(super::DECLARATION_SCHEMA).expect("the schema is JSON");
+        assert_eq!(
+            schema["$defs"]["exemption"]["properties"]["gates"]["items"]["enum"],
+            json!(gates)
+        );
+    }
+
+    #[test]
+    fn the_schema_accepts_what_the_reader_accepts() {
+        let accepted = [
+            "documents:\n  - name: app\n",
+            "documents: []\nreason: renders no configuration\n",
+            "\
+bindings: true
+tests: true
+unconfigured: [sidecar.image]
+unbound:
+  - keys: [a.b]
+    reason: delivered as a file
+    documents: [app]
+credentials:
+  - key: a.b
+    value: existingSecret
+documents:
+  - name: app
+    source:
+      kind: Secret
+      selector: { app: x }
+      key: settings.json
+      format: json
+    images:
+      - values: image
+        contract: contracts/app.json
+      - values: other.image
+        contract: contracts/other.json
+    consumers:
+      - workload: { kind: Deployment, selector: { app: x } }
+        containers: [app]
+    exempt:
+      - values: ci/minimal.yaml
+        gates: [env, files]
+        reason: renders no workload
+    restart:
+      - keys: [a.c]
+        reason: canaried
+    tests:
+      probe: app.config
+      baseline: { app.config.a.d: false }
+      reason: the pair is refused together
+      prerequisites:
+        values: { existingSecret: probe }
+        reason: the chart refuses to render without one
+      unrouted:
+        - keys: [a.e]
+          reason: guarded
+",
+        ];
+        for body in accepted {
+            parsed(body).expect("the reader accepts it");
+            assert_eq!(schema_violations(body), Vec::<String>::new(), "{body}");
+        }
+    }
+
+    #[test]
+    fn the_schema_refuses_what_the_reader_refuses_by_shape() {
+        let refused_both = [
+            "documents: []\n",
+            "documents:\n  - name: app\n    typo: 1\n",
+            "documents:\n  - name: app\n    source: { selector: {} }\n",
+            "documents:\n  - name: app\n    images: []\n",
+            "documents:\n  - name: app\n    source: { format: ini }\n",
+            "documents:\n  - name: app\n    exempt:\n      - { gates: [all], reason: x }\n",
+            "bindings: yes please\ndocuments:\n  - name: app\n",
+            "credentials:\n  - key: a\ndocuments:\n  - name: app\n",
+            "tests: true\ndocuments:\n  - name: app\n    tests: { probe: app.x }\n",
+        ];
+        for body in refused_both {
+            parsed(body).expect_err(body);
+            assert_ne!(schema_violations(body), Vec::<String>::new(), "{body}");
+        }
+    }
 
     fn write(body: &str) -> tempdir::Dir {
         let dir = tempdir::Dir::new();
@@ -1517,6 +2046,267 @@ mod tests {
             .declared(tree.path(), false)
             .expect("`beta` is not read");
         assert!(found.is_empty(), "neither selected chart declares anything");
+    }
+
+    // -- defaults --------------------------------------------------------------------------------
+
+    #[test]
+    fn a_document_naming_only_itself_takes_every_default() {
+        let declaration = parsed("documents:\n  - name: server\n").expect("it reads");
+        let document = &declaration.documents[0];
+
+        assert_eq!(document.source.kind, "ConfigMap");
+        assert_eq!(
+            document.source.selector,
+            vec![("app.kubernetes.io/instance".to_owned(), "app".to_owned())]
+        );
+        assert_eq!(document.source.key, "config.toml");
+        assert_eq!(document.source.format, DocumentFormat::Toml);
+        assert_eq!(document.images.len(), 1);
+        assert_eq!(document.images[0].values, "image");
+        assert_eq!(document.images[0].contract, "contracts/server.json");
+        assert!(document.consumers.inferred());
+        assert_eq!(
+            document.defaulted,
+            vec![
+                "source.kind",
+                "source.selector",
+                "source.key",
+                "source.format",
+                "images",
+                "consumers",
+            ]
+        );
+    }
+
+    #[test]
+    fn every_written_field_wins_over_its_default() {
+        let declaration = parsed(
+            "documents:\n  - name: server\n    source:\n      kind: Secret\n      \
+             selector: {app.kubernetes.io/component: api}\n      key: settings.json\n      \
+             format: yaml\n    images:\n      - {values: services.api.image, contract: c/a.json}\n    \
+             consumers:\n      - workload: {kind: Job}\n        containers: [api]\n",
+        )
+        .expect("it reads");
+        let document = &declaration.documents[0];
+
+        assert_eq!(document.source.kind, "Secret");
+        assert_eq!(
+            document.source.selector,
+            vec![("app.kubernetes.io/component".to_owned(), "api".to_owned())]
+        );
+        assert_eq!(document.source.key, "settings.json");
+        assert_eq!(
+            document.source.format,
+            DocumentFormat::Yaml,
+            "written beats the extension"
+        );
+        assert_eq!(document.images[0].values, "services.api.image");
+        assert_eq!(document.images[0].contract, "c/a.json");
+        assert_eq!(document.consumers.declared().len(), 1);
+        assert!(document.defaulted.is_empty(), "{:?}", document.defaulted);
+    }
+
+    #[test]
+    fn the_format_follows_the_keys_extension_before_it_falls_back_to_toml() {
+        for (key, format) in [
+            ("config.toml", DocumentFormat::Toml),
+            ("config.json", DocumentFormat::Json),
+            ("config.yaml", DocumentFormat::Yaml),
+            ("config.YML", DocumentFormat::Yaml),
+            ("config", DocumentFormat::Toml),
+            ("settings.ini", DocumentFormat::Toml),
+        ] {
+            let declaration = parsed(&format!(
+                "documents:\n  - name: server\n    source: {{key: {key}}}\n"
+            ))
+            .expect("it reads");
+            assert_eq!(declaration.documents[0].source.format, format, "{key}");
+        }
+    }
+
+    #[test]
+    fn a_contract_is_defaulted_only_for_a_documents_one_image() {
+        let declaration =
+            parsed("documents:\n  - name: server\n    images: [{values: app.image}]\n")
+                .expect("one image may leave its contract out");
+        assert_eq!(
+            declaration.documents[0].images[0].contract,
+            "contracts/server.json"
+        );
+        assert!(
+            declaration.documents[0]
+                .defaulted
+                .contains(&"images[].contract")
+        );
+
+        let error = refused(
+            "documents:\n  - name: server\n    images:\n      - {values: a.image}\n      \
+             - {values: b.image, contract: contracts/b.json}\n",
+        );
+        assert!(
+            error.contains("only when the document has one image"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_empty_selector_is_refused_rather_than_matching_every_object() {
+        let error = refused("documents:\n  - name: server\n    source: {selector: {}}\n");
+        assert!(error.contains("non-empty mapping of labels"), "{error}");
+        assert!(error.contains("app.kubernetes.io/instance: app"), "{error}");
+    }
+
+    #[test]
+    fn an_empty_images_list_is_refused_rather_than_read_as_the_default() {
+        let error = refused("documents:\n  - name: server\n    images: []\n");
+        assert!(error.contains("non-empty list"), "{error}");
+    }
+
+    #[test]
+    fn consumers_are_inferred_only_for_an_object_a_pod_mounts_by_name() {
+        let error = refused("documents:\n  - name: server\n    source: {kind: Settings}\n");
+        assert!(error.contains("`consumers` is missing"), "{error}");
+
+        let declaration = parsed("documents:\n  - name: server\n    consumers: []\n")
+            .expect("an empty list is a written decision");
+        assert!(matches!(
+            &declaration.documents[0].consumers,
+            Consumers::Declared(listed) if listed.is_empty()
+        ));
+    }
+
+    #[test]
+    fn a_document_declared_twice_is_refused() {
+        let error = refused("documents:\n  - name: server\n  - name: server\n");
+        assert!(error.contains("declared twice"), "{error}");
+    }
+
+    #[test]
+    fn inferred_consumers_are_the_workloads_mounting_the_selected_object() {
+        let declaration = parsed("documents:\n  - name: server\n").expect("it reads");
+        let document = &declaration.documents[0];
+        let manifests = vec![
+            json!({"kind": "ConfigMap", "metadata": {
+                "name": "renamed", "labels": {"app.kubernetes.io/instance": "app"},
+            }}),
+            json!({"kind": "ConfigMap", "metadata": {
+                "name": "other", "labels": {"app.kubernetes.io/instance": "elsewhere"},
+            }}),
+            json!({"kind": "Deployment", "metadata": {"name": "app"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "renamed"}}],
+                    "containers": [
+                        {"name": "app", "volumeMounts": [{"name": "config", "mountPath": "/c"}]},
+                    ],
+                },
+            }}}),
+            json!({"kind": "Deployment", "metadata": {"name": "unrelated"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "other"}}],
+                    "containers": [
+                        {"name": "x", "volumeMounts": [{"name": "config", "mountPath": "/c"}]},
+                    ],
+                },
+            }}}),
+        ];
+
+        let consumers = document.consumers_in(&manifests);
+        assert_eq!(consumers.len(), 1);
+        assert_eq!(consumers[0].kind, "Deployment");
+        assert_eq!(consumers[0].name.as_deref(), Some("app"));
+        assert_eq!(consumers[0].containers, vec!["app".to_owned()]);
+        let selected = consumers[0].select(&manifests);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0]["metadata"]["name"], "app");
+
+        assert!(
+            document.consumers_in(&manifests[1..]).is_empty(),
+            "no object selected, so nothing mounts it"
+        );
+    }
+
+    #[test]
+    fn a_second_release_labelled_object_without_the_key_is_not_the_source() {
+        let declaration = parsed("documents:\n  - name: server\n").expect("it reads");
+        let document = &declaration.documents[0];
+        let mounted = |workload: &str, container: &str, object: &str| {
+            json!({"kind": "Deployment", "metadata": {"name": workload}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "v", "configMap": {"name": object}}],
+                    "containers": [
+                        {"name": container, "volumeMounts": [{"name": "v", "mountPath": "/c"}]},
+                    ],
+                },
+            }}})
+        };
+        let manifests = vec![
+            json!({"kind": "ConfigMap", "data": {"config.toml": ""}, "metadata": {
+                "name": "app", "labels": {"app.kubernetes.io/instance": "app"},
+            }}),
+            json!({"kind": "ConfigMap", "data": {"run.sh": ""}, "metadata": {
+                "name": "app-scripts", "labels": {"app.kubernetes.io/instance": "app"},
+            }}),
+            mounted("app", "app", "app"),
+            mounted("app-migrate", "migrate", "app-scripts"),
+        ];
+
+        let consumers = document.consumers_in(&manifests);
+        assert_eq!(consumers.len(), 1, "{consumers:?}");
+        assert_eq!(consumers[0].name.as_deref(), Some("app"));
+    }
+
+    // -- round-trip enrolment ---------------------------------------------------------------------
+
+    #[test]
+    fn an_enrolled_chart_gives_every_document_a_suite_and_its_block_says_how() {
+        let declaration = parsed(
+            "tests: true\ndocuments:\n  - name: server\n    tests:\n      prerequisites:\n        \
+             values: {existingSecret: probe}\n        reason: the render guard wants a secret\n  \
+             - name: worker\n",
+        )
+        .expect("it reads");
+        assert!(declaration.tests);
+        let server = declaration.documents[0].tests.as_ref().expect("enrolled");
+        assert_eq!(
+            server.prerequisites.values,
+            vec![("existingSecret".to_owned(), json!("probe"))]
+        );
+        let worker = declaration.documents[1]
+            .tests
+            .as_ref()
+            .expect("enrolled by default");
+        assert!(
+            worker.prerequisites.values.is_empty(),
+            "a document with no block takes the defaults"
+        );
+
+        let unenrolled = parsed("documents:\n  - name: server\n").expect("it reads");
+        assert!(!unenrolled.tests);
+        assert!(unenrolled.documents[0].tests.is_none());
+    }
+
+    #[test]
+    fn a_tests_block_on_a_chart_that_is_not_enrolled_is_refused() {
+        let error = refused(
+            "documents:\n  - name: server\n    tests:\n      probe: config\n      reason: x\n",
+        );
+        assert!(error.contains("set `tests: true`"), "{error}");
+    }
+
+    #[test]
+    fn a_tests_block_is_read_under_the_enrolment_files_rules() {
+        let error = refused("tests: true\ndocuments:\n  - name: server\n    tests: {name: x}\n");
+        assert!(error.contains("unknown key(s) name"), "{error}");
+
+        let error = refused(
+            "tests: true\ndocuments:\n  - name: server\n    tests:\n      \
+             baseline: {config.a: 1}\n",
+        );
+        assert!(error.contains("has no `reason`"), "{error}");
+
+        let error = refused("tests: yes please\ndocuments:\n  - name: server\n");
+        assert!(error.contains("must be true or false"), "{error}");
     }
 
     #[test]

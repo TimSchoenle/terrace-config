@@ -72,7 +72,9 @@ use serde_json::Value as Json;
 use crate::classify::{Kind, classify};
 use crate::error::Error;
 use crate::gate::container::ContainerView;
-use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec, secret_file_names, select};
+use crate::k8s::{
+    containers_of, digest_of, load_manifests, pod_spec, secret_file_names, select_source,
+};
 use crate::report::{Report, error, warning};
 use crate::union::{Merged, Union};
 
@@ -582,7 +584,12 @@ struct Where<'a> {
 
 /// Record the keys the rendered plaintext document sets, as one delivery channel.
 fn scan_document(document: &Document, binding: &Binding, manifests: &[Json], ledger: &mut Ledger) {
-    let matched = select(manifests, &document.source.kind, &document.source.selector);
+    let matched = select_source(
+        manifests,
+        &document.source.kind,
+        &document.source.selector,
+        &document.source.key,
+    );
     if matched.len() != 1 {
         return;
     }
@@ -768,8 +775,8 @@ fn scan_file(
 fn gate_three_reach(declaration: &Declaration, manifests: &[Json]) -> BTreeSet<(String, String)> {
     let mut reach = BTreeSet::new();
     for document in &declaration.documents {
-        for consumer in &document.consumers {
-            for workload in select(manifests, &consumer.kind, &consumer.selector) {
+        for consumer in document.consumers_in(manifests).iter() {
+            for workload in consumer.select(manifests) {
                 let identity = workload_of(workload);
                 let present = containers_of(pod_spec(workload));
                 for name in &consumer.containers {
@@ -1253,7 +1260,7 @@ mod tests {
     };
     use crate::gate::container::ContainerView;
     use crate::gate::document::DocumentSource;
-    use crate::helm::declaration::{Consumer, Declaration, Document};
+    use crate::helm::declaration::{Consumer, Consumers, Declaration, Document};
     use crate::k8s::secret_file_names;
     use crate::union::{Union, union_contracts};
 
@@ -1314,6 +1321,7 @@ mod tests {
             bindings: false,
             unbound: Vec::new(),
             credentials: std::collections::BTreeMap::new(),
+            tests: false,
         }
     }
 
@@ -1757,13 +1765,16 @@ mod tests {
                 format: crate::gate::document::DocumentFormat::Toml,
             },
             images: Vec::new(),
-            consumers: vec![Consumer {
+            consumers: Consumers::Declared(vec![Consumer {
                 kind: "Deployment".to_owned(),
                 selector: vec![("app.kubernetes.io/component".to_owned(), "api".to_owned())],
+                name: None,
                 containers: vec![container.to_owned()],
-            }],
+            }]),
             exempt: Vec::new(),
             restart: Vec::new(),
+            tests: None,
+            defaulted: Vec::new(),
         }])
     }
 

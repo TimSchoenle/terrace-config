@@ -4,14 +4,17 @@
 //! choosing a probe, refusing to invent one, and spelling the assertion — lives in
 //! [`super::testgen`], so every rule in it is testable by calling it.
 //!
-//! # Enrolment is a file, not a list
+//! # Enrolment is a declared switch, not a list
 //!
-//! A chart is generated for when it carries `contract-tests.yaml`, exactly as `config-contract.yaml`
-//! is what enrols it in the document gate. That is what makes a phased rollout a property of the
-//! tree rather than of a constant somebody has to remember to edit, and it is also where a chart
-//! says which values every generated case has to carry before it will render at all, and — where the
-//! operator-facing configuration tree is not the layer that wins — which values path a probe is to
-//! be written to.
+//! A chart is generated for when its declaration says `tests: true`, exactly as `bindings: true`
+//! enrols it in the marker gate. That is what makes a phased rollout a property of the tree rather
+//! than of a constant somebody has to remember to edit. Each document's `tests` block is where a
+//! chart says which values every generated case has to carry before it will render at all, and —
+//! where the operator-facing configuration tree is not the layer that wins — which values path a
+//! probe is to be written to.
+//!
+//! The older form, a separate `contract-tests.yaml` whose presence is the enrolment, is still read
+//! for a chart whose declaration does not enrol it. A chart enrolled both ways is refused.
 //!
 //! # A baseline and a render prerequisite are two different fields because they are two different
 //! things
@@ -82,8 +85,12 @@ const DOCUMENT_KEYS: [&str; 6] = [
     "prerequisites",
     "unrouted",
 ];
-const UNROUTED_KEYS: [&str; 2] = ["keys", "reason"];
-const PREREQUISITE_KEYS: [&str; 2] = ["values", "reason"];
+/// What a document's `tests` block in the declaration may carry: an entry of the file, less its
+/// `name`, which the document already has.
+pub(crate) const ENTRY_KEYS: [&str; 5] =
+    ["baseline", "probe", "reason", "prerequisites", "unrouted"];
+pub(crate) const UNROUTED_KEYS: [&str; 2] = ["keys", "reason"];
+pub(crate) const PREREQUISITE_KEYS: [&str; 2] = ["values", "reason"];
 
 /// Where a generated suite goes, and the name that identifies one.
 ///
@@ -175,27 +182,70 @@ impl Default for Enrolment {
     }
 }
 
+/// One chart's enrolment: how each of its documents' suites is generated, and where that was said.
+///
+/// Read from the declaration's `tests` when it enrols the chart, and from the older
+/// `contract-tests.yaml` otherwise. Both is refused: two files enrolling one chart can disagree,
+/// and whichever won would be decided by this reader rather than by anybody who wrote them.
+#[derive(Debug, Clone)]
+pub struct Enrolments {
+    /// The file the enrolment was read from, which every refusal about it names.
+    pub path: PathBuf,
+    /// Each document's entry, by document name. A document with none takes the defaults.
+    pub documents: BTreeMap<String, Enrolment>,
+}
+
 /// Read one chart's enrolment; [`None`] when the chart is not enrolled.
 ///
 /// # Errors
-/// [`Error::Invalid`] naming whichever entry is not one, [`Error::Io`] when the file cannot be read.
-pub fn load_enrolment(chart_dir: &Path) -> Result<Option<BTreeMap<String, Enrolment>>, Error> {
-    let path = chart_dir.join(ENROLMENT);
-    if !path.is_file() {
+/// [`Error::Invalid`] naming whichever entry is not one, or when both the declaration and
+/// `contract-tests.yaml` enrol the chart; [`Error::Io`] when the file cannot be read.
+pub fn load_enrolment(
+    chart_dir: &Path,
+    declaration: Option<&Declaration>,
+) -> Result<Option<Enrolments>, Error> {
+    let file = chart_dir.join(ENROLMENT);
+    let declared = declaration.filter(|held| held.tests);
+
+    if let Some(declaration) = declared {
+        if file.is_file() {
+            return Err(Error::Invalid(format!(
+                "{}: enrols this chart a second time; `tests: true` in {} already does. Move its \
+                 entries into the matching documents' `tests` blocks and delete this file",
+                file.display(),
+                declaration.path.display()
+            )));
+        }
+        return Ok(Some(Enrolments {
+            path: declaration.path.clone(),
+            documents: declaration
+                .documents
+                .iter()
+                .filter_map(|document| {
+                    document
+                        .tests
+                        .clone()
+                        .map(|tests| (document.name.clone(), tests))
+                })
+                .collect(),
+        }));
+    }
+
+    if !file.is_file() {
         return Ok(None);
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
-    parse_enrolment(&text, chart_dir).map(Some)
+    let text = std::fs::read_to_string(&file).map_err(|e| Error::io(file.display(), e))?;
+    Ok(Some(Enrolments {
+        documents: parse_enrolment(&text, chart_dir)?,
+        path: file,
+    }))
 }
 
-/// Read one chart's enrolment from its text, as if it were the chart's own file.
-///
-/// The half of [`load_enrolment`] that does not touch a disk, so a scaffold can hold an enrolment
-/// it has not written yet to the reader every later run will use.
+/// Read one chart's `contract-tests.yaml` from its text.
 ///
 /// # Errors
 /// As [`load_enrolment`].
-pub fn parse_enrolment(text: &str, chart_dir: &Path) -> Result<BTreeMap<String, Enrolment>, Error> {
+fn parse_enrolment(text: &str, chart_dir: &Path) -> Result<BTreeMap<String, Enrolment>, Error> {
     let path = chart_dir.join(ENROLMENT);
     let at = path.display().to_string();
     let document = read_yaml(text, &path)?;
@@ -232,35 +282,46 @@ pub fn parse_enrolment(text: &str, chart_dir: &Path) -> Result<BTreeMap<String, 
         if enrolments.contains_key(name) {
             return Err(Error::Invalid(format!("{at}: `{name}` is declared twice")));
         }
-
-        let probe = load_probe(&at, name, entry.get("probe"))?;
-        let reason = entry
-            .get("reason")
-            .and_then(Json::as_str)
-            .map(str::to_owned);
-        let baseline = Baseline {
-            values: load_baseline(&at, name, entry.get("baseline"), &probe)?,
-            reason,
-        };
-        if (!baseline.values.is_empty() || probe != VALUES_ROOT) && baseline.reason.is_none() {
-            return Err(Error::Invalid(format!(
-                "{at}: the entry for `{name}` sets a baseline or a probe path and has no \
-                 `reason`; either narrows what every generated case proves, and an unexplained \
-                 hole in a gate is indistinguishable from an oversight"
-            )));
-        }
-
-        enrolments.insert(
-            name.to_owned(),
-            Enrolment {
-                prerequisites: load_prerequisites(&at, name, entry.get("prerequisites"), &probe)?,
-                unrouted: load_unrouted(&at, name, entry.get("unrouted"))?,
-                baseline,
-                probe,
-            },
-        );
+        enrolments.insert(name.to_owned(), entry_fields(&at, name, entry)?);
     }
     Ok(enrolments)
+}
+
+/// One document's `tests` block in the declaration, read under the rules an entry of
+/// `contract-tests.yaml` is read under.
+///
+/// # Errors
+/// [`Error::Invalid`] naming the field that is wrong.
+pub fn parse_entry(at: &str, name: &str, where_: &str, entry: &Json) -> Result<Enrolment, Error> {
+    reject_unknown(at, where_, entry, &ENTRY_KEYS)?;
+    entry_fields(at, name, entry)
+}
+
+/// The fields of one entry, whichever file it was written in; its keys are already checked.
+fn entry_fields(at: &str, name: &str, entry: &Json) -> Result<Enrolment, Error> {
+    let probe = load_probe(at, name, entry.get("probe"))?;
+    let reason = entry
+        .get("reason")
+        .and_then(Json::as_str)
+        .map(str::to_owned);
+    let baseline = Baseline {
+        values: load_baseline(at, name, entry.get("baseline"), &probe)?,
+        reason,
+    };
+    if (!baseline.values.is_empty() || probe != VALUES_ROOT) && baseline.reason.is_none() {
+        return Err(Error::Invalid(format!(
+            "{at}: the entry for `{name}` sets a baseline or a probe path and has no \
+             `reason`; either narrows what every generated case proves, and an unexplained \
+             hole in a gate is indistinguishable from an oversight"
+        )));
+    }
+
+    Ok(Enrolment {
+        prerequisites: load_prerequisites(at, name, entry.get("prerequisites"), &probe)?,
+        unrouted: load_unrouted(at, name, entry.get("unrouted"))?,
+        baseline,
+        probe,
+    })
 }
 
 /// The values path this document's cases write into, defaulting to the configuration tree.
@@ -576,6 +637,22 @@ fn discriminator_for(
     Ok(labels)
 }
 
+/// Where an enrolment was written, as the phrase a generated comment names it by.
+///
+/// The older file keeps the wording every suite generated from it already carries, so moving to
+/// this reader changes no committed suite.
+fn enrolled_in(path: &Path) -> String {
+    let file = path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or_default();
+    if file == ENROLMENT {
+        format!("the chart's `{file}`")
+    } else {
+        format!("the document's `tests` block in the chart's `{file}`")
+    }
+}
+
 /// Where a generated suite for one document goes.
 fn suite_path(chart_dir: &Path, document: &Document) -> PathBuf {
     chart_dir
@@ -622,7 +699,7 @@ fn repository_path(chart_dir: &Path, tail: &str) -> String {
 /// the value and the gate are required to exist, which is what stops a renamed value from turning
 /// into a probe the templating engine silently creates and nothing renders.
 fn routes_for(
-    chart_dir: &Path,
+    enrolment_path: &Path,
     markers: &[Marker],
     blocks: &[Block],
     document: &Document,
@@ -647,7 +724,7 @@ fn routes_for(
             "{}: document '{}' declares {} `unrouted`, and no `@config projection` marker binds \
              that key here — so nothing was routed away from and the entry is describing a chart \
              that no longer exists",
-            chart_dir.join(ENROLMENT).display(),
+            enrolment_path.display(),
             document.name,
             stale
                 .iter()
@@ -728,7 +805,7 @@ fn carriers_for(markers: &[Marker], document: &Document, root: &str) -> BTreeMap
 
 /// [`unsupplied_entries`] over one document, with the enrolment's file named on the refusal.
 fn refuse_unsupplied(
-    chart_dir: &Path,
+    enrolment_path: &Path,
     document: &Document,
     enrolment: &Enrolment,
     keys: &[&crate::union::Merged],
@@ -746,7 +823,7 @@ fn refuse_unsupplied(
     .map_err(|gap| {
         Error::Invalid(format!(
             "{}: {}: {gap}",
-            chart_dir.join(ENROLMENT).display(),
+            enrolment_path.display(),
             document.name
         ))
     })
@@ -804,7 +881,7 @@ fn by_key<'a>(
 pub fn build(
     chart_dir: &Path,
     declaration: &Declaration,
-    enrolments: &BTreeMap<String, Enrolment>,
+    enrolments: &Enrolments,
 ) -> Result<BTreeMap<PathBuf, String>, Error> {
     let declared: BTreeSet<&str> = declaration
         .documents
@@ -812,6 +889,7 @@ pub fn build(
         .map(|document| document.name.as_str())
         .collect();
     let unknown: Vec<&str> = enrolments
+        .documents
         .keys()
         .map(String::as_str)
         .filter(|name| !declared.contains(name))
@@ -819,7 +897,7 @@ pub fn build(
     if !unknown.is_empty() {
         return Err(Error::Invalid(format!(
             "{}: names document(s) {}, which {} does not declare",
-            chart_dir.join(ENROLMENT).display(),
+            enrolments.path.display(),
             unknown.join(", "),
             declaration.path.display()
         )));
@@ -833,7 +911,7 @@ pub fn build(
     let default = Enrolment::default();
     let mut suites = BTreeMap::new();
     for document in &declaration.documents {
-        let enrolment = enrolments.get(&document.name).unwrap_or(&default);
+        let enrolment = enrolments.documents.get(&document.name).unwrap_or(&default);
         probe_tree(chart_dir, &values, &document.name, &enrolment.probe)?;
 
         let loaded = vendored_for(chart_dir, document)?;
@@ -861,6 +939,7 @@ pub fn build(
                     .and_then(std::ffi::OsStr::to_str)
                     .unwrap_or_default(),
             ),
+            enrolment: enrolled_in(&enrolments.path),
             contracts: document
                 .images
                 .iter()
@@ -871,7 +950,7 @@ pub fn build(
         };
 
         let routes = routes_for(
-            chart_dir,
+            &enrolments.path,
             &markers,
             &blocks,
             document,
@@ -880,7 +959,14 @@ pub fn build(
             &enrolment.unrouted,
         )?;
         let keys: Vec<&crate::union::Merged> = union.keys.iter().collect();
-        refuse_unsupplied(chart_dir, document, enrolment, &keys, &values, &markers)?;
+        refuse_unsupplied(
+            &enrolments.path,
+            document,
+            enrolment,
+            &keys,
+            &values,
+            &markers,
+        )?;
         let held: Plan = plan(
             &keys,
             &enrolment.baseline.values,
@@ -960,7 +1046,8 @@ pub fn collect(charts: &Path, selection: &Selection) -> Result<Generated, Error>
             .unwrap_or_default()
             .to_owned();
 
-        let Some(enrolments) = load_enrolment(&chart_dir)? else {
+        let declaration = load_declaration(&chart_dir)?;
+        let Some(enrolments) = load_enrolment(&chart_dir, declaration.as_ref())? else {
             generated.unenrolled.push(name);
             generated
                 .stale
@@ -968,13 +1055,12 @@ pub fn collect(charts: &Path, selection: &Selection) -> Result<Generated, Error>
             continue;
         };
 
-        let declaration = load_declaration(&chart_dir)?;
         let declaration = declaration.filter(|held| !held.documents.is_empty());
         let Some(declaration) = declaration else {
             return Err(Error::Invalid(format!(
                 "{}: enrols this chart, but it declares no configuration document to generate a \
                  suite for",
-                chart_dir.join(ENROLMENT).display()
+                enrolments.path.display()
             )));
         };
 
@@ -1116,7 +1202,9 @@ mod tests {
 
     use super::{ENROLMENT, Enrolment, discriminator_for, load_enrolment, orphans, probe_tree};
     use crate::gate::document::{DocumentFormat, DocumentSource};
-    use crate::helm::declaration::{Declaration, Document, ImageRef};
+    use crate::helm::DECLARATION;
+    use crate::helm::declaration::load_declaration;
+    use crate::helm::declaration::{Consumers, Declaration, Document, ImageRef};
     use crate::helm::testgen::VALUES_ROOT;
 
     /// A chart directory holding the files a test wants, removed when it goes out of scope.
@@ -1157,7 +1245,9 @@ mod tests {
     /// One enrolment file, read.
     fn enrolment(body: &str) -> Result<BTreeMap<String, Enrolment>, crate::error::Error> {
         let chart = Chart::of(&[(ENROLMENT, body)]);
-        Ok(load_enrolment(chart.path())?.expect("the file is there"))
+        Ok(load_enrolment(chart.path(), None)?
+            .expect("the file is there")
+            .documents)
     }
 
     fn refused(body: &str) -> String {
@@ -1191,9 +1281,11 @@ mod tests {
                         values: "image".to_owned(),
                         contract: "contracts/one.json".to_owned(),
                     }],
-                    consumers: Vec::new(),
+                    consumers: Consumers::Declared(Vec::new()),
                     exempt: Vec::new(),
                     restart: Vec::new(),
+                    tests: None,
+                    defaulted: Vec::new(),
                 })
                 .collect(),
             reason: None,
@@ -1201,6 +1293,7 @@ mod tests {
             bindings: false,
             unbound: Vec::new(),
             credentials: BTreeMap::new(),
+            tests: false,
         }
     }
 
@@ -1210,7 +1303,7 @@ mod tests {
     fn a_chart_without_the_file_is_not_enrolled() {
         let chart = Chart::of(&[]);
         assert!(
-            load_enrolment(chart.path())
+            load_enrolment(chart.path(), None)
                 .expect("an absent file reads")
                 .is_none()
         );
@@ -1219,6 +1312,46 @@ mod tests {
                 .expect("an empty list is legal")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_declaration_that_enrols_the_chart_is_the_enrolment_and_names_itself() {
+        let body = "tests: true\ndocuments:\n  - name: server\n    tests:\n      probe: config\n";
+        let chart = Chart::of(&[(DECLARATION, body)]);
+        let declaration = load_declaration(chart.path())
+            .expect("it reads")
+            .expect("it is there");
+        let enrolments = load_enrolment(chart.path(), Some(&declaration))
+            .expect("it reads")
+            .expect("the chart is enrolled");
+        assert_eq!(enrolments.path, chart.path().join(DECLARATION));
+        assert_eq!(enrolments.documents.keys().collect::<Vec<_>>(), ["server"]);
+
+        let unenrolled = Chart::of(&[(DECLARATION, "documents:\n  - name: server\n")]);
+        let declaration = load_declaration(unenrolled.path())
+            .expect("it reads")
+            .expect("it is there");
+        assert!(
+            load_enrolment(unenrolled.path(), Some(&declaration))
+                .expect("it reads")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_chart_enrolled_both_ways_is_refused() {
+        let chart = Chart::of(&[
+            (DECLARATION, "tests: true\ndocuments:\n  - name: server\n"),
+            (ENROLMENT, "documents: []\n"),
+        ]);
+        let declaration = load_declaration(chart.path())
+            .expect("it reads")
+            .expect("it is there");
+        let error = load_enrolment(chart.path(), Some(&declaration))
+            .expect_err("two enrolments are refused")
+            .to_string();
+        assert!(error.contains("enrols this chart a second time"), "{error}");
+        assert!(error.contains(ENROLMENT), "{error}");
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub mod check;
 pub mod coverage;
 pub mod declaration;
 pub mod diff;
+pub mod effective;
 pub mod explain;
 pub mod files;
 #[cfg(feature = "oci")]

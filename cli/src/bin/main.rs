@@ -420,8 +420,9 @@ enum Command {
     /// written into the chart's values arrives in the application's document, at the path the image
     /// reads it from, carrying the value that was asked for.
     ///
-    /// A chart is generated for when it carries `contract-tests.yaml`, so the rollout is a property
-    /// of the tree rather than of a list somebody edits.
+    /// A chart is generated for when its declaration sets `tests: true` (or, for a chart not yet
+    /// migrated, when it carries `contract-tests.yaml`), so the rollout is a property of the tree
+    /// rather than of a list somebody edits.
     Tests {
         /// Only these charts, by directory name; every chart when none is named. A name the
         /// tree does not hold is refused, so a typo cannot select nothing and pass.
@@ -607,10 +608,10 @@ enum HelmCommand {
     /// The repository copies its own chart template first — `Chart.yaml`, the workload templates,
     /// the README source — and this writes every file the contract decides: the vendored contract,
     /// `values.yaml` (the image pin, a block per setting with the marker that binds it, then the
-    /// chassis), `templates/_helpers.tpl`, `config-contract.yaml`, `contract-tests.yaml`,
-    /// `ci/test-values.yaml` and `tests/configmap_test.yaml`. It fills `%%PREFIX%%`,
-    /// `%%ENV_PREFIX%%`, `%%SEPARATOR%%` and `%%DOCUMENT_KEY%%` in the copied templates from the
-    /// contract's dialect, and refuses any other `%%NAME%%` still there.
+    /// chassis), `templates/_helpers.tpl`, `config-contract.yaml` (enrolled in the marker check
+    /// and the round-trip suites), `ci/test-values.yaml` and `tests/configmap_test.yaml`. It fills
+    /// `%%PREFIX%%`, `%%ENV_PREFIX%%`, `%%SEPARATOR%%` and `%%DOCUMENT_KEY%%` in the copied
+    /// templates from the contract's dialect, and refuses any other `%%NAME%%` still there.
     ///
     /// The contract is fetched and verified exactly as `pull` does it; there is no way to give it
     /// one. A file already there that says something else is refused, never overwritten: `adopt`
@@ -685,13 +686,25 @@ struct Init {
     write: bool,
 }
 
-#[derive(Clone, Copy, Subcommand)]
+#[derive(Clone, Subcommand)]
 enum ConfigCommand {
     /// Print every setting, its value, and where the value came from.
+    ///
+    /// With `--chart`, print that chart's declaration instead, with every default written out and
+    /// the fields the defaults supplied named below it: what the gates actually hold the chart to.
+    /// The printed declaration is itself a valid `config-contract.yaml`.
     Show {
-        /// Print one JSON object instead of a table.
+        /// Print one JSON object instead of the text form.
         #[arg(long)]
         json: bool,
+
+        /// The chart whose effective declaration to print, by directory name.
+        #[arg(long, value_name = "NAME")]
+        chart: Option<String>,
+
+        /// The chart tree, overriding `helm.charts` in terrace.yaml.
+        #[arg(long, requires = "chart", value_name = "DIR")]
+        charts: Option<PathBuf>,
     },
 
     /// Write a terrace.yaml at the root of the Git repository.
@@ -939,7 +952,17 @@ fn validate_command(input: &Input) -> Result<ExitCode, Error> {
 
 fn config_command(command: ConfigCommand, repo: &Repo) -> Result<ExitCode, Error> {
     match command {
-        ConfigCommand::Show { json } => config_show_command(&repo.settings()?, json),
+        ConfigCommand::Show {
+            json,
+            chart: Some(chart),
+            charts,
+        } => {
+            // `--charts` cannot carry `env` here: it requires `--chart`, so a set TERRACE_CHARTS
+            // would refuse a plain `config show`. The variable is read in its place instead.
+            let charts = charts.or_else(|| variable("TERRACE_CHARTS").map(PathBuf::from));
+            config_show_chart_command(&repo.charts(charts)?, &chart, json)
+        }
+        ConfigCommand::Show { json, .. } => config_show_command(&repo.settings()?, json),
         ConfigCommand::Init { force } => config_init_command(repo.named.as_deref(), force),
     }
 }
@@ -1136,6 +1159,31 @@ fn config_show_command(settings: &Settings, json: bool) -> Result<ExitCode, Erro
     match &signer {
         Some((value, source)) => println!("helm.signer   {value}  [{}]", source.name()),
         None => println!("helm.signer   (none; `pull` refuses to run without one)"),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Print one chart's declaration with every default written out.
+fn config_show_chart_command(charts: &Path, chart: &str, json: bool) -> Result<ExitCode, Error> {
+    let chart_dir = charts.join(chart);
+    if !chart_dir.is_dir() {
+        return Err(Error::Invalid(format!(
+            "{}: no such chart directory",
+            chart_dir.display()
+        )));
+    }
+    let Some(declaration) = helm::load_declaration(&chart_dir)? else {
+        return Err(Error::Invalid(format!(
+            "{}: no such file; `{chart}` declares no contracts",
+            chart_dir.join(helm::DECLARATION).display()
+        )));
+    };
+    let enrolments = helm::suites::load_enrolment(&chart_dir, Some(&declaration))?;
+    let shown = helm::effective::effective(&declaration, enrolments.as_ref());
+    if json {
+        println!("{:#}", shown.to_json());
+    } else {
+        print!("{}", shown.to_yaml());
     }
     Ok(ExitCode::SUCCESS)
 }

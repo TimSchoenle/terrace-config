@@ -980,6 +980,8 @@ pub struct Target {
     pub key: String,
     /// The declaration, as a path from the repository root.
     pub declaration: String,
+    /// Where the enrolment that shaped this suite is written, as a phrase a comment can carry.
+    pub enrolment: String,
     /// The vendored contracts, likewise.
     pub contracts: Vec<String>,
     /// Labels that tell this document from its siblings, empty when the key already does.
@@ -1044,7 +1046,10 @@ pub fn render_suite(
 
     if !unrouted.is_empty() {
         lines.push(String::new());
-        lines.extend(comment(&unrouted_note(unrouted, &target.root), "  "));
+        lines.extend(comment(
+            &unrouted_note(unrouted, &target.root, &target.enrolment),
+            "  ",
+        ));
     }
 
     for case in &plan.cases {
@@ -1389,13 +1394,13 @@ fn probe_case(case: &Case, target: &Target) -> Result<Vec<String>, Error> {
 /// Written into the suite rather than left in the enrolment file, because the difference is visible
 /// in every affected case — `delivers x into config.toml` where its neighbours say `from y` — and a
 /// reader who notices that deserves the answer in the same file.
-fn unrouted_note(unrouted: &[(String, String)], root: &str) -> Vec<String> {
+fn unrouted_note(unrouted: &[(String, String)], root: &str, enrolment: &str) -> Vec<String> {
     let mut lines = wrap(
         &format!(
             "The keys below are probed through `{root}` rather than through the chart's own value \
-             for them, which their neighbours use. Each one is declared in the chart's \
-             `contract-tests.yaml` with the reason repeated here: such a case proves the raw tree \
-             reaches the document and says nothing about the chart's mapping onto the key."
+             for them, which their neighbours use. Each one is declared in {enrolment} with the \
+             reason repeated here: such a case proves the raw tree reaches the document and says \
+             nothing about the chart's mapping onto the key."
         ),
         COMMENT_WIDTH - 4,
     );
@@ -2333,6 +2338,7 @@ mod tests {
             selector: vec![label("app.kubernetes.io/instance", "portfolio")],
             key: "config.toml".to_owned(),
             declaration: "charts/portfolio/config-contract.yaml".to_owned(),
+            enrolment: "the chart's `contract-tests.yaml`".to_owned(),
             contracts: vec!["charts/portfolio/contracts/server.json".to_owned()],
             discriminator: Vec::new(),
             root: VALUES_ROOT.to_owned(),
@@ -2349,6 +2355,7 @@ mod tests {
             selector: vec![label("app.kubernetes.io/component", "api")],
             key: "config.toml".to_owned(),
             declaration: "charts/tankovault/config-contract.yaml".to_owned(),
+            enrolment: "the chart's `contract-tests.yaml`".to_owned(),
             contracts: vec!["charts/tankovault/contracts/api.json".to_owned()],
             discriminator: vec![label("app.kubernetes.io/component", "api")],
             root: MOVED.to_owned(),

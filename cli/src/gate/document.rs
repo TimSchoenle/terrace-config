@@ -20,7 +20,7 @@
 use serde_json::Value as Json;
 
 use crate::error::Error;
-use crate::k8s::{names_of, select};
+use crate::k8s::{names_of, select_source};
 use crate::report::{Finding, error};
 use crate::union::{Union, suggest};
 
@@ -110,7 +110,7 @@ pub fn check_document(
         return Ok(Some(Vec::new()));
     }
 
-    let matched = select(manifests, &source.kind, &source.selector);
+    let matched = select_source(manifests, &source.kind, &source.selector, &source.key);
     if matched.is_empty() {
         return Ok(None);
     }

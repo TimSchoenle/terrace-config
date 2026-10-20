@@ -20,7 +20,7 @@
 use serde_json::Value as Json;
 
 use crate::document::Contract;
-use crate::k8s::{digest_of, pod_spec, select};
+use crate::k8s::{digest_of, pod_spec, select_source};
 use crate::reload::{Channel, Effective, classify, rebuilds};
 use crate::report::{Finding, error, warning};
 
@@ -174,9 +174,14 @@ fn frozen_mounts(
 
     // The document: a subPath mount of the object that holds it, or the object marked immutable.
     if live(Channel::Document).next().is_some()
-        && let Some(object) = select(manifests, &document.source.kind, &document.source.selector)
-            .into_iter()
-            .next()
+        && let Some(object) = select_source(
+            manifests,
+            &document.source.kind,
+            &document.source.selector,
+            &document.source.key,
+        )
+        .into_iter()
+        .next()
     {
         let object_name = object
             .get("metadata")
@@ -309,7 +314,7 @@ mod tests {
     use super::check_workload;
     use crate::document::Contract;
     use crate::gate::{DocumentFormat, DocumentSource};
-    use crate::helm::declaration::{Binding, Consumer, Document};
+    use crate::helm::declaration::{Binding, Consumer, Consumers, Document};
     use crate::union::union_contracts;
 
     const DIGEST: &str = "sha256:aaaa";
@@ -366,9 +371,11 @@ mod tests {
                 format: DocumentFormat::Toml,
             },
             images: Vec::new(),
-            consumers: Vec::new(),
+            consumers: Consumers::Declared(Vec::new()),
             exempt: Vec::new(),
             restart: Vec::new(),
+            tests: None,
+            defaulted: Vec::new(),
         }
     }
 
@@ -376,6 +383,7 @@ mod tests {
         Consumer {
             kind: "Deployment".to_owned(),
             selector: Vec::new(),
+            name: None,
             containers: vec!["app".to_owned()],
         }
     }

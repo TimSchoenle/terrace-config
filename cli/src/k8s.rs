@@ -70,6 +70,42 @@ pub fn select<'a>(
         .collect()
 }
 
+/// The rendered objects holding a configuration document: `kind` objects carrying every label in
+/// `selector`, narrowed to those holding `key` when the labels match more than one.
+///
+/// A selector is usually the release label, which a chart sets on every object it renders, so a
+/// chart with a second `ConfigMap` (scripts, dashboards, a proxy's configuration) would otherwise
+/// make every document ambiguous. The key is part of what names the document, so it breaks the tie.
+/// A single match is returned whether it holds the key or not, so the caller can say the key is
+/// missing rather than that nothing matched; several matches none of which holds it are returned
+/// unnarrowed, so the caller can say the selector is ambiguous.
+pub fn select_source<'a>(
+    manifests: &'a [Json],
+    kind: &str,
+    selector: &[(String, String)],
+    key: &str,
+) -> Vec<&'a Json> {
+    let matched = select(manifests, kind, selector);
+    if matched.len() < 2 {
+        return matched;
+    }
+    let holding: Vec<&Json> = matched
+        .iter()
+        .copied()
+        .filter(|object| {
+            ["data", "stringData"].iter().any(|section| {
+                object
+                    .get(*section)
+                    .and_then(Json::as_object)
+                    .is_some_and(|data| data.contains_key(key))
+            })
+        })
+        .collect();
+    // None holding the key leaves the ambiguity for the caller to report, rather than an empty
+    // match that reads as "not rendered" and skips the document.
+    if holding.is_empty() { matched } else { holding }
+}
+
 /// The names of several matched objects, for a message that has to say which.
 pub fn names_of(manifests: &[&Json]) -> String {
     manifests
@@ -236,6 +272,106 @@ pub fn inside_a_mount(container: &Json, path: &str) -> bool {
     })
 }
 
+/// The kinds whose objects run a pod spec.
+const WORKLOAD_KINDS: [&str; 7] = [
+    "CronJob",
+    "DaemonSet",
+    "Deployment",
+    "Job",
+    "Pod",
+    "ReplicaSet",
+    "StatefulSet",
+];
+
+/// One workload that mounts a given object, and the containers of it that do.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mounting<'a> {
+    /// The workload, as rendered.
+    pub workload: &'a Json,
+    /// The containers that mount a volume presenting the object, init containers first.
+    pub containers: Vec<&'a str>,
+}
+
+/// Every workload whose pod spec mounts the `ConfigMap` or Secret called `name`, in manifest order.
+///
+/// Followed through a volume, plain or projected, to the containers that mount that volume. A pod
+/// that declares the volume and mounts it in no container reads nothing from it, so it is not
+/// returned; neither is a reference by environment, which hands a container single values rather
+/// than the document.
+#[must_use]
+pub fn mounting<'a>(manifests: &'a [Json], kind: &str, name: &str) -> Vec<Mounting<'a>> {
+    let mut found = Vec::new();
+    for workload in manifests {
+        let is_workload = workload
+            .get("kind")
+            .and_then(Json::as_str)
+            .is_some_and(|held| WORKLOAD_KINDS.contains(&held));
+        if !is_workload {
+            continue;
+        }
+        let spec = pod_spec(workload);
+        let volumes: BTreeSet<&str> = spec
+            .get("volumes")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|volume| presents(volume, kind, name))
+            .filter_map(|volume| volume.get("name").and_then(Json::as_str))
+            .collect();
+        if volumes.is_empty() {
+            continue;
+        }
+        let containers: Vec<&str> = containers_of(spec)
+            .into_iter()
+            .filter(|(_, container)| {
+                container
+                    .get("volumeMounts")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|mount| mount.get("name").and_then(Json::as_str))
+                    .any(|mounted| volumes.contains(mounted))
+            })
+            .map(|(held, _)| held)
+            .collect();
+        if !containers.is_empty() {
+            found.push(Mounting {
+                workload,
+                containers,
+            });
+        }
+    }
+    found
+}
+
+/// Whether one volume presents the object `kind` / `name`, directly or as a projected source.
+fn presents(volume: &Json, kind: &str, name: &str) -> bool {
+    let (field, name_key) = match kind {
+        "ConfigMap" => ("configMap", "name"),
+        "Secret" => ("secret", "secretName"),
+        _ => return false,
+    };
+    let direct = volume
+        .get(field)
+        .and_then(|source| source.get(name_key))
+        .and_then(Json::as_str)
+        == Some(name);
+    let projected = volume
+        .get("projected")
+        .and_then(|projected| projected.get("sources"))
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .any(|source| {
+            source
+                .get(field)
+                .and_then(|object| object.get("name"))
+                .and_then(Json::as_str)
+                == Some(name)
+        });
+    direct || projected
+}
+
 /// The file names one volume actually presents, following it back to the rendered object.
 ///
 /// A projected volume of secret sources with explicit `items` names them right there. A source
@@ -355,11 +491,11 @@ pub fn digest_of(reference: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value as Json, json};
 
     use super::{
-        containers_of, digest_of, environment_of, inside_a_mount, load_manifests, pod_spec,
-        projected_file_names, select, volume_at,
+        containers_of, digest_of, environment_of, inside_a_mount, load_manifests, mounting,
+        pod_spec, projected_file_names, select, select_source, volume_at,
     };
 
     #[test]
@@ -457,8 +593,146 @@ mod tests {
     }
 
     #[test]
+    fn a_workload_mounts_an_object_through_a_plain_or_a_projected_volume() {
+        let manifests = vec![
+            json!({"kind": "Deployment", "metadata": {"name": "web"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "app"}}],
+                    "initContainers": [{"name": "wait"}],
+                    "containers": [
+                        {"name": "web", "volumeMounts": [{"name": "config", "mountPath": "/c"}]},
+                        {"name": "sidecar"},
+                    ],
+                },
+            }}}),
+            json!({"kind": "CronJob", "metadata": {"name": "sweep"}, "spec": {"jobTemplate": {
+                "spec": {"template": {"spec": {
+                    "volumes": [{"name": "all", "projected": {"sources": [
+                        {"configMap": {"name": "app"}},
+                    ]}}],
+                    "containers": [
+                        {"name": "sweep", "volumeMounts": [{"name": "all", "mountPath": "/c"}]},
+                    ],
+                }}},
+            }}}),
+            json!({"kind": "ConfigMap", "metadata": {"name": "app"}}),
+        ];
+        let found = mounting(&manifests, "ConfigMap", "app");
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].workload["metadata"]["name"], "web");
+        assert_eq!(found[0].containers, vec!["web"]);
+        assert_eq!(found[1].containers, vec!["sweep"]);
+    }
+
+    #[test]
+    fn a_volume_no_container_mounts_and_another_objects_volume_are_not_mounting() {
+        let manifests = vec![
+            json!({"kind": "Deployment", "metadata": {"name": "idle"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "app"}}],
+                    "containers": [{"name": "idle"}],
+                },
+            }}}),
+            json!({"kind": "Deployment", "metadata": {"name": "other"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "elsewhere"}}],
+                    "containers": [
+                        {"name": "other", "volumeMounts": [{"name": "config", "mountPath": "/c"}]},
+                    ],
+                },
+            }}}),
+        ];
+        assert!(
+            mounting(&manifests, "ConfigMap", "app").is_empty(),
+            "neither workload mounts `app`"
+        );
+    }
+
+    #[test]
+    fn a_secret_is_named_by_secret_name_in_a_volume_and_by_name_in_a_projection() {
+        let manifests = vec![
+            json!({"kind": "StatefulSet", "metadata": {"name": "db"}, "spec": {
+                "template": {"spec": {
+                    "volumes": [
+                        {"name": "a", "secret": {"secretName": "creds"}},
+                        {"name": "b", "projected": {"sources": [{"secret": {"name": "creds"}}]}},
+                    ],
+                    "containers": [
+                        {"name": "one", "volumeMounts": [{"name": "a", "mountPath": "/a"}]},
+                        {"name": "two", "volumeMounts": [{"name": "b", "mountPath": "/b"}]},
+                    ],
+                }},
+            }}),
+        ];
+        let found = mounting(&manifests, "Secret", "creds");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].containers, vec!["one", "two"]);
+    }
+
+    #[test]
     fn a_reference_without_a_digest_pins_nothing() {
         assert_eq!(digest_of("ghcr.io/x/y:v1@sha256:ab"), Some("sha256:ab"));
         assert_eq!(digest_of("ghcr.io/x/y:v1"), None);
+    }
+
+    #[test]
+    fn a_source_is_narrowed_by_its_key_only_when_its_labels_are_ambiguous() {
+        let labelled = |name: &str, data: Json| {
+            json!({"kind": "ConfigMap", "metadata": {"name": name, "labels": {"a": "b"}},
+                   "data": data})
+        };
+        let selector = [("a".to_owned(), "b".to_owned())];
+        let names = |found: Vec<&Json>| -> Vec<String> {
+            found
+                .iter()
+                .map(|object| object["metadata"]["name"].to_string())
+                .collect()
+        };
+
+        let ambiguous = [
+            labelled("config", json!({"config.toml": ""})),
+            labelled("scripts", json!({"run.sh": ""})),
+        ];
+        assert_eq!(
+            names(select_source(
+                &ambiguous,
+                "ConfigMap",
+                &selector,
+                "config.toml"
+            )),
+            vec!["\"config\"".to_owned()]
+        );
+
+        let none_hold_it = [
+            labelled("scripts", json!({"run.sh": ""})),
+            labelled("dashboards", json!({"a.json": ""})),
+        ];
+        assert_eq!(
+            select_source(&none_hold_it, "ConfigMap", &selector, "config.toml").len(),
+            2,
+            "no holder leaves the ambiguity to be reported, not an empty match"
+        );
+
+        let single = [labelled("scripts", json!({"run.sh": ""}))];
+        assert_eq!(
+            names(select_source(
+                &single,
+                "ConfigMap",
+                &selector,
+                "config.toml"
+            )),
+            vec!["\"scripts\"".to_owned()],
+            "one match is kept, so the caller can say the key is missing"
+        );
+
+        let secret = [
+            json!({"kind": "Secret", "metadata": {"name": "s", "labels": {"a": "b"}},
+                   "stringData": {"config.toml": ""}}),
+            json!({"kind": "Secret", "metadata": {"name": "t", "labels": {"a": "b"}}}),
+        ];
+        assert_eq!(
+            names(select_source(&secret, "Secret", &selector, "config.toml")),
+            vec!["\"s\"".to_owned()]
+        );
     }
 }

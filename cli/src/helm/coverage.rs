@@ -230,6 +230,7 @@ mod tests {
             bindings: false,
             unbound: Vec::new(),
             credentials: std::collections::BTreeMap::new(),
+            tests: false,
         }
     }
 

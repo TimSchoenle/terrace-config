@@ -127,9 +127,10 @@ helm:
 ```
 
 ```bash
-terrace-contract config init   # writes one, moving .github/configs/first-party-images.txt into it
-terrace-contract config show   # every setting, its value, and where it came from
-terrace-contract doctor        # the settings, the pinned CLI and the tools, one line each
+terrace-contract config init                    # writes one, moving .github/configs/first-party-images.txt into it
+terrace-contract config show                    # every setting, its value, and where it came from
+terrace-contract config show --chart portfolio  # the chart's declaration with every default written out
+terrace-contract doctor                         # the settings, the pinned CLI and the tools, one line each
 ```
 
 A flag wins over its environment variable, which wins over the file, which wins over the default.
@@ -220,8 +221,7 @@ configuration half comes from the image's contract, and `helm init` writes it:
 | `contracts/<document>.json` | the image's contract, fetched and verified exactly as `pull` does it |
 | `values.yaml` | the image pin, a block per setting with the marker that binds it, then `--chassis` |
 | `templates/_helpers.tpl` | the partials that project the values into the document and the Secret |
-| `config-contract.yaml` | the declaration, with `bindings: true` and a reasoned `unbound` entry per write-off |
-| `contract-tests.yaml` | the round-trip enrolment, with a prerequisite per required credential |
+| `config-contract.yaml` | the declaration: only what differs from the [defaults](../spec/helm/v1/DEFAULTS.md), `bindings: true`, `tests: true` with a prerequisite per required credential, and a reasoned `unbound` entry per write-off |
 | `ci/test-values.yaml` | the credentials the render guard demands, as values that can never authenticate |
 | `tests/configmap_test.yaml` | a first suite for a person to extend |
 
