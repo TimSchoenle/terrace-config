@@ -61,7 +61,7 @@ pub(crate) fn load() -> Result<Config, Error> {
 /// `CARGO_PKG_VERSION`: that is terrace-config's version, which the contract already records as
 /// `producer.version`, and borrowing it would make every library release a change to this example.
 #[cfg(feature = "schema")]
-const SERVICE_VERSION: &str = "v1.0.0";
+pub(crate) const SERVICE_VERSION: &str = "v1.0.0";
 
 #[cfg(feature = "schema")]
 pub(crate) fn contract() -> Result<String, Error> {

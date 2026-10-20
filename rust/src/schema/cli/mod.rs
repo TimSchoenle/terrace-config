@@ -15,6 +15,32 @@
 //!
 //! Everything else is this module.
 //!
+//! # The one-call form
+//!
+//! A service whose defaults are its `Default` impl and that publishes nothing beyond what its types
+//! describe needs none of the builder: [`main`] is the whole generator, given the loader the service
+//! already boots with — so the contract is derived from the same prefix, reserved names and file
+//! variables that [`Terrace::load`](crate::Terrace::load) will read — and the app identity, which
+//! [`cargo_app!`](crate::cargo_app) fills from the calling crate's own `Cargo.toml`:
+//!
+//! ```no_run
+//! # use serde::{Deserialize, Serialize};
+//! # use terrace_config::schema::Describe;
+//! # #[derive(Deserialize, Serialize, Default, Describe)]
+//! # struct Config {
+//! #     /// Port the listener binds to.
+//! #     #[serde(default)]
+//! #     port: u16,
+//! # }
+//! fn main() -> std::process::ExitCode {
+//!     let loader = terrace_config::Terrace::new("ORDERS_");
+//!     terrace_config::schema::cli::main::<Config>(&loader, terrace_config::cargo_app!("orders"))
+//! }
+//! ```
+//!
+//! Anything more — an external surface, a JSON Schema `$id`, a TOML preamble — is [`Cli`] with
+//! [`Cli::run`] in place of [`main`], which keeps the same one-call shape.
+//!
 //! # Four layers, and each is usable without the one above it
 //!
 //! | Layer | Use it alone when |
@@ -86,9 +112,54 @@ use std::process::ExitCode;
 pub use format::{Format, UnknownFormat};
 pub use request::{Request, USAGE, UsageError};
 
+use serde::Serialize;
+
+use crate::Terrace;
 use crate::schema::{
-    App, Column, Contract, ContractBuilder, Error, JsonSchema, Schema, TomlExample,
+    App, Column, Contract, ContractBuilder, Describe, Error, JsonSchema, Schema, TomlExample,
 };
+
+/// The calling crate's [`App`] identity, from its own `Cargo.toml`.
+///
+/// A macro rather than a function because the values are the *caller's*: `env!` expands where it
+/// is written, so only a macro reads the service's package rather than this crate's.
+///
+/// - `cargo_app!()` names the app after the package, `CARGO_PKG_NAME`;
+/// - `cargo_app!("orders")` names it explicitly, for a package not named as its image is.
+///
+/// The version is `CARGO_PKG_VERSION` prefixed with `v`, the spelling image tags conventionally
+/// use and the one [`Cli::new`] recommends; a build tagging without the prefix, or stamping a
+/// release version, passes `--version` and that wins (see [`Request::stamp`]). The source is
+/// `CARGO_PKG_REPOSITORY`, left unset when the package declares none.
+#[macro_export]
+macro_rules! cargo_app {
+    () => {
+        $crate::cargo_app!(::core::env!("CARGO_PKG_NAME"))
+    };
+    ($name:expr $(,)?) => {{
+        let app = $crate::schema::App::new($name)
+            .version(::core::concat!("v", ::core::env!("CARGO_PKG_VERSION")));
+        match ::core::env!("CARGO_PKG_REPOSITORY") {
+            "" => app,
+            repository => app.source(repository),
+        }
+    }};
+}
+
+/// The whole generator for a configuration whose defaults are its [`Default`]: parse this
+/// process's arguments, render, print, exit.
+///
+/// `loader` is the [`Terrace`] the service boots with — pass the same value, not a second one
+/// built to match, because every spelling in the contract is derived from it and a contract
+/// derived from a different loader describes variables the service does not read. `app` is the
+/// identity to publish; [`cargo_app!`](crate::cargo_app) builds it from the calling crate.
+///
+/// This is [`Cli::new`]`(app)`[`.run::<C>(loader)`](Cli::run), for the service that needs nothing
+/// else from [`Cli`].
+#[must_use]
+pub fn main<C: Describe + Default + Serialize>(loader: &Terrace, app: App) -> ExitCode {
+    Cli::new(app).run::<C>(loader)
+}
 
 /// A configuration generator, configured with the four things that are a service's own.
 ///
@@ -254,6 +325,22 @@ impl<'a> Cli<'a> {
                 println!("{}", rendered.trim_end_matches('\n'));
                 ExitCode::SUCCESS
             }
+            Err(error) => fail(&error),
+        }
+    }
+
+    /// The whole program for a configuration whose defaults are its [`Default`].
+    ///
+    /// Describes `C` through `loader`, takes every key's default from `C::default()`, and hands the
+    /// schema to [`Self::main`]. A documentation job runs where none of the configuration's
+    /// variables are set, so the defaults come from the type rather than from loading anything.
+    ///
+    /// A configuration whose `Default` is not its compiled default — or that has none — builds the
+    /// [`Schema`] itself and calls [`Self::main`].
+    #[must_use]
+    pub fn run<C: Describe + Default + Serialize>(&self, loader: &Terrace) -> ExitCode {
+        match loader.schema::<C>().with_defaults_from(&C::default()) {
+            Ok(schema) => self.main(schema),
             Err(error) => fail(&error),
         }
     }

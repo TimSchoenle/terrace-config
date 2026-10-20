@@ -440,3 +440,17 @@ fn every_rendering_ends_in_exactly_one_newline() {
         );
     }
 }
+
+#[test]
+fn cargo_app_reads_the_calling_package_and_prefixes_the_version_the_way_tags_spell_it() {
+    let named = terrace_config::cargo_app!("orders");
+    assert_eq!(named.name, "orders");
+    assert_eq!(
+        named.version.as_deref(),
+        Some(concat!("v", env!("CARGO_PKG_VERSION")))
+    );
+    assert_eq!(named.source.as_deref(), Some(env!("CARGO_PKG_REPOSITORY")));
+
+    let defaulted = terrace_config::cargo_app!();
+    assert_eq!(defaulted.name, env!("CARGO_PKG_NAME"));
+}
