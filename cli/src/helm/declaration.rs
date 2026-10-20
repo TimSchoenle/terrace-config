@@ -689,7 +689,30 @@ fn default_contract(document: &str) -> String {
     format!("{CONTRACTS_DIR}/{document}.json")
 }
 
+/// A contract path, refused unless it stays inside the chart directory.
+///
+/// `pull` writes the vendored contract at this path, so one that climbs out with `..` or is
+/// absolute would have it overwrite a file anywhere the process can write. A defaulted path is
+/// spelled from the document's name and is held to the same rule.
+fn confined(at: &str, name: &str, contract: String) -> Result<String, Error> {
+    use std::path::Component;
+    let path = std::path::Path::new(&contract);
+    let inside = path.components().next().is_some()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir));
+    if inside {
+        Ok(contract)
+    } else {
+        Err(Error::Invalid(format!(
+            "{at}: {name}: the contract path `{contract}` leaves the chart directory; it must be \
+             relative to the chart and must not contain `..`"
+        )))
+    }
+}
+
 /// The images a document is read by.
+////// The images a document is read by.
 ///
 /// Left out, the document is read by the one image pinned at [`DEFAULT_IMAGE_VALUES`]. An entry may
 /// leave its `contract` out only when it is the document's one image: the default path is spelled
@@ -705,7 +728,7 @@ fn load_images(
             defaulted.push("images");
             return Ok(vec![ImageRef {
                 values: DEFAULT_IMAGE_VALUES.to_owned(),
-                contract: default_contract(name),
+                contract: confined(at, name, default_contract(name))?,
             }]);
         }
         Some(Json::Array(list)) if !list.is_empty() => list,
@@ -746,7 +769,7 @@ fn load_images(
         };
         loaded.push(ImageRef {
             values: values.to_owned(),
-            contract,
+            contract: confined(at, name, contract)?,
         });
     }
     Ok(loaded)
@@ -1917,6 +1940,37 @@ documents:
             parsed(body).expect("the reader accepts it");
             assert_eq!(schema_violations(body), Vec::<String>::new(), "{body}");
         }
+    }
+
+    #[test]
+    fn a_contract_path_that_leaves_the_chart_directory_is_refused() {
+        // `pull` writes the vendored contract at this path, so it has to stay inside the chart.
+        for contract in [
+            "../elsewhere.json",
+            "contracts/../../x.json",
+            "/etc/x.json",
+            "",
+        ] {
+            let body = format!(
+                "documents:\n  - name: server\n    images:\n      - values: image\n        \
+                 contract: \"{contract}\"\n"
+            );
+            assert!(
+                refused(&body).contains("leaves the chart directory"),
+                "{contract:?} was accepted"
+            );
+        }
+        // A defaulted path is spelled from the document's name and is held to the same rule.
+        assert!(
+            refused("documents:\n  - name: ../server\n").contains("leaves the chart directory")
+        );
+
+        let kept = parsed(
+            "documents:\n  - name: server\n    images:\n      - values: image\n        \
+             contract: ./vendor/server.json\n",
+        )
+        .expect("a path inside the chart is read");
+        assert_eq!(kept.documents[0].images[0].contract, "./vendor/server.json");
     }
 
     #[test]
