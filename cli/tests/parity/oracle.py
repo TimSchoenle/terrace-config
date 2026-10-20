@@ -11,7 +11,7 @@ is exported, and when a gate's Python is deleted its entry point stops resolving
 the signal the harness needs to fall back to checking the Rust side alone against the same tree.
 
 Usage: python oracle.py check    <helm-charts root> <rendered dir>
-       python oracle.py bindings <helm-charts root> [<charts dir>]
+       python oracle.py bindings <helm-charts root> [<charts dir>]   (and the wired rule)
        python oracle.py diff     <helm-charts root> <revision>
        python oracle.py secrets  <helm-charts root> <rendered dir>
        python oracle.py explain  <helm-charts root> <chart> [pattern]
@@ -158,6 +158,12 @@ def main(argv: list[str]) -> int:
             report = Report()
             charts = Path(argv[2]).resolve() if len(argv) > 2 else root / "charts"
             enrolled = module.run(charts, report)
+            # `terrace-contract bindings` also carries the rule `check-config-wired.py` applied —
+            # same enrolment, same markers — so the oracle for it is both scripts into one report.
+            # Its own `checked` rows are not enrolment, and are not compared.
+            wired = load(scripts, "check_config_wired", "check-config-wired.py")
+            if wired is not None:
+                wired.run(charts, report)
             print(
                 json.dumps(
                     {

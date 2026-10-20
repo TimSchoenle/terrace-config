@@ -185,6 +185,10 @@ enum Command {
     /// image release adds a setting, an automated bump repins the digest and omits everything else,
     /// and no gate notices that the new key is reached by no chart value. `check` cannot see it
     /// either: a key nothing renders is not a key rendered wrongly.
+    ///
+    /// It also reads the templates, crudely: every key a marker binds must appear in
+    /// `templates/*.tpl` as `leaf:` or `"leaf"`, so a value that is bound and documented but
+    /// projected by nothing fails here rather than in a round-trip suite nobody ran.
     Bindings {
         /// Only these charts, by directory name; every chart when none is named. A name the
         /// tree does not hold is refused, so a typo cannot select nothing and pass.
@@ -199,6 +203,25 @@ enum Command {
         #[arg(long, default_value = "text")]
         format: Output,
     },
+
+    /// Write the chart values an enrolled chart's unbound contract keys are owed, from the contract.
+    ///
+    /// The repair `bindings` asks for, done for the case that needs no judgement: a key no chart
+    /// value surfaces gets a value typed, defaulted and documented from the contract, with the
+    /// marker that binds it; a credential gets a value delivered as a file and its write-off; a
+    /// reserved key gets its write-off. The template lines that project a new value are appended
+    /// where the define does not already carry the key's root, and printed for a person where it
+    /// does.
+    ///
+    /// It never touches a value that exists. A key whose chart value is already there is refused,
+    /// with the marker to write by hand: on an existing value, which key it feeds is a claim only a
+    /// person can make.
+    ///
+    /// Without a mode it plans and prints, and exits 1 only when a key was refused or a chart is
+    /// blocked by a broken marker. `--check` prints the same plan and exits 1 when any enrolled
+    /// chart owes anything at all, 2 when it could not answer. `--diff` prints the unified diff
+    /// `--write` would apply. `--write` applies it.
+    Adopt(Adopt),
 
     /// Write every bound value's `@schema` block from the contract that describes it.
     ///
@@ -264,6 +287,37 @@ enum Command {
         /// to answer exits 1.
         #[arg(long)]
         exit_code: bool,
+    },
+
+    /// Name the chart lines that still use something a contract removed since a revision.
+    ///
+    /// `diff` says a key or an element property is gone; this says where the chart still uses it,
+    /// under `templates/`, the hand-written `tests/*.yaml` and `ci/*.yaml`. No writer edits those
+    /// files, so a removal is the one contract change a refresh cannot follow, and without this it
+    /// surfaces as schema refusals in a test run with nothing naming the cause. The chart's markers
+    /// are read at the revision too, because the value a removed key was bound to has usually been
+    /// deleted by then.
+    ///
+    /// A report, never a writer. Exits 0 when nothing references a removal, 2 when something does,
+    /// and 1 when it could not answer — the split `diff --exit-code` uses, so a caller can tell work
+    /// to do from a broken run.
+    Migrate {
+        /// Only this chart.
+        #[arg(value_name = "CHART")]
+        chart: Option<String>,
+
+        /// The revision to compare against: where the branch started, not `HEAD`, once the refresh
+        /// is committed.
+        #[arg(long, default_value = "origin/main")]
+        since: String,
+
+        /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+        #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+        charts: Option<PathBuf>,
+
+        /// Emit the findings as JSON, for something that is not a person.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Report which charts a configuration contract covers, and which it does not.
@@ -520,6 +574,12 @@ enum Command {
         check: bool,
     },
 
+    /// Commands that only make sense in a Helm chart repository.
+    Helm {
+        #[command(subcommand)]
+        command: HelmCommand,
+    },
+
     /// Check a built image against the document it claims to carry.
     Image {
         #[command(subcommand)]
@@ -538,6 +598,91 @@ enum Command {
     /// repository relying on a setting its CLI ignores is exactly what this is for finding. Exits 1
     /// on any failure; a warning is something only some commands need.
     Doctor,
+}
+
+#[derive(Subcommand)]
+enum HelmCommand {
+    /// Write the configuration half of a new chart from the contract its image publishes.
+    ///
+    /// The repository copies its own chart template first — `Chart.yaml`, the workload templates,
+    /// the README source — and this writes every file the contract decides: the vendored contract,
+    /// `values.yaml` (the image pin, a block per setting with the marker that binds it, then the
+    /// chassis), `templates/_helpers.tpl`, `config-contract.yaml`, `contract-tests.yaml`,
+    /// `ci/test-values.yaml` and `tests/configmap_test.yaml`. It fills `%%PREFIX%%`,
+    /// `%%ENV_PREFIX%%`, `%%SEPARATOR%%` and `%%DOCUMENT_KEY%%` in the copied templates from the
+    /// contract's dialect, and refuses any other `%%NAME%%` still there.
+    ///
+    /// The contract is fetched and verified exactly as `pull` does it; there is no way to give it
+    /// one. A file already there that says something else is refused, never overwritten: `adopt`
+    /// is what writes into a chart that is configured.
+    ///
+    /// Without a mode it plans and prints. `--check` exits 1 when anything would be written, 0 when
+    /// the chart already holds exactly this, 2 when it could not answer. `--diff` prints a
+    /// `patch -p0` diff of every file `--write` would write. Any other failure exits 1.
+    Init(Init),
+}
+
+/// What `helm init` needs to know about the new chart.
+#[derive(Args)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "clap flags: `no_contract` picks the form and the other three the mode, which clap \
+              already holds mutually exclusive; an enum would re-state that rule by hand"
+)]
+struct Init {
+    /// The chart's name, and its directory under the chart tree.
+    #[arg(value_name = "CHART")]
+    chart: String,
+
+    /// The image the chart pins, as values.yaml spells it: `REPOSITORY:TAG`, ideally followed by
+    /// `@sha256:...`. A Docker Hub image is written without a registry.
+    #[arg(long, value_name = "REPOSITORY:TAG[@DIGEST]")]
+    image: String,
+
+    /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+    #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+    charts: Option<PathBuf>,
+
+    /// The signing identity the contract must carry, as a regular expression. Default:
+    /// `CONTRACT_SIGNER`, else `helm.signer` in terrace.yaml; required unless `--no-contract`.
+    #[arg(long, value_name = "IDENTITY", env = "CONTRACT_SIGNER")]
+    signer: Option<String>,
+
+    /// The configuration document's name in config-contract.yaml. Default: the chart's name.
+    #[arg(long, value_name = "NAME")]
+    document: Option<String>,
+
+    /// The `ConfigMap` key the document is rendered under.
+    #[arg(long, value_name = "KEY", default_value = helm::init::DEFAULT_DOCUMENT_KEY)]
+    document_key: String,
+
+    /// The repository's shared values, appended to values.yaml after the configuration surface.
+    #[arg(long, value_name = "FILE")]
+    chassis: Option<PathBuf>,
+
+    /// Write the plain form, for an image that publishes no configuration contract.
+    ///
+    /// Not a way to skip the network for an image that does publish one: the chart gets no
+    /// configuration surface at all, which is strictly less than what could have been generated.
+    #[arg(long)]
+    no_contract: bool,
+
+    /// Why the image publishes no contract. Required with `--no-contract` when the image is
+    /// first-party (`helm.firstParty` in terrace.yaml), and written as the declaration's opt-out.
+    #[arg(long, value_name = "TEXT", requires = "no_contract")]
+    reason: Option<String>,
+
+    /// Write nothing, and exit 1 when anything would be written.
+    #[arg(long, conflicts_with_all = ["diff", "write"])]
+    check: bool,
+
+    /// Write nothing, and print a unified diff of every file `--write` would write.
+    #[arg(long, conflicts_with = "write")]
+    diff: bool,
+
+    /// Write the files rather than printing the plan.
+    #[arg(long)]
+    write: bool,
 }
 
 #[derive(Clone, Copy, Subcommand)]
@@ -652,6 +797,11 @@ fn main() -> ExitCode {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one arm per subcommand, each a single call into its handler; the length is the \
+              number of subcommands, and splitting the match would only hide that list"
+)]
 fn run(cli: Cli) -> Result<ExitCode, Error> {
     let repo = cli.repo;
     match cli.command {
@@ -683,6 +833,8 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             format,
         } => bindings_command(&repo.charts(charts)?, &Selection::of(only), format),
 
+        Command::Adopt(adopt) => Ok(adopt_command(&repo, adopt)),
+
         Command::Shapes {
             only,
             charts,
@@ -703,6 +855,8 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             json,
             exit_code,
         ),
+
+        Command::Migrate { .. } => Ok(migrate_command(&repo, cli.command)),
 
         Command::Secrets {
             reconcile,
@@ -753,6 +907,10 @@ fn run(cli: Cli) -> Result<ExitCode, Error> {
             first_party,
             format,
         } => coverage_command(&repo, charts, first_party.as_deref(), format),
+
+        Command::Helm { command } => match command {
+            HelmCommand::Init(init) => Ok(helm_init_command(&repo, init)),
+        },
 
         Command::Image { command } => {
             let ImageCommand::Verify {
@@ -1193,8 +1351,237 @@ fn bindings_command(
         &found.report,
         format,
         "Configuration bindings",
-        "Every contract key of every enrolled chart is bound by a value, or written off with a reason.",
+        "Every contract key of every enrolled chart is bound by a value, or written off with a \
+         reason, and every bound key is rendered by a template.",
     ))
+}
+
+/// The options of `adopt`, held apart so that its dispatch stays one line.
+#[derive(Args)]
+struct Adopt {
+    /// One chart, or every enrolled chart when none is named.
+    #[arg(value_name = "CHART")]
+    chart: Option<String>,
+
+    /// Adopt only this contract key; repeatable. Keys belong to one chart, so name the chart.
+    #[arg(long = "key", value_name = "PATH")]
+    keys: Vec<String>,
+
+    /// The chart tree. Default: `helm.charts` in terrace.yaml, else `charts`.
+    #[arg(long, value_name = "DIR", env = "TERRACE_CHARTS")]
+    charts: Option<PathBuf>,
+
+    /// Write nothing, and exit 1 when any enrolled chart owes a value, a write-off or a fix.
+    #[arg(long, conflicts_with_all = ["diff", "write"])]
+    check: bool,
+
+    /// Write nothing, and print a unified diff of every file `--write` would change.
+    #[arg(long, conflicts_with = "write")]
+    diff: bool,
+
+    /// Insert the blocks rather than printing them.
+    #[arg(long)]
+    write: bool,
+}
+
+/// Plan, check, diff or write the configuration half of one new chart.
+///
+/// The exit codes follow `adopt`'s: 1 for any failure, except under `--check`, where 1 means
+/// "something would be written" and a failure to answer is 2.
+fn helm_init_command(repo: &Repo, options: Init) -> ExitCode {
+    use helm::init::{self, Pin, Request, Source};
+
+    let check = options.check;
+    let run = || -> Result<ExitCode, Error> {
+        let settings = repo.settings()?;
+        let charts = settings.charts(options.charts).0;
+        let pin = Pin::parse(&options.image)?;
+        let chassis = options
+            .chassis
+            .as_deref()
+            .map(read)
+            .transpose()?
+            .unwrap_or_default();
+        let request = Request {
+            chart: &options.chart,
+            pin: &pin,
+            document: options.document.as_deref().unwrap_or(&options.chart),
+            document_key: &options.document_key,
+            chassis: &chassis,
+        };
+
+        let fetched;
+        let at;
+        let source = if options.no_contract {
+            Source::Plain {
+                opt_out: no_contract_opt_out(&settings, &pin, options.reason.as_deref())?,
+            }
+        } else {
+            let signer = required_signer(&settings, options.signer)?;
+            let tools = helm::pull::Tools::found()?;
+            fetched = helm::pull::fetch_pinned(&tools, &pin.block(), None, &signer).map_err(
+                |failure| {
+                    Error::Invalid(format!(
+                        "{failure}\n       pass --no-contract (and --reason, for a first-party \
+                         image) if this image publishes none"
+                    ))
+                },
+            )?;
+            at = helm::pull::now();
+            Source::Contract {
+                fetched: &fetched,
+                at: &at,
+            }
+        };
+
+        let planned = init::plan(&charts, &request, &source)?;
+        if options.diff {
+            print!("{}", planned.diff());
+            return Ok(ExitCode::SUCCESS);
+        }
+        print!("{}", planned.report());
+        if options.write && planned.owed() {
+            planned.write()?;
+            print!("{}", planned.closing());
+        }
+        Ok(if check && planned.owed() {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        })
+    };
+
+    run().unwrap_or_else(|failure| {
+        eprintln!("error: {failure}");
+        ExitCode::from(if check { 2 } else { 1 })
+    })
+}
+
+/// The opt-out a plain chart's declaration carries, when the coverage gate will demand one.
+///
+/// Decided from the same first-party list the gate reads, and refused rather than guessed when no
+/// list resolves: a chart pinning a first-party image owes a declaration, and an opt-out without a
+/// reason is indistinguishable from a chart nobody got round to declaring.
+fn no_contract_opt_out<'a>(
+    settings: &Settings,
+    pin: &helm::init::Pin,
+    reason: Option<&'a str>,
+) -> Result<Option<&'a str>, Error> {
+    let (patterns, _) = settings.first_party(None).map_err(|failure| {
+        Error::Invalid(format!(
+            "no first-party image list resolved, so whether this chart owes a declaration cannot \
+             be decided ({failure}); set `helm.firstParty` in terrace.yaml (`terrace-contract \
+             doctor` says why)"
+        ))
+    })?;
+    if !helm::init::owes_a_declaration(&patterns, &pin.repository) {
+        return Ok(None);
+    }
+    match reason.filter(|held| !held.trim().is_empty()) {
+        Some(reason) => Ok(Some(reason)),
+        None => Err(Error::Invalid(format!(
+            "{} is a first-party image, so the coverage gate will demand a declaration from this \
+             chart. Give --reason to write the opt-out, or drop --no-contract to vendor the \
+             contract it publishes",
+            pin.repository
+        ))),
+    }
+}
+
+/// Plan, check, diff or write the values every selected enrolled chart is owed.
+///
+/// At most one of `check`, `diff` and `write` is set. The exit codes are the ones the
+/// command this replaced used, so the recipes that call it need no change: 2 for a selection that
+/// names no chart or a `--key` with no chart, 1 for a refused key, a blocked chart or a tree that
+/// could not be read, 0 otherwise. `--check` alone departs from that, to the convention `sync
+/// --check` reads: 1 for anything owed, 2 for a tree it could not read.
+fn adopt_command(repo: &Repo, options: Adopt) -> ExitCode {
+    use helm::adopt;
+
+    let Adopt {
+        chart,
+        keys,
+        charts,
+        check,
+        diff,
+        write,
+    } = options;
+    // An empty name selects every chart, as the recipe that passes `''` through expects.
+    let chart = chart.as_deref().filter(|name| !name.is_empty());
+
+    // Everything that reads the tree runs in here, the chart list included, so that a tree that
+    // cannot be read exits the way the contract above says rather than the way `main` would.
+    let run = || -> Result<ExitCode, Error> {
+        let charts = &repo.charts(charts)?;
+        let chart_dirs: Vec<PathBuf> = helm::declaration::chart_dirs(charts)?
+            .into_iter()
+            .filter(|dir| chart.is_none_or(|name| dir.file_name() == Some(name.as_ref())))
+            .collect();
+        if let Some(name) = chart
+            && chart_dirs.is_empty()
+        {
+            eprintln!("error: {} is not a chart", adopt::posix(&charts.join(name)));
+            return Ok(ExitCode::from(2));
+        }
+        if !keys.is_empty() && chart.is_none() {
+            eprintln!("error: --key selects keys of one chart, so name the chart");
+            return Ok(ExitCode::from(2));
+        }
+
+        let wanted = keys.iter().cloned().collect();
+        let adoptions = adopt::adopt_all(&chart_dirs, &wanted)?;
+        if adoptions.is_empty() {
+            if !diff {
+                println!("==> every contract key of every enrolled chart is bound or written off");
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+        let refused = adoptions
+            .iter()
+            .any(|item| !item.blocked.is_empty() || !item.refusals.is_empty());
+
+        if diff {
+            for adoption in &adoptions {
+                for splice in adopt::splices(adoption)? {
+                    print!("{}", splice.diff());
+                }
+                for message in &adoption.blocked {
+                    eprintln!("{}: blocked: {message}", adoption.chart);
+                }
+                for refusal in &adoption.refusals {
+                    eprintln!(
+                        "{}: refused: {} {}",
+                        adoption.chart, refusal.path, refusal.reason
+                    );
+                }
+            }
+        } else {
+            // Every file of every chart, or none: see `write_all`.
+            if write {
+                adopt::write_all(&adoptions)?;
+            }
+            for adoption in &adoptions {
+                print!("{}", adopt::report(adoption, write)?);
+            }
+            let rows = if write {
+                adopt::counted(charts, &adoptions)?
+            } else {
+                Vec::new()
+            };
+            print!("{}", adopt::closing(&adoptions, write, &rows));
+        }
+
+        Ok(if check || refused {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        })
+    };
+
+    run().unwrap_or_else(|failure| {
+        eprintln!("error: {failure}");
+        ExitCode::from(if check { 2 } else { 1 })
+    })
 }
 
 /// Write or check every generated `@schema` block.
@@ -1319,6 +1706,72 @@ fn diff_command(
         return Ok(ExitCode::from(2));
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Name every chart line that still uses something a contract removed since `since`.
+///
+/// Returns its exit code rather than an error, because an error reaching `main` exits 2 — which is
+/// this command's "a chart still references something removed". Every way of failing to answer is
+/// 1 instead, so the three outcomes stay distinguishable to a caller.
+///
+/// A vendored contract that cannot be read on either side is a failure to answer, and nothing is
+/// reported past it: the comparison would read the unreadable side as absent and name every key of
+/// that contract as removed.
+fn migrate_command(repo: &Repo, command: Command) -> ExitCode {
+    let Command::Migrate {
+        chart: only,
+        since,
+        charts,
+        json: as_json,
+    } = command
+    else {
+        unreachable!("dispatched on the variant")
+    };
+    let answer = || -> Result<ExitCode, Error> {
+        let charts = repo.charts(charts)?;
+        if let Some(name) = &only {
+            // Refused by name, so a misspelt chart cannot compare nothing and pass.
+            Selection::of([name]).dirs(&charts)?;
+        }
+        let revision = helm::Committed::resolve_for(&charts, &since)?;
+        let diffed = helm::collect(&charts, &revision, only.as_deref())?;
+        let (_, problems) = diffed.report.text();
+        eprint!("{problems}");
+        if diffed.report.failed() {
+            return Err(Error::Invalid(format!(
+                "a vendored contract could not be read at {since} or in the working tree, so what \
+                 it removed is unknown"
+            )));
+        }
+
+        let found = helm::migrate::migrations(&charts, &diffed.charts, &revision)?;
+        let root = std::env::current_dir().map_err(|e| Error::io(".", e))?;
+        if as_json {
+            let mut document = helm::migrate::as_json(&found, &root);
+            document["tool"] = "terrace-contract migrate".into();
+            document["ref"] = since.as_str().into();
+            document["commit"] = revision.commit().into();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&document).expect("owned values serialise")
+            );
+        } else {
+            print!("{}", helm::migrate::render(&found, &root));
+        }
+
+        let open = found
+            .iter()
+            .any(|migration| !migration.references.is_empty());
+        Ok(if open {
+            ExitCode::from(2)
+        } else {
+            ExitCode::SUCCESS
+        })
+    };
+    answer().unwrap_or_else(|error| {
+        eprintln!("error: {error}");
+        ExitCode::FAILURE
+    })
 }
 
 /// Prose and prose alone are collapsed: they are real changes and they are shown, but one line per

@@ -165,6 +165,116 @@ into an application chart, still widens), or a change that cannot be read, such 
 clone. Why it
 widened goes to stderr. It can therefore widen a gate and never narrow one by mistake.
 
+## Adopting keys a new contract adds: `adopt`
+
+When an image release adds a setting, `bindings` fails because no chart value reaches it. `adopt`
+writes the repair for the cases that need no judgement:
+
+- an ordinary key gets a chart value, with its type, default and description taken from the
+  contract, and the marker that binds it;
+- a credential gets a value delivered as a file, with no marker, plus its `unbound` write-off and
+  its `credentials` row;
+- a reserved key gets its write-off and no value.
+
+The template lines that project a new value are appended to `derivedConfig` and `secretData`.
+That only happens where the define does not already write the key's root, and, in a
+multi-document chart, only where the `$service` guard can be read from the declaration. Anywhere
+else the lines are printed for a person to place.
+
+```bash
+terrace-contract adopt                                # plan every enrolled chart and print it
+terrace-contract adopt portfolio --key sentry.debug   # one chart, only the named keys
+terrace-contract adopt --check                        # exit 1 when any enrolled chart owes a key
+terrace-contract adopt --diff                         # the unified diff --write would apply
+terrace-contract adopt --write                        # apply it
+```
+
+`adopt` never touches a value that already exists. A key whose chart value is already there is
+refused, and the refusal names the marker to write by hand. Only a person can say which key an
+existing value feeds. A chart whose markers are broken is blocked and nothing is planned for it.
+
+Every edit inserts whole lines and changes no existing byte: each block goes after the last bound
+sibling of the value it belongs with, CRLF files stay CRLF, and YAML is never re-serialised.
+`--write` stages every file of every chart before it replaces any of them, and puts back what it
+replaced if a later replacement fails, so a run that fails part-way leaves the tree as it was. It refuses to write a file that resolves outside its chart.
+`--diff` writes nothing. Its output applies with `patch -p0` from the directory `adopt` ran in, and
+it lists blocked charts and refused keys on stderr.
+
+Exit codes:
+
+- Without `--check`: `1` when a key was refused, a chart is blocked, or the run failed; `0`
+  otherwise.
+- With `--check`: `1` when anything is owed; `2` when the run could not answer.
+- Both: `2` for a chart name that is not a chart, or `--key` without a chart.
+
+`adopt` is not part of `sync`. Writing a setting into a chart is a change somebody should read.
+
+## Starting a chart from its image's contract: `helm init`
+
+A chart has two halves. The chassis is the same in every chart of a repository: `Chart.yaml`, the
+workload templates and the README source. The repository keeps it as a template and copies it. The
+configuration half comes from the image's contract, and `helm init` writes it:
+
+| file | what it is |
+|---|---|
+| `contracts/<document>.json` | the image's contract, fetched and verified exactly as `pull` does it |
+| `values.yaml` | the image pin, a block per setting with the marker that binds it, then `--chassis` |
+| `templates/_helpers.tpl` | the partials that project the values into the document and the Secret |
+| `config-contract.yaml` | the declaration, with `bindings: true` and a reasoned `unbound` entry per write-off |
+| `contract-tests.yaml` | the round-trip enrolment, with a prerequisite per required credential |
+| `ci/test-values.yaml` | the credentials the render guard demands, as values that can never authenticate |
+| `tests/configmap_test.yaml` | a first suite for a person to extend |
+
+```bash
+terrace-contract helm init portfolio --image timschoenle/portfolio:v3.1.3@sha256:...           # print the plan
+terrace-contract helm init portfolio --image timschoenle/portfolio:v3.1.3@sha256:... --diff    # the diff --write would apply
+terrace-contract helm init portfolio --image timschoenle/portfolio:v3.1.3@sha256:... --write \
+  --chassis .github/templates/chart/values.chassis.yaml
+terrace-contract helm init redis --image library/redis:8.0 --no-contract --write              # no contract: the plain form
+```
+
+`--document` names the document in the declaration and defaults to the chart's name.
+`--document-key` is the `ConfigMap` key it is rendered under and defaults to `config.toml`. The
+signer comes from `--signer`, `CONTRACT_SIGNER` or `helm.signer`, as for `pull`. There is no way to
+hand `init` a contract file: a contract that skipped verification would be trusted by every gate
+downstream.
+
+**The placeholder protocol.** The copied templates have to name things only the contract knows:
+the environment prefix, the nesting separator and the document key. They spell them
+`%%PREFIX%%`, `%%ENV_PREFIX%%` (the prefix without its trailing separator), `%%SEPARATOR%%` and
+`%%DOCUMENT_KEY%%`, a form Helm never reads. `init` fills them in every file of the chart. It skips
+`charts/` and `contracts/` at the top level, and any file that is not UTF-8. Any other `%%NAME%%`
+still present is refused, because it is the copy's to substitute and it would otherwise render as
+literal text. So the copy can be a `sed` over the chart's name, description and versions, and
+nothing in it has to read JSON.
+
+**The plain form.** `--no-contract` writes `values.yaml` with only the image and the chassis, an
+empty `_helpers.tpl` and an empty fixture. It writes no `ConfigMap`, no Secret and no
+`configMount`, because each describes a loader nothing knows this image has. A first-party image,
+by the same list `coverage` reads, still owes a declaration. `--reason` is required in that case,
+and is written as the declaration's opt-out. A third-party image gets no declaration. The
+placeholders are filled from the chart's name (`REDIS_`, `__`), since there is no dialect to read.
+
+**It replaces nothing.** Every file is planned before one is written. A file already there that
+says something else is refused, and the error names each one. A file that already holds exactly
+what would be written is left alone, so a second run owes nothing. The vendored contract counts as
+unchanged when only its fetch time moved. A chart that already has a configuration is `adopt`'s
+to change.
+
+After `--write`, it prints what is left for a person, in order:
+
+- the grouping blocks whose description is a `TODO`, because a contract describes keys and not the
+  blocks a chart groups them into;
+- the values it had to invent, for keys the image requires and publishes no default for;
+- the `unbound` reasons to read.
+
+Exit codes:
+
+- `--check`: `1` when anything would be written; `0` when the chart already holds exactly this;
+  `2` when it could not answer.
+- `--diff`: prints a `patch -p0` diff and exits `0`.
+- Otherwise: `1` for any failure.
+
 ## One command for CI: `sync`
 
 `sync` runs the steps a chart repository needs in the right order, so a pipeline or a person runs
@@ -187,6 +297,55 @@ it also runs `check` on that render. Every step runs even when an earlier one fa
 reports everything. The exit code is `0` when every step passed, `1` when a step found something,
 and `2` when a step could not run. `--format github` puts each step in a collapsible log group and
 writes the findings into the job summary.
+
+## Markers a template never renders
+
+`bindings` holds every `# @config` marker in an enrolled chart (`bindings: true` in
+`config-contract.yaml`) against the contract it names. It also checks that the chart's templates
+render each bound key at all: for every `projection`, `structured` and `composed` marker, the last
+segment of the contract key must appear in some `templates/*.tpl` file, either as a mapping key
+(`interval_secs:`) or as a quoted `dict`/`set` argument (`"interval_secs"`). Otherwise a value can be
+bound, typed and documented while the template renders nothing for it.
+
+The check is a plain text search. A hit means the key's name is rendered somewhere, and does not mean
+it is wired to the right value. Because it is part of `bindings`, `sync --check` runs it with no
+extra step.
+
+## After a contract removes something: `migrate`
+
+A refresh writes values for the keys an image added. It cannot follow a removal, because the lines
+still using what went away are in templates, hand-written test suites and CI values files, which no
+writer edits. `migrate` lists those lines:
+
+```bash
+terrace-contract migrate tankovault --since "$(git merge-base HEAD origin/main)"
+terrace-contract migrate --json                     # every chart, against origin/main
+```
+
+```text
+==> hand migration required: the contract took these away, and no generator edits
+    the templates, hand-written tests or CI values that still use them
+  tankovault: legal.dir: key removed (chart value legal.dir)
+      charts/tankovault/templates/_config.tpl:515: dir: {{ $ctx.Values.legal.dir | quote }}
+  tankovault: legal.documents: element property 'sources' removed (chart value legal.documents)
+      charts/tankovault/tests/legal_test.yaml:58: legal.documents.privacy.sources.en: /mnt/legal/privacy.en.md
+```
+
+It reports two kinds of change: a contract key that was removed, and a property removed from the
+schema of a key's elements. It compares the vendored contracts with the revision given in `--since`,
+in the same way as `diff`. It reads the chart's markers from `values.yaml` **as it was at that
+revision**, because by the time anyone looks, the value a removed key was bound to has usually been
+deleted. It searches `templates/`, `tests/*.yaml` and `ci/*.yaml`, and skips the generated
+`contract_roundtrip_*_test.yaml` suites, because running `tests` regenerates those.
+
+Pass the commit the branch started from, not `HEAD`. On a bump branch the refreshed contract is
+usually committed already, so nothing has changed since `HEAD`.
+
+The search is plain text, so a hit is a place to look rather than proof that the line is wrong.
+Every removal is listed, including ones nothing references, so you can confirm that a migration is
+complete. The exit code is `0` when no line still uses a removal, `2` when one does, and `1` when the
+command could not answer (an unknown revision, a chart name that matches no chart, or a contract or
+marker it cannot read). These are the same three outcomes as `diff --exit-code`.
 
 ## What it deliberately does not do
 

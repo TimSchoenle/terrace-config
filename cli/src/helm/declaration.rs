@@ -202,7 +202,20 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
         return Ok(None);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| Error::io(path.display(), e))?;
-    let document: Json = read_yaml(&text, &path)?;
+    parse_declaration(&text, chart_dir).map(Some)
+}
+
+/// Read one chart's declaration from its text, as if it were the chart's own file.
+///
+/// The half of [`load_declaration`] that does not touch a disk, for a caller holding a declaration
+/// it has not written yet: a scaffold that hands a contributor a file no reader accepts has failed
+/// on their first run rather than on its own, so it reads what it is about to write first.
+///
+/// # Errors
+/// As [`load_declaration`].
+pub fn parse_declaration(text: &str, chart_dir: &Path) -> Result<Declaration, Error> {
+    let path = chart_dir.join(DECLARATION);
+    let document: Json = read_yaml(text, &path)?;
     let at = path.display().to_string();
 
     let Some(fields) = document.as_object() else {
@@ -246,7 +259,7 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
     }
     let names: BTreeSet<&str> = documents.iter().map(|entry| entry.name.as_str()).collect();
 
-    Ok(Some(Declaration {
+    Ok(Declaration {
         chart: chart_dir
             .file_name()
             .map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
@@ -257,7 +270,7 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
         unbound: load_unbound(&at, fields.get("unbound"), &names)?,
         credentials: load_credentials(&at, fields.get("credentials"))?,
         documents,
-    }))
+    })
 }
 
 /// One document entry.
@@ -1013,16 +1026,34 @@ pub fn resolve_image(
 
     Ok(PinnedImage {
         reference,
-        normalized: format!(
-            "{}/{repository}",
-            if registry.is_empty() {
-                "docker.io"
-            } else {
-                registry
-            }
-        ),
+        normalized: normalized_image(registry, repository),
         digest: tag.split_once('@').map(|(_, digest)| digest.to_owned()),
     })
+}
+
+/// A chart's spelling of an image, in the fully qualified form a registry client and a signature
+/// check agree on.
+///
+/// A chart writes a bare Docker Hub name because that is what a templating engine and a container
+/// CLI accept; a registry client reads a bare first segment as a hostname and tries to resolve it by
+/// DNS. Signature verification normalises and the registry client does not, so passing the chart's
+/// spelling around would have the two disagree about which image was verified.
+///
+/// The rule is the container runtime's own: with no `registry`, a first segment that contains a
+/// `.` or a `:`, or is `localhost`, already names the registry and is kept; anything else is Docker
+/// Hub, where a single-segment name lives under `library/`.
+#[must_use]
+pub fn normalized_image(registry: &str, repository: &str) -> String {
+    if !registry.is_empty() {
+        return format!("{registry}/{repository}");
+    }
+    match repository.split_once('/') {
+        Some((host, _)) if host.contains(['.', ':']) || host == "localhost" => {
+            repository.to_owned()
+        }
+        Some(_) => format!("docker.io/{repository}"),
+        None => format!("docker.io/library/{repository}"),
+    }
 }
 
 // ------------------------------------------------------------------------------------------
@@ -1604,7 +1635,7 @@ mod tests {
         let pinned =
             resolve_image(&values, "image", Some("v1.2.3@sha256:ab")).expect("the path resolves");
         assert_eq!(pinned.reference, "ghcr.io/x/y:v1.2.3@sha256:ab");
-        assert_eq!(pinned.normalized, "docker.io/ghcr.io/x/y");
+        assert_eq!(pinned.normalized, "ghcr.io/x/y");
         assert_eq!(pinned.digest.as_deref(), Some("sha256:ab"));
     }
 

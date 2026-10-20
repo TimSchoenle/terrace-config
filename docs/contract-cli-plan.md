@@ -61,14 +61,17 @@ its network half.
 | phase 4 | `bindings`, `shapes`, `coverage` | 232 markers read identically; every derived `@schema` block reproduced byte for byte |
 | phase 5 | `diff`, `secrets`, `readme`, `tests`, `explain` | four revisions byte-identical; 151 unclaimed and 24 over-projected mounts agreeing over a mutant render; 7 credential references and 15 generated suites reproduced byte for byte; 28 explanations agreeing field for field |
 | phase 6 | `pull`, `scope`, `sync` | 25 cases against a recorded registry, behind the `Registry` seam; `sync --check` passing over the `helm-charts` tree, as the five gates it runs do one at a time |
+| phase 6 | `migrate`, `adopt`, `helm init` | `migrate` and the `bindings` wired rule byte-identical over the tree and 28 findings agreeing over a mutant of it; `adopt` identical on 1821 of 1843 cases, the other 22 an ordering bug in the Python; `helm init` byte-identical for 9 contracts offline, apart from the key order of the vendored contract |
 
 `sync` composes the commands that exist: `pull`, `shapes` and `readme` to write, every offline gate
-with `--check`. It gains the adopt path when that is ported.
+with `--check`. `adopt` stays outside it: it writes values a person reviews, and `bindings` inside
+`sync --check` already fails while anything is owed.
 
-Still to come: phase 2's Java cutover, and phase 6's writers — `scaffold` and the adopt path. Those are last for the reason §11 gives, and the reason has not changed:
-a generator that is wrong writes its mistake into the tree, where a parity harness cannot see it as
-a diff. `config_scaffold.py` and `adopt-config.py` stay in `helm-charts` until they are ported, and
-`config_testgen.py` keeps `satisfying` and `VALUES_ROOT` for the first of them to read.
+The writers came last for the reason §11 gives: a generator that is wrong writes its mistake into the
+tree, where a parity harness cannot see it as a diff. Each shipped `--check` and `--diff` before
+`--write`, and `--write` only once its plan matched the Python over the whole tree. Still to come:
+phase 2's Java cutover, and deleting the writers' Python from `helm-charts` once a release carries
+them.
 
 ### What the port found
 
@@ -328,15 +331,18 @@ cannot do.
 | `just contracts` / `just check-contracts` | `terrace-contract pull` / `--check` |
 | `just check-config` | `terrace-contract check --manifests rendered` |
 | `just check-contract-coverage` | `terrace-contract coverage` |
-| `just check-config-bindings` / `just adopt-config` | `terrace-contract bindings --check` / `--adopt` |
+| `just check-config-bindings` | `terrace-contract bindings --check` |
+| `just adopt-config` | `terrace-contract adopt` / `--check` / `--diff` / `--write` |
 | `just config-shapes` / `check-config-shapes` | `terrace-contract shapes` / `--check` |
 | `just config-readme` / `check-config-readme` | `terrace-contract readme` / `--check` |
 | `just contract-tests` / `check-contract-tests` | `terrace-contract tests` / `--check` |
 | `just config-secrets` / `check-config-secrets` | `terrace-contract secrets` / `--reconcile rendered` |
 | `just contract-diff` | `terrace-contract diff --since origin/main` |
+| `just contract-migrations` | `terrace-contract migrate --since <where the branch started>` |
+| `just check-config-wired` | folded into `terrace-contract bindings`: same enrolment, same markers |
 | `just explain` | `terrace-contract explain <chart> [pattern]` |
 | `just test-contract-union` | deleted — becomes `cli/tests/union.rs` |
-| `new-chart.py`'s config half | `terrace-contract scaffold` |
+| `new-chart.py`'s config half | `terrace-contract helm init` |
 | `just sync-config` | `terrace-contract sync` |
 
 Every `x` / `check-x` pair collapses into one subcommand with `--check`, so the writer and the
