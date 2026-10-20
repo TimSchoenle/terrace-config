@@ -44,24 +44,36 @@ record TerraceContractCli(Path executable) {
     private static final String NAME = isWindows() ? NAME_ON_UNIX + ".exe" : NAME_ON_UNIX;
 
     /**
-     * The binary, or empty when none is found anywhere.
+     * The binary, or empty when none is found anywhere, read from this process's environment.
      *
      * @param repositoryRoot the root {@code cli/target/} is resolved against
      * @throws IllegalStateException when {@value #BIN_VARIABLE} is set but names no executable file
      */
     static Optional<TerraceContractCli> locate(final Path repositoryRoot) {
-        final String explicit = System.getenv(BIN_VARIABLE);
+        return locate(repositoryRoot, System.getenv(BIN_VARIABLE), System.getenv("PATH"));
+    }
+
+    /**
+     * The binary, or empty when none is found anywhere.
+     *
+     * @param repositoryRoot the root {@code cli/target/} is resolved against
+     * @param explicit       the value of {@value #BIN_VARIABLE}, or {@code null} when unset
+     * @param path           the value of {@code PATH}, or {@code null} when unset
+     * @throws IllegalStateException when {@code explicit} is set but names no executable file
+     */
+    static Optional<TerraceContractCli> locate(
+            final Path repositoryRoot, final @Nullable String explicit, final @Nullable String path) {
         if (explicit != null && !explicit.isBlank()) {
-            final Path path = Path.of(explicit).toAbsolutePath();
-            if (!isExecutableFile(path)) {
+            final Path named = Path.of(explicit).toAbsolutePath();
+            if (!isExecutableFile(named)) {
                 throw new IllegalStateException(BIN_VARIABLE + "=" + explicit + " is not an executable file");
             }
-            return Optional.of(new TerraceContractCli(path));
+            return Optional.of(new TerraceContractCli(named));
         }
         final List<Path> candidates = new ArrayList<>();
         candidates.add(repositoryRoot.resolve("cli/target/release").resolve(NAME));
         candidates.add(repositoryRoot.resolve("cli/target/debug").resolve(NAME));
-        candidates.addAll(onPath());
+        candidates.addAll(onPath(path));
         for (final Path candidate : candidates) {
             if (isExecutableFile(candidate)) {
                 return Optional.of(new TerraceContractCli(candidate));
@@ -71,9 +83,8 @@ record TerraceContractCli(Path executable) {
     }
 
     /** {@value #NAME_ON_UNIX} (or its {@code .exe}) in each {@code PATH} directory, in order. */
-    private static List<Path> onPath() {
+    private static List<Path> onPath(final @Nullable String path) {
         final List<Path> found = new ArrayList<>();
-        final String path = System.getenv("PATH");
         if (path == null) {
             return found;
         }
@@ -159,6 +170,17 @@ record TerraceContractCli(Path executable) {
                 contract.toAbsolutePath().toString()));
     }
 
+    private static boolean finished(final Process process, final List<String> command) {
+        try {
+            return process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            // Nobody is waiting for the result any more, so the binary must not outlive the wait.
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while running " + String.join(" ", command), e);
+        }
+    }
+
     private Outcome run(final List<String> arguments) {
         final List<String> command = new ArrayList<>();
         command.add(this.executable.toString());
@@ -177,7 +199,7 @@ record TerraceContractCli(Path executable) {
                     .redirectOutput(output.toFile())
                     .redirectInput(ProcessBuilder.Redirect.from(nullDevice()))
                     .start();
-            if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!finished(process, command)) {
                 process.destroyForcibly();
                 throw new IllegalStateException(
                         String.join(" ", command) + " did not finish within " + TIMEOUT_SECONDS + "s");
@@ -185,9 +207,6 @@ record TerraceContractCli(Path executable) {
             return new Outcome(process.exitValue(), Files.readString(output, StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while running " + String.join(" ", command), e);
         } finally {
             try {
                 Files.deleteIfExists(output);
