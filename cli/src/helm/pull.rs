@@ -660,12 +660,34 @@ pub fn vendored_text(
 /// Write the wrapper [`vendored_text`] renders, and report whether the file changed.
 ///
 /// The file is replaced by a rename (see [`super::files`]), so a symbolic link at `path` is
-/// replaced rather than written through, and no reader sees half a wrapper. Confining `path` to a
-/// chart is the caller's: [`refresh_chart`] resolves it with [`super::files::inside`] first.
+/// replaced rather than written through, and no reader sees half a wrapper. This confines `path`
+/// to its own parent directory only; [`refresh_chart`] confines it to the chart instead.
 ///
 /// # Errors
 /// As [`vendored_text`], and [`Error::Io`] when the file cannot be written.
 pub fn write_vendored(
+    path: &Path,
+    image: &str,
+    digest: &str,
+    payload: &[u8],
+    sha256: &str,
+    fetched: &str,
+) -> Result<bool, Error> {
+    let parent = match path.parent() {
+        Some(held) if !held.as_os_str().is_empty() => held,
+        _ => Path::new("."),
+    };
+    std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
+    write_vendored_in(parent, path, image, digest, payload, sha256, fetched)
+}
+
+/// [`write_vendored`], with `path` checked against `chart` again at the write itself.
+///
+/// The check that ran before the fetch is not enough on its own: the write re-resolves `path`
+/// against `chart` and creates the directories it needs only after that, so a directory turned into
+/// a link in the meantime is refused rather than followed.
+fn write_vendored_in(
+    chart: &Path,
     path: &Path,
     image: &str,
     digest: &str,
@@ -679,13 +701,8 @@ pub fn write_vendored(
     {
         return Ok(false);
     }
-    let parent = match path.parent() {
-        Some(held) if !held.as_os_str().is_empty() => held,
-        _ => Path::new("."),
-    };
-    std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
     write_all(&[Planned {
-        chart: parent.to_path_buf(),
+        chart: chart.to_path_buf(),
         path: path.to_path_buf(),
         text: rendered,
     }])?;
@@ -908,7 +925,8 @@ pub fn refresh_chart(
         let target = chart_dir.join(&entry.contract);
 
         let held = fetch_pinned(registry, image, app_version, signer)?;
-        if write_vendored(
+        if write_vendored_in(
+            chart_dir,
             &resolved,
             &held.image,
             &held.digest,
@@ -1871,6 +1889,33 @@ mod tests {
             "the link was replaced by the file"
         );
         assert_eq!(chart.read()["source"]["image"], "docker.io/demo/api");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_write_itself_refuses_a_directory_that_became_a_link_after_the_check() {
+        let chart = chart_with(&[CHART]);
+        let outside = Vendored::new();
+        std::fs::create_dir_all(&outside.0).expect("a directory");
+        std::os::unix::fs::symlink(&outside.0, chart.0.join("contracts")).expect("a link");
+        let payload = br#"{"version":1}"#;
+
+        let failure = super::write_vendored_in(
+            &chart.0,
+            &chart.path(),
+            IMAGE,
+            INDEX,
+            payload,
+            &digest_of(payload),
+            "t",
+        )
+        .expect_err("the link points out of the chart");
+
+        assert!(
+            failure.to_string().contains("outside the chart"),
+            "{failure}"
+        );
+        assert!(!outside.0.join("api.json").exists(), "nothing was written");
     }
 
     #[test]
