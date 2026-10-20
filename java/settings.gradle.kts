@@ -19,6 +19,7 @@ include(
     "terrace-config-loader",
     "terrace-config-spring-boot",
     "terrace-config-spec-tck",
+    "terrace-config-gradle-plugin",
     "terrace-config-example-service",
     "terrace-config-example-spring-service",
 )
