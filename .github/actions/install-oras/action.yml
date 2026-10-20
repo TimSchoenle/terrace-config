@@ -1,0 +1,31 @@
+name: install oras
+description: >-
+  Install a checksum-verified oras release, for the tests that drive a real oras against an OCI
+  image layout. Those tests fail rather than skip in CI when oras is missing, so every job that
+  runs them installs it through here and hands the path output to them as ORAS_BIN.
+
+outputs:
+  path:
+    description: Absolute path of the installed oras binary.
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: install oras
+      id: install
+      shell: bash
+      env:
+        # renovate: datasource=github-releases depName=oras-project/oras extractVersion=^v(?<version>.*)$
+        ORAS_VERSION: 1.3.4
+      run: |
+        set -euo pipefail
+        base="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}"
+        archive="oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+        mkdir -p "$RUNNER_TEMP/oras"
+        cd "$RUNNER_TEMP/oras"
+        curl -fsSLO "$base/$archive"
+        curl -fsSLO "$base/oras_${ORAS_VERSION}_checksums.txt"
+        grep " ${archive}\$" "oras_${ORAS_VERSION}_checksums.txt" | sha256sum --check --strict
+        tar -xzf "$archive" oras
+        echo "path=$RUNNER_TEMP/oras/oras" >> "$GITHUB_OUTPUT"

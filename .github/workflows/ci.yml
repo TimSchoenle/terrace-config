@@ -148,8 +148,19 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
+      # The coverage action checks the code out itself, so the local action is read from a
+      # checkout of its own first; `cli`'s tests need oras, as in the `cli` job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: matrix.workspace == 'cli'
+        with:
+          persist-credentials: false
+      - id: oras
+        uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
+        if: matrix.workspace == 'cli'
       - name: Run Coverage
         uses: TimSchoenle/actions/actions/rust/coverage-codecov@81e4009704e0963651bbd8275e31244c1d1e220d # tag=actions-rust-coverage-codecov-v2.0.3
+        env:
+          ORAS_BIN: ${{ steps.oras.outputs.path }}
         with:
           source_directory: ${{ matrix.workspace }}
           test_arguments: --workspace --all-features
@@ -471,23 +482,13 @@ jobs:
       # `tests/image_layout.rs` drives a real `oras` against an OCI image layout, because what only
       # a real client can show is that the arguments passed are the ones it reads. It fails rather
       # than skips in CI when `oras` is missing, so the install is part of the gate.
-      - name: install oras
-        env:
-          # renovate: datasource=github-releases depName=oras-project/oras extractVersion=^v(?<version>.*)$
-          ORAS_VERSION: 1.3.4
-        run: |
-          base="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}"
-          archive="oras_${ORAS_VERSION}_linux_amd64.tar.gz"
-          mkdir -p "$RUNNER_TEMP/oras"
-          cd "$RUNNER_TEMP/oras"
-          curl -fsSLO "$base/$archive"
-          curl -fsSLO "$base/oras_${ORAS_VERSION}_checksums.txt"
-          grep " ${archive}\$" "oras_${ORAS_VERSION}_checksums.txt" | sha256sum --check --strict
-          tar -xzf "$archive" oras
-          echo "ORAS_BIN=$RUNNER_TEMP/oras/oras" >> "$GITHUB_ENV"
+      - id: oras
+        uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
       - name: test
         run: cargo test
         working-directory: cli
+        env:
+          ORAS_BIN: ${{ steps.oras.outputs.path }}
       # `cli/` is a workspace of its own, so the `doc`, `deny` and `msrv` jobs above run at the
       # repository root and never reach it. Without these three steps its `[lints.rustdoc]` table
       # is enforced by nothing, its dependencies are licence- and advisory-checked by nothing, and
