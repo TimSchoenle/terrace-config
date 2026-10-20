@@ -394,9 +394,11 @@ mod tests {
                 format: DocumentFormat::Toml,
             },
             images: Vec::new(),
-            consumers: Vec::new(),
+            consumers: crate::helm::declaration::Consumers::Declared(Vec::new()),
             exempt: Vec::new(),
             restart,
+            tests: None,
+            defaulted: Vec::new(),
         }
     }
 

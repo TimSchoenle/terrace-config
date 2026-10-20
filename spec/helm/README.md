@@ -17,6 +17,7 @@ version it is written against, and the CLI reads that field before anything else
 | File | Version field | Specified in |
 |---|---|---|
 | `terrace.yaml` at the repository root | `version` | [`v1/REPO.md`](v1/REPO.md), [`v1/repo.schema.json`](v1/repo.schema.json) |
+| `charts/<chart>/config-contract.yaml` | the `version` of `terrace.yaml` | [`v1/DECLARATION.md`](v1/DECLARATION.md), [`v1/DEFAULTS.md`](v1/DEFAULTS.md), [`v1/declaration.schema.json`](v1/declaration.schema.json) |
 
 Within a version, a key is added only when an older CLI can ignore it without changing any gate's
 verdict: it enables something new or narrows a report, and never relaxes or reinterprets an existing
@@ -30,20 +31,27 @@ does.
 spec/helm/
   README.md            this file
   v1/
-    REPO.md            terrace.yaml: every key, its default, and how a value is resolved
-    repo.schema.json   validates terrace.yaml; embedded in terrace-contract
+    REPO.md                   terrace.yaml: every key, its default, and how a value is resolved
+    repo.schema.json          validates terrace.yaml; embedded in terrace-contract
+    DECLARATION.md            config-contract.yaml: every key, and round-trip enrolment
+    DEFAULTS.md               every default a declaration may rely on; changing one is breaking
+    declaration.schema.json   validates config-contract.yaml, for editors
 ```
 
-The chart declaration (`config-contract.yaml`) and the `@config` marker language join this
-directory in later changes, under the same rules.
+The `@config` marker language joins this directory in a later change, under the same rules.
 
 ## Using the schemas
 
-The CLI embeds every schema here and validates offline. An editor can validate the same file through
-the `yaml-language-server` modeline that `terrace-contract config init` writes:
+The CLI embeds `repo.schema.json` and validates `terrace.yaml` against it offline. It reads
+`config-contract.yaml` with its own stricter reader, whose messages name the key at fault, and its
+tests hold `declaration.schema.json` to the same keys and refusals.
+
+An editor validates either file through the `yaml-language-server` modeline that
+`terrace-contract config init` and `terrace-contract helm init` write:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/TimSchoenle/terrace-config/main/spec/helm/v1/repo.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/TimSchoenle/terrace-config/main/spec/helm/v1/declaration.schema.json
 ```
 
 The `$id` inside each schema is an identifier, not a promise that something answers at that URL.

@@ -309,7 +309,7 @@ mod tests {
     use super::check_workload;
     use crate::document::Contract;
     use crate::gate::{DocumentFormat, DocumentSource};
-    use crate::helm::declaration::{Binding, Consumer, Document};
+    use crate::helm::declaration::{Binding, Consumer, Consumers, Document};
     use crate::union::union_contracts;
 
     const DIGEST: &str = "sha256:aaaa";
@@ -366,9 +366,11 @@ mod tests {
                 format: DocumentFormat::Toml,
             },
             images: Vec::new(),
-            consumers: Vec::new(),
+            consumers: Consumers::Declared(Vec::new()),
             exempt: Vec::new(),
             restart: Vec::new(),
+            tests: None,
+            defaulted: Vec::new(),
         }
     }
 
@@ -376,6 +378,7 @@ mod tests {
         Consumer {
             kind: "Deployment".to_owned(),
             selector: Vec::new(),
+            name: None,
             containers: vec!["app".to_owned()],
         }
     }

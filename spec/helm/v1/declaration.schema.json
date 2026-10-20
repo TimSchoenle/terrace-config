@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://terrace.dev/spec/helm/v1/declaration.schema.json",
+  "title": "config-contract.yaml, Helm layer version 1",
+  "description": "One chart's declaration of the configuration documents it renders and the images that read them, at charts/<chart>/config-contract.yaml. Normative prose is in DECLARATION.md, and every default is listed in DEFAULTS.md. Closed at every level: the file is written by hand in the chart repository, so a key nobody reads is a typo. terrace-contract enforces rules this schema cannot state (unique document names, unbound scopes naming declared documents, prerequisites outside the probed tree); its messages are authoritative.",
+  "type": "object",
+  "required": ["documents"],
+  "additionalProperties": false,
+  "properties": {
+    "documents": {
+      "description": "Every configuration document the chart renders. An empty list opts the chart out and requires `reason`.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/document" }
+    },
+    "reason": {
+      "description": "Why the chart declares no documents. Required when `documents` is empty.",
+      "$ref": "#/$defs/text"
+    },
+    "bindings": {
+      "description": "Enrols the chart in the marker check: every contract key is bound to a chart value by a `@config` marker or written off in `unbound`. Default false.",
+      "type": "boolean"
+    },
+    "tests": {
+      "description": "Enrols the chart in the generated round-trip suites. Every document then gets one; a document's own `tests` block only says how. Default false. Refused together with a contract-tests.yaml beside this file.",
+      "type": "boolean"
+    },
+    "unconfigured": {
+      "description": "Values paths at which the chart pins an image that reads no contract-described configuration.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/text" },
+      "uniqueItems": true
+    },
+    "unbound": {
+      "description": "Contract keys the chart binds no chart value to, each group with a reason.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/unbound" }
+    },
+    "credentials": {
+      "description": "What the chart adds to the generated credential reference in its README, per contract key.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/credential" }
+    }
+  },
+  "if": { "properties": { "documents": { "maxItems": 0 } } },
+  "then": { "required": ["reason"] },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "keys": {
+      "description": "Contract keys, written out one by one. There is no pattern form.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "labels": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "document": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "The document's name, unique in the chart. Every message names the document by it, and the default contract path is spelled from it.",
+          "$ref": "#/$defs/text"
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "images": {
+          "description": "The images that read the document. Default: the one image pinned at `image`, with its contract at `contracts/<name>.json`.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/image" }
+        },
+        "consumers": {
+          "description": "The workloads that mount the document, and their containers that read it. Default: inferred in each rendered values file from the workloads whose pod spec mounts the source object (ConfigMap or Secret sources only). An empty list checks no workload.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/consumer" }
+        },
+        "exempt": {
+          "description": "Rendered values files exempt from some gates, each with a reason.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/exemption" }
+        },
+        "restart": {
+          "description": "Keys the chart rolls its pods for although an image applies them live.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/restart" }
+        },
+        "tests": {
+          "description": "How this document's round-trip suite is generated. Only on a chart with `tests: true`.",
+          "$ref": "#/$defs/tests"
+        }
+      }
+    },
+    "source": {
+      "description": "Which rendered object holds the document, and where inside it. Every field may be left out.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "The object's kind. Default `ConfigMap`.",
+          "$ref": "#/$defs/text"
+        },
+        "selector": {
+          "description": "The labels naming the object. Default `app.kubernetes.io/instance: <chart directory name>`, the release name the repository renders with.",
+          "$ref": "#/$defs/labels"
+        },
+        "key": {
+          "description": "The key under `data` holding the document. Default `config.toml`.",
+          "$ref": "#/$defs/text"
+        },
+        "format": {
+          "description": "How the document is written. Default: from the key's extension (`.json`, `.yaml`/`.yml`), else `toml`.",
+          "enum": ["toml", "json", "yaml"]
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["values"],
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "description": "The values path the chart pins the image at.",
+          "$ref": "#/$defs/text"
+        },
+        "contract": {
+          "description": "The vendored contract, relative to the chart directory. May be left out only for a document's one image; default `contracts/<name>.json`.",
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "consumer": {
+      "type": "object",
+      "required": ["workload", "containers"],
+      "additionalProperties": false,
+      "properties": {
+        "workload": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "$ref": "#/$defs/text" },
+            "selector": { "$ref": "#/$defs/labels" }
+          }
+        },
+        "containers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "exemption": {
+      "type": "object",
+      "required": ["gates", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "description": "The values file, or `*` for every one.",
+          "type": "string"
+        },
+        "gates": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["closed", "document", "env", "files"] }
+        },
+        "reason": { "$ref": "#/$defs/text" }
+      }
+    },
+    "restart": {
+      "type": "object",
+      "required": ["keys", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "keys": { "$ref": "#/$defs/keys" },
+        "reason": { "$ref": "#/$defs/text" }
+      }
+    },
+    "unbound": {
+      "type": "object",
+      "required": ["keys", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "keys": { "$ref": "#/$defs/keys" },
+        "reason": { "$ref": "#/$defs/text" },
+        "documents": {
+          "description": "The documents the write-off is scoped to. Default: every document that declares the key.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "credential": {
+      "type": "object",
+      "required": ["key"],
+      "anyOf": [{ "required": ["value"] }, { "required": ["note"] }],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/text" },
+        "value": {
+          "description": "The chart value an operator may set instead of creating the Secret.",
+          "$ref": "#/$defs/text"
+        },
+        "note": {
+          "description": "The condition under which this release needs the credential.",
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "probe": {
+          "description": "The dotted values path every case writes into. Default `config`.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*$"
+        },
+        "baseline": {
+          "description": "Scalar values every case carries, as dotted paths under `probe`.",
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+        },
+        "reason": {
+          "description": "Why the baseline or probe path is needed. Required when either is set.",
+          "$ref": "#/$defs/text"
+        },
+        "prerequisites": {
+          "description": "Chart values every case needs before the chart renders, outside the probed tree.",
+          "type": "object",
+          "required": ["values", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "values": { "type": "object", "minProperties": 1 },
+            "reason": { "$ref": "#/$defs/text" }
+          }
+        },
+        "unrouted": {
+          "description": "Keys probed through the raw configuration tree instead of their chart value, each group with a reason.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["keys", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "keys": { "$ref": "#/$defs/keys" },
+              "reason": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["baseline"], "properties": { "baseline": { "minProperties": 1 } } },
+          "then": { "required": ["reason"] }
+        },
+        {
+          "if": { "required": ["probe"], "properties": { "probe": { "not": { "const": "config" } } } },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    }
+  }
+}

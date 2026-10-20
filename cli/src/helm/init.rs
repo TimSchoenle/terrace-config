@@ -15,8 +15,7 @@
 //! | `contracts/<document>.json` | the image's contract, fetched and verified exactly as a refresh does |
 //! | `values.yaml` | the image pin, a block per setting with the marker that binds it, then the chassis |
 //! | `templates/_helpers.tpl` | the partials that project the values into the document and the Secret |
-//! | `config-contract.yaml` | the declaration every contract gate reads |
-//! | `contract-tests.yaml` | the round-trip enrolment |
+//! | `config-contract.yaml` | the declaration every contract gate reads, enrolling the round-trip suites |
 //! | `ci/test-values.yaml` | the credentials the render guard demands, and nothing else |
 //! | `tests/configmap_test.yaml` | a first suite, for a person to extend |
 //!
@@ -79,11 +78,10 @@ use super::files;
 use super::patch::{created, replaced, unified};
 use super::pull::{Fetched, same_contract};
 use super::scaffold::chart::{
-    CONTRACTS, Surface, render_ci_values, render_declaration, render_enrolment, render_helpers,
-    render_opt_out, render_unit_test, render_values, undescribed,
+    CONTRACTS, Surface, render_ci_values, render_declaration, render_helpers, render_opt_out,
+    render_unit_test, render_values, undescribed,
 };
 use super::scaffold::{WIDTH, check_chart_name, env_prefix, invented, wrap};
-use super::suites::{ENROLMENT, parse_enrolment};
 
 /// The document key a chart renders its configuration under when nothing else is asked for.
 pub const DEFAULT_DOCUMENT_KEY: &str = "config.toml";
@@ -287,16 +285,12 @@ pub fn plan(charts: &Path, request: &Request<'_>, source: &Source<'_>) -> Result
     ));
     match source {
         Source::Contract { .. } => {
-            let declaration =
-                render_declaration(chart, document, &contract_file, document_key, plan)?;
-            let enrolment = render_enrolment(chart, document, plan)?;
-            // Read back through the readers every gate uses. A file written here that no reader
+            let declaration = render_declaration(chart, document, document_key, plan)?;
+            // Read back through the reader every gate uses. A file written here that no reader
             // accepts fails on the contributor's first run rather than here, with a message about
             // a file they did not write by hand.
             parse_declaration(&declaration, &chart_dir)?;
-            parse_enrolment(&enrolment, &chart_dir)?;
             generated.push((chart_dir.join(DECLARATION), declaration));
-            generated.push((chart_dir.join(ENROLMENT), enrolment));
         }
         Source::Plain {
             opt_out: Some(reason),
@@ -970,7 +964,6 @@ env:
             "values.yaml",
             "templates/_helpers.tpl",
             "config-contract.yaml",
-            "contract-tests.yaml",
             "ci/test-values.yaml",
             "tests/configmap_test.yaml",
         ]);
@@ -995,9 +988,11 @@ env:
                 .replace("%%DOCUMENT_KEY%%", "config.toml")
                 .replace("%%ENV_PREFIX%%", "APP")
         );
+        let declaration = tree.read("config-contract.yaml");
+        assert!(declaration.contains("tests: true"), "{declaration}");
         assert!(
-            tree.read("config-contract.yaml")
-                .contains("contract: contracts/app.json")
+            !declaration.contains("contract:"),
+            "the contract path is the default and is left out: {declaration}"
         );
         let vendored: Json =
             serde_json::from_str(&tree.read("contracts/app.json")).expect("vendored JSON");

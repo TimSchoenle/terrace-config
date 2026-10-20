@@ -236,6 +236,106 @@ pub fn inside_a_mount(container: &Json, path: &str) -> bool {
     })
 }
 
+/// The kinds whose objects run a pod spec.
+const WORKLOAD_KINDS: [&str; 7] = [
+    "CronJob",
+    "DaemonSet",
+    "Deployment",
+    "Job",
+    "Pod",
+    "ReplicaSet",
+    "StatefulSet",
+];
+
+/// One workload that mounts a given object, and the containers of it that do.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mounting<'a> {
+    /// The workload, as rendered.
+    pub workload: &'a Json,
+    /// The containers that mount a volume presenting the object, init containers first.
+    pub containers: Vec<&'a str>,
+}
+
+/// Every workload whose pod spec mounts the `ConfigMap` or Secret called `name`, in manifest order.
+///
+/// Followed through a volume, plain or projected, to the containers that mount that volume. A pod
+/// that declares the volume and mounts it in no container reads nothing from it, so it is not
+/// returned; neither is a reference by environment, which hands a container single values rather
+/// than the document.
+#[must_use]
+pub fn mounting<'a>(manifests: &'a [Json], kind: &str, name: &str) -> Vec<Mounting<'a>> {
+    let mut found = Vec::new();
+    for workload in manifests {
+        let is_workload = workload
+            .get("kind")
+            .and_then(Json::as_str)
+            .is_some_and(|held| WORKLOAD_KINDS.contains(&held));
+        if !is_workload {
+            continue;
+        }
+        let spec = pod_spec(workload);
+        let volumes: BTreeSet<&str> = spec
+            .get("volumes")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|volume| presents(volume, kind, name))
+            .filter_map(|volume| volume.get("name").and_then(Json::as_str))
+            .collect();
+        if volumes.is_empty() {
+            continue;
+        }
+        let containers: Vec<&str> = containers_of(spec)
+            .into_iter()
+            .filter(|(_, container)| {
+                container
+                    .get("volumeMounts")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|mount| mount.get("name").and_then(Json::as_str))
+                    .any(|mounted| volumes.contains(mounted))
+            })
+            .map(|(held, _)| held)
+            .collect();
+        if !containers.is_empty() {
+            found.push(Mounting {
+                workload,
+                containers,
+            });
+        }
+    }
+    found
+}
+
+/// Whether one volume presents the object `kind` / `name`, directly or as a projected source.
+fn presents(volume: &Json, kind: &str, name: &str) -> bool {
+    let (field, name_key) = match kind {
+        "ConfigMap" => ("configMap", "name"),
+        "Secret" => ("secret", "secretName"),
+        _ => return false,
+    };
+    let direct = volume
+        .get(field)
+        .and_then(|source| source.get(name_key))
+        .and_then(Json::as_str)
+        == Some(name);
+    let projected = volume
+        .get("projected")
+        .and_then(|projected| projected.get("sources"))
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .any(|source| {
+            source
+                .get(field)
+                .and_then(|object| object.get("name"))
+                .and_then(Json::as_str)
+                == Some(name)
+        });
+    direct || projected
+}
+
 /// The file names one volume actually presents, following it back to the rendered object.
 ///
 /// A projected volume of secret sources with explicit `items` names them right there. A source
@@ -358,8 +458,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        containers_of, digest_of, environment_of, inside_a_mount, load_manifests, pod_spec,
-        projected_file_names, select, volume_at,
+        containers_of, digest_of, environment_of, inside_a_mount, load_manifests, mounting,
+        pod_spec, projected_file_names, select, volume_at,
     };
 
     #[test]
@@ -454,6 +554,83 @@ mod tests {
             projected_file_names(&[], &spec, "v"),
             vec!["github__token".to_owned()]
         );
+    }
+
+    #[test]
+    fn a_workload_mounts_an_object_through_a_plain_or_a_projected_volume() {
+        let manifests = vec![
+            json!({"kind": "Deployment", "metadata": {"name": "web"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "app"}}],
+                    "initContainers": [{"name": "wait"}],
+                    "containers": [
+                        {"name": "web", "volumeMounts": [{"name": "config", "mountPath": "/c"}]},
+                        {"name": "sidecar"},
+                    ],
+                },
+            }}}),
+            json!({"kind": "CronJob", "metadata": {"name": "sweep"}, "spec": {"jobTemplate": {
+                "spec": {"template": {"spec": {
+                    "volumes": [{"name": "all", "projected": {"sources": [
+                        {"configMap": {"name": "app"}},
+                    ]}}],
+                    "containers": [
+                        {"name": "sweep", "volumeMounts": [{"name": "all", "mountPath": "/c"}]},
+                    ],
+                }}},
+            }}}),
+            json!({"kind": "ConfigMap", "metadata": {"name": "app"}}),
+        ];
+        let found = mounting(&manifests, "ConfigMap", "app");
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].workload["metadata"]["name"], "web");
+        assert_eq!(found[0].containers, vec!["web"]);
+        assert_eq!(found[1].containers, vec!["sweep"]);
+    }
+
+    #[test]
+    fn a_volume_no_container_mounts_and_another_objects_volume_are_not_mounting() {
+        let manifests = vec![
+            json!({"kind": "Deployment", "metadata": {"name": "idle"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "app"}}],
+                    "containers": [{"name": "idle"}],
+                },
+            }}}),
+            json!({"kind": "Deployment", "metadata": {"name": "other"}, "spec": {"template": {
+                "spec": {
+                    "volumes": [{"name": "config", "configMap": {"name": "elsewhere"}}],
+                    "containers": [
+                        {"name": "other", "volumeMounts": [{"name": "config", "mountPath": "/c"}]},
+                    ],
+                },
+            }}}),
+        ];
+        assert!(
+            mounting(&manifests, "ConfigMap", "app").is_empty(),
+            "neither workload mounts `app`"
+        );
+    }
+
+    #[test]
+    fn a_secret_is_named_by_secret_name_in_a_volume_and_by_name_in_a_projection() {
+        let manifests = vec![
+            json!({"kind": "StatefulSet", "metadata": {"name": "db"}, "spec": {
+                "template": {"spec": {
+                    "volumes": [
+                        {"name": "a", "secret": {"secretName": "creds"}},
+                        {"name": "b", "projected": {"sources": [{"secret": {"name": "creds"}}]}},
+                    ],
+                    "containers": [
+                        {"name": "one", "volumeMounts": [{"name": "a", "mountPath": "/a"}]},
+                        {"name": "two", "volumeMounts": [{"name": "b", "mountPath": "/b"}]},
+                    ],
+                }},
+            }}),
+        ];
+        let found = mounting(&manifests, "Secret", "creds");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].containers, vec!["one", "two"]);
     }
 
     #[test]

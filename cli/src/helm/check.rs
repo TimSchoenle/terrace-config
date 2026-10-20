@@ -16,7 +16,7 @@ use serde_json::Value as Json;
 
 use crate::error::Error;
 use crate::gate::{Relaxed, ServiceLinks, check_container, check_document};
-use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec, select};
+use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec};
 use crate::report::{Report, warning};
 use crate::union::Union;
 use crate::value::reads_for;
@@ -116,6 +116,7 @@ fn check_chart(
         if !pairs.is_empty() && rendered_anywhere {
             let mut missing: Vec<&str> = document
                 .consumers
+                .declared()
                 .iter()
                 .flat_map(|consumer| consumer.containers.iter())
                 .map(String::as_str)
@@ -208,8 +209,22 @@ fn check_pair(
     report.extend(&at, findings.unwrap_or_default());
     let mut seen: Vec<String> = Vec::new();
 
-    for consumer in &document.consumers {
-        let matched = select(&manifests, &consumer.kind, &consumer.selector);
+    let consumers = document.consumers_in(&manifests);
+    if present && document.consumers.inferred() && consumers.is_empty() {
+        // The inferred counterpart of the declared warning below, for the same reason: a document
+        // nobody mounts is waste, and breaks no deployment.
+        report.add(
+            &at,
+            warning(format!(
+                "the {} the selector {} names was rendered, but no workload in this values file \
+                 mounts it; nothing consumes that configuration",
+                document.source.kind,
+                selector_text(&document.source.selector)
+            )),
+        );
+    }
+    for consumer in consumers.iter() {
+        let matched = consumer.select(&manifests);
         if matched.is_empty() {
             // The component is switched off in this values file, which the caller confirms by
             // seeing the document absent too.

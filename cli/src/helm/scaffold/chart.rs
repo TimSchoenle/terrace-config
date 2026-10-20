@@ -2,8 +2,8 @@
 //!
 //! [`super`] decides where one key goes and writes the lines that put it there. This writes the
 //! files those lines live in, for a chart that does not exist yet: `values.yaml` from the image
-//! block to the chassis, `templates/_helpers.tpl`, `config-contract.yaml`, `contract-tests.yaml`,
-//! `ci/test-values.yaml` and a first unit-test suite. Every renderer is a pure function of the
+//! block to the chassis, `templates/_helpers.tpl`, `config-contract.yaml` (with the round-trip
+//! enrolment in it), `ci/test-values.yaml` and a first unit-test suite. Every renderer is a pure function of the
 //! [`Surface`] and a handful of names, so what a chart is scaffolded with is a property of its
 //! contract rather than of the order a run happened to do things in.
 //!
@@ -48,6 +48,7 @@ use serde_json::{Map, Value as Json};
 use crate::error::Error;
 use crate::union::Union;
 
+use super::super::declaration::{CONTRACTS_DIR, DECLARATION_SCHEMA_URL, DEFAULT_SOURCE_KEY};
 use super::super::shapes::quoted;
 use super::super::testgen::VALUES_ROOT;
 use super::{
@@ -64,7 +65,7 @@ use super::{
 pub const FORMAT: &str = "toml";
 
 /// Where a chart's vendored contracts live, relative to the chart directory.
-pub const CONTRACTS: &str = "contracts";
+pub const CONTRACTS: &str = CONTRACTS_DIR;
 
 /// The `values.yaml` subtree the raw escape hatch lives under.
 ///
@@ -650,40 +651,42 @@ fn validate_values(chart: &str, plan: &Plan) -> Result<String, Error> {
 // `config-contract.yaml`
 // ------------------------------------------------------------------------------------------
 
-/// The declaration the document and marker gates read.
+/// The declaration the document, marker and round-trip gates read.
 ///
-/// The selector is `app.kubernetes.io/instance`, and the reason is repeated where a reader of the
-/// generated file will see it: that label is `.Release.Name`, the one identifier neither
-/// `nameOverride` nor `fullnameOverride` can move.
+/// Only what differs from the defaults in `spec/helm/v1/DEFAULTS.md` is written: the document's
+/// name, its key when it is not `config.toml`, and how its round-trip suite is generated when the
+/// render needs prerequisites. Everything a scaffolded chart shares with every other one — the
+/// release selector, the image at `image` with its contract under the document's name, the
+/// workload that mounts the `ConfigMap` — is left to the defaults, so the file a person reads is
+/// the part that is about this chart.
 ///
 /// `bindings: true` is written because the scaffold emits a marker for every key it surfaces and an
 /// `unbound` entry for every key it does not, so the chart is enrolled and complete from its first
-/// commit rather than joining the gate later.
+/// commit rather than joining the gate later. `tests: true` is written for the same reason: every
+/// prerequisite a generated case needs is known here.
 ///
 /// # Errors
-/// As [`write_off_groups`].
+/// As [`write_off_groups`], [`probe_credential`] and [`secrets_file_name`].
 pub fn render_declaration(
     chart: &str,
     document: &str,
-    contract_file: &str,
     document_key: &str,
     plan: &Plan,
 ) -> Result<String, Error> {
     let mut lines: Vec<String> = [
-        "# vim: set ft=yaml:",
-        "",
+        &format!("# yaml-language-server: $schema={DECLARATION_SCHEMA_URL}"),
+        "#",
         "# What this chart's rendered configuration must satisfy, and which image decides that.",
-        "#",
-        "# Scaffolded by `just new-chart`. Per-chart and self-describing, so adding a chart never",
-        "# edits a central file. `just check-config` reads this, unions the contracts of every",
-        "# image listed, and validates the rendered ConfigMap, the container environment and the",
-        "# mounted secret file names against the result.",
+        "# A field left out takes its default from spec/helm/v1/DEFAULTS.md in",
+        &format!(
+            "# TimSchoenle/terrace-config; `terrace-contract config show --chart {chart}` prints \
+             the"
+        ),
+        "# declaration every gate reads.",
         "",
-        "# Whether `just check-config-bindings` holds this chart's values against the keys below.",
-        "#",
-        "# Declared rather than inferred from the chart carrying markers: a chart that loses them",
-        "# would otherwise drop out of that gate's report without a word.",
+        "# Held against the `@config` markers in values.yaml, and enrolled in the round-trip suites.",
         "bindings: true",
+        "tests: true",
     ]
     .map(str::to_owned)
     .into();
@@ -693,9 +696,6 @@ pub fn render_declaration(
             [
                 "",
                 "# Contract keys no chart value binds, each group with the reason it does not.",
-                "#",
-                "# Chart-level: a key nothing surfaces is unsurfaced in every document that declares",
-                "# it. `documents:` would narrow an entry where that is untrue.",
                 "unbound:",
             ]
             .map(str::to_owned),
@@ -705,45 +705,67 @@ pub fn render_declaration(
         }
     }
 
-    lines.extend(
-        [
-            "",
-            "documents:",
-            &format!("  - name: {document}"),
-            "",
-            "    # Where the rendered document is, in the output of `helm template`.",
-            "    #",
-            "    # Matched by label rather than by rendered name, and by `app.kubernetes.io/instance`:",
-            "    # that label is `.Release.Name`, the one identifier neither `nameOverride` nor",
-            "    # `fullnameOverride` can move. `just render` names the release after the chart, so",
-            "    # the value below is what every rendered pair carries. A selector matching zero or",
-            "    # several objects is reported rather than resolved.",
-            "    source:",
-            "      kind: ConfigMap",
-            &format!("      selector: {{ app.kubernetes.io/instance: {chart} }}"),
-            &format!("      key: {document_key}"),
-            &format!("      format: {FORMAT}"),
-            "",
-            "    # Every binary that reads this document. One image here, so the union is the",
-            "    # identity.",
-            "    images:",
-            "      - values: image",
-            &format!("        contract: {contract_file}"),
-            "",
-            "    # The pods that mount it, for the environment and secret-file gates.",
-            "    consumers:",
-            &format!(
-                "      - workload: {{ kind: Deployment, selector: {{ app.kubernetes.io/instance: \
-                 {chart} }} }}"
-            ),
-            &format!("        containers: [{chart}]"),
-            "",
-            "    # Pairs this document is not fully checked for, each with a reason.",
-            "    exempt: []",
-        ]
-        .map(str::to_owned),
-    );
+    lines.extend(["", "documents:", &format!("  - name: {document}")].map(str::to_owned));
+    if document_key != DEFAULT_SOURCE_KEY {
+        lines.push(format!("    source: {{ key: {document_key} }}"));
+    }
+    lines.extend(tests_lines(chart, plan)?);
     Ok(format!("{}\n", lines.join("\n")))
+}
+
+/// A document's `tests` block, with a prerequisite for every credential the render demands; nothing
+/// when the chart renders on its own defaults.
+///
+/// A prerequisite is a chart value every generated case has to carry before the chart will render
+/// at all, and the only ones known here are the credentials `validateValues` guards. Nothing here
+/// may name a path under [`CONFIG_ROOT`]: a prerequisite is never dropped for the case it collides
+/// with, so one written into the tree the cases probe could supply the very value a case exists to
+/// prove the chart delivered. The enrolment reader refuses one outright.
+fn tests_lines(chart: &str, plan: &Plan) -> Result<Vec<String>, Error> {
+    let required = required_secrets(plan);
+    if required.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut lines: Vec<String> = [
+        "",
+        "    # The chart values every generated round-trip case carries: `validateValues` fails the",
+        "    # template before a ConfigMap exists for any case to assert against without them.",
+        "    tests:",
+        "      prerequisites:",
+        "        values:",
+    ]
+    .map(str::to_owned)
+    .into();
+    let mut files = Vec::new();
+    for item in &required {
+        lines.push(format!(
+            "          {}: {}",
+            item.values_path,
+            values_scalar(&Json::String(probe_credential(item)?))
+        ));
+        files.push(format!("`{}`", secrets_file_name(item)?));
+    }
+
+    lines.push("        reason: >-".to_owned());
+    lines.extend(wrap(
+        &format!(
+            "`{chart}.validateValues` refuses a render that projects no {} file, and it runs from \
+             `configmap.yaml`, so without one there is no document for any case to assert \
+             against. The guard reads the projected key list rather than the value, so \
+             `existingSecret` would satisfy it as well; the first-class value is used instead \
+             because it keeps the prerequisite to one line and leaves the chart's Secret \
+             rendering on the path every other case exercises. These occupy `secret: true` \
+             contract keys, which the generator refuses to invent a probe for on the grounds that \
+             a credential-shaped value in a test file is a credential — so they are written here \
+             rather than synthesised, and the values are placeholders that can never authenticate \
+             anywhere.",
+            files.join(", ")
+        ),
+        "          ",
+        WIDTH,
+    ));
+    Ok(lines)
 }
 
 /// The declaration of a chart whose first-party image publishes no contract: an explicit opt-out.
@@ -755,20 +777,14 @@ pub fn render_declaration(
 /// should be asked to write.
 pub fn render_opt_out(repository: &str, reason: &str) -> String {
     let mut lines: Vec<String> = [
-        "# vim: set ft=yaml:",
-        "",
+        &format!("# yaml-language-server: $schema={DECLARATION_SCHEMA_URL}"),
+        "#",
         &format!(
             "# This chart pins {repository}, which publishes no configuration contract. It says so"
         ),
         "# here rather than simply having no file: an empty `documents` is an explicit opt-out,",
-        "# and `just check-contract-coverage` reports a first-party image that is accounted for",
-        "# by neither a document nor a written reason.",
-        "#",
-        "# `unconfigured` is deliberately absent. It would be the field for naming an image this",
-        "# chart pins and does not describe — but nothing reads it on a chart with no documents,",
-        "# and on a chart that has them `config_coverage` compares it against *values paths*",
-        "# while `just explain` prints it as a list of images. Adding the first usage of a field",
-        "# whose two readers disagree is not this file's job; the reason below names the image.",
+        "# and the coverage gate reports a first-party image that is accounted for by neither a",
+        "# document nor a written reason.",
         "",
         "documents: []",
         "",
@@ -778,98 +794,6 @@ pub fn render_opt_out(repository: &str, reason: &str) -> String {
     .into();
     lines.extend(wrap(reason, "  ", WIDTH));
     format!("{}\n", lines.join("\n"))
-}
-
-// ------------------------------------------------------------------------------------------
-// `contract-tests.yaml`
-// ------------------------------------------------------------------------------------------
-
-/// The round-trip enrolment, with a prerequisite for every credential the render demands.
-///
-/// A prerequisite is a chart value every generated case has to carry before the chart will render
-/// at all, and the only ones known here are the credentials `validateValues` guards. Nothing here
-/// may name a path under [`CONFIG_ROOT`]: a prerequisite is never dropped for the case it collides
-/// with, so one written into the tree the cases probe could supply the very value a case exists to
-/// prove the chart delivered. The enrolment reader refuses one outright.
-///
-/// # Errors
-/// As [`probe_credential`] and [`secrets_file_name`].
-pub fn render_enrolment(chart: &str, document: &str, plan: &Plan) -> Result<String, Error> {
-    let required = required_secrets(plan);
-    let mut lines: Vec<String> = [
-        "# vim: set ft=yaml:",
-        "",
-        "# Enrols this chart in the generated configuration round-trip suites.",
-        "#",
-        "# `just check-config` proves the rendered document satisfies the image's contract. It",
-        "# cannot prove the round trip: that a setting written into `config` arrives in that",
-        "# document, at the path the image reads it from, carrying the value that was asked for.",
-        "# A document missing a setting entirely satisfies the contract perfectly — every key it",
-        "# does contain is legal — so a typo in a template helper passes every gate and the",
-        "# container runs on a compiled default nobody chose.",
-        "#",
-        "# `just contract-tests` reads this file and `config-contract.yaml`, and writes one suite",
-        "# per declared document under `tests/`. The presence of this file is the enrolment.",
-        "documents:",
-        &format!("  - name: {document}"),
-    ]
-    .map(str::to_owned)
-    .into();
-
-    if required.is_empty() {
-        lines.extend(
-            [
-                "",
-                "    # No `prerequisites` and no `baseline`: this chart renders without any value",
-                "    # being set, so every generated case can stand on the chart's own defaults.",
-            ]
-            .map(str::to_owned),
-        );
-        return Ok(format!("{}\n", lines.join("\n")));
-    }
-
-    lines.extend(
-        [
-            "",
-            "    # The chart values every generated case carries. This chart's `validateValues`",
-            "    # fails the template before a ConfigMap exists for any case to assert against, so",
-            "    # there is no case here that can do without them.",
-            "    #",
-            "    # Flat dotted paths, exactly as the helm-unittest `set` block they become spells",
-            "    # them. Nothing here may name a path under `config`.",
-            "    prerequisites:",
-            "      values:",
-        ]
-        .map(str::to_owned),
-    );
-    let mut files = Vec::new();
-    for item in &required {
-        lines.push(format!(
-            "        {}: {}",
-            item.values_path,
-            values_scalar(&Json::String(probe_credential(item)?))
-        ));
-        files.push(format!("`{}`", secrets_file_name(item)?));
-    }
-
-    lines.extend(["", "      reason: >-"].map(str::to_owned));
-    lines.extend(wrap(
-        &format!(
-            "`{chart}.validateValues` refuses a render that projects no {} file, and it runs from \
-             `configmap.yaml`, so without one there is no document for any case to assert \
-             against. The guard reads the projected key list rather than the value, so \
-             `existingSecret` would satisfy it as well; the first-class value is used instead \
-             because it keeps the enrolment to one line and leaves the chart's Secret rendering on \
-             the path every other case exercises. These occupy `secret: true` contract keys, which \
-             the generator refuses to invent a probe for on the grounds that a credential-shaped \
-             value in a test file is a credential — so they are written here rather than \
-             synthesised, and the values are placeholders that can never authenticate anywhere.",
-            files.join(", ")
-        ),
-        "        ",
-        WIDTH,
-    ));
-    Ok(format!("{}\n", lines.join("\n")))
 }
 
 /// A placeholder for a required credential that cannot authenticate anywhere.
@@ -1078,13 +1002,13 @@ mod tests {
     //! [`super::super`]'s own suite; these are about what only a whole file shows: that the values
     //! file is one YAML document with every value where the parser expects it, that the markers in it
     //! are ones the marker reader accepts, that every block it writes is one the README gate accepts,
-    //! and that the declaration and the enrolment are ones the readers every gate uses accept.
+    //! and that the declaration, its round-trip enrolment included, is one the reader every gate uses
+    //! accepts.
     //!
     //! Every assertion is made through the reader that decides it rather than by matching the bytes
     //! a renderer happened to write: [`crate::helm::markers::read`] for markers,
-    //! [`crate::helm::declaration::parse_declaration`] for the declaration,
-    //! [`crate::helm::suites::parse_enrolment`] for the enrolment and [`crate::value::assert_value`]
-    //! for an invented value. Two exceptions are written here because no Rust reader of them exists:
+    //! [`crate::helm::declaration::parse_declaration`] for the declaration and its enrolment, and
+    //! [`crate::value::assert_value`] for an invented value. Two exceptions are written here because no Rust reader of them exists:
     //! [`blocks`], which reads `@schema` blocks the way helm-schema does, and [`undocumented`], which
     //! is `check-values-docs`' rule.
 
@@ -1094,11 +1018,10 @@ mod tests {
 
     use super::{
         CONFIG_ROOT, Surface, probe_credential, render_ci_values, render_declaration,
-        render_enrolment, render_helpers, render_values, undescribed,
+        render_helpers, render_values, undescribed,
     };
     use crate::helm::declaration::{parse_declaration, read_yaml};
     use crate::helm::markers::{self, Class, Marker};
-    use crate::helm::suites::parse_enrolment;
     use crate::union::{Union, union_contracts};
     use crate::value::assert_value;
 
@@ -1802,17 +1725,12 @@ resources: {}
             key("a.b", &json!({})),
             key("c.token", &json!({"secret": true})),
         ]);
-        let text = render_declaration(
-            "app",
-            "app",
-            "contracts/app.json",
-            "config.toml",
-            held.plan(),
-        )
-        .expect("the declaration renders");
+        let text = render_declaration("app", "app", "config.toml", held.plan())
+            .expect("the declaration renders");
         let declaration =
             parse_declaration(&text, Path::new("charts/app")).expect("the loader accepts it");
         assert!(declaration.bindings);
+        assert!(declaration.tests);
         let names: Vec<&str> = declaration
             .documents
             .iter()
@@ -1827,11 +1745,48 @@ resources: {}
         assert_eq!(written_off, ["c.token"]);
     }
 
+    #[test]
+    fn a_scaffolded_declaration_writes_only_what_differs_from_the_defaults() {
+        let held = surface(&[key("a.b", &json!({}))]);
+        let text = render_declaration("app", "app", "config.toml", held.plan())
+            .expect("the declaration renders");
+        let declaration =
+            parse_declaration(&text, Path::new("charts/app")).expect("the loader accepts it");
+        let document = &declaration.documents[0];
+        assert!(document.consumers.inferred());
+        assert_eq!(document.images[0].contract, "contracts/app.json");
+        assert!(!text.contains("source:"), "{text}");
+        assert_eq!(
+            crate::helm::declaration::schema_violations(&text),
+            Vec::<String>::new(),
+            "{text}"
+        );
+        let lines = text.lines().filter(|line| !line.trim().is_empty()).count();
+        assert!(lines < 15, "{lines} lines:\n{text}");
+
+        let keyed = render_declaration("app", "app", "settings.toml", held.plan())
+            .expect("the declaration renders");
+        let declaration =
+            parse_declaration(&keyed, Path::new("charts/app")).expect("the loader accepts it");
+        assert_eq!(declaration.documents[0].source.key, "settings.toml");
+    }
+
+    /// The scaffolded declaration's first document, as YAML: what its `tests` block says.
     fn enrolment(keys: &[Json]) -> Json {
         let held = surface(keys);
-        let text = render_enrolment("app", "app", held.plan()).expect("the enrolment renders");
-        parse_enrolment(&text, Path::new("charts/app")).expect("the enrolment reader accepts it");
-        read_yaml(&text, Path::new("contract-tests.yaml")).expect("it is YAML")
+        let text = render_declaration("app", "app", "config.toml", held.plan())
+            .expect("the declaration renders");
+        parse_declaration(&text, Path::new("charts/app")).expect("the loader accepts it");
+        assert_eq!(
+            crate::helm::declaration::schema_violations(&text),
+            Vec::<String>::new(),
+            "{text}"
+        );
+        let parsed = read_yaml(&text, Path::new("config-contract.yaml")).expect("it is YAML");
+        parsed["documents"][0]
+            .get("tests")
+            .cloned()
+            .unwrap_or_else(|| json!({}))
     }
 
     #[test]
@@ -1840,13 +1795,13 @@ resources: {}
             key("a.b", &json!({})),
             key("c.token", &json!({"secret": true})),
         ]);
-        assert_eq!(parsed["documents"][0].get("prerequisites"), None);
+        assert_eq!(parsed.get("prerequisites"), None);
     }
 
     #[test]
     fn a_required_credential_becomes_a_prerequisite_with_a_reason() {
         let parsed = enrolment(&[key("a.token", &json!({"secret": true, "required": true}))]);
-        let prerequisites = &parsed["documents"][0]["prerequisites"];
+        let prerequisites = &parsed["prerequisites"];
         let names: Vec<&String> = prerequisites["values"]
             .as_object()
             .expect("values")
@@ -1861,7 +1816,7 @@ resources: {}
     fn no_prerequisite_names_a_path_under_the_probe_root() {
         // A prerequisite is dropped from no case, so one under `config` would supply a probe.
         let parsed = enrolment(&[key("a.token", &json!({"secret": true, "required": true}))]);
-        for path in parsed["documents"][0]["prerequisites"]["values"]
+        for path in parsed["prerequisites"]["values"]
             .as_object()
             .expect("values")
             .keys()
@@ -1876,7 +1831,7 @@ resources: {}
     #[test]
     fn an_invented_credential_can_never_authenticate() {
         let parsed = enrolment(&[key("a.token", &json!({"secret": true, "required": true}))]);
-        let value = parsed["documents"][0]["prerequisites"]["values"]["a.token"]
+        let value = parsed["prerequisites"]["values"]["a.token"]
             .as_str()
             .expect("a string");
         assert!(value.ends_with(".invalid"), "{value}");
@@ -1890,7 +1845,7 @@ resources: {}
                     "constraint": {"type": "string", "pattern": "^tok_"}}),
         )]);
         assert!(probe_credential(&held.plan().secrets[0]).is_err());
-        assert!(render_enrolment("app", "app", held.plan()).is_err());
+        assert!(render_declaration("app", "app", "config.toml", held.plan()).is_err());
         assert!(render_ci_values("app", &held).is_err());
     }
 
