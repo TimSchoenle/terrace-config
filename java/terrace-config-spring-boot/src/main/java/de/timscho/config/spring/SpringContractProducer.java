@@ -25,8 +25,7 @@ import java.util.Set;
  * that service knows — there is no annotation on the classpath a starter could scan for that
  * would not also have to invent a place to declare the prefix and the {@link App} metadata. A
  * consuming service calls {@link #produce} from its own {@code @Configuration} class, once, and
- * publishes the result however it publishes any other {@link Contract} (see {@code
- * Contract#toDockerfileBlock}).
+ * publishes the result however it publishes any other {@link Contract}.
  *
  * <p><b>Schema.loader is empty.</b> {@code terrace-config-loader}'s own three loader-read
  * variables ({@code config}, {@code secrets_dir}, each {@code reserve}d key) have no equivalent

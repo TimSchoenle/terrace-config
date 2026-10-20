@@ -10,7 +10,6 @@ import de.timscho.config.core.model.External;
 import de.timscho.config.core.model.ExternalUnknownPolicy;
 import de.timscho.config.core.model.ExternalVar;
 import de.timscho.config.core.model.Key;
-import de.timscho.config.core.model.LabelFault;
 import de.timscho.config.core.model.LoaderRole;
 import de.timscho.config.core.model.LoaderVar;
 import de.timscho.config.core.model.Producer;
@@ -130,53 +129,5 @@ class ContractAssemblerTest {
         assertThatThrownBy(
                         () -> ContractAssembler.assemble(emptyPrefix, APP, ProducerIdentity.forLoader("terrace-java")))
                 .isInstanceOf(EmptyPrefixException.class);
-    }
-
-    @Test
-    void labelsNameTheVersionPathAndPrefix() {
-        Contract contract = ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"));
-
-        assertThat(contract.labels("/config/contract.json"))
-                .containsExactly(
-                        Map.entry(Contract.LABEL_VERSION, "1"),
-                        Map.entry(Contract.LABEL_PATH, "/config/contract.json"),
-                        Map.entry(Contract.LABEL_PREFIX, "PORTFOLIO_"));
-    }
-
-    @Test
-    void dockerfileBlockIsWrappedInMarkers() {
-        Contract contract = ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"));
-
-        String block = contract.toDockerfileBlock(Contract.DEFAULT_PATH);
-
-        assertThat(block).startsWith(Contract.MARKER_BEGIN + "\n");
-        assertThat(block).endsWith(Contract.MARKER_END + "\n");
-        assertThat(block).contains("LABEL " + Contract.LABEL_VERSION + "=\"1\"");
-    }
-
-    @Test
-    void verifyLabelsReportsEveryFaultAtOnce() {
-        Contract contract = ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"));
-
-        List<LabelFault> faults = contract.checkLabels("/config/contract.json", Map.of());
-
-        assertThat(faults).hasSize(3);
-        assertThat(faults).allMatch(fault -> fault instanceof LabelFault.Missing);
-        assertThatThrownBy(() -> contract.verifyLabels("/config/contract.json", Map.of()))
-                .isInstanceOf(de.timscho.config.core.model.ContractLabelException.class)
-                .satisfies(exception -> assertThat(
-                                ((de.timscho.config.core.model.ContractLabelException) exception).getFaults())
-                        .hasSize(3));
-    }
-
-    @Test
-    void verifyLabelsPassesWhenTheImageCarriesThemAll() {
-        Contract contract = ContractAssembler.assemble(schema(), APP, ProducerIdentity.forLoader("terrace-java"));
-        Map<String, String> imageLabels = Map.of(
-                Contract.LABEL_VERSION, "1",
-                Contract.LABEL_PATH, Contract.DEFAULT_PATH,
-                Contract.LABEL_PREFIX, "PORTFOLIO_");
-
-        contract.verifyLabels(Contract.DEFAULT_PATH, imageLabels);
     }
 }
