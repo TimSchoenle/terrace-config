@@ -82,9 +82,9 @@ impl fmt::Display for ImageFault {
 ///
 /// # Errors
 /// [`Error::Invalid`] when the registry cannot be read, when the platforms of one index disagree
-/// about their labels, or when an attached carrier is malformed — more than one referrer, a
-/// manifest that is not one layer, or a blob that does not hash to its descriptor. Each of those
-/// leaves the question unanswerable rather than answered no.
+/// about their labels or the file they embed, or when an attached carrier is malformed — more than
+/// one referrer, a manifest that is not one layer, or a blob that does not hash to its descriptor.
+/// Each of those leaves the question unanswerable rather than answered no.
 pub fn verify_image(
     registry: &dyn Registry,
     repository: &str,

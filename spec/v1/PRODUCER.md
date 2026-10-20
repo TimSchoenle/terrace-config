@@ -116,7 +116,7 @@ by the meta-schema except `constraint`, `text_constraint`, `unreachable` and `re
 | `secret`, `reserved` | Whether the value is a credential; whether the loader reads it before the layers exist. |
 | `reload` | Only with `schema.reload`. Absent means undeclared, which reads as `restart`. |
 
-Two of these carry most of the risk, and in opposite directions. `constraint` must never be looser
+Two of these carry most of the risk, and in opposite directions. `constraint` must never be stricter
 than the type: a value the type accepts and the constraint rejects is a correct deployment refused.
 `text_constraint` must be a superset of what the loader accepts, for the same reason. Where you
 cannot be certain, the field is absent, and a consumer that meets the absence says it skipped the

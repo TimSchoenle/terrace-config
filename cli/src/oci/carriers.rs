@@ -249,15 +249,16 @@ pub fn fetch_referrer(
 ///
 /// Read by walking the layer blobs from the top down, because that is the order a filesystem
 /// resolves them: the last layer to write a path is the one the container sees. The first hit wins
-/// and the walk stops, so the usual case — the document copied in a late, tiny layer — costs one
-/// small blob rather than the whole image.
+/// and that platform's walk stops, so the usual case — the document copied in a late, tiny layer —
+/// costs one small blob per platform rather than the whole image.
 ///
 /// No container runtime and no local daemon: the images this validates may be built from scratch
 /// with no shell, and requiring one for a step that otherwise needs two static binaries would put it
 /// out of reach of the pull request that needs it most.
 ///
 /// # Errors
-/// As [`Registry::manifest`] and [`Registry::blob`].
+/// As [`Registry::manifest`] and [`Registry::blob`], and [`Error::Invalid`] when the platforms of
+/// one index do not embed the same file: different bytes, or the file on some and not others.
 pub fn fetch_embedded(
     registry: &dyn Registry,
     repository: &str,
@@ -271,23 +272,53 @@ pub fn fetch_embedded(
         return Ok(None);
     };
 
+    // Every platform is read, not only the first that holds the file: a multi-platform image whose
+    // platforms embed different documents, or where only some embed one, publishes a contract that
+    // is wrong for part of the fleet, which is the same refusal `agreed_labels` makes for labels.
+    let mut agreed: Option<(String, Option<Vec<u8>>)> = None;
     for platform in registry.platforms(repository, digest)? {
-        let manifest = registry.manifest(&format!("{repository}@{platform}"))?;
-        let layers: Vec<&Json> = manifest
-            .get("layers")
-            .and_then(Json::as_array)
-            .into_iter()
-            .flatten()
-            .collect();
-        for layer in layers.iter().rev() {
-            let held = layer
-                .get("digest")
-                .and_then(Json::as_str)
-                .unwrap_or_default();
-            let blob = registry.blob(&format!("{repository}@{held}"))?;
-            if let Some(found) = read_from_layer(&blob, wanted) {
-                return Ok(Some(found));
+        let held = embedded_on(registry, repository, &platform, wanted)?;
+        match &agreed {
+            None => agreed = Some((platform, held)),
+            Some((first, document)) if *document != held => {
+                return Err(Error::Invalid(format!(
+                    "{repository}@{digest} does not embed one document at `/{wanted}`: platforms \
+                     {first} and {platform} hold {}",
+                    if document.is_some() && held.is_some() {
+                        "different files"
+                    } else {
+                        "it on one and not the other"
+                    }
+                )));
             }
+            Some(_) => {}
+        }
+    }
+    Ok(agreed.and_then(|(_, document)| document))
+}
+
+/// The file at `wanted` on one platform's image, walking its layers from the top down.
+fn embedded_on(
+    registry: &dyn Registry,
+    repository: &str,
+    platform: &str,
+    wanted: &str,
+) -> Result<Option<Vec<u8>>, Error> {
+    let manifest = registry.manifest(&format!("{repository}@{platform}"))?;
+    let layers: Vec<&Json> = manifest
+        .get("layers")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .collect();
+    for layer in layers.iter().rev() {
+        let held = layer
+            .get("digest")
+            .and_then(Json::as_str)
+            .unwrap_or_default();
+        let blob = registry.blob(&format!("{repository}@{held}"))?;
+        if let Some(found) = read_from_layer(&blob, wanted) {
+            return Ok(Some(found));
         }
     }
     Ok(None)
@@ -299,14 +330,11 @@ pub fn fetch_embedded(
 /// nowhere is reported by the caller rather than here.
 #[must_use]
 pub fn read_from_layer(blob: &[u8], wanted: &str) -> Option<Vec<u8>> {
-    let mut plain: Vec<u8> = Vec::new();
-    let body: &[u8] = if blob.starts_with(&[0x1f, 0x8b]) {
-        flate2::read::GzDecoder::new(blob)
-            .read_to_end(&mut plain)
-            .ok()?;
-        &plain
+    // Streamed, so the walk stops at the entry it wants without holding the decompressed layer.
+    let body: Box<dyn Read + '_> = if blob.starts_with(&[0x1f, 0x8b]) {
+        Box::new(flate2::read::GzDecoder::new(blob))
     } else {
-        blob
+        Box::new(blob)
     };
 
     let mut archive = tar::Archive::new(body);
@@ -438,7 +466,6 @@ pub(crate) mod testing {
             }
         }
 
-        /// The same image with nothing attached and the document inside a layer instead.
         /// The same image carrying the document both ways: attached, and inside a layer.
         pub(crate) fn both(payload: &[u8]) -> Self {
             let attached = Self::of(payload);
@@ -454,6 +481,7 @@ pub(crate) mod testing {
             held
         }
 
+        /// The same image with nothing attached and the document inside a layer instead.
         pub(crate) fn embedded_only(payload: &[u8]) -> Self {
             let mut held = Self::of(payload);
             held.referrers.clear();
@@ -547,7 +575,7 @@ mod tests {
     use super::testing::{
         AMD64, ARM64, IMAGE, INDEX, Recorded, SIGNER, digest_of, published, tarball,
     };
-    use super::{agreed_labels, fetch_attached, fetch_contract, read_from_layer};
+    use super::{agreed_labels, fetch_attached, fetch_contract, fetch_embedded, read_from_layer};
     use crate::document::{LABEL_PREFIX, LABEL_VERSION};
     use crate::oci::{ARTIFACT_TYPE, parse_referrers};
 
@@ -654,6 +682,39 @@ mod tests {
             .expect_err("the two carriers differ")
             .to_string();
         assert!(failure.contains("two different documents"), "{failure}");
+    }
+
+    #[test]
+    fn platforms_that_embed_different_documents_are_refused() {
+        // A multi-platform image is one contract: a stale copy on one platform, or a copy on only
+        // some of them, is a document that is wrong for part of the fleet.
+        let payload = published();
+        let stale = serde_json::to_vec(&json!({"terrace_contract": 1, "app": {"name": "old"}}))
+            .expect("it serialises");
+        for arm64 in [Some(stale), None] {
+            let mut registry = Recorded::embedded_only(&payload);
+            let layers = match &arm64 {
+                Some(document) => {
+                    registry.blobs.insert(
+                        format!("{IMAGE}@sha256:stale"),
+                        tarball("etc/api/contract.json", document),
+                    );
+                    json!({"layers": [{"digest": "sha256:stale"}]})
+                }
+                None => json!({"layers": []}),
+            };
+            registry
+                .manifests
+                .insert(format!("{IMAGE}@{ARM64}"), layers);
+            let failure = fetch_embedded(&registry, IMAGE, INDEX, Some("/etc/api/contract.json"))
+                .expect_err("the platforms disagree")
+                .to_string();
+            assert!(failure.contains("does not embed one document"), "{failure}");
+            assert!(
+                failure.contains(AMD64) && failure.contains(ARM64),
+                "{failure}"
+            );
+        }
     }
 
     #[test]
