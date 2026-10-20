@@ -96,7 +96,7 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - uses: TimSchoenle/actions/actions/rust/clippy@7e8fd61045447d321c5139eea8f2e2b766333f8b # tag=actions-rust-clippy-v1.1.12
+      - uses: TimSchoenle/actions/actions/rust/clippy@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-rust-clippy-v1.1.13
         with:
           source_directory: rust
           clippy_arguments: ${{ matrix.features }} --all-targets
