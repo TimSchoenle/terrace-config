@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.9.0...terrace-contract-v0.10.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** port the chart writers into terrace-contract (migrate, adopt, helm init) ([#304](https://github.com/TimSchoenle/terrace-config/issues/304)) ([015c2c6](https://github.com/TimSchoenle/terrace-config/commit/015c2c6180fdda90c19eb1da75f288d553573965))
+
 ## [0.9.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.8.0...terrace-contract-v0.9.0) (2026-10-19)
 
 
