@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.11.0...terrace-contract-v0.11.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **cli:** pull the contracts a declaration leaves to its defaults ([#311](https://github.com/TimSchoenle/terrace-config/issues/311)) ([63ba480](https://github.com/TimSchoenle/terrace-config/commit/63ba480483a88eb6c82543b84ee9cba3d11713e6))
+
 ## [0.11.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.10.0...terrace-contract-v0.11.0) (2026-10-20)
 
 
