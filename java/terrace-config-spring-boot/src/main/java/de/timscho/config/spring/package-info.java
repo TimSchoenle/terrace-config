@@ -1,5 +1,5 @@
 /**
- * {@code terrace-config-spring}: the {@code _FILE} indirection layer Spring's {@code Binder} lacks,
+ * {@code terrace-config-spring-boot}: the {@code _FILE} indirection layer Spring's {@code Binder} lacks,
  * and the tier 1 producer over it — see {@link
  * de.timscho.config.spring.FileIndirectionEnvironmentPostProcessor}, {@link
  * de.timscho.config.spring.SpringContractProducer} and {@link

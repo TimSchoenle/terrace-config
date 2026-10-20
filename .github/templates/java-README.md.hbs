@@ -88,8 +88,8 @@ plugin, whose `terraceContractCheck` (part of `check`) emits a fresh contract fr
 annotated type and compares it, byte for byte, against the `contract.json` checked into that
 module's directory — the same "regenerated and diffed, never trusted merely because it once
 matched" guarantee `cargo test`'s `the_checked_in_contract_matches_what_the_types_render_today`
-gives the Rust crate's own `examples/service/`. Regenerate either with
-`./gradlew :terrace-config-example-service:terraceContractUpdate`. A key whose Java name changes
+gives the Rust crate's own `examples/service/`. Regenerate both with `./gradlew terraceContractUpdate`,
+or one with `./gradlew :<example>:terraceContractUpdate`. A key whose Java name changes
 case in a way the environment fold cannot reverse — `bindAddr`, say — renders with `"env": null`
 and `"unreachable": "unnameable"` rather than a spelling nothing would actually respond to; see
 `terrace-config-example-service`'s own `Config` (which works around it with `@JsonProperty`,
