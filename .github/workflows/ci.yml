@@ -30,6 +30,7 @@ jobs:
       contents: read
     outputs:
       java: ${{ steps.filter.outputs.java }}
+      producer-python: ${{ steps.filter.outputs.producer-python }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -44,6 +45,9 @@ jobs:
           filters: |
             java:
               - 'java/**'
+            producer-python:
+              - 'spec/**'
+              - 'cli/**'
 
   fmt:
     name: fmt
@@ -503,6 +507,57 @@ jobs:
           fi
           echo "no dependency on any implementation"
 
+  # The claim `spec/v1/PRODUCER.md` rests on: a new language's whole obligation is a document the
+  # shared binary accepts. Held here by a producer that is neither this repository's Rust nor its
+  # Java, a standard-library Python reference, so the claim is checked on every change to the spec
+  # or to the binary rather than asserted once.
+  #
+  # Gated on `spec/**` and `cli/**`: those are the two sides of that claim, and a change to neither
+  # cannot move it. The regenerated document is what `conform` and `validate` read, not the
+  # committed one, so a stale commit cannot pass on bytes the types no longer derive.
+  producer-python:
+    name: producer (python)
+    needs: changes
+    if: needs.changes.outputs.producer-python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          workspaces: cli
+      - name: build the toolchain
+        run: cargo build
+        working-directory: cli
+      # The runner's own interpreter, deliberately: the reference claims the standard library and
+      # nothing else, and a setup step installing one would be the first thing it depended on.
+      - name: test
+        run: |
+          python3 --version
+          python3 -m unittest discover -s spec/v1/producers/python -v
+      - name: conform and validate
+        run: |
+          set -euo pipefail
+          contract="$RUNNER_TEMP/contract.json"
+          bin=cli/target/debug/terrace-contract
+          python3 spec/v1/producers/python/orders.py > "$contract"
+          "$bin" conform --tier 2 "$contract"
+          "$bin" validate "$contract"
+          # Not normative, but what keeps `stamp` from reformatting the copy an image embeds:
+          # the bytes survive the shared model unchanged.
+          "$bin" render --format contract "$contract" | cmp - "$contract"
+          echo "conforms at tier 2 and satisfies the meta-schema"
+
   # The single required check. It fails if any job failed and passes when jobs were skipped, so
   # branch protection needs one entry that cannot silently stop existing.
   ci:
@@ -522,6 +577,7 @@ jobs:
         cli,
         consumer-smoke-test,
         java,
+        producer-python,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
