@@ -114,23 +114,38 @@ fn restore(replaced: &[Staged], targets: &[PathBuf]) -> Vec<String> {
     unrestored
 }
 
-/// The canonical path `file` is written at, once it is known to be inside its chart.
-///
-/// The check runs on the deepest ancestor that already exists, before any directory is created,
-/// so a link pointing out of the chart cannot have a directory made through it either.
+/// The canonical path `file` is written at, once it is known to be inside its chart, with the
+/// directories it needs created.
 fn resolve(file: &Planned) -> Result<PathBuf, Error> {
-    let root = file
-        .chart
-        .canonicalize()
-        .map_err(|e| Error::io(file.chart.display(), e))?;
+    let target = inside(&file.chart, &file.path)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
+    }
+    Ok(target)
+}
 
-    let mut existing = file.path.as_path();
+/// The canonical path `path` names, refused when it resolves outside `chart`.
+///
+/// The check runs on the deepest ancestor that already exists and creates nothing, so a link
+/// pointing out of the chart cannot have a directory made through it either. A link at `path`
+/// itself that points nowhere yet is not followed: the writers here replace the link by a rename
+/// rather than write through it.
+///
+/// # Errors
+/// [`Error::Io`] when `chart` or an existing ancestor cannot be resolved, and [`Error::Invalid`]
+/// when `path` resolves outside `chart` or has no existing ancestor.
+pub fn inside(chart: &Path, path: &Path) -> Result<PathBuf, Error> {
+    let root = chart
+        .canonicalize()
+        .map_err(|e| Error::io(chart.display(), e))?;
+
+    let mut existing = path;
     let mut missing: Vec<&std::ffi::OsStr> = Vec::new();
     while !existing.exists() {
         let (Some(parent), Some(name)) = (existing.parent(), existing.file_name()) else {
             return Err(Error::Invalid(format!(
                 "{}: has no existing ancestor to resolve",
-                file.path.display()
+                path.display()
             )));
         };
         missing.push(name);
@@ -146,7 +161,7 @@ fn resolve(file: &Planned) -> Result<PathBuf, Error> {
     if !anchor.starts_with(&root) {
         return Err(Error::Invalid(format!(
             "{}: resolves to {}, outside the chart {}; nothing was written",
-            file.path.display(),
+            path.display(),
             anchor.display(),
             root.display()
         )));
@@ -155,9 +170,6 @@ fn resolve(file: &Planned) -> Result<PathBuf, Error> {
     let mut target = anchor;
     for name in missing.iter().rev() {
         target.push(name);
-    }
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| Error::io(parent.display(), e))?;
     }
     Ok(target)
 }
