@@ -10,7 +10,6 @@ import de.timscho.config.loader.TerraceLoader;
  * ./gradlew :terrace-config-example-service:run
  * ORDERS_PORT=9090 ./gradlew :terrace-config-example-service:run
  * ORDERS_LOG_LEVEL=debug ./gradlew :terrace-config-example-service:run
- * ./gradlew :terrace-config-example-service:run --args=--contract
  * }</pre>
  *
  * <p>A real deployment never sets {@code ORDERS_DATABASE__URL} in plain environment text — it
@@ -18,26 +17,21 @@ import de.timscho.config.loader.TerraceLoader;
  * {@code ORDERS_DATABASE__URL_FILE} at one file. {@code OrdersServiceConfigTest} boots this exact
  * configuration every way {@link TerraceLoader} supports.
  *
- * <p>{@code --contract} is a second, optional job the same binary can do beside its normal boot
- * path — see {@link ContractGenerator}. {@code contract.json} in this module's own directory is
- * that rendering, checked fresh by {@code ContractTest} rather than trusted merely because it
- * once matched.
+ * <p>The contract is the build's, not this binary's: the {@code de.timscho.terrace-config} plugin
+ * emits it from {@link Config} without starting the service ({@code ./gradlew
+ * :terrace-config-example-service:terraceContract}), and {@code terraceContractCheck}, part of
+ * {@code check}, fails when {@code contract.json} in this module's directory no longer matches.
  */
 public final class OrdersService {
 
     private OrdersService() {}
 
     // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
-    // binary's actual terminal output for a human running `./gradlew ... :run` by hand (the
-    // rendered contract, or the config values it booted with) -- there is no SLF4J-worthy log
-    // event to attribute it to, and no other consumer for it to reach.
+    // binary's actual terminal output for a human running `./gradlew ... :run` by hand (the config
+    // values it booted with) -- there is no SLF4J-worthy log event to attribute it to, and no other
+    // consumer for it to reach.
     @SuppressWarnings("checkstyle:BanSystemOut")
     public static void main(final String[] args) {
-        if (args.length > 0 && "--contract".equals(args[0])) {
-            System.out.println(ContractGenerator.toJson(ContractGenerator.generate()));
-            return;
-        }
-
         final Config config =
                 TerraceLoader.of("ORDERS_").reserve("ORDERS_PROFILE").load(Config.class);
 

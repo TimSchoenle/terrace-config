@@ -29,8 +29,8 @@ import lombok.Setter;
  * every layer actually uses — {@code port} does not, being one word already.
  *
  * <p>Also {@code @TerraceConfig}: {@code terrace-config-processor} reads exactly the fields and
- * {@code @JsonProperty} renames above to generate {@code ConfigDescriptor}, which {@code
- * ContractGenerator} turns into {@code contract.json} — one set of annotations, read by two
+ * {@code @JsonProperty} renames above to generate {@code ConfigDescriptor}, which the build's
+ * {@code terraceContract} task turns into {@code contract.json} — one set of annotations, read by two
  * independent things (Jackson's binder and the processor), which is what keeps the two from
  * describing different keys. See {@code FieldResolver.resolve} in {@code terrace-config-processor}
  * for the fix that made this true.

@@ -22,7 +22,7 @@ public final class Database {
     // would reach that document as the literal seven characters `{@code`.
     //
     // `access = WRITE_ONLY`: a setter still binds this from a config source, but
-    // `ContractGenerator`'s own `ObjectMapper().convertValue(new Config(), Map.class)` — used to
+    // `ContractMain`'s own `ObjectMapper().convertValue(new Config(), Map.class)` — used to
     // find each key's observed default for `Schema.withDefaultsFromValue` — never serialises it,
     // so this compiled default never reaches that map. The Java equivalent of the Rust example's
     // `SecretString` field carrying `#[serde(skip_serializing)]`: without it, the very real

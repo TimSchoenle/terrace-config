@@ -26,10 +26,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * own documented divergence: see {@link Database#maxConnections} and {@code
  * OrdersServiceFileIndirectionIntegrationTest}.
  *
- * <p>Also {@code @TerraceConfig}: {@code ContractGenerator} builds a real {@link
- * de.timscho.config.core.model.Contract} from exactly this class through {@code
- * SpringContractProducer}, the same generated-and-CI-checked {@code contract.json} story {@code
- * terrace-config-example-service} tells for the vanilla loader.
+ * <p>Also {@code @TerraceConfig}: the build's {@code terraceContract} task emits a real contract
+ * from exactly this class through {@code SpringContractMain}, the same generated-and-CI-checked
+ * {@code contract.json} story {@code terrace-config-example-service} tells for the vanilla loader.
  */
 @TerraceConfig
 @Getter

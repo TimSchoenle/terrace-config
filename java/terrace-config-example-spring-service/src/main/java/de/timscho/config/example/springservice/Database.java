@@ -21,7 +21,7 @@ public final class Database {
     // into `contract.json` verbatim rather than rendering javadoc tags.
     //
     // `access = WRITE_ONLY`: Spring's own `Binder` ignores Jackson annotations entirely, so this
-    // changes nothing about how a real deployment binds `url` — it only tells `ContractGenerator`'s
+    // changes nothing about how a real deployment binds `url` — it only tells `SpringContractMain`'s
     // own `ObjectMapper().convertValue(new OrdersProperties(), Map.class)` (used to find each
     // key's observed default for `Schema.withDefaultsFromValue`) to skip this field, exactly as
     // the Rust example's `SecretString` field's `#[serde(skip_serializing)]` does. Without it, the
