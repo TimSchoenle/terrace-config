@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.0](https://github.com/TimSchoenle/terrace-config/compare/v0.15.2...v0.16.0) (2026-10-20)
+
+
+### Features
+
+* **cli:** terrace.yaml repository settings; verify every Dockerfile label region; fix Java release paths ([#299](https://github.com/TimSchoenle/terrace-config/issues/299)) ([c54e8c3](https://github.com/TimSchoenle/terrace-config/commit/c54e8c340612e5710c90d1bfb53d4b6296eedf9b))
+
+
+### Dependencies
+
+* **deps:** update rust crate tokio to v1.53.3 ([#289](https://github.com/TimSchoenle/terrace-config/issues/289)) ([a613e48](https://github.com/TimSchoenle/terrace-config/commit/a613e488e7a06da139e85107d9c9538dc5f4e46b))
+
 ## [0.15.2](https://github.com/TimSchoenle/terrace-config/compare/v0.15.1...v0.15.2) (2026-10-16)
 
 
