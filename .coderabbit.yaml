@@ -1,0 +1,170 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+tone_instructions: "Direct, no filler, no praise."
+
+reviews:
+  profile: assertive
+
+  auto_review:
+    # CodeRabbit cannot filter by head branch, so automated pull requests are
+    # skipped by author: Renovate opens `renovate/*`, the release manager app
+    # opens `release-please--*`. Both the bot login and the bare app slug are
+    # listed because the match is exact.
+    ignore_usernames:
+      - "renovate[bot]"
+      - "renovate"
+      - "automatic-release-manager[bot]"
+      - "automatic-release-manager"
+
+  # Generated or tool-owned files. Review their sources instead.
+  path_filters:
+    - "!**/Cargo.lock"
+    - "!**/target/**"
+    - "!**/CHANGELOG.md"
+    - "!.release-please-manifest.json"
+    - "!README.md" # rendered from .github/templates/root-README.md.hbs
+    - "!rust/README.md" # rendered from .github/templates/README.md.hbs
+    - "!java/README.md" # rendered from .github/templates/java-README.md.hbs
+    # Contracts emitted by the producers and drift-checked in CI.
+    - "!rust/examples/service/contract.json"
+    - "!java/terrace-config-example-*/contract.json"
+    # Goldens written only by a bless run; review the renderer change that produced them.
+    - "!spec/v1/conformance/*/rendered/**"
+    - "!java/terrace-config-spec-tck/src/test/resources/conformance-java/**"
+    - "!java/gradlew"
+    - "!java/gradlew.bat"
+    - "!java/gradle/wrapper/gradle-wrapper.jar"
+    - "!.serena/**"
+
+  path_instructions:
+    - path: "rust/{src,macros}/**/*.rs"
+      instructions: |
+        The `terrace-config` library (and its derive macros), consumed by tag from other
+        repositories, so semver applies (pre-1.0: a minor bump is breaking). Flag:
+        - Changes to public items, feature flags or the `full`/`loader`/`schema`/`explain`/
+          `reload`/`testing` feature split that break downstream builds; each feature must compile
+          on its own (CI documents each feature separately).
+        - `unwrap`, `expect`, `panic!` or panicking indexing in non-test code; fallible paths
+          return typed `thiserror` errors, and any remaining panic needs a `# Panics` doc.
+        - Missing rustdoc, `# Errors` / `# Panics` sections, and `#[allow]` instead of
+          `#[expect(..., reason = "...")]`.
+        - Code that would not compile on the MSRV (`rust-version = 1.94`).
+        `unsafe_code` is forbidden workspace-wide; do not suggest `unsafe`.
+    - path: "rust/src/{provider/**,layers.rs,explain.rs,loaded.rs,reload.rs,reloader.rs}"
+      instructions: |
+        Secret handling. Secret values must never reach `Debug`, `Display`, error messages,
+        `explain` output or tracing fields. For the secrets directory and `_FILE` indirection,
+        check symlink handling (Kubernetes `..data` swaps), TOCTOU between stat and read, size
+        limits on read, path traversal from key names, and trailing-newline semantics. For
+        `reload`, check cancellation safety, debounce correctness, that no blocking I/O runs on
+        the async runtime, and that a failed rebuild keeps the previous configuration.
+    - path: "cli/src/**/*.rs"
+      instructions: |
+        `terrace-contract` CLI and library. Inputs (contracts, Helm charts, values files, OCI
+        layouts and registry blobs) are untrusted. Flag:
+        - Missing digest verification before trusting a blob, tar path traversal or symlink
+          escape, unbounded decompression or allocation.
+        - Subprocess calls (`git`, `oras`) built from user input without `--` separation or with
+          shell interpolation; ignored exit codes or stderr.
+        - Non-deterministic output (hash-map iteration order, timestamps, absolute paths) in
+          anything rendered, written to a chart, or compared by a gate.
+        - Gates that can pass on empty or unparsed input; failing open is a bug.
+        - Panics, missing rustdoc and `#[allow]` as for the library. MSRV is 1.94 and
+          `unsafe_code` is forbidden.
+    - path: "cli/src/helm/**"
+      instructions: |
+        Writes into users' Helm charts. Edits must be idempotent, confined to the marked regions,
+        preserve formatting and comments outside them, and never drop user-authored values.
+    - path: "spec/**"
+      instructions: |
+        Normative specification for the contract format, producers and Helm declarations. Any
+        change must keep the Markdown and the JSON Schemas consistent, state whether it is
+        backward compatible within `v1`, and be implemented by every producer (Rust, Java, the
+        Python reference) with conformance goldens re-blessed in the same change. Flag ambiguous
+        MUST/SHOULD wording and examples that contradict the schema.
+    - path: "spec/v1/producers/python/**"
+      instructions: |
+        Standard-library-only reference producer. Flag third-party imports, non-deterministic
+        output ordering, and behaviour that diverges from spec/v1/PRODUCER.md.
+    - path: "java/*/src/main/**/*.java"
+      instructions: |
+        Published Java 25 libraries (annotations, core, loader, processor, Spring Boot
+        integration, Gradle plugin). Flag binary-incompatible changes to public API, missing
+        Javadoc on public types, unchecked nulls at API boundaries, swallowed exceptions, and
+        secret values reaching `toString`, logs or exception messages. Match the codebase: Lombok
+        over hand-written boilerplate, plain loops over streams.
+    - path: "java/terrace-config-processor/**"
+      instructions: |
+        Annotation processor. Errors must be reported through `Messager` against the offending
+        element, not thrown. Generated code must be deterministic and compile without warnings;
+        check Lombok interop and incremental-processing correctness.
+    - path: "java/terrace-config-gradle-plugin/**"
+      instructions: |
+        Gradle plugin. Require lazy configuration (`Provider`/`Property`), declared task inputs
+        and outputs, configuration-cache compatibility, and no `Project` access at execution time.
+    - path: "java/{build.gradle.kts,settings.gradle.kts,buildSrc/**}"
+      instructions: |
+        Build logic and publishing. Flag unpinned plugin or dependency versions outside
+        `gradle/libs.versions.toml`, repositories added without content filtering, and signing
+        or credential configuration that could leak into logs.
+    - path: "**/src/test/**"
+      instructions: |
+        Tests. Do not apply documentation or API rules. Flag tests that depend on the network,
+        on wall-clock timing without tolerance, or on test execution order.
+    - path: "{rust,cli}/fuzz/**"
+      instructions: |
+        Test-only fuzz harnesses on nightly. Do not apply library API or documentation rules;
+        focus on whether the oracles assert real properties and the targets exercise meaningful
+        input space instead of trivially rejected inputs.
+    - path: "**/Dockerfile"
+      instructions: |
+        `cli/Dockerfile` ships the signed release binaries on `scratch`; the others are example
+        images that demonstrate the producer flow. Require base images pinned by digest, a
+        non-root `USER`, no secrets in build args or layers, and contract labels that come from
+        the generator rather than being hand-written.
+    - path: ".github/{workflows,actions}/**"
+      instructions: |
+        Every third-party action must be pinned to a full commit SHA with a version comment.
+        Require least-privilege `permissions:` at workflow or job level, `persist-credentials: false`
+        on checkout unless pushing, no untrusted `${{ github.event.* }}` interpolation into `run:`,
+        and no `pull_request_target` that checks out or executes PR code. Downloaded tools must
+        be checksum-verified; release and signing jobs must not be reachable from pull requests.
+    - path: ".github/templates/**"
+      instructions: |
+        Sources of the generated READMEs. Review rendered wording, links, badge URLs and version
+        variables here; every mustache must reference a real variable.
+    - path: "**/*.sh"
+      instructions: |
+        Require `set -euo pipefail`, quoted expansions, and no reliance on GNU-only flags
+        without a comment.
+
+  pre_merge_checks:
+    title:
+      mode: error
+      requirements: |
+        Must follow Conventional Commits: `type(scope)?!?: subject`. Allowed types: feat, fix, perf,
+        revert, docs, refactor, test, style, ci, build, chore, deps. Lowercase, imperative subject,
+        no trailing period. release-please derives version bumps and the changelogs of all three
+        components (terrace-config, terrace-contract, terrace-config-java) from this title.
+
+  tools:
+    # Both already run in CI (ci.yml clippy per feature set, security.yml zizmor); duplicating
+    # them adds noise. Java style is gated by spotless and checkstyle, which CodeRabbit lacks.
+    clippy:
+      enabled: false
+    zizmor:
+      enabled: false
+    actionlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    shellcheck:
+      enabled: true
+    markdownlint:
+      enabled: true
+    hadolint:
+      enabled: true
+    # Not covered by CI: checkstyle is style-only, and the Python producer is only unit-tested.
+    pmd:
+      enabled: true
+    ruff:
+      enabled: true
