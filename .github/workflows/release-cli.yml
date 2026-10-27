@@ -309,8 +309,14 @@ jobs:
 
       # SLSA build provenance over the archives and the checksum file, stored with GitHub's
       # attestation API: `gh attestation verify <file> --repo <owner>/terrace-config` then states
-      # which workflow run, at which commit, built the bytes — the cosign signature below states
-      # who signed them, this states what they were built from.
+      # which workflow run built the bytes. The cosign signature below states who signed them.
+      #
+      # The predicate's source revision is the run's `github.sha`, taken from the OIDC token. On the
+      # release-please call that is the commit the tag was cut at. On a dispatched re-run it is
+      # `main`'s head at dispatch, and the bytes come from the tag, which `resolve` has proved is an
+      # ancestor of `main` and `build` has held to the resolved commit. The revision is not
+      # overridden with a custom predicate: a field this job writes itself is a claim, where the
+      # default fields are what GitHub signed.
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
