@@ -1,6 +1,6 @@
 name: install oras
 description: >-
-  Install a checksum-verified oras release, for the tests that drive a real oras against an OCI
+  Install a signature-verified oras release, for the tests that drive a real oras against an OCI
   image layout. Those tests fail rather than skip in CI when oras is missing, so every job that
   runs them installs it through here and hands the path output to them as ORAS_BIN.
 
@@ -12,20 +12,57 @@ outputs:
 runs:
   using: composite
   steps:
+    # Trust is anchored in the ORAS release-signing key committed beside this file, not in
+    # anything downloaded. The release's `checksums.txt` is accepted only with a valid signature
+    # from that key, and the archive is then checked against it. A file from the same place as the
+    # archive would otherwise catch only a truncated download, never a replaced one.
+    #
+    # The digests are not pinned here, so a Renovate bump of ORAS_VERSION verifies on its own. A
+    # rotated signing key fails this step until `oras-release-signing.asc` and
+    # ORAS_SIGNING_FINGERPRINT are replaced from https://github.com/oras-project/oras/blob/main/KEYS
+    # - a reviewed change, as it should be.
     - name: install oras
       id: install
       shell: bash
       env:
         # renovate: datasource=github-releases depName=oras-project/oras extractVersion=^v(?<version>.*)$
         ORAS_VERSION: 1.3.5
+        # "ORAS Project Release Signing" (ed25519, created 2026-07-13, no expiry).
+        ORAS_SIGNING_FINGERPRINT: C6FC42F0DE84A345FAADB742F44418110791EF37
+        ORAS_SIGNING_KEY: ${{ github.action_path }}/oras-release-signing.asc
       run: |
         set -euo pipefail
+        case "${RUNNER_OS}/${RUNNER_ARCH}" in
+          Linux/X64) arch=amd64 ;;
+          Linux/ARM64) arch=arm64 ;;
+          *) echo "::error::install-oras supports Linux X64 and ARM64, not ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+        esac
         base="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}"
-        archive="oras_${ORAS_VERSION}_linux_amd64.tar.gz"
-        mkdir -p "$RUNNER_TEMP/oras"
-        cd "$RUNNER_TEMP/oras"
-        curl -fsSLO "$base/$archive"
-        curl -fsSLO "$base/oras_${ORAS_VERSION}_checksums.txt"
-        grep " ${archive}\$" "oras_${ORAS_VERSION}_checksums.txt" | sha256sum --check --strict
+        archive="oras_${ORAS_VERSION}_linux_${arch}.tar.gz"
+        sums="oras_${ORAS_VERSION}_checksums.txt"
+        work="$RUNNER_TEMP/oras"
+        mkdir -p "$work"
+        cd "$work"
+        curl -fsSL -O "$base/$archive" -O "$base/$sums" -O "$base/$sums.asc"
+
+        # A keyring holding only the committed key, so no other key on the runner can vouch.
+        gpg --batch --quiet --homedir "$work/gnupg" --dearmor --output "$work/oras.gpg" "$ORAS_SIGNING_KEY"
+        status="$(gpgv --keyring "$work/oras.gpg" --status-fd 1 "$sums.asc" "$sums" 2>/dev/null)" || {
+          echo "::error::$sums is not signed by the ORAS release key ${ORAS_SIGNING_FINGERPRINT}" >&2
+          exit 1
+        }
+        grep -q "^\[GNUPG:\] VALIDSIG ${ORAS_SIGNING_FINGERPRINT} " <<< "$status" || {
+          echo "::error::$sums is signed, but not by ${ORAS_SIGNING_FINGERPRINT}" >&2
+          exit 1
+        }
+
+        # Exactly one line names the archive; a missing or duplicated entry fails rather than
+        # passing on an empty check.
+        line="$(awk -v f="$archive" '$2 == f' "$sums")"
+        if [ "$(printf '%s\n' "$line" | grep -c .)" -ne 1 ]; then
+          echo "::error::$sums has no single entry for $archive" >&2
+          exit 1
+        fi
+        printf '%s\n' "$line" | sha256sum --check --strict
         tar -xzf "$archive" oras
-        echo "path=$RUNNER_TEMP/oras/oras" >> "$GITHUB_OUTPUT"
+        echo "path=$work/oras" >> "$GITHUB_OUTPUT"

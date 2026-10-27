@@ -27,43 +27,42 @@ on:
 # act on, so they queue instead. `cancel-in-progress: false` for the same reason — a cancelled
 # run here means a branch left holding a half-generated file.
 concurrency:
-  group: branch-writes-${{ github.ref }}
+  group: branch-writes-${{ github.event.pull_request.head.repo.full_name || github.repository }}:${{ github.event.pull_request.head.ref || github.ref_name }}
+  queue: max
   cancel-in-progress: false
 
 permissions: {}
 
 jobs:
+  # `render` and `render-commit` are two halves, and the split is the security boundary of this
+  # workflow. `render` runs the pull request's own script and templates, so it holds no secret
+  # and a read-only `GITHUB_TOKEN`, and hands on only a patch artifact. `render-commit` holds the
+  # maintenance App's private key and the write token minted from it, runs nothing from the
+  # checkout, and `allowed_paths` refuses any path other than the three READMEs.
   render:
     name: render
-    # Forks get no secrets, so the App token would be empty and the commit could not be pushed
-    # to their branch anyway. `check` below picks those pull requests up instead.
+    # A fork's branch is not in this repository, so there would be nothing to commit to.
+    # `check` below picks those pull requests up instead.
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read # the write happens with the App token below, not with GITHUB_TOKEN
+      contents: read # to fetch code
+    outputs:
+      has_changes: ${{ steps.patch.outputs.has_changes }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
 
-      # An App installation token, so the commit is verified and — unlike one made with
-      # `GITHUB_TOKEN` — re-triggers the checks on the branch it lands on.
-      - name: Generate Bot Token
-        id: generate_token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.ACTIONS_MAINTENANCE_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_MAINTENANCE_PRIVATE_KEY }}
-          permission-contents: write
-
       # The head of the branch, not the merge commit: the render has to read the `Cargo.toml`
-      # the pull request proposes, and the commit has to land on top of what is there now.
+      # the pull request proposes, and the patch has to apply on top of the commit the branch
+      # points at, which is the one `commit-patch` checks it against.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       # Invoked through `bash` rather than executed: the repository is authored on Windows, where
@@ -88,62 +87,120 @@ jobs:
           docs-dir: rust/docs
           extra: ${{ steps.config.outputs.json }}
 
-      - name: Render and commit the README
+      - name: Render the README
         id: readme
-        uses: TimSchoenle/actions/actions/common/render-template-and-commit@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-common-render-template-and-commit-v1.1.18
+        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
           variables: ${{ steps.variables.outputs.variables }}
-          token: ${{ steps.generate_token.outputs.token }}
-          commit_message: "docs: render README from template"
 
-      - name: Render and commit the Java README
+      - name: Render the Java README
         id: java_readme
-        uses: TimSchoenle/actions/actions/common/render-template-and-commit@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-common-render-template-and-commit-v1.1.18
+        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
           variables: ${{ steps.variables.outputs.variables }}
-          token: ${{ steps.generate_token.outputs.token }}
-          commit_message: "docs: render Java README from template"
 
       # The repository's front door, rendered from the same payload. It quotes none of the
       # crate-specific fields (MSRV, the docs table), so the manifest/docs-directory inputs above
       # only matter to the crate render — this one only reads `repo`.
-      - name: Render and commit the root README
+      - name: Render the root README
         id: root_readme
-        uses: TimSchoenle/actions/actions/common/render-template-and-commit@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-common-render-template-and-commit-v1.1.18
+        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
           variables: ${{ steps.variables.outputs.variables }}
-          token: ${{ steps.generate_token.outputs.token }}
-          commit_message: "docs: render root README from template"
+
+      - name: Create Patch
+        id: patch
+        uses: TimSchoenle/actions/actions/common/create-patch@bbc2c5e2a0f9345cb2e84946846736f047a6eae3 # tag=actions-common-create-patch-v1.1.0
+        with:
+          artifact_name: docs-readmes
+          paths: 'README.md rust/README.md java/README.md'
 
       - name: Summarise
         env:
-          COMMITTED: ${{ steps.readme.outputs.changes_detected }}
-          COMMIT_URL: ${{ steps.readme.outputs.commit_url }}
-          JAVA_COMMITTED: ${{ steps.java_readme.outputs.changes_detected }}
-          JAVA_COMMIT_URL: ${{ steps.java_readme.outputs.commit_url }}
-          ROOT_COMMITTED: ${{ steps.root_readme.outputs.changes_detected }}
-          ROOT_COMMIT_URL: ${{ steps.root_readme.outputs.commit_url }}
+          CHANGED: ${{ steps.readme.outputs.changed }}
+          JAVA_CHANGED: ${{ steps.java_readme.outputs.changed }}
+          ROOT_CHANGED: ${{ steps.root_readme.outputs.changed }}
         run: |
-          if [ "${COMMITTED}" = "true" ]; then
-            echo "rust/README.md re-rendered: ${COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
+          for entry in "rust/README.md:${CHANGED}" "java/README.md:${JAVA_CHANGED}" "README.md:${ROOT_CHANGED}"; do
+            if [ "${entry#*:}" = "true" ]; then
+              echo "${entry%%:*} re-rendered; render-commit commits it." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "${entry%%:*} already matched its template." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+  render-commit:
+    name: render-commit
+    needs: render
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.render.outputs.has_changes == 'true'
+    environment:
+      name: ci
+      deployment: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # to fetch the commit the patch applies to; the write uses the App token
+    steps:
+      # Checkout, the token mint, the artifact download and the GraphQL commit, and nothing else.
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            objects.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      # Only git's objects are needed: the patch is applied on top of this commit's tree. Nothing
+      # in this checkout is executed.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      # An App installation token, so the commit is verified and — unlike one made with
+      # `GITHUB_TOKEN` — re-triggers the checks on the branch it lands on.
+      - name: Generate Bot Token
+        id: generate_token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.ACTIONS_MAINTENANCE_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_MAINTENANCE_PRIVATE_KEY }}
+          permission-contents: write
+
+      # The artifact name is a literal, not the render job's output: that job ran the pull
+      # request's code.
+      - name: Commit the READMEs
+        id: commit
+        uses: TimSchoenle/actions/actions/common/commit-patch@bbc2c5e2a0f9345cb2e84946846736f047a6eae3 # tag=actions-common-commit-patch-v1.1.0
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+          artifact_name: docs-readmes
+          # The three files the templates render to. Any other path fails this job.
+          allowed_paths: 'README.md rust/README.md java/README.md'
+          commit_message: 'docs: render READMEs from templates'
+
+      - name: Summarise
+        env:
+          OUTCOME: ${{ steps.commit.outputs.outcome }}
+          COMMIT_URL: ${{ steps.commit.outputs.commit_url }}
+        run: |
+          if [ "${OUTCOME}" = "committed" ]; then
+            echo "READMEs re-rendered: ${COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "rust/README.md already matched its template." >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "${JAVA_COMMITTED}" = "true" ]; then
-            echo "java/README.md re-rendered: ${JAVA_COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "java/README.md already matched its template." >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "${ROOT_COMMITTED}" = "true" ]; then
-            echo "README.md re-rendered: ${ROOT_COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "README.md already matched its template." >> "$GITHUB_STEP_SUMMARY"
+            echo "Nothing committed (${OUTCOME})." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   check:
