@@ -48,16 +48,14 @@ jobs:
       deployment: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write # to create the release commit, the tag and the GitHub release
-      issues: write # to comment on the issues a release closes
-      pull-requests: write # to open and maintain the release pull request
+    # Nothing for `GITHUB_TOKEN`: every write below — the release commit, the tag, the GitHub
+    # release and the release pull request — is made with the App token minted in this job.
+    permissions: {}
     # Per package, because `release-please` namespaces its outputs by path once a manifest names
-    # more than one. The `cli` pair is what the publish job below is gated on; the root pair is
-    # declared beside it so that a job which needs it later does not have to guess the spelling.
+    # more than one: `<path>--release_created`, where `<path>` is the key under `packages` in
+    # `release-please-config.json`. The `cli` pair is the only one anything reads — the publish
+    # job below is gated on it.
     outputs:
-      root_released: ${{ steps.release.outputs['.--release_created'] }}
-      root_tag: ${{ steps.release.outputs['.--tag_name'] }}
       cli_released: ${{ steps.release.outputs['cli--release_created'] }}
       cli_tag: ${{ steps.release.outputs['cli--tag_name'] }}
     steps:
@@ -109,7 +107,8 @@ jobs:
     permissions:
       contents: write # to attach the assets to the release it just created
       packages: write # to push the image
-      id-token: write # for keyless signing of both
+      id-token: write # for keyless signing of both, and the provenance attestation
+      attestations: write # to store the provenance attestation over the binaries
     uses: $/.github/workflows/release-cli.yml
     with:
       tag: ${{ needs.release-please.outputs.cli_tag }}
