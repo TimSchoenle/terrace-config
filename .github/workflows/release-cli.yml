@@ -81,9 +81,9 @@ jobs:
   #     or name anything but a release tag;
   #   - that tag exists, and its commit is on `main`'s history.
   #
-  # The jobs below then check out the commit SHA resolved here rather than the name: a bare
-  # `ref: <tag>` lets a branch of the same name win, and even `refs/tags/<tag>` could be moved
-  # between this job and the next.
+  # The jobs below then check out `refs/tags/<tag>`, never a bare `ref: <tag>`, which lets a
+  # branch of the same name win, and fail unless it is still the commit resolved here, since a
+  # tag can be moved between this job and the next.
   resolve:
     name: resolve
     runs-on: ubuntu-latest
@@ -180,11 +180,24 @@ jobs:
         with:
           egress-policy: audit
 
-      # The commit `resolve` verified, not the tag's name. See the note there.
+      # The tag by its full name, so no branch of the same name can win, and then held to the
+      # commit `resolve` verified, so a tag moved between the two jobs fails here instead of being
+      # built. See the note there.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
+
+      - name: Refuse a tag that moved since resolve
+        shell: bash
+        env:
+          RESOLVED: ${{ needs.resolve.outputs.sha }}
+        run: |
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$RESOLVED" ]; then
+            echo "::error::refs/tags/${TAG} is now ${head}, but resolve verified ${RESOLVED}."
+            exit 1
+          fi
 
       # No cache. Everything below is signed and published under a version number a consumer
       # pins, so it is built from source every time: a cache is state another workflow can write,
@@ -382,11 +395,24 @@ jobs:
         with:
           egress-policy: audit
 
-      # The commit `resolve` verified, not the tag's name. See the note there.
+      # The tag by its full name, so no branch of the same name can win, and then held to the
+      # commit `resolve` verified, so a tag moved between the two jobs fails here instead of being
+      # built. See the note there.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
+
+      - name: Refuse a tag that moved since resolve
+        shell: bash
+        env:
+          RESOLVED: ${{ needs.resolve.outputs.sha }}
+        run: |
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$RESOLVED" ]; then
+            echo "::error::refs/tags/${TAG} is now ${head}, but resolve verified ${RESOLVED}."
+            exit 1
+          fi
 
       # Under `cli/dist/<arch>/`, which is where the Dockerfile's `COPY` looks. The path carries
       # buildx's own `TARGETARCH`, so one `COPY` line serves both architectures.
