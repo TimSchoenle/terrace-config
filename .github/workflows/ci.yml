@@ -162,7 +162,7 @@ jobs:
         uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
         if: matrix.workspace == 'cli'
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/rust/coverage-codecov@81e4009704e0963651bbd8275e31244c1d1e220d # tag=actions-rust-coverage-codecov-v2.0.3
+        uses: TimSchoenle/actions/actions/rust/coverage-codecov@9d5cb31939ace7a3d3d7f452052724337c65f153 # tag=actions-rust-coverage-codecov-v2.0.4
         env:
           ORAS_BIN: ${{ steps.oras.outputs.path }}
         with:
@@ -263,7 +263,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: cargo-fuzz
       - name: Replay the corpus
