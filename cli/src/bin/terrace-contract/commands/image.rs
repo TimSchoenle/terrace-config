@@ -91,7 +91,7 @@ pub(crate) fn exit_for(failed: bool) -> ExitCode {
     }
 }
 
-/// Compare every marked region of a Dockerfile with the block this document renders, reporting
+/// Compares every marked region of a Dockerfile with the block this document renders, reporting
 /// each stale or empty one; returns whether any was.
 pub(crate) fn check_dockerfile(
     dockerfile: &Path,
@@ -132,7 +132,7 @@ pub(crate) fn check_dockerfile(
     Ok(failed)
 }
 
-/// Rewrite every marked region of a Dockerfile with the block this document renders.
+/// Rewrites every marked region of a Dockerfile with the block this document renders.
 pub(crate) fn write_dockerfile(
     dockerfile: &Path,
     contract: &Contract,
@@ -162,7 +162,7 @@ pub(crate) fn named(dockerfile: &Path, error: Error) -> Error {
     }
 }
 
-/// Attach the document to the image's digest, unless that digest already carries it.
+/// Attaches the document to the image's digest, unless that digest already carries it.
 pub(crate) fn attach_command(
     contract: &Path,
     reference: &str,

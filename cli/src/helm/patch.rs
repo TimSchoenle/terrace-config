@@ -1,10 +1,10 @@
 //! Writing a planned edit as a unified diff.
 //!
-//! Two writers here show what they would change before changing it — `adopt`, which inserts runs
-//! of lines into files that exist, and `helm init`, which creates files and fills placeholders in
+//! Two writers here show what they would change before changing it: `adopt`, which inserts runs of
+//! lines into files that exist, and `helm init`, which creates files and fills placeholders in
 //! others. Neither diffs two texts to find out what changed: each knows its edit exactly, so each
 //! lays it out as rows itself and this turns the rows into hunks. A general text diff could only
-//! rediscover the alignment the writer already had — or, where a new blank line matches an old one,
+//! rediscover the alignment the writer already had or, where a new blank line matches an old one,
 //! choose a different but equally valid one, and print a diff that is not the edit being made.
 //!
 //! The output is what `patch -p0` and `git apply` read: three lines of context, changes closer than
@@ -106,10 +106,10 @@ pub(crate) fn created(text: &str) -> Vec<Row> {
 
 /// The rows of an edit that replaced text within lines and moved none.
 ///
-/// `before` and `after` must have the same lines in the same places — the caller's edit changes
-/// what is on a line, never how many there are — so the alignment is the line number. A run of
-/// changed lines is written as every removed line and then every added one, the way a reader of
-/// any other diff expects to see a block that changed.
+/// `before` and `after` must have the same lines in the same places (the caller's edit changes what
+/// is on a line, never how many there are), so the alignment is the line number. A run of changed
+/// lines is written as every removed line and then every added one, the way a reader of any other
+/// diff expects to see a block that changed.
 ///
 /// A caller handing two texts of different lengths gets the surplus as added or removed rows, which
 /// is a wrong-looking diff rather than a lost one.

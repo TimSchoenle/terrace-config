@@ -7,7 +7,7 @@
 //! - **A workload rolls for restart keys.** A long-running consumer of a document with keys only a
 //!   restart applies carries a `checksum/` pod annotation. Without one, a change to those keys is
 //!   written to the mounted file, the rebuilt runtime keeps the boot value, and nothing restarts
-//!   the process — which is the shape a chart that assumes every key reloads has today.
+//!   the process, which is the shape a chart that assumes every key reloads has today.
 //! - **No live key hides behind a mount the kubelet never updates.** A `subPath` mount is resolved
 //!   once, at container start, and an `immutable` object cannot change at all. A key the image
 //!   applies live, delivered that way, is left out of the restart digest *and* never reaches the
@@ -124,7 +124,7 @@ fn container<'a>(spec: &'a Json, name: &str) -> Option<(&'a Json, bool)> {
 }
 
 /// Whether some key of `contract` is restart content for a change delivered in the document or the
-/// chart's Secret — which is to say, whether the pod needs a digest to roll on at all.
+/// chart's Secret, which is to say, whether the pod needs a digest to roll on at all.
 fn has_restart_content(contract: &Contract, document: &Document) -> bool {
     let overridden = |path: &str| {
         document

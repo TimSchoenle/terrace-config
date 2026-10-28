@@ -1,9 +1,9 @@
 //! The reader, and the two properties everything downstream depends on.
 //!
-//! This target takes the input as **raw JSON**, not as a mutation directive. That is deliberate
-//! and it is the one place the other two are not enough: the reader's job includes refusing, and
-//! the shapes it has to refuse cleanly are exactly the ones a mutation over a valid document never
-//! produces — a truncated object, a string where a number belongs, an array at the root.
+//! This target takes the input as **raw JSON**, not as a mutation directive. That is deliberate and
+//! it is the one place the other two are not enough: the reader's job includes refusing, and the
+//! shapes it has to refuse cleanly are exactly the ones a mutation over a valid document never
+//! produces: a truncated object, a string where a number belongs, an array at the root.
 //!
 //! Two properties, and both are load-bearing rather than decorative.
 //!
@@ -13,13 +13,13 @@
 //! downstream is made on the assumption that this gate ran first.
 //!
 //! **Reading is a fixed point.** A document that parses must serialise to something that parses
-//! again to the same thing. Without it `stamp` is unsafe — it rewrites a build's identity and
+//! again to the same thing. Without it `stamp` is unsafe: it rewrites a build's identity and
 //! nothing else, and a reader that silently dropped or reordered a field would have it rewriting
 //! bytes nobody asked it to.
 
 use terrace_contract::{CONTRACT_VERSION, Contract};
 
-/// Run the oracle over one input.
+/// Runs the oracle over one input.
 ///
 /// # Panics
 /// On any finding, which is what a fuzzer is listening for.

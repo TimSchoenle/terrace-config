@@ -14,7 +14,7 @@ use crate::commands::gates::{
 };
 use crate::settings::{Repo, required_signer};
 
-/// Print the charts a change touched, or an empty line for every chart.
+/// Prints the charts a change touched, or an empty line for every chart.
 pub(crate) fn scope_command(repo: &Repo, command: Command) -> Result<ExitCode, Error> {
     let Command::Scope {
         since,
@@ -68,7 +68,7 @@ impl Steps {
         }
     }
 
-    /// Run one step under a heading, and record how it ended without stopping the run.
+    /// Runs one step under a heading, and records how it ended without stopping the run.
     pub(crate) fn run(
         &mut self,
         name: &'static str,
@@ -115,7 +115,7 @@ impl Steps {
     }
 }
 
-/// Write every contract-derived file, or run every offline gate over the selected charts.
+/// Writes every contract-derived file, or runs every offline gate over the selected charts.
 pub(crate) fn sync_command(repo: &Repo, command: Command) -> Result<ExitCode, Error> {
     let Command::Sync {
         only,

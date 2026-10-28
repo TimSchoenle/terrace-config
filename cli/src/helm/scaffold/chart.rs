@@ -10,8 +10,8 @@
 //! # Two forms, and the seam between them
 //!
 //! [`Surface`] is what makes this usable for an image that publishes no contract. Every renderer
-//! branches on exactly one question — whether the surface is [`Surface::Contracted`] — rather than
-//! on a flag threaded through from a caller:
+//! branches on exactly one question, whether the surface is [`Surface::Contracted`], rather than on
+//! a flag threaded through from a caller:
 //!
 //! **Contracted.** The image publishes a contract, so `values.yaml` carries a block per setting with
 //! the marker that binds it, `_helpers.tpl` projects them into the document, every credential is a
@@ -19,8 +19,8 @@
 //! first commit.
 //!
 //! **Plain.** Nothing exists to read, so nothing is asserted about the image's configuration: no
-//! `config` escape hatch, no `configMount`, no `ConfigMap` and no Secret. What is left is everything
-//! that was never about a contract — the image pin and the chassis.
+//! `config` escape hatch, no `configMount`, no `ConfigMap` and no Secret. What is left is
+//! everything that was never about a contract: the image pin and the chassis.
 //!
 //! The plain form is deliberately *less* than the contracted one rather than the same thing with
 //! empty parts. A `configMount` in a chart whose image does not read a mounted file is a value an
@@ -29,9 +29,9 @@
 //!
 //! # What is deliberately not generated
 //!
-//! **A Service, an Ingress, a route, a pod monitor or a volume claim.** Whether the workload listens,
-//! on what, and whether anything should reach it is not in a contract — a `server.port` key says the
-//! binary can bind a port, not that this deployment wants a Service in front of it.
+//! **A Service, an Ingress, a route, a pod monitor or a volume claim.** Whether the workload
+//! listens, on what, and whether anything should reach it is not in a contract. A `server.port` key
+//! says the binary can bind a port, not that this deployment wants a Service in front of it.
 //!
 //! **Prose.** A chart description or README written by a generator is one nobody has read, and the
 //! README generator will happily publish it.
@@ -63,7 +63,7 @@ use super::{
 /// The only document format these renderers write.
 ///
 /// The library chart ships a TOML renderer and nothing else, so a chart whose image reads YAML or
-/// JSON would need a helper the library does not have — and inventing one inside a generated
+/// JSON would need a helper the library does not have, and inventing one inside a generated
 /// `_helpers.tpl` would put an untested renderer in every chart that used it.
 pub const FORMAT: &str = "toml";
 
@@ -123,9 +123,9 @@ impl Surface {
     /// The contracted surface of one document's merged contract: every key, sorted.
     ///
     /// # Errors
-    /// [`Error::Invalid`] when the contract declares no nesting separator — every credential's file
+    /// [`Error::Invalid`] when the contract declares no nesting separator (every credential's file
     /// name and every grouped variable is spelled with it, so there is nothing to generate them
-    /// from — and as [`plan_keys`].
+    /// from), and as [`plan_keys`].
     pub fn from_contract(union: &Union) -> Result<Self, Error> {
         let Some(separator) = union
             .dialect
@@ -163,8 +163,8 @@ impl Surface {
 
     /// The name of the template subtree a repository builds this surface's chart from.
     ///
-    /// The two forms differ structurally — a plain chart has no configuration document, no secrets
-    /// directory and no `_FILE` indirection — so a repository keeps one workload template per form
+    /// The two forms differ structurally (a plain chart has no configuration document, no secrets
+    /// directory and no `_FILE` indirection), so a repository keeps one workload template per form
     /// rather than one with parts switched off. This is the name both sides use for each.
     pub const fn form(&self) -> &'static str {
         match self {
@@ -210,12 +210,12 @@ pub fn undescribed(plan: &Plan) -> Result<Vec<String>, Error> {
 /// The whole `values.yaml`: the image, the configuration surface, the chassis.
 ///
 /// Ordered by how often it is edited rather than alphabetically. The image and the settings the
-/// contract declares are what an operator opens the file for; the chassis — the blocks every chart
+/// contract declares are what an operator opens the file for; the chassis (the blocks every chart
 /// of a repository shares, passed in as text because they are the repository's and not the
-/// contract's — belongs after them.
+/// contract's) belongs after them.
 ///
-/// A plain surface stops after the image. Everything between it and the chassis — the settings,
-/// `existingSecret`, `config`, `configExtraToml`, `configMount` — describes a loader this chart's
+/// A plain surface stops after the image. Everything between it and the chassis (the settings,
+/// `existingSecret`, `config`, `configExtraToml`, `configMount`) describes a loader this chart's
 /// image is not known to have.
 ///
 /// # Errors
@@ -288,7 +288,7 @@ fn image_lines(repository: &str, tag: &str) -> Vec<String> {
         .map(str::to_owned),
     );
     // Always quoted. A tag like `8.0` is a YAML float unquoted, and the chart's own schema types
-    // this as a string — so an unquoted numeric tag fails the first render, for a reason that reads
+    // this as a string, so an unquoted numeric tag fails the first render, for a reason that reads
     // like a bug in the schema.
     lines.push(format!("  tag: {}", quoted(tag)));
     lines.extend(
@@ -314,7 +314,7 @@ fn image_lines(repository: &str, tag: &str) -> Vec<String> {
 /// The settings section: one tree over every key the chart surfaces, or nothing when there is none.
 ///
 /// One tree over the settings and the credentials together, rather than a section each. They share
-/// a namespace — `telemetry.log_level` is ordinary and `telemetry.sentry_dsn` is a credential — so
+/// a namespace (`telemetry.log_level` is ordinary and `telemetry.sentry_dsn` is a credential), so
 /// two sections would emit `telemetry:` twice and YAML would silently keep only the second,
 /// dropping every value in the first. Which channel carries a value is said in its own description
 /// instead, where it stays true however the keys are grouped.
@@ -497,7 +497,7 @@ pub fn comment(paragraphs: &[&str]) -> String {
 /// `validateValues` refuses a render that could only produce a container which fails at boot.
 ///
 /// Plain: none of them, because every one describes a loader nothing knows this image has. A
-/// comment says where a hand-written helper goes instead — a file rather than nothing, so the first
+/// comment says where a hand-written helper goes instead: a file rather than nothing, so the first
 /// one is an edit and not a decision about where partials live.
 ///
 /// # Errors
@@ -606,8 +606,8 @@ fn required_secrets(plan: &Plan) -> Vec<&Placement> {
 /// values: an `existingSecret` supplies the file without the chart being able to see inside it, and
 /// a credential the chart cannot see is not the same as one that is missing.
 ///
-/// Required non-secret keys are deliberately not guarded. They carry a default in `values.yaml` —
-/// the image's own where it publishes one, a constraint-satisfying one otherwise — so a render
+/// Required non-secret keys are deliberately not guarded. They carry a default in `values.yaml`
+/// (the image's own where it publishes one, a constraint-satisfying one otherwise), so a render
 /// always produces a value for them, and the document gate is what holds that value to the
 /// contract. A guard would only fire on a values file that had explicitly nulled one, which an
 /// operator may do on purpose when a sibling layer supplies it.
@@ -658,10 +658,10 @@ fn validate_values(chart: &str, plan: &Plan) -> Result<String, Error> {
 ///
 /// Only what differs from the defaults in `spec/helm/v1/DEFAULTS.md` is written: the document's
 /// name, its key when it is not `config.toml`, and how its round-trip suite is generated when the
-/// render needs prerequisites. Everything a scaffolded chart shares with every other one — the
-/// release selector, the image at `image` with its contract under the document's name, the
-/// workload that mounts the `ConfigMap` — is left to the defaults, so the file a person reads is
-/// the part that is about this chart.
+/// render needs prerequisites. Everything a scaffolded chart shares with every other one (the
+/// release selector, the image at `image` with its contract under the document's name, the workload
+/// that mounts the `ConfigMap`) is left to the defaults, so the file a person reads is the part
+/// that is about this chart.
 ///
 /// `bindings: true` is written because the scaffold emits a marker for every key it surfaces and an
 /// `unbound` entry for every key it does not, so the chart is enrolled and complete from its first
@@ -807,7 +807,7 @@ pub fn render_opt_out(repository: &str, reason: &str) -> String {
 /// A placeholder for a required credential that cannot authenticate anywhere.
 ///
 /// `.invalid` is reserved by RFC 2606 and can never resolve, so a value built on it is inert
-/// wherever it ends up — which is the property that makes writing one into a committed test file
+/// wherever it ends up, which is the property that makes writing one into a committed test file
 /// defensible at all.
 ///
 /// # Errors
@@ -839,8 +839,8 @@ pub fn probe_credential(placement: &Placement) -> Result<String, Error> {
 
 /// `ci/test-values.yaml`: the least a fixture has to set for an install to get a running pod.
 ///
-/// Only the credentials the render guard demands. Everything else has a default — the image's own
-/// where the contract publishes one — and a fixture restating those would be a second place they
+/// Only the credentials the render guard demands. Everything else has a default (the image's own
+/// where the contract publishes one), and a fixture restating those would be a second place they
 /// are written, drifting the first time one of them changed.
 ///
 /// A plain chart has no guard and no contract to read a default out of, so its fixture is empty and
@@ -893,7 +893,7 @@ pub fn render_ci_values(chart: &str, surface: &Surface) -> Result<String, Error>
     Ok(format!("{}\n", lines.join("\n")))
 }
 
-/// Set `value` at a dotted path in a nested mapping, making each mapping on the way.
+/// Sets `value` at a dotted path in a nested mapping, making each mapping on the way.
 ///
 /// A scalar already at a branch is replaced by a mapping. The planner refuses a key whose parent is
 /// another key, so for the paths this is handed that cannot happen; replacing is the answer that
@@ -936,7 +936,7 @@ fn plain_yaml(tree: &Map<String, Json>, indent: &str, lines: &mut Vec<String>) {
 /// Deliberately thin, and deliberately not overlapping the generated round-trip suite. That one
 /// proves every contract key arrives at the path the image reads it from, key by key, and
 /// regenerates when the contract moves. What it cannot assert is the shape of the object around the
-/// document — that a `ConfigMap` exists at all, that the escape hatch reaches the file — because
+/// document (that a `ConfigMap` exists at all, that the escape hatch reaches the file), because
 /// none of that is in the contract. This is where those go, and where a person adds the assertions
 /// only they know are worth making.
 ///

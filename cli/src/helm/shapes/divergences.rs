@@ -91,9 +91,9 @@ pub fn apply_divergences(
 
 /// The struct fields a narrowing put into the generated schema, by the position they sit at.
 ///
-/// A document's member order is a fact the reader here cannot keep — every object is read through a
+/// A document's member order is a fact the reader here cannot keep (every object is read through a
 /// sorted map, which is what makes a re-rendered document byte-identical to the one a producer
-/// wrote — so a generated block spells the producer's fields in the order the document gives them
+/// wrote), so a generated block spells the producer's fields in the order the document gives them
 /// back. A field the *chart* adds has no such order to recover, and appending it is the only answer
 /// that is stable: sorting it in would move it the first time somebody renamed it, and every value
 /// in the chart would come out with a different diff.
@@ -123,11 +123,12 @@ impl Added {
 
 /// One assembled block, with the pair a schema generator refuses resolved in the enum's favour.
 ///
-/// [`expected`] never emits `enum` beside `type` at the top level, because a generator exits fatally
-/// on it and leaves every chart without a schema. A narrowing can reintroduce the pair — a chart
-/// that enumerates the members of a key the contract only types as a string is the ordinary case —
-/// so the same rule is applied after the departures rather than only before. The enum wins because
-/// it is the stricter of the two and because it is the half somebody wrote down deliberately.
+/// [`expected`] never emits `enum` beside `type` at the top level, because a generator exits
+/// fatally on it and leaves every chart without a schema. A narrowing can reintroduce the pair (a
+/// chart that enumerates the members of a key the contract only types as a string is the ordinary
+/// case), so the same rule is applied after the departures rather than only before. The enum wins
+/// because it is the stricter of the two and because it is the half somebody wrote down
+/// deliberately.
 pub(super) fn settle(schema: Json) -> Json {
     let Json::Object(mut fields) = schema else {
         return schema;
@@ -147,7 +148,7 @@ pub(super) fn dig<'a>(schema: &'a Json, parts: &[&str]) -> Option<&'a Json> {
     Some(current)
 }
 
-/// Write one position inside a schema, whose enclosing position the caller has established.
+/// Writes one position inside a schema, whose enclosing position the caller has established.
 pub(super) fn put(schema: &mut Json, parts: &[&str], value: Json) {
     let mut current = schema;
     for part in &parts[..parts.len() - 1] {

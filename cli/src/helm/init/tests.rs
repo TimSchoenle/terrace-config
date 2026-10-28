@@ -1,11 +1,11 @@
 //! The planner, against a chart directory on disk and a registry double.
 //!
-//! What the renderers write is [`super::super::scaffold::chart`]'s suite. These are about the
-//! part only a run against a directory shows: which files are created and which are filled, that
-//! a second run owes nothing, that nothing is ever overwritten, that a placeholder nobody
-//! substituted is refused, and that the contract reaches the chart only through the fetch that
-//! verifies it — the double answers exactly what [`fetch_pinned`] asks, so a contract that
-//! skipped a proof would not be served.
+//! What the renderers write is [`super::super::scaffold::chart`]'s suite. These are about the part
+//! only a run against a directory shows: which files are created and which are filled, that a
+//! second run owes nothing, that nothing is ever overwritten, that a placeholder nobody substituted
+//! is refused, and that the contract reaches the chart only through the fetch that verifies it: the
+//! double answers exactly what [`fetch_pinned`] asks, so a contract that skipped a proof would not
+//! be served.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

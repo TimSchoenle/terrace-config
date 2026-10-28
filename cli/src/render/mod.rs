@@ -1,9 +1,9 @@
 //! Turning a document into the artefacts a build and a page want.
 //!
-//! Every rendering here is a pure function of the document. That is not an incidental property —
-//! it is the reason this module can exist at all. A rendering that needed the producer's types
-//! would have to be written once per language, and the moment there are two of those, a Java
-//! service's README table and a Rust service's differ in whitespace nobody can explain.
+//! Every rendering here is a pure function of the document. That is not an incidental property; it
+//! is the reason this module can exist at all. A rendering that needed the producer's types would
+//! have to be written once per language, and the moment there are two of those, a Java service's
+//! README table and a Rust service's differ in whitespace nobody can explain.
 //!
 //! `spec/v1/conformance/<case>/rendered/` is what holds this honest: the same bytes, checked
 //! against this renderer and against every implementation that renders in-process.
@@ -28,8 +28,8 @@ pub use toml::TomlExample;
 
 /// One of the renderings a build can ask for.
 ///
-/// Separate from the argument parser so that a consumer who parses arguments some other way — a
-/// Gradle plugin, a build script — gets the vocabulary and the [`Self::whole_image`] distinction
+/// Separate from the argument parser so that a consumer who parses arguments some other way (a
+/// Gradle plugin, a build script) gets the vocabulary and the [`Self::whole_image`] distinction
 /// without an argument parser they did not ask for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -95,7 +95,7 @@ impl Format {
     ///
     /// The three that do are the ones an image is *discovered* by. A slice of a configuration
     /// rendered as a contract would claim the image reads only those keys, which is a lie a chart
-    /// would then gate on — so a request that slices and asks for one of these is refused rather
+    /// would then gate on, so a request that slices and asks for one of these is refused rather
     /// than served.
     pub const fn whole_image(self) -> bool {
         matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
@@ -173,7 +173,7 @@ impl Default for Options<'_> {
     }
 }
 
-/// Render one document.
+/// Renders one document.
 ///
 /// The returned string is whatever the rendering produced, and the renderings disagree about a
 /// trailing newline. Nothing is normalised here, because a caller writing into a buffer wants what

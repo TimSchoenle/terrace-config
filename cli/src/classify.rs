@@ -90,10 +90,10 @@ pub fn classify<'a>(union: &'a Union, name: &str) -> Classification<'a> {
 
 /// The whole ignore pattern language: a trailing `*` matches any suffix, otherwise exact.
 ///
-/// Deliberately not a glob and deliberately not a regex. A producer refuses any pattern that reaches
-/// into the loader's namespace, and it can only make that judgement about a language small enough to
-/// reason about — `ignore("PORT*")` carries no prefix, reads as a pattern about an external `PORT`,
-/// and would subsume a `PORTFOLIO_` namespace entirely.
+/// Deliberately not a glob and deliberately not a regex. A producer refuses any pattern that
+/// reaches into the loader's namespace, and it can only make that judgement about a language small
+/// enough to reason about: `ignore("PORT*")` carries no prefix, reads as a pattern about an
+/// external `PORT`, and would subsume a `PORTFOLIO_` namespace entirely.
 pub fn matches_ignore(pattern: &str, name: &str) -> bool {
     match pattern.strip_suffix('*') {
         Some(opening) => name.starts_with(opening),

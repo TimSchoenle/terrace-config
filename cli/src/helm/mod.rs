@@ -1,10 +1,10 @@
 //! A chart repository's own conventions, above everything that is not one.
 //!
-//! `config-contract.yaml`, the vendored contracts under `charts/<chart>/contracts/`, the values tree
-//! a chart pins its images in. None of it is part of the wire format, and none of it may leak
+//! `config-contract.yaml`, the vendored contracts under `charts/<chart>/contracts/`, the values
+//! tree a chart pins its images in. None of it is part of the wire format, and none of it may leak
 //! downward: `spec/v1/`'s `$id` is a promise that the directory describes `terrace_contract: 1` and
-//! will not be edited to describe anything else, and the feature stack is the mechanical half of the
-//! same promise. Everything here sits behind `helm`, above `k8s`, above the core — so
+//! will not be edited to describe anything else, and the feature stack is the mechanical half of
+//! the same promise. Everything here sits behind `helm`, above `k8s`, above the core, so
 //! `--no-default-features` compiling is the check that no chart concept reached the document model.
 //!
 //! # It is self-describing, per chart
@@ -112,7 +112,7 @@ pub fn dig<'a>(values: &'a Json, path: &str) -> Option<&'a Json> {
 ///
 /// A contract records the image's own tag; a chart's `appVersion` is the same release, carrying the
 /// prefix in some charts and not in others. Both spellings are already committed, so normalising is
-/// what comparing them can mean — the alternative is a gate reporting drift between `v8.9.1` and
+/// what comparing them can mean; the alternative is a gate reporting drift between `v8.9.1` and
 /// `8.9.1`.
 pub fn release(text: &str) -> &str {
     let text = text.trim();

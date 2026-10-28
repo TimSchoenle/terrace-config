@@ -38,15 +38,15 @@ pub(super) const CREDENTIALS_HEADER: [&str; 7] = [
 ///
 /// **Every reason written here is read off the contract rather than decided.** That is the whole
 /// licence for writing them, and it is narrower than it looks: a write-off says *why no chart value
-/// surfaces this key*, and this produces exactly two answers — `reserved`, which is the image saying
-/// the loader sets the key itself, and `secret`, where the standing rule sends a credential down the
-/// secrets directory and never through a `ConfigMap`. Both are facts in the document. The third kind
-/// of write-off — a chart choosing not to expose an ordinary setting — is a judgement, and it is
+/// surfaces this key*, and this produces exactly two answers: `reserved`, which is the image saying
+/// the loader sets the key itself, and `secret`, where the standing rule sends a credential down
+/// the secrets directory and never through a `ConfigMap`. Both are facts in the document. The third
+/// kind of write-off, a chart choosing not to expose an ordinary setting, is a judgement, and it is
 /// never produced here, because an ordinary key gets a value instead.
 ///
 /// The `credentials` row is the same argument once more. `value` is the chart value carrying the
-/// credential, which is a fact here because this just wrote that value. `note` — when a release
-/// needs the credential at all — is the chart's, and is left for a person.
+/// credential, which is a fact here because this just wrote that value. `note`, when a release
+/// needs the credential at all, is the chart's, and is left for a person.
 ///
 /// The second half of the answer is the blocks that exist but cannot take a line: `unbound: []`
 /// and `credentials: []` are lists, but written on the key's own line, and an entry appended

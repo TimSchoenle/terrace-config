@@ -203,7 +203,7 @@ fn first_difference(found: &str, expected: &str) -> String {
 
 /// Every stored case conforms at tier 2.
 ///
-/// The Rust implementation claims tier 3 against itself, and tier 3 includes tier 2 — so a corpus
+/// The Rust implementation claims tier 3 against itself, and tier 3 includes tier 2, so a corpus
 /// case failing here is either a defect in `conform` or a document the reference producer should
 /// never have emitted. Both are worth failing a build for, and this is the only test that would
 /// catch the second.
@@ -226,9 +226,9 @@ fn the_corpus_conforms_at_the_dialect_tier() {
 /// Every stored case satisfies the meta-schema this binary embeds.
 ///
 /// The corpus is checked against `contract.schema.json` on the producer's side too. This is the
-/// same check from the consumer's, and it is what says the *embedded* copy is the published one —
-/// a binary shipping a stale meta-schema would validate documents against a specification nobody
-/// else is holding them to.
+/// same check from the consumer's, and it is what says the *embedded* copy is the published one: a
+/// binary shipping a stale meta-schema would validate documents against a specification nobody else
+/// is holding them to.
 #[test]
 fn the_corpus_satisfies_the_embedded_meta_schema() {
     for case in CASES {

@@ -2,14 +2,14 @@
 //!
 //! Every other module here *reads* a chart and holds it against a contract. This runs the other
 //! way: given contract keys, it decides where each one goes in a chart and writes the lines that
-//! put it there — the `values.yaml` block with its marker and its `@schema`, the `derivedConfig`
-//! line that projects the value into the document, the `secretData` line that delivers a credential,
-//! and the `unbound` entry for a key no value surfaces.
+//! put it there: the `values.yaml` block with its marker and its `@schema`, the `derivedConfig`
+//! line that projects the value into the document, the `secretData` line that delivers a
+//! credential, and the `unbound` entry for a key no value surfaces.
 //!
 //! Two callers share it, and the split between them is the reason it is a module of its own.
 //! [`super::adopt`] writes the values a chart that already exists is owed; a scaffold for a chart
-//! that does not exist yet writes the same lines for a whole contract at once. The rules — which
-//! keys get a value, which go to the Secret, what "unset" renders as — are judgements made once, and
+//! that does not exist yet writes the same lines for a whole contract at once. The rules (which
+//! keys get a value, which go to the Secret, what "unset" renders as) are judgements made once, and
 //! two generators carrying a copy each is how they come to disagree about where a credential
 //! belongs.
 //!
@@ -20,11 +20,11 @@
 //! generator guessing whether `telemetry.logLevel` or `logging.level` feeds `telemetry.log_level`
 //! produces a wrong guess that reads exactly like a right one.
 //!
-//! That objection does not reach this module, because here the value does not exist yet. The key
-//! is the fact, and the value and its marker are emitted together from that one key by one rule —
-//! so there is no prior mapping for the marker to be wrong about. The marker *is* the mapping, and
-//! the value was named to match it. The gate is unchanged either way: what comes out of here is
-//! held against the same contract, so a plan whose rules are wrong fails on the chart's first run.
+//! That objection does not reach this module, because here the value does not exist yet. The key is
+//! the fact, and the value and its marker are emitted together from that one key by one rule, so
+//! there is no prior mapping for the marker to be wrong about. The marker *is* the mapping, and the
+//! value was named to match it. The gate is unchanged either way: what comes out of here is held
+//! against the same contract, so a plan whose rules are wrong fails on the chart's first run.
 //!
 //! # Where each contract key goes
 //!
@@ -41,16 +41,16 @@
 //! and never written into the rendered document, because a `ConfigMap` is readable by anything that
 //! can read the namespace. Some charts do project a credential into their document, which is a
 //! judgement about what that credential is worth; a generator cannot make it, and the conservative
-//! direction is the only defensible default — moving one key from the Secret into the `ConfigMap`
+//! direction is the only defensible default: moving one key from the Secret into the `ConfigMap`
 //! afterwards is a deliberate edit somebody signs, where the opposite mistake is silent.
 //!
 //! # Two layers
 //!
-//! Everything in this file is what writing *into* a chart needs: one key's block, one key's template
-//! line, one write-off group. [`chart`] composes them into the whole files a new chart starts with
-//! — `values.yaml` from the image block to the chassis, the helper file, the declaration, the
-//! round-trip enrolment and the fixtures — so each of those is a composition of the rules here
-//! rather than a second copy of them.
+//! Everything in this file is what writing *into* a chart needs: one key's block, one key's
+//! template line, one write-off group. [`chart`] composes them into the whole files a new chart
+//! starts with (`values.yaml` from the image block to the chassis, the helper file, the
+//! declaration, the round-trip enrolment and the fixtures), so each of those is a composition of
+//! the rules here rather than a second copy of them.
 
 pub mod chart;
 
@@ -79,7 +79,7 @@ pub const WIDTH: usize = 96;
 /// selects the release by the chart's name, so a chart named past it cannot be installed.
 const MAX_CHART_NAME: usize = 53;
 
-/// Refuse a chart name Helm, Kubernetes or the generated files would reject later.
+/// Refuses a chart name Helm, Kubernetes or the generated files would reject later.
 ///
 /// At most 53 lower-case alphanumerics and hyphens, starting and ending with an alphanumeric: the
 /// rule a release name and a DNS label share, with Helm's release-name limit, the tighter of the
@@ -121,7 +121,7 @@ pub fn env_prefix(prefix: &str) -> &str {
 ///
 /// The convention every chart that maps values onto a contract already follows:
 /// `feed.check_interval_secs` is `feed.checkIntervalSecs`, `discord.webhook_url` is
-/// `discord.webhookUrl`, and a segment with no underscore — `metrics.ip` — is left exactly as it is.
+/// `discord.webhookUrl`, and a segment with no underscore (`metrics.ip`) is left exactly as it is.
 pub fn camel(segment: &str) -> String {
     let mut parts = segment.split('_');
     let mut out = parts.next().unwrap_or_default().to_owned();
@@ -180,7 +180,7 @@ impl From<Merged> for Key {
 
 /// One contract key, and what the plan does with it.
 ///
-/// `values_path` is set for everything but a write-off — a credential still gets a chart value, it
+/// `values_path` is set for everything but a write-off: a credential still gets a chart value, it
 /// simply carries into the Secret rather than into the document. `reason` is set for a write-off
 /// alone, and is the sentence its `unbound` entry carries.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,11 +241,11 @@ const RESERVED: &str = "Reserved by the loader: the image sets it itself, so a c
                         feeding it would be overwritten at boot and would read to an operator as \
                         a setting that does nothing.";
 
-/// Sort keys by the table in this module's documentation, in contract path order.
+/// Sorts keys by the table in this module's documentation, in contract path order.
 ///
 /// # Errors
 /// [`Error::Invalid`] when a credential's `text_form` is one this build does not implement, so
-/// whether a file could supply it is unknown — which is a question the plan must not guess at.
+/// whether a file could supply it is unknown, which is a question the plan must not guess at.
 pub fn plan_keys(keys: impl IntoIterator<Item = Key>) -> Result<Plan, Error> {
     let mut keys: Vec<Key> = keys.into_iter().collect();
     keys.sort_by(|left, right| left.entry.name.cmp(&right.entry.name));
@@ -299,9 +299,8 @@ pub fn plan_keys(keys: impl IntoIterator<Item = Key>) -> Result<Plan, Error> {
 
 /// Whether a field holds something, as the planner's rules read a flag.
 ///
-/// The contract publishes these as booleans; a value of another type is read the way the rules were
-/// first written to read it — present and non-empty — rather than refused, since nothing downstream
-/// distinguishes the two.
+/// The contract publishes these as booleans; a value of another type is read as present and
+/// non-empty rather than refused, since nothing downstream distinguishes the two.
 fn truthy(value: Option<&Json>) -> bool {
     match value {
         None | Some(Json::Null) => false,
@@ -368,8 +367,8 @@ pub fn summary_of(key: &Merged) -> String {
 /// The `@schema` lines for one contract key, from its constraint.
 ///
 /// A thin call into [`super::shapes`], where the rules and the measurements behind them live. Two
-/// generators write these blocks — this one for a value being created, the shapes writer for one
-/// that exists — and a value created with a block the shapes gate would rewrite fails that gate the
+/// generators write these blocks (this one for a value being created, the shapes writer for one
+/// that exists), and a value created with a block the shapes gate would rewrite fails that gate the
 /// moment it is written.
 pub fn schema_lines(key: &Merged, indent: &str) -> Vec<String> {
     render(
@@ -391,7 +390,7 @@ pub fn schema_lines(key: &Merged, indent: &str) -> Vec<String> {
 /// exactly what a values file wants. Written through, so the chart's default *is* the binary's and
 /// the two cannot drift.
 ///
-/// **Optional, with no default.** `null`, and the projection wraps the key in a guard — so nothing
+/// **Optional, with no default.** `null`, and the projection wraps the key in a guard, so nothing
 /// is written into the document and the binary falls back to its compiled default. That is what
 /// "unset" has to mean; writing an empty string instead would *supply* the key.
 ///
@@ -399,7 +398,7 @@ pub fn schema_lines(key: &Merged, indent: &str) -> Vec<String> {
 /// invented and every invented value is wrong. What it must not be is *invalid*: a required integer
 /// bounded at `minimum: 1` cannot be written as `0`, or the chart fails the document gate on its
 /// first run for a reason that reads like a bug in the gate. So the value comes from
-/// [`satisfying`] — the constraint-satisfying search the round-trip probes use — and every key that
+/// [`satisfying`], the constraint-satisfying search the round-trip probes use, and every key that
 /// needed one is reported by [`invented`] as something to replace with a value somebody chose.
 pub fn default_for(key: &Merged) -> Json {
     if let Some(published) = key
@@ -494,7 +493,7 @@ pub fn marker_line(placement: &Placement, indent: &str) -> String {
 
 /// One README-generator description: `# --` on the first line, `#` on the rest.
 ///
-/// The marker belongs to the description as a whole and is read that way — repeating it on every
+/// The marker belongs to the description as a whole and is read that way: repeating it on every
 /// wrapped line puts a literal `--` in the middle of the rendered sentence.
 pub fn described(text: &str, indent: &str) -> Vec<String> {
     let wrapped = wrap(text, "", WIDTH.saturating_sub(indent.len() + 5));
@@ -540,9 +539,9 @@ pub fn description_lines(placement: &Placement, indent: &str) -> Result<Vec<Stri
 ///
 /// A credential gets no `# @config` marker, and the two facts that make that right belong together:
 /// every marker class names a way a value reaches the *configuration document*, and a credential
-/// delivered as a file never reaches it. The marker gate says the same from the other side — it
-/// refuses a key both bound by a marker and written off in `unbound`, which a marker here would make
-/// every credential.
+/// delivered as a file never reaches it. The marker gate says the same from the other side: it
+/// refuses a key both bound by a marker and written off in `unbound`, which a marker here would
+/// make every credential.
 ///
 /// # Errors
 /// As [`secrets_file_name`], for a credential.
@@ -585,9 +584,9 @@ pub enum Node {
 
 /// The placements' chart values as a nested tree, rooted `depth` segments down.
 ///
-/// Rooted at zero for a whole chart. A caller inserting under a block that already exists roots
-/// the tree at that block's depth instead, and hands the same depth to [`render_tree`] — which reads
-/// a grouping block's contract prefix off the depth it was given, so the two have to agree.
+/// Rooted at zero for a whole chart. A caller inserting under a block that already exists roots the
+/// tree at that block's depth instead, and hands the same depth to [`render_tree`], which reads a
+/// grouping block's contract prefix off the depth it was given, so the two have to agree.
 ///
 /// Sorted at every level by the map that holds it, so what is rendered is a property of the keys
 /// rather than of the order they arrived in.
@@ -698,8 +697,8 @@ pub fn branch_placeholder(node: &Tree, depth: usize) -> Result<String, Error> {
 /// The contract path prefix one grouping block holds.
 ///
 /// Read off a key underneath it rather than off the values path: [`values_path_for`] camel-cases
-/// each segment, so the two have the same segment count and the contract spelling — which is what a
-/// description should name — is only recoverable from a key.
+/// each segment, so the two have the same segment count and the contract spelling (which is what a
+/// description should name) is only recoverable from a key.
 ///
 /// # Errors
 /// [`Error::Invalid`] for a branch holding no key, which [`tree_at`] never builds.
@@ -749,9 +748,9 @@ pub fn branches(tree: &Tree, prefix: &str) -> Vec<String> {
 /// Read from the document's own `images[].values`: a document naming `services.controlPlane.image`
 /// is the `controlPlane` branch of a chart whose `derivedConfig` is included once per
 /// `.Values.services` key and compares `$service` against that key. Nothing in the contract states
-/// this convention — it is read off a field recorded for image resolution — so a document whose
-/// image path does not match it resolves to [`None`] rather than a guess, and its keys are left
-/// for a person to place.
+/// this convention (it is read off a field recorded for image resolution), so a document whose
+/// image path does not match it resolves to [`None`] rather than a guess, and its keys are left for
+/// a person to place.
 pub fn service_key_for(image_values_path: &str) -> Option<String> {
     service_image()
         .captures(image_values_path)
@@ -807,7 +806,7 @@ fn document_tree(placements: &[Placement]) -> Tree {
 /// every deliberate zero an operator writes.
 ///
 /// `values_prefix` is `.Values` where the define is included with `.` set to the root context, and
-/// `$ctx.Values` where it is included with `(dict "ctx" $ctx "service" $service)` — there `.Values`
+/// `$ctx.Values` where it is included with `(dict "ctx" $ctx "service" $service)`, where `.Values`
 /// is not merely wrong but a nil pointer, because the dict has no `Values` field.
 fn derived_lines(tree: &Tree, indent: &str, values_prefix: &str) -> Vec<String> {
     let mut lines = Vec::new();
@@ -889,7 +888,7 @@ fn constraint_types(key: &Merged) -> Vec<String> {
 
 /// The `derivedConfig` lines for some placements, at a caller's indent.
 ///
-/// `scoped` names, by top-level root, the `$service` values a root is guarded on — for a root only
+/// `scoped` names, by top-level root, the `$service` values a root is guarded on, for a root only
 /// some of a multi-document chart's documents declare. A root it says nothing about renders
 /// unguarded. Deciding which roots qualify is the caller's job, and the caller is expected to
 /// refuse to guess rather than pass a scope it is unsure of.

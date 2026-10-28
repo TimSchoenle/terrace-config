@@ -146,8 +146,8 @@ pub(super) fn read_divergence(
 
 /// The body of one whole-line comment marker, if the line is one.
 ///
-/// Anchored as a whole comment line, so a marker mentioned in prose — a chart's own `# --`
-/// description, this file's documentation — is not mistaken for a declaration.
+/// Anchored as a whole comment line, so a marker mentioned in prose (a chart's own `# --`
+/// description, this file's documentation) is not mistaken for a declaration.
 pub(super) fn marker_body<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
     let rest = line.trim_start().strip_prefix('#')?.trim_start();
     let rest = rest.strip_prefix(marker)?;
@@ -157,7 +157,7 @@ pub(super) fn marker_body<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 
 /// One block's lines, as `(the marker run, the schema)`.
 ///
-/// The marker run is the `# # @config ...` lines the block opens with — hand-written, and none of
+/// The marker run is the `# # @config ...` lines the block opens with: hand-written, and none of
 /// this module's business. Everything after it is the schema, and is what a regeneration replaces.
 pub fn split_block(block: &Block) -> (Vec<String>, Vec<String>) {
     let mut markers = Vec::new();

@@ -4,7 +4,7 @@
 //! The fixture is the shape `tankovault` 11 moved away from: a key of its own (`legal.dir`), and a
 //! closed map element that lost a property (`legal.documents.*.sources`). Both are bound at the
 //! committed revision and the values blocks are gone from the working tree, which is the state a
-//! bump branch is in by the time anyone looks — so every finding here also proves the markers were
+//! bump branch is in by the time anyone looks, so every finding here also proves the markers were
 //! read at the revision rather than from the working tree.
 
 #![cfg(feature = "cli")]
@@ -240,7 +240,7 @@ impl Repository {
         self
     }
 
-    /// Write one file of the chart.
+    /// Writes one file of the chart.
     fn chart_file(&self, relative: &str, body: &str) -> &Self {
         self.write(&format!("charts/fixture/{relative}"), body)
     }
@@ -415,7 +415,7 @@ fn a_removal_no_chart_value_was_bound_to_has_nothing_to_search_for() {
         .write("charts/fixture/contracts/api.json", &contract_after())
         .chart_file("templates/_legal.tpl", TEMPLATE_STALE);
 
-    // Against it, neither removal reached a chart value, so there is nothing to search for —
+    // Against it, neither removal reached a chart value, so there is nothing to search for,
     // whatever the templates still say.
     let output = repository.migrate(&[]);
     assert_eq!(code(&output), 0, "{}", text(&output));
@@ -457,8 +457,8 @@ fn the_exit_status_follows_the_references() {
     assert_eq!(code(&repository.migrate(&[])), 2);
 
     // A contract that cannot be read is a failure to answer, never "nothing to migrate" and never
-    // "something to migrate" — and no finding is printed past it, because the unreadable side
-    // would otherwise read as every key removed.
+    // "something to migrate", and no finding is printed past it, because the unreadable side would
+    // otherwise read as every key removed.
     repository.write("charts/fixture/contracts/api.json", "{");
     let output = repository.migrate(&[]);
     assert_eq!(code(&output), 1, "{}", text(&output));
@@ -497,9 +497,9 @@ fn markers_that_cannot_be_read_at_the_revision_are_a_failure_to_answer() {
 
 /// `--charts .` and `--charts ..` name the same tree as `--charts charts`, and answer the same.
 ///
-/// The parent of `.` is the empty path, so the tree used to be spelled `.` at the revision, where
-/// it matched nothing: every contract read as absent there, and both `diff` and `migrate` reported
-/// no change at all for a bump that removed two keys.
+/// The parent of `.` is the empty path, so a tree spelled `.` at the revision matches nothing:
+/// every contract reads as absent there, and both `diff` and `migrate` would report no change at
+/// all for a bump that removed two keys.
 #[test]
 fn a_tree_named_dot_or_dot_dot_is_read_by_its_real_name() {
     let repository = Repository::new();

@@ -14,7 +14,7 @@ use terrace_contract::render::{self, Format, Options};
 
 use crate::mutate;
 
-/// Run every rendering over one mutated document.
+/// Runs every rendering over one mutated document.
 ///
 /// # Panics
 /// On any finding.
@@ -158,8 +158,8 @@ fn count_cells(line: &str) -> usize {
 ///
 /// The property that makes this renderer language-agnostic, asserted rather than assumed: a key
 /// whose `constraint` says `integer` gets a bare `0`, and one whose constraint says nothing gets a
-/// quoted string. A regression to reading `ty` would pass every corpus case — all three are Rust
-/// documents — and fail here the moment a mutation writes a Java type name.
+/// quoted string. Reading `ty` instead would pass every corpus case (all three are Rust documents)
+/// and fail here the moment a mutation writes a Java type name.
 fn check_placeholders(contract: &Contract) {
     let rendered = render::render(contract, Format::Toml, &Options::default()).expect("renders");
 

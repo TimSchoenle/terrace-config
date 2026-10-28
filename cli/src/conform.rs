@@ -16,7 +16,7 @@
 //!   thing rather than one thing per language, and where the two disagree the producer is wrong.
 //!
 //! A producer that skipped its own check entirely would still be correct as long as its build runs
-//! this — which is exactly the point for a language that has not been written yet.
+//! this, which is exactly the point for a language that has not been written yet.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -47,7 +47,7 @@ pub enum Tier {
     /// Tier 2, and: byte-identical output for a shared case.
     ///
     /// Reachable only between implementations sharing a loader *and* a type mapping. Not checkable
-    /// from one document, so this level is accepted and reported rather than tested here — the
+    /// from one document, so this level is accepted and reported rather than tested here, since the
     /// corpus is what tests it.
     Byte,
 }
@@ -117,8 +117,8 @@ impl fmt::Display for Violation {
 
 /// Hold a document to a tier.
 ///
-/// Empty means it conforms. Tier 3 is accepted without further checks — byte-identity is a
-/// property of two renderings of one case, not of one document, and the corpus is what tests it.
+/// Empty means it conforms. Tier 3 is accepted without further checks: byte-identity is a property
+/// of two renderings of one case, not of one document, and the corpus is what tests it.
 pub fn conform(contract: &Contract, tier: Tier) -> Vec<Violation> {
     let mut violations = refusals(contract);
     if tier >= Tier::Dialect {
@@ -167,9 +167,9 @@ fn refusals(contract: &Contract) -> Vec<Violation> {
 
 /// Refusals 10, 11 and 12: reload claims the rest of the same document contradicts.
 ///
-/// Each is a claim a chart acts on — by leaving a `live` key out of the digest its pods roll on —
-/// that the document itself says is false. What follows is a change a deployment reports as
-/// applied and the process never applies, which is what the reload fields exist to rule out.
+/// Each is a claim a chart acts on (by leaving a `live` key out of the digest its pods roll on)
+/// that the document itself says is false. What follows is a change a deployment reports as applied
+/// and the process never applies, which is what the reload fields exist to rule out.
 fn reload_refusals(contract: &Contract) -> Vec<Violation> {
     let mut violations = Vec::new();
 
@@ -304,7 +304,7 @@ fn ignore_refusals(
         let at = format!("/external/ignore/{index}");
         let covers = |name: &str| ignore_covers(pattern, name);
 
-        // 2. Both doors: a pattern carrying the prefix, and one that merely subsumes it —
+        // 2. Both doors: a pattern carrying the prefix, and one that merely subsumes it:
         // `PORT*` against `PORTFOLIO_` reads as a pattern about the external `PORT` and disables
         // the whole gate. An exact `PORT` is fine, which is why this asks about coverage rather
         // than about a shared leading substring.
@@ -387,10 +387,10 @@ fn key_refusals(contract: &Contract) -> Vec<Violation> {
 
 /// Why a key's `default_value` fails its own `constraint`, when it does.
 ///
-/// Checked with a real JSON Schema engine rather than this crate's own value checks, which refuse
-/// a keyword they do not implement: a producer's constraint is JSON Schema, and a conformance check
+/// Checked with a real JSON Schema engine rather than this crate's own value checks, which refuse a
+/// keyword they do not implement: a producer's constraint is JSON Schema, and a conformance check
 /// that could not read one would be skipping it. A constraint the engine cannot compile is reported
-/// here too — under this rule, because it is the rule that could not be checked, and silently
+/// here too, under this rule, because it is the rule that could not be checked, and silently
 /// passing a check that was never performed is what `FORMAT.md` forbids.
 ///
 /// `default_value: null` is not a default to check: it is what "no default" renders to.
@@ -514,7 +514,7 @@ fn derive_env(path: &str, prefix: &str, separator: &str) -> Option<String> {
 
 /// Whether an ignore pattern covers a name.
 ///
-/// A single trailing `*` is the whole of the pattern syntax — deliberately, since the document
+/// A single trailing `*` is the whole of the pattern syntax, deliberately, since the document
 /// carries as little of a language two implementations could disagree in as it can.
 fn ignore_covers(pattern: &str, name: &str) -> bool {
     match pattern.strip_suffix('*') {
@@ -525,8 +525,8 @@ fn ignore_covers(pattern: &str, name: &str) -> bool {
 
 /// Every key whose `required` a consumer must satisfy from some layer.
 ///
-/// Not a conformance rule — a convenience for the consumer half, which asks this of every document
-/// it gates against and would otherwise each write the filter.
+/// Not a conformance rule but a convenience for the consumer half, which asks this of every
+/// document it gates against and would otherwise each write the filter.
 pub fn required_keys(contract: &Contract) -> impl Iterator<Item = &Key> {
     contract.schema.keys.iter().filter(|key| key.required)
 }

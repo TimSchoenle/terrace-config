@@ -1,12 +1,11 @@
 //! The whole files, over hand-built contracts rather than a registry.
 //!
-//! The rest of the scaffold's suite, ported from the generator these renderers replaced. The
-//! cases about one key — its placement, its `@schema` block, its template line — are in
-//! [`super::super`]'s own suite; these are about what only a whole file shows: that the values
-//! file is one YAML document with every value where the parser expects it, that the markers in it
-//! are ones the marker reader accepts, that every block it writes is one the README gate accepts,
-//! and that the declaration, its round-trip enrolment included, is one the reader every gate uses
-//! accepts.
+//! The rest of the scaffold's suite. The cases about one key (its placement, its `@schema` block,
+//! its template line) are in [`super::super`]'s own suite; these are about what only a whole file
+//! shows: that the values file is one YAML document with every value where the parser expects it,
+//! that the markers in it are ones the marker reader accepts, that every block it writes is one the
+//! README gate accepts, and that the declaration, its round-trip enrolment included, is one the
+//! reader every gate uses accepts.
 //!
 //! Every assertion is made through the reader that decides it rather than by matching the bytes
 //! a renderer happened to write: [`crate::helm::markers::read`] for markers,
@@ -138,9 +137,9 @@ fn helpers(keys: &[Json]) -> String {
 
 /// Every `@schema` block in a values file, with the key it describes and that key's default.
 ///
-/// Read the way helm-schema reads them — the text between the two delimiters is YAML, and the
-/// `# @config` marker inside it is a YAML comment — so this sees exactly what the schema
-/// generator will be handed, which is what makes an assertion about one worth anything.
+/// Read the way helm-schema reads them: the text between the two delimiters is YAML, and the
+/// `# @config` marker inside it is a YAML comment, so this sees exactly what the schema generator
+/// will be handed, which is what makes an assertion about one worth anything.
 fn blocks(text: &str) -> Vec<(String, Json, Json)> {
     let lines: Vec<&str> = text.lines().collect();
     let mut found = Vec::new();
@@ -205,10 +204,10 @@ fn json_type(value: &Json) -> &'static str {
 /// The values `check-values-docs` would report: every mapping key with an `@schema` block or
 /// with children, whose contiguous comment run above it holds no `# --` line.
 ///
-/// The gate's own rule, line for line — it lives in the chart repository and reads text, because
-/// the description is a comment and a YAML parser discards comments. Restated rather than
-/// re-derived: a second reader that agreed with these renderers and disagreed with the gate is
-/// the failure the assertion exists to catch.
+/// The gate's own rule, line for line. It lives in the chart repository and reads text, because the
+/// description is a comment and a YAML parser discards comments. Restated rather than re-derived: a
+/// second reader that agreed with these renderers and disagreed with the gate is the failure the
+/// assertion exists to catch.
 fn undocumented(text: &str) -> Vec<String> {
     struct Found {
         indent: usize,
@@ -350,7 +349,7 @@ fn a_structured_key_is_marked_structured() {
 #[test]
 fn a_credential_carries_no_marker() {
     // The marker gate refuses a key that is both marked and written off, and a file-delivered
-    // credential is written off — so a marker on it would fail the chart's first run.
+    // credential is written off, so a marker on it would fail the chart's first run.
     let text = values_text(&surface(&[key("a.token", &json!({"secret": true}))]), "");
     assert_eq!(markers_of(&text), Vec::<Marker>::new());
     // ...and the value still exists, because the Secret is rendered from it.
@@ -656,8 +655,8 @@ fn a_numeric_key_is_not_quoted() {
 
 #[test]
 fn an_optional_number_or_boolean_is_guarded_against_null_not_falsy() {
-    // `with` would drop a deliberate `0` or `false`, each a real setting and not "unset" — and
-    // the rule holds whether the contract spells the type as a list or as a bare string.
+    // `with` would drop a deliberate `0` or `false`, each a real setting and not "unset", and the
+    // rule holds whether the contract spells the type as a list or as a bare string.
     for (leaf, kind) in [
         ("count", json!(["integer", "null"])),
         ("enabled", json!(["boolean", "null"])),

@@ -1,7 +1,7 @@
 //! The JSON Schema rendering: the document an editor validates a `config.toml` against.
 //!
-//! Nested keys become nested `properties` objects — `github.token` is two levels deep, exactly as
-//! it is in the file — and a key with no default lands in its object's `required` list, which makes
+//! Nested keys become nested `properties` objects (`github.token` is two levels deep, exactly as it
+//! is in the file), and a key with no default lands in its object's `required` list, which makes
 //! the table holding it required in turn.
 //!
 //! **Nothing here derives a constraint.** [`Key::constraint`](crate::Key::constraint) arrived in
@@ -69,8 +69,8 @@ pub struct JsonSchema {
     ///
     /// On for an editor validating a hand-written file, where the document is the only layer there
     /// is. Off for a consumer checking what a chart rendered, which checks `required` per key
-    /// across every layer it can see instead — because a chart supplying a required *secret* from
-    /// a mount, the only way to supply a secret, renders a document this refuses and a deployment
+    /// across every layer it can see instead, because a chart supplying a required *secret* from a
+    /// mount, the only way to supply a secret, renders a document this refuses and a deployment
     /// that starts.
     pub require_present: bool,
 }
@@ -113,7 +113,7 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
     let mut required = Vec::new();
     // A required key with aliases is not one property that must be present but a *choice* of
     // properties, one of which must be. `required` cannot say that and `anyOf` can, so those keys
-    // collect here and go in under one `allOf` — a second `anyOf` on the same object would
+    // collect here and go in under one `allOf`, since a second `anyOf` on the same object would
     // overwrite the first.
     let mut either = Vec::new();
 
@@ -147,8 +147,8 @@ fn object(node: &Node<'_>, options: &JsonSchema) -> Map<String, Json> {
         }
     }
 
-    // After the leaves, so that the one shape neither format can carry — a key and a table of the
-    // same name in one parent — resolves to the table. That is the half a reader can act on.
+    // After the leaves, so that the one shape neither format can carry (a key and a table of the
+    // same name in one parent) resolves to the table. That is the half a reader can act on.
     for child in &node.children {
         properties.insert(
             child.segment.to_owned(),
@@ -196,7 +196,7 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
 
     if key.secret {
         // The keyword for a value that is written but never read back, which is as close as JSON
-        // Schema comes to saying "credential" — and a hint an editor renders.
+        // Schema comes to saying "credential", and a hint an editor renders.
         schema.insert("writeOnly".to_owned(), json!(true));
     }
 

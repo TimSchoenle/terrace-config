@@ -77,7 +77,7 @@ fn schema(keys: &Json) -> Json {
 /// The default a secret is given when a test needs one to carry.
 ///
 /// Deliberately inert. The rule under test is "a secret carries a default at all", never that the
-/// default is plausible — and a fixture that reads like a real credential is what a secret scanner
+/// default is plausible, and a fixture that reads like a real credential is what a secret scanner
 /// is built to notice, in this repository and in every fork of it.
 const PLACEHOLDER_DEFAULT: &str = "not-a-credential";
 
@@ -222,7 +222,7 @@ fn a_document_with_nothing_wrong_reports_nothing() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Tier 2 — the tier a relaxed binder is expected to fail
+// Tier 2: the tier a relaxed binder is expected to fail
 // ---------------------------------------------------------------------------------------------
 
 #[test]
@@ -311,7 +311,7 @@ fn a_foreign_type_name_changes_nothing_about_the_placeholder() {
     );
     // Everything *except* the `Type:` line, which is the one place `ty` legitimately appears: it is
     // shown to an operator as the producer's own name for the type, and never switched on. That is
-    // the whole distinction — a renderer may print `ty`, and must not branch on it.
+    // the whole distinction: a renderer may print `ty`, and must not branch on it.
     let from_rust = render::render(&rust, Format::Toml, &Options::default()).expect("renders");
     let without_type = |file: &str| {
         file.lines()
@@ -530,7 +530,7 @@ fn a_violation_names_a_location_a_reader_can_follow() {
         .find(|violation| violation.rule == "refusal 6")
         .expect("the refusal fires");
     assert_eq!(refusal.at, "/schema/keys/0");
-    // A violation's detail names the *key*, never the value — which is what makes it printable at
+    // A violation's detail names the *key*, never the value, which is what makes it printable at
     // all. `refusal 6` exists because a document is meant to be safe to read, and a report that
     // quoted the credential to say so would undo the rule it was enforcing.
     assert!(refusal.detail.contains("token"), "{refusal}");

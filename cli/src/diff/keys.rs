@@ -13,12 +13,12 @@ use super::{Area, Change, Kind, Severity, indexed, nested, shape_of, text_of, tr
 ///
 /// Three groups, and the reasoning for each is the reasoning the gates apply at deployment time:
 ///
-/// - **major** — the chart's own spelling of the setting stopped being the one the image reads. A
+/// - **major**: the chart's own spelling of the setting stopped being the one the image reads. A
 ///   spelling change should be unreachable without the path or the dialect moving, and if it
 ///   happens anyway it is exactly as severe as a dialect change.
-/// - **minor** — the value the chart writes is still spelled right but may no longer be accepted,
-///   or a default moved out from under a chart that relied on it.
-/// - **patch** — prose. Real, and not a reason to bump anything.
+/// - **minor**: the value the chart writes is still spelled right but may no longer be accepted, or
+///   a default moved out from under a chart that relied on it.
+/// - **patch**: prose. Real, and not a reason to bump anything.
 ///
 /// `required` and `text_form` are absent because neither has a fixed severity; both are graded by
 /// direction.
@@ -42,7 +42,7 @@ pub(super) const KEY_FIELDS: [(&str, Severity); 15] = [
 
 /// Per-field severity for an external variable.
 ///
-/// A smaller entry, and its spellings are its own name rather than something derived — so there is
+/// A smaller entry, and its spellings are its own name rather than something derived, so there is
 /// no equivalent of the major group here.
 pub(super) const EXTERNAL_FIELDS: [(&str, Severity); 7] = [
     ("constraint", Severity::Minor),
@@ -58,7 +58,7 @@ pub(super) const EXTERNAL_FIELDS: [(&str, Severity); 7] = [
 /// is that text parsed, so they move together and reporting both is one fact printed twice.
 pub(super) const DEFAULT_FIELDS: [&str; 2] = ["default", "default_value"];
 
-/// The key declarations — the half of the document a chart's rendered settings answer to.
+/// The key declarations: the half of the document a chart's rendered settings answer to.
 pub(super) fn diff_keys(old: &Map<String, Json>, new: &Map<String, Json>) -> Vec<Change> {
     let old_keys = indexed(old.get("schema"), "keys", "path");
     let new_keys = indexed(new.get("schema"), "keys", "path");
@@ -100,8 +100,8 @@ pub(super) fn diff_keys(old: &Map<String, Json>, new: &Map<String, Json>) -> Vec
             continue;
         }
         // No downgrade is possible. The old spelling still begins with the prefix, so the
-        // classification stops at step 4 — above both external lists — and a `reject` policy turns
-        // it into a container that does not start.
+        // classification stops at step 4, above both external lists, and a `reject` policy turns it
+        // into a container that does not start.
         changes.push(Change {
             severity: Severity::Major,
             area: Area::Key,
@@ -264,7 +264,7 @@ pub(super) fn diff_entry(
     changes.extend(diff_default(area, subject, old, new));
 
     // A field the producer added that this has no opinion about. Reported at patch so it is visible
-    // without claiming a severity nobody has reasoned about — a diff that silently ignores what it
+    // without claiming a severity nobody has reasoned about. A diff that silently ignores what it
     // does not recognise is the failure this whole toolchain exists to remove.
     let mut known: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
     known.extend(DEFAULT_FIELDS);
@@ -342,7 +342,7 @@ pub(super) fn diff_required(area: Area, subject: &str, old: &Json, new: &Json) -
 ///
 /// An entry the map must now contain is a tightening: a chart rendering the map without it renders
 /// a document the image refuses, so gaining one is major for the same reason gaining `required` is.
-/// Losing one is a relaxation — a value that was refused may now be accepted, and nothing that
+/// Losing one is a relaxation: a value that was refused may now be accepted, and nothing that
 /// worked stops working.
 pub(super) fn diff_required_entries(
     area: Area,
@@ -489,7 +489,7 @@ pub(super) fn file_supplyable(entry: &Json) -> bool {
     entry.get("text_form").and_then(Json::as_str) == Some("text")
 }
 
-/// The default and the parsed default are one fact — the text, and that text read.
+/// The default and the parsed default are one fact: the text, and that text read.
 ///
 /// Compared as a pair because they move together, and reporting both is one change printed twice. A
 /// moved default is minor rather than patch: a chart that deliberately writes nothing for a key is

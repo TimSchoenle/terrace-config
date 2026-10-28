@@ -11,8 +11,8 @@ use super::{Reader, Setting, Surface, WIDTH, is_empty, select};
 
 /// Column ceilings for the compact listing.
 ///
-/// The columns size themselves to the selection — a filtered listing is narrower than the whole
-/// chart — and these only stop one 60-character type from setting the width for 167 rows.
+/// The columns size themselves to the selection (a filtered listing is narrower than the whole
+/// chart), and these only stop one 60-character type from setting the width for 167 rows.
 pub(super) const MAX_PATH: usize = 46;
 pub(super) const MAX_TYPE: usize = 30;
 pub(super) const MAX_DEFAULT: usize = 22;
@@ -43,8 +43,8 @@ pub fn markers(entry: &Map<String, Json>) -> String {
 
 /// The default as the loader would read it, or `-` when the setting has none.
 ///
-/// An empty string is a default, not an absence — `""` and "nothing is set" are two different
-/// deployments — so it is spelt out rather than folded into the same dash.
+/// An empty string is a default, not an absence (`""` and "nothing is set" are two different
+/// deployments), so it is spelt out rather than folded into the same dash.
 #[must_use]
 pub fn shown_default(entry: &Map<String, Json>) -> String {
     match entry.get("default") {
@@ -263,8 +263,8 @@ pub fn full(
 /// may rebuild on a change and another may not, and a chart has to roll the pods of every workload
 /// running the second. Where they agree it is one line; where they do not, each image is named.
 ///
-/// The channel is not known here — this reads contracts, not a render — so a `live` answer says
-/// what it depends on: the file being one the image watches, and the value not arriving through a
+/// The channel is not known here (this reads contracts, not a render), so a `live` answer says what
+/// it depends on: the file being one the image watches, and the value not arriving through a
 /// variable, which changes the pod and rolls it whatever the image can do.
 pub(super) fn on_change(lines: &mut Vec<String>, setting: &Setting, readers: &[Reader]) {
     let answers: Vec<(&str, String)> = setting
@@ -320,7 +320,7 @@ pub(super) fn change_cost(declared: Option<&Json>, class: Option<&Json>) -> Stri
 /// Every name the loader will accept for one key, and whether a file can supply it.
 ///
 /// The file-supplyable reading is normative and counter-intuitive: the two file spellings exist for
-/// every key, and for a key of any form but text neither of them can supply it — a file delivers a
+/// every key, and for a key of any form but text neither of them can supply it: a file delivers a
 /// string, and a loader will not coerce one into a number, a boolean or a literal. Printing the
 /// spelling without printing that is how an operator ends up mounting a Secret that is never read.
 pub(super) fn spellings(
@@ -391,7 +391,7 @@ pub(super) fn yes_no(entry: &Map<String, Json>, name: &str) -> &'static str {
 
 /// One loader or external variable: what it is, what it says, and who reads it.
 ///
-/// Neither is a setting, so neither gets the full entry above — there is no path, no file spelling
+/// Neither is a setting, so neither gets the full entry above: there is no path, no file spelling
 /// and no secrets file to report. What they have in common is a name, a one-line summary and prose.
 #[must_use]
 pub fn variable(setting: &Setting, summary: &str, total: usize) -> Vec<String> {

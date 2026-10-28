@@ -8,7 +8,7 @@ use crate::document::{Tightening, entry_name_pattern_of, required_entries_of, ti
 
 use super::{Area, Change, Kind, Severity};
 
-/// Every other tightening — a string's pattern, and anything inside the key — graded by direction.
+/// Every other tightening (a string's pattern, and anything inside the key), graded by direction.
 ///
 /// The key's own required entries and entry-name pattern have their own graders above, with their
 /// own wording. Everything else is compared position by position and keyword by keyword: one gained

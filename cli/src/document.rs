@@ -3,7 +3,7 @@
 //! A mirror of `spec/v1/contract.schema.json`, and deliberately not a mirror of any producer's
 //! types. The Rust implementation's `Contract` is a *writer*: it is built from Rust types, it
 //! refuses at build time, and every field it has is one it knows how to fill. This is the other
-//! direction, and the difference is not cosmetic — a reader that is as strict as a writer refuses
+//! direction, and the difference is not cosmetic: a reader that is as strict as a writer refuses
 //! documents it should have read.
 //!
 //! # Read tolerantly, gate on the envelope
@@ -26,7 +26,7 @@
 //! `constraint`, `text_constraint` and `json_schema` stay [`Json`]. They are JSON Schema, whose
 //! vocabulary is open by design and which this crate hands to a validator rather than interpreting
 //! keyword by keyword. Modelling them would mean a struct that silently drops the keyword a
-//! producer added last week — which is the failure `FORMAT.md` warns about in its own words: "a
+//! producer added last week, which is the failure `FORMAT.md` warns about in its own words: "a
 //! catch-all on purpose. Enumerating the fields that matter means the next field the producer adds
 //! falls through the gap in silence."
 
@@ -43,7 +43,7 @@ pub const CONTRACT_VERSION: u32 = 1;
 
 /// The highest `schema.schema_version` this build understands completely.
 ///
-/// A document declaring a higher one is still read — the schema half has only ever gained fields —
+/// A document declaring a higher one is still read, because the schema half only ever gains fields,
 /// but [`Contract::schema_version_ahead`] reports it, so a caller walking `constraint` itself can
 /// say "this document may carry more than I know about" rather than quietly under-reading it.
 ///
@@ -84,12 +84,11 @@ pub struct Contract {
     /// Which implementation wrote this document, and which loader it describes.
     ///
     /// Optional here and required by `spec/v1/contract.schema.json`, and the asymmetry is
-    /// deliberate. The field was added *within* envelope 1, so documents predating it are legal
-    /// `terrace_contract: 1` bytes that a reader as strict as the writer would refuse — and every
-    /// contract vendored by the chart repository this consumer half was ported against is one of
-    /// them. A reader that refuses a document it should have read is the failure this module opens
-    /// by naming. `conform` and `validate` still require it, through the meta-schema, which is
-    /// where "this producer is not emitting what it must" belongs.
+    /// deliberate. Envelope 1 permits documents without it, so they are legal `terrace_contract: 1`
+    /// bytes that a reader as strict as the writer would refuse, and chart repositories vendor such
+    /// documents. A reader that refuses a document it should have read is the failure this module
+    /// opens by naming. `conform` and `validate` still require it, through the meta-schema, which
+    /// is where "this producer is not emitting what it must" belongs.
     ///
     /// [`None`] is not the same as absent to a consumer, either: it means the loader whose
     /// environment reads every `text_constraint` here was measured against is unknown, so the range
@@ -297,9 +296,9 @@ pub enum LoaderRole {
     ///
     /// A *new* variant rather than folding into one of the three above, and the distinction is
     /// load-bearing. Every role means "the loader reads this variable", so the ordered list's step
-    /// 1 is satisfied by `env` alone whatever this says — but a consumer looking for the secrets
-    /// directory matches on the role, and an unknown one read as [`Self::Config`] would hand it
-    /// the wrong variable.
+    /// 1 is satisfied by `env` alone whatever this says, but a consumer looking for the secrets
+    /// directory matches on the role, and an unknown one read as [`Self::Config`] would hand it the
+    /// wrong variable.
     #[serde(other)]
     Other,
 }
@@ -333,7 +332,7 @@ pub struct Key {
     /// The producer's `///` comment, whole.
     #[serde(default)]
     pub docs: String,
-    /// The producer's own name for the type. **Not portable** — see [`Key::ty`].
+    /// The producer's own name for the type. **Not portable**; [`Key::ty`] says why.
     #[serde(default)]
     pub ty: Option<String>,
     /// The choices, when the type is a closed set.
@@ -448,7 +447,7 @@ impl Tightening<'_> {
 /// `*` standing for an element as the producer's refinement path spells it.
 ///
 /// In the order a reader meets them, which is the order every rendering prints them in: the key's
-/// own — entries, entry names, pattern — then its element, then its fields as the constraint lists
+/// own (entries, entry names, pattern), then its element, then its fields as the constraint lists
 /// them. A struct's `required` names its fields rather than a map's entries and is not one; neither
 /// is a `propertyNames` other than a lone pattern.
 pub fn tightenings(constraint: Option<&Json>) -> Vec<(String, Tightening<'_>)> {
@@ -510,7 +509,7 @@ fn walk_tightenings<'a>(
 /// `FORMAT.md` (*Refinements*): a producer MAY tighten a map-typed key's constraint with the entry
 /// names the map must contain, and a consumer showing them reads them from here. An object that
 /// *does* declare `properties` is a struct, whose `required` names its fields rather than a map's
-/// entries, and yields nothing — as does anything that is not an object at all.
+/// entries, and yields nothing, as does anything that is not an object at all.
 pub fn required_entries(constraint: Option<&Json>) -> Vec<&str> {
     match constraint {
         Some(Json::Object(constraint)) => required_entries_of(constraint),
@@ -563,8 +562,8 @@ pub fn entry_name_pattern_of(constraint: &serde_json::Map<String, Json>) -> Opti
 /// The sentences of the conditions a schema carries: its `allOf` members carrying `description`.
 ///
 /// `FORMAT.md` (*Refinements*): a condition between a struct's fields is published as one `allOf`
-/// member whose `description` is its readable form. A member without one — the choice of spellings a
-/// producer writes for a required field with an alias — is not a condition.
+/// member whose `description` is its readable form. A member without one (the choice of spellings a
+/// producer writes for a required field with an alias) is not a condition.
 pub fn conditions_of(schema: &serde_json::Map<String, Json>) -> impl Iterator<Item = &str> {
     schema
         .get("allOf")
@@ -578,7 +577,7 @@ pub fn conditions_of(schema: &serde_json::Map<String, Json>) -> impl Iterator<It
 ///
 /// The two differ in whether the environment can reach the key at all, and a consumer meeting a
 /// bare `env: null` and treating it as "skip this key" is right for the first and wrong for the
-/// second — which is why the reason is published rather than inferred.
+/// second, which is why the reason is published rather than inferred.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -595,17 +594,17 @@ pub enum Unreachable {
 /// How to read the characters an environment variable holds.
 ///
 /// Always present, and always read rather than inferred from which keywords `text_constraint`
-/// happens to carry — an inference that was right while there were two shapes and wrong the moment
-/// there were three.
+/// happens to carry. That inference would be right with two shapes and wrong the moment there are
+/// three.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum TextForm {
     /// Any text is fine, and there is nothing to parse.
     Text,
-    /// Read it as an integer.
+    /// An integer.
     Integer,
-    /// Read it as a boolean.
+    /// A boolean.
     Boolean,
     /// One of a closed set, with surrounding whitespace permitted.
     Choice,
@@ -691,7 +690,7 @@ pub enum Unknown {
     /// Fail the check.
     #[default]
     Reject,
-    /// Report it, and do not fail.
+    /// Reports it and does not fail.
     Warn,
     /// Say nothing.
     Ignore,
@@ -701,11 +700,11 @@ pub enum Unknown {
 }
 
 impl Contract {
-    /// Read a document, gating on the envelope before believing anything in it.
+    /// Reads a document, gating on the envelope before believing anything in it.
     ///
     /// # Errors
     /// [`Error::Invalid`] when the bytes are not JSON, or when `terrace_contract` is a version this
-    /// build was not written against. A *higher* `schema_version` is not an error — see
+    /// build was not written against. A *higher* `schema_version` is not an error; see
     /// [`Self::schema_version_ahead`].
     pub fn from_json(text: &str) -> Result<Self, Error> {
         // Read the envelope version before the whole document, so a document from an envelope this

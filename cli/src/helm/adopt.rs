@@ -2,8 +2,8 @@
 //!
 //! The bindings gate reports the failure a chart repository keeps hitting: an image release adds a
 //! setting, the automated bump repins the digest and omits everything else, and the new key is
-//! reached by no chart value. It reports it per key and names the two repairs — bind the key to a
-//! value, or write it off with a reason — and both are hand work. The first is the same block every
+//! reached by no chart value. It reports it per key and names the two repairs (bind the key to a
+//! value, or write it off with a reason), and both are hand work. The first is the same block every
 //! time:
 //!
 //! ```text
@@ -18,26 +18,26 @@
 //! ```
 //!
 //! Every line of that is in the contract already: the constraint is the shapes writer's rendering
-//! of the key's own JSON Schema, the description is the first paragraph of the producer's prose, the
-//! default is the one the binary compiles in, and the marker names the key the block was derived
-//! from. So it is written from there, and what is left for a person is the judgement this cannot
-//! make — whether the setting deserves a first-class value at all, and what the chart's template
-//! does with it.
+//! of the key's own JSON Schema, the description is the first paragraph of the producer's prose,
+//! the default is the one the binary compiles in, and the marker names the key the block was
+//! derived from. So it is written from there, and what is left for a person is the judgement this
+//! cannot make: whether the setting deserves a first-class value at all, and what the chart's
+//! template does with it.
 //!
 //! It reads the vendored contract and nothing else, so what it can see is whatever the last refresh
-//! fetched — and that refresh resolves the image `values.yaml` pins. A newer build reaches this only
+//! fetched, and that refresh resolves the image `values.yaml` pins. A newer build reaches this only
 //! once the pin moves.
 //!
 //! # Why this may generate a marker when the bindings gate says nothing does
 //!
 //! On a value that already exists the *value* is the fact and a marker is a claim about it, and a
 //! wrong claim reads exactly like a right one. This never touches a value that exists. It creates
-//! one, from a key, and emits the marker in the same breath — so there is no prior mapping for the
+//! one, from a key, and emits the marker in the same breath, so there is no prior mapping for the
 //! marker to be wrong about. That is [`super::scaffold`]'s argument for a chart being created; the
 //! only thing new here is that the chart is already on disk.
 //!
 //! **The boundary is enforced rather than assumed.** A key whose chart value already exists is
-//! refused, with the marker to write by hand — the one case where the two facts could disagree.
+//! refused, with the marker to write by hand: the one case where the two facts could disagree.
 //!
 //! # What it writes, and what it only prints
 //!
@@ -53,14 +53,14 @@
 //!
 //! | what | why |
 //! |---|---|
-//! | an `unbound` group | for a `reserved` key and a credential — the two write-offs whose reason the contract states rather than a person deciding it |
+//! | an `unbound` group | for a `reserved` key and a credential: the two write-offs whose reason the contract states rather than a person deciding it |
 //! | a `credentials` row | the `value:` column, which is the chart value just written |
 //!
 //! Written into the template file that opens the define:
 //!
 //! | what | why |
 //! |---|---|
-//! | the `derivedConfig` lines | appended at the define's own depth, only for a key whose root the define does not already write — a second `telemetry:` beside an existing one is dropped by `fromYaml` in silence |
+//! | the `derivedConfig` lines | appended at the define's own depth, only for a key whose root the define does not already write, since a second `telemetry:` beside an existing one is dropped by `fromYaml` in silence |
 //! | the `secretData` lines | the same rule, by secrets-file name |
 //!
 //! Printed and never written: a projection whose root the define already carries (where it belongs
@@ -77,9 +77,9 @@
 //! # Where the block goes
 //!
 //! After the last sibling that binds a contract key, inside the deepest ancestor of the new value
-//! that already exists. Alphabetically would be wrong — these files are ordered by how often a value
-//! is edited, the image first and thirty blocks of chassis at the bottom — and the end of the file
-//! would be worse, a screen and a half below the values the new one belongs with. The last *bound*
+//! that already exists. Alphabetically would be wrong: these files are ordered by how often a value
+//! is edited, the image first and thirty blocks of chassis at the bottom. The end of the file would
+//! be worse, a screen and a half below the values the new one belongs with. The last *bound*
 //! sibling is where the configuration surface ends, and it is derived from the markers rather than
 //! declared, which is what makes it right for a chart nobody wrote the rule for.
 //!
@@ -117,8 +117,8 @@
 //!   and `credentials: []` cannot take a block child: a line inserted under one is a second value
 //!   for the same key, and the file no longer parses. The script inserted anyway. Here a value
 //!   under such a parent is refused, naming the rewrite, and a declaration block in that shape
-//!   blocks the chart until it is rewritten by hand — values without their write-offs would leave
-//!   the chart failing the gate the run was for.
+//!   blocks the chart until it is rewritten by hand, since values without their write-offs would
+//!   leave the chart failing the gate the run was for.
 //! - **A define whose closing `end` shares its line.** Lines are inserted above the define's
 //!   closing `end`. When that `end` followed an inner `{{- end }}` on the same line, the script put
 //!   the projection inside the inner `with`; when the whole define was on one line, above the
@@ -131,11 +131,11 @@
 //!   another control character or a Unicode line separator is written escaped, on one line. The
 //!   script wrote the raw character, which broke the `@schema` comment or the value it was in.
 //! - **Writing.** The script wrote file by file as it reported, so a failure part-way left some
-//!   charts adopted and others not, and a file could be left half-written. [`write_all`] plans every
-//!   file of every chart first, stages each beside its target, and only then renames them into
-//!   place: a failure before the renames leaves every file as it was. A file that resolves outside
-//!   its chart — a symbolic link to somebody else's template — fails the run before anything is
-//!   written.
+//!   charts adopted and others not, and a file could be left half-written. [`write_all`] plans
+//!   every file of every chart first, stages each beside its target, and only then renames them
+//!   into place: a failure before the renames leaves every file as it was. A file that resolves
+//!   outside its chart (a symbolic link to somebody else's template) fails the run before anything
+//!   is written.
 //! - **Unreadable input.** A tree the script could not read ended in a Python traceback. Here it
 //!   ends in one `error:` line. With `--check` that exits 2, so a gate can tell "owes a key" from
 //!   "could not answer"; otherwise it exits 1, as the traceback did.
@@ -205,8 +205,8 @@ pub struct Refusal {
     /// Why, as the rest of a sentence that starts with the key.
     pub reason: String,
     /// Whether this is "the chart already has this value". A credential refused that way is still
-    /// owed its `unbound` entry — the write-off is a property of the key, not of whoever wrote the
-    /// value — so the two kinds of refusal are told apart rather than counted together.
+    /// owed its `unbound` entry (the write-off is a property of the key, not of whoever wrote the
+    /// value), so the two kinds of refusal are told apart rather than counted together.
     pub occupied: bool,
 }
 
@@ -264,8 +264,8 @@ pub struct Adoption {
     /// Why nothing was planned at all, when the chart fails a rule the plan depends on.
     pub blocked: Vec<String>,
     /// Whether `blocked` is a hand edit the declaration needs before anything can be appended to
-    /// it, rather than the bindings gate's own findings — which decides what the report says
-    /// will find it again.
+    /// it, rather than the bindings gate's own findings, which decides what the report says will
+    /// find it again.
     pub by_hand: bool,
     /// The projections that could not be appended, printed for a person to place.
     pub owed_projected: Vec<Placement>,
@@ -306,8 +306,8 @@ impl Adoption {
     ///
     /// Still owed the write-off: a credential travels the secrets directory rather than the
     /// configuration document, and that is a property of the key. The reason written for one of
-    /// these names the secrets file and not the chart value — naming the value would be the claim
-    /// the refusal was issued to avoid making.
+    /// these names the secrets file and not the chart value, because naming the value would be the
+    /// claim the refusal was issued to avoid making.
     pub fn occupied(&self) -> Vec<Placement> {
         let refused: BTreeSet<&str> = self
             .refusals
@@ -361,8 +361,8 @@ impl Adoption {
 /// rather than ignored, so a typo cannot select nothing and report success.
 ///
 /// # Errors
-/// [`Error::Invalid`] when a declaration, a values file, a vendored contract or a template cannot be
-/// read as one — as distinct from a chart that is wrong, which is a refusal or a block.
+/// [`Error::Invalid`] when a declaration, a values file, a vendored contract or a template cannot
+/// be read as one, as distinct from a chart that is wrong, which is a refusal or a block.
 pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adoption>, Error> {
     let values_path = chart_dir.join("values.yaml");
     let Some(declaration) = load_declaration(chart_dir)?.filter(|held| held.bindings) else {
@@ -390,7 +390,7 @@ pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adopt
     let values = read_yaml(&text, &values_path)?;
 
     // The `$service` vocabulary a multi-document chart's `derivedConfig` compares against, read off
-    // each document's own `images[].values` rather than guessed from its name — see
+    // each document's own `images[].values` rather than guessed from its name; see
     // `service_key_for`. Empty, harmlessly, for the ordinary one-document chart.
     let all_documents: BTreeSet<String> = bound.documents.keys().cloned().collect();
     let service_key_of: BTreeMap<String, String> = bound
@@ -479,7 +479,7 @@ pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adopt
     Ok(Some(adoption))
 }
 
-/// Refuse every owed key whose `text_form` this build does not implement, and keep the rest.
+/// Refuses every owed key whose `text_form` this build does not implement, and keeps the rest.
 ///
 /// A form never seen before says nothing about how the loader reads the value, so there is no type
 /// to write, no default to trust and no telling whether a file can deliver it. Refused per key, so
@@ -504,11 +504,10 @@ fn refuse_unknown_forms(owed: &mut Vec<Key>, refusals: &mut Vec<Refusal>) {
 
 /// The keys of one chart that are owed a value, each resolved to a single description.
 ///
-/// A key declared by several documents is one value — that is what an unscoped marker means — so
-/// the documents that declare it have to agree about what it is. The bindings gate refuses a marker
+/// A key declared by several documents is one value (that is what an unscoped marker means), so the
+/// documents that declare it have to agree about what it is. The bindings gate refuses a marker
 /// whose documents disagree about `text_form`; this refuses the same disagreement one field wider,
-/// because the value it would write is typed, defaulted and delivered from all of
-/// [`SHAPE_FIELDS`].
+/// because the value it would write is typed, defaulted and delivered from all of [`SHAPE_FIELDS`].
 ///
 /// A key missing in one document and *bound* in another is refused as well, and it is the subtler
 /// case: a scoped marker already maps it onto a value, so what is owed is the scope of that marker

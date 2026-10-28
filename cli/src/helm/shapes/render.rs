@@ -25,7 +25,7 @@ pub fn render(schema: &Json, indent: usize, added: &Added) -> Vec<String> {
 ///
 /// Block form rather than flow, because that is what a hand-written block uses and these lines are
 /// read by people first. Written here rather than handed to a YAML emitter, which would sort keys
-/// alphabetically, wrap mid-value and quote strings on rules of its own — three things that would
+/// alphabetically, wrap mid-value and quote strings on rules of its own: three things that would
 /// each show up as churn in a generated file.
 pub(super) fn lines_of(schema: &Json, at: &str, added: &Added) -> Vec<String> {
     let Some(fields) = schema.as_object() else {
@@ -74,8 +74,8 @@ pub(super) fn keyword_lines(
     if name == "properties"
         && let Some(fields) = value.as_object().filter(|fields| !fields.is_empty())
     {
-        // Field names, not keywords. Kept in the order the producer declared them — that is the
-        // order the type is written in and the order its documentation reads in, and sorting
+        // Field names, not keywords. Kept in the order the producer declared them, because that is
+        // the order the type is written in and the order its documentation reads in, and sorting
         // them would make a twenty-field element unrecognisable against the source it came from.
         let mut lines = vec!["properties:".to_owned()];
         let mut names: Vec<&String> = fields.keys().collect();
@@ -134,7 +134,7 @@ pub(super) fn keyword_lines(
 
 /// Field names YAML 1.1 reads as something other than a string.
 ///
-/// `yes`, `no`, `on` and `off` are the ones that bite — a struct field called `on` is an ordinary
+/// `yes`, `no`, `on` and `off` are the ones that bite: a struct field called `on` is an ordinary
 /// field name in every language a producer is written in, and unquoted it is the boolean true.
 pub(super) const YAML_WORDS: [&str; 11] = [
     "y", "n", "yes", "no", "on", "off", "true", "false", "null", "none", "~",

@@ -114,9 +114,9 @@ fn the_wrapper_records_which_digest_the_bytes_were_fetched_for() {
 
 #[test]
 fn a_file_that_differs_only_in_when_it_was_fetched_is_left_alone() {
-    // `fetched` moves on every run by construction, and rewriting the file for it alone would
-    // put a commit on every scheduled run — noise in exactly the place a real contract change
-    // is supposed to stand out.
+    // `fetched` moves on every run by construction, and rewriting the file for it alone would put a
+    // commit on every scheduled run: noise in exactly the place a real contract change is supposed
+    // to stand out.
     let held = Vendored::new();
     let payload = published();
     let sha256 = crate::oci::hex_sha256(&payload);

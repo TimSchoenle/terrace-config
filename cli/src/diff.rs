@@ -2,8 +2,8 @@
 //!
 //! An automated bump repins a digest, something refreshes the vendored document into the same
 //! branch, and the reviewer is handed several hundred lines of reordered JSON. The question they
-//! actually have — did the application gain a setting the chart has to write, drop one the chart
-//! still writes, or move a default out from under it — is answerable from those bytes and nobody
+//! actually have (did the application gain a setting the chart has to write, drop one the chart
+//! still writes, or move a default out from under it) is answerable from those bytes and nobody
 //! answers it. This turns the two documents into that answer, and into a defensible suggestion
 //! about the chart's own version number.
 //!
@@ -28,14 +28,14 @@
 //! was one no template ever emitted.
 //!
 //! **Removing something is graded by what the loader does next, not by the shape of the diff.** A
-//! removed *key* falls to step 4 of the classification — inside the prefix and spelling nothing —
+//! removed *key* falls to step 4 of the classification (inside the prefix and spelling nothing),
 //! which sits above both external lists, so nothing can absorb it and it is always major. A removed
 //! *external* entry falls past step 4 to the ignore patterns, so it is major only when no surviving
 //! pattern catches it, and that downgrade is decided by running the pattern rule rather than by a
 //! second opinion about the language.
 //!
 //! **Rename detection is deliberately absent.** A renamed key arrives here as one removal and one
-//! addition — a major finding and a minor one, for a change that is neither. The producer's alias
+//! addition: a major finding and a minor one, for a change that is neither. The producer's alias
 //! lists are what would collapse the pair, and a rename detector written before a producer
 //! populates them would be untestable against a real document. The model is shaped so it becomes a
 //! small addition rather than a rewrite: [`Kind`] reserves [`Kind::Renamed`] beside the other two,
@@ -138,8 +138,8 @@ impl Kind {
 
 /// One difference, and the smallest chart version bump it justifies.
 ///
-/// The first five fields are the machine-readable half — enough for a comment on a pull request to
-/// group findings without parsing English — and `message` is the sentence a reviewer reads. `old`
+/// The first five fields are the machine-readable half, enough for a comment on a pull request to
+/// group findings without parsing English, and `message` is the sentence a reviewer reads. `old`
 /// and `new` are the raw values, so a consumer that wants to render a before and after does not
 /// have to recover them from the prose.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,7 +245,7 @@ impl ContractDiff {
 /// The `major.minor.patch` of a chart version, or [`None`] if it is not one.
 ///
 /// Deliberately not a full semantic-version parser: a chart version is three integers, and
-/// returning [`None`] rather than guessing keeps the suggestion honest — a version this cannot read
+/// returning [`None`] rather than guessing keeps the suggestion honest: a version this cannot read
 /// produces no suggestion instead of a wrong one.
 pub fn parse_version(version: Option<&str>) -> Option<(u64, u64, u64)> {
     let parts: Vec<&str> = version?.split('.').collect();
@@ -285,11 +285,11 @@ pub fn observed_bump(old: Option<&str>, new: Option<&str>) -> Option<Severity> {
     })
 }
 
-/// Compare two vendored documents — the provenance envelope, not the contract alone.
+/// Compares two vendored documents: the provenance envelope, not the contract alone.
 ///
 /// Either side may be absent: a contract that did not exist at the comparison revision, or one the
 /// working tree no longer carries. Both are ordinary outcomes of a refresh rather than errors, and
-/// both are graded — gaining coverage is minor, losing it is major.
+/// both are graded: gaining coverage is minor, losing it is major.
 ///
 /// # Panics
 /// Never: two absent documents is a caller error the walk above cannot produce, and is reported as

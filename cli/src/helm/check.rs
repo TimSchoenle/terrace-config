@@ -1,7 +1,7 @@
 //! Walking the charts, and handing each rendered pair to the gates.
 //!
 //! The loop, the wiring and nothing else. Every rule it composes lives beside it, one concern per
-//! module, so each is testable by calling it — and every gate runs before anything decides an exit
+//! module, so each is testable by calling it, and every gate runs before anything decides an exit
 //! code, so one broken chart does not hide the state of the rest.
 //!
 //! # Which contract belongs to which container is derived, not declared
@@ -34,7 +34,7 @@ pub struct Checked {
     pub charts: usize,
 }
 
-/// Check every chart that declares a contract against the manifests a render produced.
+/// Checks every chart that declares a contract against the manifests a render produced.
 ///
 /// # Errors
 /// [`Error::Invalid`] when a declaration or a contract cannot be read at all, and [`Error::Io`] when
@@ -232,7 +232,7 @@ fn check_pair(
                 continue;
             }
             // Deliberately a warning, where the reverse below is an error. A document with no
-            // reader is a ConfigMap nobody mounts — waste, and worth saying, but it breaks no
+            // reader is a ConfigMap nobody mounts: waste, and worth saying, but it breaks no
             // deployment. A reader with no document is a pod that mounts something which does not
             // exist, which does.
             report.add(
@@ -261,8 +261,8 @@ fn check_pair(
             continue;
         }
 
-        // Several workloads may read one document — a migration Job and two seed Jobs mounting one
-        // bootstrap ConfigMap is a real shape — so the selector is allowed to match more than one,
+        // Several workloads may read one document (a migration Job and two seed Jobs mounting one
+        // bootstrap ConfigMap is a real shape), so the selector is allowed to match more than one,
         // and what must hold instead is that every container the declaration names is found in one
         // of them. That is the property that actually catches a renamed container.
         for workload in matched {
@@ -310,7 +310,7 @@ fn check_containers(
 
         // The container's own image decides which contract gates 2 and 3 read, so a values file
         // that overrode the image would otherwise have them validated against a contract describing
-        // a different binary — silently.
+        // a different binary, silently.
         let reference = container.get("image").and_then(Json::as_str).unwrap_or("");
         let mine = digest_of(reference).and_then(|digest| binding.by_digest.get(digest));
         let Some(mine) = mine else {

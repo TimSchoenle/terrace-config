@@ -10,10 +10,10 @@
 //!
 //! **The inventory** is what the contracts say, and needs no render. It reads the vendored
 //! documents and nothing else, so it stays cheap enough to run while writing a values file. It
-//! deliberately skips the staleness interlock [`bind`] applies — a digest bump produces one run
+//! deliberately skips the staleness interlock [`bind`] applies: a digest bump produces one run
 //! where the pinned digest and the vendored contract disagree, and refusing to print the inventory
-//! then would withhold the document at exactly the moment a reviewer is reading a credential change.
-//! Whether the vendored copy is current is a different check's question.
+//! then would withhold the document at exactly the moment a reviewer is reading a credential
+//! change. Whether the vendored copy is current is a different check's question.
 //!
 //! **The reconciliation** is what a rendered chart actually delivers, against that inventory. It
 //! does apply the interlock, because it reasons about which image a container runs and an answer
@@ -21,15 +21,15 @@
 //!
 //! Three conclusions, and the scope of each is load-bearing:
 //!
-//! - `undeliverable` — a contract key no rendered configuration can supply through any channel.
+//! - `undeliverable`: a contract key no rendered configuration can supply through any channel.
 //!   Judged across *every* values file the chart ships, because a credential delivered under one
 //!   fixture is delivered: the chart has a way to supply it.
-//! - `unclaimed` — a delivered Secret file name that no contract of the chart names, by neither an
+//! - `unclaimed`: a delivered Secret file name that no contract of the chart names, by neither an
 //!   exact spelling nor a dynamic-map leaf. Scoped against every contract the chart vendors, which
 //!   is what keeps it disjoint from over-projection.
-//! - `over-projected` — a Secret file whose name a *sibling* image's contract claims and the
-//!   container's own image's contract does not. A pod holding a credential its binary never reads is
-//!   a least-privilege defect, and it is scoped per container against that one image's contract,
+//! - `over-projected`: a Secret file whose name a *sibling* image's contract claims and the
+//!   container's own image's contract does not. A pod holding a credential its binary never reads
+//!   is a least-privilege defect, and it is scoped per container against that one image's contract,
 //!   never against the union.
 //!
 //! # Not duplicating gate 3
@@ -37,8 +37,8 @@
 //! Gate 3 already errors on a name unknown to the contract, but only for a file inside a *resolved*
 //! secrets directory on a container the declaration lists as a consumer of that document. Both
 //! halves of that condition are recorded per file here, and a file gate 3 would have judged is
-//! reported by neither `unclaimed` nor `over_projected` — it is already one line in the check, and a
-//! second line saying the same thing in a different report trains a reader to skim both. What
+//! reported by neither `unclaimed` nor `over_projected`, since it is already one line in the check,
+//! and a second line saying the same thing in a different report trains a reader to skim both. What
 //! remains is precisely gate 3's blind spot, and it is not hypothetical: a Deployment running an
 //! init container that no declaration names as a consumer has nothing checking what it mounts.
 //!
@@ -101,7 +101,7 @@ const CHART_TEXT: [&str; 6] = ["yaml", "yml", "tpl", "json", "md", "txt"];
 const EXCLUDED_DIRS: [&str; 2] = ["contracts", "charts"];
 
 // ------------------------------------------------------------------------------------------------
-// The inventory — what the vendored contracts declare
+// The inventory: what the vendored contracts declare
 // ------------------------------------------------------------------------------------------------
 
 /// One `secret: true` key, as one image's contract spells it.
@@ -111,7 +111,7 @@ pub struct Declared {
     pub chart: String,
     /// The declared document the contract belongs to.
     pub document: String,
-    /// The vendored file as [`bind`] labels it — `<chart>/contracts/<name>.json`. The same spelling
+    /// The vendored file as [`bind`] labels it: `<chart>/contracts/<name>.json`. The same spelling
     /// [`Union::sources`] carries, so a declaration and the contract a rendered container was
     /// matched against are comparable without a second naming convention.
     pub contract: String,
@@ -129,8 +129,8 @@ pub struct Declared {
     pub text_form: String,
     /// Whether the image refuses to start without it.
     pub required: bool,
-    /// The entries the key's map must contain, read from its `constraint` — empty for anything but
-    /// a map a producer refined.
+    /// The entries the key's map must contain, read from its `constraint`, empty for anything but a
+    /// map a producer refined.
     pub entries: Vec<String>,
     /// The contract's own first line about the key.
     ///
@@ -144,7 +144,7 @@ pub struct Declared {
 ///
 /// Merged by spelling rather than by path alone. Two documents of one chart spelling one path
 /// differently would be two different files on disk and two different variables, so they stay two
-/// rows — the inventory's job is to name the artefacts an operator has to create, and collapsing
+/// rows: the inventory's job is to name the artefacts an operator has to create, and collapsing
 /// them would name one that does not exist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Credential {
@@ -385,7 +385,7 @@ pub struct Surface {
 /// The same shape gate 2 and 3's supplier table takes one level down, and for the same reason:
 /// neither question is answerable from a single container, so the answer has to outlive the walk
 /// over one. Keyed by the vendored contract as well as the config path, because "who supplies this"
-/// is a question about one image — two images declaring one path are two credentials to deliver, and
+/// is a question about one image: two images declaring one path are two credentials to deliver, and
 /// collapsing them would let either one cover for the other.
 #[derive(Debug, Default)]
 struct Ledger {
@@ -463,7 +463,7 @@ fn reconcile_chart(
 
     // Which contract describes the image a container runs, chart-wide rather than per document. An
     // init container inside one Deployment may run an image that document's binding has never heard
-    // of — which is exactly the case the over-projection check exists to see.
+    // of, which is exactly the case the over-projection check exists to see.
     let mut by_digest: BTreeMap<&str, &Union> = BTreeMap::new();
     let mut contracts: Vec<&Union> = Vec::new();
     for binding in bindings.values() {
@@ -574,7 +574,7 @@ fn scan_render(
     }
 }
 
-/// Where in the render one file was found, carried whole so the scan reads as one subject.
+/// Where in the render one file is found, carried whole so the scan reads as one subject.
 #[derive(Debug, Clone, Copy)]
 struct Where<'a> {
     values_file: &'a str,
@@ -582,7 +582,7 @@ struct Where<'a> {
     container: &'a str,
 }
 
-/// Record the keys the rendered plaintext document sets, as one delivery channel.
+/// Records the keys the rendered plaintext document sets, as one delivery channel.
 fn scan_document(document: &Document, binding: &Binding, manifests: &[Json], ledger: &mut Ledger) {
     let matched = select_source(
         manifests,
@@ -724,11 +724,11 @@ fn scan_file(
             ledger.supply(label, path, INDIRECTION);
         }
         // A file whose exact key the contract calls ordinary configuration, delivered as a Secret
-        // anyway. Legitimate — chart policy may treat a value as more sensitive than the image does,
-        // and gate 3 permits it for any `text` key — so it is stated and never counted against the
+        // anyway. Legitimate (chart policy may treat a value as more sensitive than the image does,
+        // and gate 3 permits it for any `text` key), so it is stated and never counted against the
         // chart. Only an exact match is judged: a dynamic map's leaves have no sensitivity of their
-        // own for the contract to state. And only a file-supplyable key, because the same mount of a
-        // key of any other form is gate 3's error rather than a policy choice.
+        // own for the contract to state. And only a file-supplyable key, because the same mount of
+        // a key of any other form is gate 3's error rather than a policy choice.
         if let Some(key) = exact {
             let ordinary = key.fields.get("secret").and_then(Json::as_bool) != Some(true);
             if ordinary && key.entry().file_supplyable().unwrap_or(false) {
@@ -768,8 +768,8 @@ fn scan_file(
 /// The `(workload, container)` pairs the check already inspects the mounts of.
 ///
 /// The check walks the consumers a declaration names and the containers each one names, so a
-/// container absent from that list — an init container, a sidecar, a workload whose selector matches
-/// nothing — is a container gate 3 never opens. Recomputing the same selection here is what lets
+/// container absent from that list (an init container, a sidecar, a workload whose selector matches
+/// nothing) is a container gate 3 never opens. Recomputing the same selection here is what lets
 /// this report stay silent about files gate 3 has already reported and speak about the ones it
 /// cannot see.
 fn gate_three_reach(declaration: &Declaration, manifests: &[Json]) -> BTreeSet<(String, String)> {
@@ -790,7 +790,7 @@ fn gate_three_reach(declaration: &Declaration, manifests: &[Json]) -> BTreeSet<(
     reach
 }
 
-/// Turn one chart's scan into the findings that outlive it.
+/// Turns one chart's scan into the findings that outlive it.
 fn collect(
     chart_dir: &Path,
     declaration: &Declaration,
@@ -834,7 +834,7 @@ fn collect(
 // The report
 // ------------------------------------------------------------------------------------------------
 
-/// Turn one scan into findings, at the level each conclusion has earned.
+/// Turns one scan into findings, at the level each conclusion has earned.
 ///
 /// An error is reserved for a chart that has no channel for a credential at all, and for a
 /// credential reaching a pod that cannot read it. A warning is for everything that is a gap in what
@@ -966,7 +966,7 @@ pub struct Container {
     pub values_files: Vec<String>,
 }
 
-/// Group mounts by container rather than by file.
+/// Groups mounts by container rather than by file.
 ///
 /// A container over-projected six credentials has one problem, not six, and six near-identical lines
 /// is how a reader learns to skim a report. The values files stay in the row because which fixture
@@ -1054,7 +1054,7 @@ fn named_anywhere(contracts: &[&Union], file_name: &str) -> bool {
 ///
 /// A heuristic, and deliberately one that only chooses between two reports rather than producing
 /// one: a chart that assembled a file name by concatenation would name no spelling and be read as
-/// having no channel. Every finding is still grounded in what the render did — this decides how
+/// having no channel. Every finding is still grounded in what the render did. This decides how
 /// loudly to say it, never whether there is anything to say.
 ///
 /// # Errors
@@ -1182,7 +1182,7 @@ fn workload_of(manifest: &Json) -> String {
     )
 }
 
-/// `chart/contracts/api.json` as `api` — the vendored file, without the path around it.
+/// `chart/contracts/api.json` as `api`: the vendored file, without the path around it.
 fn short(label: &str) -> String {
     Path::new(label)
         .file_stem()
@@ -1228,7 +1228,7 @@ fn sorted(items: impl Iterator<Item = String>) -> Vec<String> {
 ///
 /// A derivation with a check under it rather than a convenience for a table. The spellings *are*
 /// derived from the config path by the dialect, and stating that once above a table is both shorter
-/// and more useful than a column every row of which restates it — but only while it is true, so the
+/// and more useful than a column every row of which restates it, but only while it is true, so the
 /// caller prints the literal spellings under any row this does not cover.
 #[must_use]
 pub fn common_prefix<'a>(spellings: impl IntoIterator<Item = &'a str>) -> &'a str {

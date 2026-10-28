@@ -6,7 +6,7 @@
 //! dialect, and type names from another language.
 //!
 //! They are hand-written rather than blessed, and that distinction is load-bearing. A producer case
-//! has exactly one author — the reference implementation's `TERRACE_SPEC_BLESS` run — and carries a
+//! has exactly one author, the reference implementation's `TERRACE_SPEC_BLESS` run, and carries a
 //! `rendered/` directory of goldens. A consumer case has no producer here that could author it, so
 //! it carries no goldens, and what holds it is this file: assertions about what a *reader* must do.
 //!
@@ -133,7 +133,7 @@ fn every_consumer_case_is_a_document_this_build_reads_and_the_spec_describes() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// foreign-loader — step 2 skipped and reported, not silently performed
+// foreign-loader: step 2 skipped and reported, not silently performed
 // ---------------------------------------------------------------------------------------------
 
 #[test]
@@ -150,7 +150,7 @@ fn a_loader_with_no_measured_row_gets_no_range_check() {
         .get("server.port")
         .expect("the case declares server.port");
     // 99999 is a well-formed integer and is above a u16's maximum, which is exactly the value only
-    // the range step can catch — and exactly the one that must not be caught here.
+    // the range step can catch, and exactly the one that must not be caught here.
     assert_eq!(
         form(port.entry(), "99999").expect("the form is known"),
         None,
@@ -190,7 +190,7 @@ fn a_gate_over_a_foreign_loader_reports_the_skip_rather_than_a_failure() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// schema-version-1 — degrade rather than assume, narrow rather than refuse
+// schema-version-1: degrade rather than assume, narrow rather than refuse
 // ---------------------------------------------------------------------------------------------
 
 #[test]
@@ -226,8 +226,8 @@ fn a_version_below_the_current_one_is_not_reported_as_ahead() {
 
 #[test]
 fn a_structured_key_is_read_before_anything_is_said_about_it() {
-    // Not "no range step". A container still has to be *read* — the read is what says `a,b` is not
-    // a list — and whether it is one belongs to the loader: figment wants a TOML literal, and a
+    // Not "no range step". A container still has to be *read* (the read is what says `a,b` is not a
+    // list), and whether it is one belongs to the loader: figment wants a TOML literal, and a
     // binder that splits on commas reads the same text as two items.
     let merged = union("schema-version-1");
     let peers = merged.keys.get("peers").expect("peers");
@@ -251,7 +251,7 @@ fn a_structured_key_is_read_before_anything_is_said_about_it() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// tier-1-spellings — derive nothing the document states
+// tier-1-spellings: derive nothing the document states
 // ---------------------------------------------------------------------------------------------
 
 #[test]
@@ -296,8 +296,8 @@ fn a_key_that_names_no_variable_says_why_rather_than_leaving_a_gap() {
 #[test]
 fn the_one_rule_that_reads_the_separator_can_only_turn_a_finding_into_silence() {
     let merged = union("tier-1-spellings");
-    // No key here is `structured`, so the dynamic-map legitimiser has nothing to legitimise — and
-    // a variable inside the namespace that spells nothing is still reported.
+    // No key here is `structured`, so the dynamic-map legitimiser has nothing to legitimise, and a
+    // variable inside the namespace that spells nothing is still reported.
     assert!(
         merged
             .container_of("env", "RELAXED_SERVERPORT__ANYTHING")
@@ -321,7 +321,7 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
     // The mechanical half of "derive nothing the document states", and the reason it is a test
     // rather than a convention: a new rule that reaches for `dialect.nesting_separator` to work out
     // what a key is called has silently assumed tier 2 of every producer, and nothing else in the
-    // suite would notice. A grep is a blunt instrument and it is the right one — the property is
+    // suite would notice. A grep is a blunt instrument and it is the right one: the property is
     // about which files mention the field at all.
     const ALLOWED: &[&str] = &[
         // Declares the field. Reading a document is not assuming anything about it.
@@ -333,7 +333,7 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
         // documentation and can only turn a finding into silence.
         "union.rs",
         // Names the three dialect fields in order to compare the old document's values against the
-        // new one's. It derives no spelling from any of them — a comparison of what two documents
+        // new one's. It derives no spelling from any of them: a comparison of what two documents
         // state is the opposite of an assumption about what they imply.
         "diff/sections.rs",
         // Prints the separator in the header of an explanation, which is the one place a person is
@@ -341,7 +341,7 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
         "helm/explain/render.rs",
         // `helm init`'s renderers and its placeholder fill, which copy the published separator into
         // generated prose: the `secretData` comment in `_helpers.tpl` and `%%SEPARATOR%%` in a
-        // template's comment. Every name they write — a secret file, a variable — is the key's own
+        // template's comment. Every name they write (a secret file, a variable) is the key's own
         // published `secrets_file` or `env`, never one spelt with the separator.
         "helm/scaffold/chart.rs",
         "helm/init.rs",
@@ -377,10 +377,10 @@ const SENTINEL: &str = "sentinel-credential-value-8f31c0";
 
 #[test]
 fn a_secrets_own_values_never_leave_the_reader() {
-    // The property behind every "cleartext logging" question anyone will ever ask of this half:
-    // it reports which credentials exist and what to call them, and it never reads what one *is*.
-    // A `Secret` is read for its key names — the file names a loader parses — and for nothing
-    // else, so there is no cleartext here to log in the first place.
+    // The property behind every "cleartext logging" question anyone will ever ask of this half: it
+    // reports which credentials exist and what to call them, and it never reads what one *is*. A
+    // `Secret` is read for its key names (the file names a loader parses) and for nothing else, so
+    // there is no cleartext here to log in the first place.
     //
     // Asserted end to end rather than by reading the code, because the code is the easy half: a
     // future edit that reached for `.values()` instead of `.keys()` would compile, would pass
@@ -494,7 +494,7 @@ fn walk(at: &Path, apply: &mut impl FnMut(&Path, &str)) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// foreign-ty — a type vocabulary from another language changes no behaviour
+// foreign-ty: a type vocabulary from another language changes no behaviour
 // ---------------------------------------------------------------------------------------------
 
 #[test]

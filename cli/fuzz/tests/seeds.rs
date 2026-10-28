@@ -2,9 +2,9 @@
 //!
 //! Two jobs, and the second is the one that is easy to skip.
 //!
-//! The first is **regression**: every seed under `seeds/` — and every input a campaign promoted
-//! into `corpus/` — runs through the matching oracle on a plain `cargo test`, so a reproducer keeps
-//! being checked long after whoever found it moved on. Each seed here sits on a named rule: one per
+//! The first is **regression**: every seed under `seeds/`, and every input a campaign promoted into
+//! `corpus/`, runs through the matching oracle on a plain `cargo test`, so a reproducer keeps being
+//! checked long after whoever found it moved on. Each seed here sits on a named rule: one per
 //! refusal, one per way a rendering can be handed text it cannot write raw.
 //!
 //! The second is **validating the oracles themselves**. An oracle that models a rule wrongly
@@ -32,7 +32,7 @@ fn corpus_dir(target: &str) -> PathBuf {
         .join(target)
 }
 
-/// Run every file in `dir` through `oracle`, naming the file if it panics.
+/// Runs every file in `dir` through `oracle`, naming the file if it panics.
 ///
 /// A directory that does not exist is not a failure: `corpus/` is where a campaign writes, and a
 /// fresh clone has only the `.gitkeep`.
@@ -88,10 +88,10 @@ fn conform_seeds() {
 
 /// A deterministic input generator, standing in for a mutation engine.
 ///
-/// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
-/// combination rather than by discovery. What it is good at is the thing a campaign is slow at:
-/// hitting every *pairing* of the interesting tokens quickly, which is where a renderer that
-/// escapes one hostile character and not its neighbour gives itself away.
+/// Not a substitute for a real campaign: it has no coverage feedback, so it explores by combination
+/// rather than by discovery. What it is good at is the thing a campaign is slow at: hitting every
+/// *pairing* of the interesting tokens quickly, which is where a renderer that escapes one hostile
+/// character and not its neighbour gives itself away.
 mod generated {
     use super::{Oracle, oracle};
 
@@ -190,7 +190,7 @@ mod generated {
         "k=3:default_value={\"a\":[1,{\"b\":null}]}",
     ];
 
-    /// Build one input of up to six directives.
+    /// Builds one input of up to six directives.
     fn generate(rng: &mut Rng) -> String {
         let lines = 1 + rng.next() % 6;
         let mut input = String::from(*rng.pick(CASES));
@@ -213,7 +213,7 @@ mod generated {
             .unwrap_or(DEFAULT_ITERATIONS)
     }
 
-    /// Run `oracle` over the generated inputs, naming the one that fails.
+    /// Runs `oracle` over the generated inputs, naming the one that fails.
     ///
     /// `catch_unwind` here and not in [`super::replay`], and the difference is the point: a seed
     /// has a file name that identifies it, and a generated input has only its index. Without this
@@ -238,7 +238,7 @@ mod generated {
     #[test]
     fn generated_documents() {
         // The document oracle takes raw JSON rather than directives, so it is fed the *rendered*
-        // mutation — which is what a producer would actually hand a reader.
+        // mutation, which is what a producer would actually hand a reader.
         let mut rng = Rng(DOCUMENT_SEED);
         for iteration in 0..iterations() {
             let directives = generate(&mut rng);

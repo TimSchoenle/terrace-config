@@ -1,7 +1,7 @@
 //! Reading a chart's vendored contracts back out, and saying what its images actually consume.
 //!
 //! Every other consumer of a chart's contracts is a gate: it takes a rendered manifest, holds it
-//! against the contract and reports the difference. Nothing reads the contract for its own sake — so
+//! against the contract and reports the difference. Nothing reads the contract for its own sake, so
 //! the one document that states, per setting, what the binary calls it, what it accepts, what it
 //! defaults to and whether a file may supply it is only ever consulted by a program. An operator
 //! asking "what can I put in this file, and why is the value I set being ignored?" has the chart's
@@ -14,19 +14,19 @@
 //! something untrue.
 //!
 //! **Readers are derived, never listed.** A chart pinning nine images across nine documents states
-//! nowhere which of them reads a given setting — not in the chart, not in the declaration, not in
+//! nowhere which of them reads a given setting: not in the chart, not in the declaration, not in
 //! the README. It is also the fact this exists to produce: a key read by three services and another
-//! by all nine is what tells an operator whether a change is local or fleet-wide. So the attribution
-//! is computed by walking the contracts the declaration binds, and a hand-written map is exactly the
-//! thing that would be wrong within one release.
+//! by all nine is what tells an operator whether a change is local or fleet-wide. So the
+//! attribution is computed by walking the contracts the declaration binds, and a hand-written map
+//! is exactly the thing that would be wrong within one release.
 //!
 //! **The merge here is tolerant where [`crate::union`] is strict, and that is not a relaxation of
 //! the rule.** A union refuses two contracts that describe one key differently, because its output
 //! validates a document all of them read, and an unreconcilable pair there means the gate has
-//! nothing trustworthy to say. It cannot be reused across a chart's *documents*: nine separate files
-//! legitimately carry nine different titles, and merging them is not a question anyone asked. What
-//! this wants is the opposite posture — a disagreement between two images about one setting is a
-//! finding, not a reason to print nothing — so the merge below keeps every image's description,
+//! nothing trustworthy to say. It cannot be reused across a chart's *documents*: nine separate
+//! files legitimately carry nine different titles, and merging them is not a question anyone asked.
+//! What this wants is the opposite posture: a disagreement between two images about one setting is
+//! a finding, not a reason to print nothing. So the merge below keeps every image's description,
 //! shows the divergence, and reports it as a warning. No gate can currently see those.
 //!
 //! **Loader variables get a section of their own**, beside the external ones. They are neither
@@ -76,8 +76,9 @@ const UNIONED_FIELDS: [&str; 1] = ["required"];
 ///
 /// The name is the vendored contract's stem rather than the repository part of the image reference.
 /// That is what the declaration writes and what a maintainer edits, it is short enough to list nine
-/// of on one line, and it maps one-to-one to an image — where a full repository path does not fit
-/// and repeats the chart name once per service. The full reference is in the header and in the JSON.
+/// of on one line, and it maps one-to-one to an image, where a full repository path does not fit
+/// and repeats the chart name once per service. The full reference is in the header and in the
+/// JSON.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reader {
     /// The vendored contract's stem.
@@ -156,12 +157,12 @@ impl Setting {
     /// Shaped that way on purpose: the typed readings of an entry are normative, and handing them a
     /// merged map rather than reimplementing their rules is what keeps this agreeing with the gates.
     ///
-    /// Its fields come out in the document model's order, which is alphabetical — the same property
-    /// that makes a document this build publishes a byte-for-byte round trip through its own reader.
-    /// The implementation this was ported from kept the order the producer happened to write, to the
-    /// same end: that the JSON here diffs cleanly against the vendored file. Against a document
-    /// written by that older producer the two orders differ; against one written by this build they
-    /// are the same order, and this one is the same on every machine.
+    /// Its fields come out in the document model's order, which is alphabetical: the same property
+    /// that makes a document this build publishes a byte-for-byte round trip through its own
+    /// reader. The implementation this was ported from kept the order the producer happened to
+    /// write, to the same end: that the JSON here diffs cleanly against the vendored file. Against
+    /// a document written by that older producer the two orders differ; against one written by this
+    /// build they are the same order, and this one is the same on every machine.
     #[must_use]
     pub fn representative(&self) -> Map<String, Json> {
         let mut names: Vec<&str> = Vec::new();
@@ -233,11 +234,11 @@ pub struct Surface {
     pub unknown: String,
 }
 
-/// Bind every declared document, then read the contracts binding proved belong to it.
+/// Binds every declared document, then reads the contracts binding proved belong to it.
 ///
 /// The binding is called for its interlock and for nothing else. It answers whether the vendored
 /// file is for the digest the chart pins, which is the only question that decides whether anything
-/// printed below describes the deployed image — and it is answered here exactly as the gates answer
+/// printed below describes the deployed image, and it is answered here exactly as the gates answer
 /// it, so this cannot report facts a gate would refuse to trust. What it returns is shaped for
 /// validation and carries no provenance, so the contracts are re-read afterwards for the image
 /// reference and the release. That is a second read of a file already proven, not a second opinion
@@ -301,7 +302,7 @@ pub fn collect(
     Ok(Some(surface))
 }
 
-/// Fold one image's contract into the chart-wide surface.
+/// Folds one image's contract into the chart-wide surface.
 fn absorb(
     surface: &mut Surface,
     vendored: &super::declaration::Vendored,
@@ -358,7 +359,7 @@ fn absorb(
     } else if surface.dialect != dialect {
         // A union makes this fatal, and per document it must be: two images reading one file under
         // different spelling rules do not share a namespace. Across documents it is merely
-        // surprising — nine separate files could legitimately use nine prefixes — so it is said
+        // surprising (nine separate files could legitimately use nine prefixes), so it is said
         // rather than raised, and the header reports the first image's dialect.
         report.add(
             surface.chart.clone(),
@@ -411,7 +412,7 @@ fn absorb(
     }
 }
 
-/// Record one published entry against the name it is keyed on.
+/// Records one published entry against the name it is keyed on.
 ///
 /// An entry with no name is skipped rather than refused: it is a contract this build cannot read,
 /// and the gates are what say so. Printing every other setting is more useful than printing none.
@@ -480,7 +481,7 @@ fn terse(value: &Json) -> String {
 ///
 /// A pattern carrying a glob metacharacter is matched as a glob against the whole name; anything
 /// else is a case-insensitive substring, because the name an operator has in hand is usually a
-/// fragment of a path they read in a values file. Both are anchored on the name alone — the
+/// fragment of a path they read in a values file. Both are anchored on the name alone: the
 /// environment spelling is derived from it, so a pattern that matches the path matches the variable
 /// a reader is actually holding.
 #[must_use]

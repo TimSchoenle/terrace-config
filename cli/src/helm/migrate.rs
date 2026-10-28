@@ -3,15 +3,15 @@
 //! A contract refresh turns an image release into chart values, and it does that for exactly one
 //! kind of change: a key the chart does not yet surface. The writers here add a value, rewrite the
 //! `@schema` block of one that already exists, and regenerate everything derived from both. None of
-//! them touches a template, a hand-written test suite or a CI values file — deliberately, because an
+//! them touches a template, a hand-written test suite or a CI values file, deliberately, because an
 //! edit made blind to a template's `with` blocks and `if` gates is one nobody can review.
 //!
 //! So a change that *takes something away* reaches none of them:
 //!
 //! | Change | What is left behind |
 //! |---|---|
-//! | a key removed | `legal.dir` — the template still renders `dir:`, and the service refuses to boot on it |
-//! | an element property removed | `legal.documents.*.sources` — the regenerated schema is closed, so every test and CI file that sets it fails the render, and the template still reads it |
+//! | a key removed | `legal.dir`: the template still renders `dir:`, and the service refuses to boot on it |
+//! | an element property removed | `legal.documents.*.sources`: the regenerated schema is closed, so every test and CI file that sets it fails the render, and the template still reads it |
 //!
 //! Measured on the `tankovault` 11 bump: the values were written and the schema regenerated
 //! correctly, and then the run died on six schema refusals in `tests/legal_test.yaml`, with nothing
@@ -34,12 +34,12 @@
 //! to look, not a proof the line is wrong; no hit for a removed property is not a proof of safety
 //! either, which is why every finding is printed even when nothing references it.
 //!
-//! The patterns are the ones the implementation this was ported from used, character for
-//! character, because each was narrowed against a real chart and the narrowing is the knowledge.
-//! The `regex` crate has no lookaround, so the two boundary assertions those patterns carry — "not
-//! preceded by" and "not followed by" a word character or a hyphen — are applied by hand to each
-//! match the engine finds. That is exact, not approximate, for every pattern built here, because
-//! each one has a single possible end for a given start; the private `Search` type spells out why.
+//! The patterns are the ones the implementation this was ported from used, character for character,
+//! because each was narrowed against a real chart and the narrowing is the knowledge. The `regex`
+//! crate has no lookaround, so the two boundary assertions those patterns carry ("not preceded by"
+//! and "not followed by" a word character or a hyphen) are applied by hand to each match the engine
+//! finds. That is exact, not approximate, for every pattern built here, because each one has a
+//! single possible end for a given start; the private `Search` type spells out why.
 //!
 //! Lines are counted as `str::lines` counts them, on `\n` with an optional `\r`, which is how an
 //! editor and `grep -n` count them too. The implementation this was ported from counted with
@@ -192,7 +192,7 @@ pub fn migrations(
 
 /// Whether one change is a removal a chart could still be using.
 ///
-/// A removed key, and a changed `constraint` — the field an element's properties live in. Every
+/// A removed key, and a changed `constraint`: the field an element's properties live in. Every
 /// other change either adds something, which the writers follow, or moves something no chart line
 /// spells.
 fn is_removal(change: &Change) -> bool {
@@ -220,7 +220,7 @@ fn migrations_for(
 
     let markers = markers_at(charts, chart_dir, chart, revision)?;
     // Read only when something is bound, so a chart whose removals reached no chart value is never
-    // searched — and a file that could not be read does not fail a report that never needed it.
+    // searched, and a file that could not be read does not fail a report that never needed it.
     let bound = relevant
         .iter()
         .any(|change| value_for(&markers, &change.subject).is_some());
@@ -421,7 +421,7 @@ fn is_generated_suite(path: &Path) -> bool {
 ///
 /// `isolated_before` stands for `(?<![\w-])` in front of the pattern and `isolated_after` for
 /// `(?![\w-])` behind it. Checking them on a match the engine found is exact only when the match
-/// starting at a given position has one possible end — otherwise a backtracking engine could have
+/// starting at a given position has one possible end; otherwise a backtracking engine could have
 /// tried a shorter or longer one that satisfied the assertion. Every pattern built here has that
 /// property: each ends in an escaped literal, and each variable part (`[^.\s:"']+`, `\w+`, an
 /// optional `[N]`) is followed by a character it cannot itself contain. So a candidate that fails
@@ -515,10 +515,10 @@ fn set_pattern(values_path: &str, position: &[Step]) -> Search {
 /// A field read straight off a range variable (`$doc.sources`), or a dict key (`"sources"`).
 ///
 /// Straight off the variable, because that is how a template holds one element of a map or a list,
-/// and because a deeper path on some other variable — `$tls.ca.bundle.sources` in a template that
-/// also reads `legal.documents` — is a different setting that happens to share the name. Measured
-/// on `tankovault`: the looser `.sources` reported exactly that line, and a finding nobody can clear
-/// would keep this red on every branch after the migration.
+/// and because a deeper path on some other variable (`$tls.ca.bundle.sources` in a template that
+/// also reads `legal.documents`) is a different setting that happens to share the name. On a real
+/// chart the looser `.sources` reports exactly that line, and a finding nobody can clear would keep
+/// this red on every branch after the migration.
 fn field_pattern(name: &str) -> AnyOf {
     let token = regex::escape(name);
     AnyOf(vec![
@@ -564,7 +564,7 @@ fn key_references(files: &Files, values_path: &str) -> Vec<Reference> {
 /// Every line still using an element property removed at `position` under `values_path`.
 ///
 /// Each kind of file spells it differently, so each gets the pattern for its own spelling, and a
-/// file that never reads the value is searched only for the dotted form — which is what keeps a
+/// file that never reads the value is searched only for the dotted form, which is what keeps a
 /// projected volume's `sources:` out of a report about `legal.documents.*.sources`.
 fn property_references(
     files: &Files,
@@ -606,7 +606,7 @@ fn property_references(
 /// The report a person reads before deciding what the templates should now say.
 ///
 /// Findings with a remaining reference come first and are the failure. The rest are what the
-/// contract took away that nothing in the chart still names — listed so a reader can confirm the
+/// contract took away that nothing in the chart still names, listed so a reader can confirm the
 /// migration is done, and quiet once it is, so a branch that has followed its contract is not red
 /// for the rest of its life.
 ///

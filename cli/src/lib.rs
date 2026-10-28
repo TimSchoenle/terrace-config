@@ -1,8 +1,8 @@
 //! Everything the configuration contract needs after a document exists.
 //!
-//! A service's configuration surface is published as one JSON document attached to its image —
-//! `spec/v1/` is what that document is. Producing one needs the service's own types and can only
-//! be per-language. **Everything downstream of it needs a document and nothing else**, and that is
+//! A service's configuration surface is published as one JSON document attached to its image;
+//! `spec/v1/` is what that document is. Producing one needs the service's own types and can only be
+//! per-language. **Everything downstream of it needs a document and nothing else**, and that is
 //! this crate.
 //!
 //! ```text

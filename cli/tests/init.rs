@@ -45,7 +45,7 @@ impl Repository {
         self.0.join(relative)
     }
 
-    /// Run `helm init` from the root, with no setting inherited from the environment.
+    /// Runs `helm init` from the root, with no setting inherited from the environment.
     fn init(&self, args: &[&str]) -> Output {
         let mut command = Command::new(env!("CARGO_BIN_EXE_terrace-contract"));
         command

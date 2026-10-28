@@ -2,7 +2,7 @@
 //!
 //! The first question a new implementation asks, and the one `spec/v1/contract.schema.json` exists
 //! to answer. It is embedded rather than read from disk, because the binary that answers it runs
-//! inside a build container with no checkout of this repository — and a validator that silently
+//! inside a build container with no checkout of this repository, and a validator that silently
 //! found no schema would report success without checking anything.
 
 use crate::Error;
@@ -17,7 +17,7 @@ pub const META_SCHEMA: &str = include_str!("../../spec/v1/contract.schema.json")
 ///
 /// # Errors
 /// [`Error::Invalid`] when the input is not JSON, or when the embedded meta-schema does not
-/// compile — the second being a defect in this build rather than in the document.
+/// compile, the second being a defect in this build rather than in the document.
 pub fn validate(document: &str) -> Result<Vec<String>, Error> {
     let instance: serde_json::Value =
         serde_json::from_str(document).map_err(|e| Error::Invalid(format!("not JSON: {e}")))?;

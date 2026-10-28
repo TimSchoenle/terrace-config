@@ -1,7 +1,7 @@
 //! Every `@config` marker, against the contract it names.
 //!
 //! Coverage is chart-level: does this chart carry a declaration at all. So the failure a chart
-//! repository actually keeps hitting is invisible to it — an image release adds a setting, an
+//! repository actually keeps hitting is invisible to it: an image release adds a setting, an
 //! automated bump repins the digest and omits everything else, and nothing notices that the new key
 //! is reached by no chart value. The document gate cannot see it either: **a key nothing renders is
 //! not a key rendered wrongly.**
@@ -16,11 +16,11 @@
 //!    a position to state, and therefore has to be held to.
 //! 3. **A `when` clause names a values path that exists.** A gate value that was renamed leaves the
 //!    marker asserting a condition nothing evaluates.
-//! 4. **One key is bound by one value — except under `composed`.** That exception is the entire
+//! 4. **One key is bound by one value, except under `composed`.** That exception is the entire
 //!    reason `composed` is a class: a value built by `printf "%s:%v" host port` has two inputs, and
-//!    both must say so. The converse rule — that a lone `composed` is really a projection — was
-//!    *removed*, because a real chart falsifies it: one value and a literal the template supplies
-//!    is still a composition. `composed` says "an input", and the arity is counted here.
+//!    both must say so. The converse rule, that a lone `composed` is really a projection, does not
+//!    hold, because a real chart falsifies it: one value and a literal the template supplies is
+//!    still a composition. `composed` says "an input", and the arity is counted here.
 //! 5. **Every key of an enrolled chart is bound, or written off with a reason.** This is the rule
 //!    the whole module exists for; the other four keep it from being satisfied by fiction.
 //! 6. **A bound key reaches a template at all.** The first five hold a marker against the
@@ -31,8 +31,8 @@
 //! # Enrolment is declared, not inferred
 //!
 //! `bindings: true` in the declaration. Inferring it from "the chart carries at least one marker"
-//! reads well until a chart *stops* carrying them — a botched edit, a rewritten values file, a
-//! marker spelt in a way the reader does not recognise — and the chart drops out of the report
+//! reads well until a chart *stops* carrying them (a botched edit, a rewritten values file, a
+//! marker spelt in a way the reader does not recognise), and the chart drops out of the report
 //! without a word. With the switch, both disagreements are failures: markers without the switch,
 //! and the switch without markers.
 
@@ -63,7 +63,7 @@ pub struct Bindings {
 pub struct Resolved {
     /// The marker.
     pub marker: Marker,
-    /// The document its target was found in.
+    /// The document its target is found in.
     pub document: String,
 }
 
@@ -71,7 +71,7 @@ pub struct Resolved {
 ///
 /// # Errors
 /// [`Error::Invalid`] when a declaration, a values file or a vendored contract cannot be read at
-/// all — as distinct from a marker that is wrong, which is a finding.
+/// all, as distinct from a marker that is wrong, which is a finding.
 pub fn check(charts: &Path, selection: &Selection) -> Result<Bindings, Error> {
     let mut report = Report::new();
     let mut enrolled = Vec::new();
@@ -88,7 +88,7 @@ pub fn check(charts: &Path, selection: &Selection) -> Result<Bindings, Error> {
     Ok(Bindings { report, enrolled })
 }
 
-/// Check one chart; [`None`] when its declaration does not enrol it.
+/// Checks one chart; [`None`] when its declaration does not enrol it.
 fn check_chart(chart_dir: &Path, report: &mut Report) -> Result<Option<(usize, usize)>, Error> {
     let values_path = chart_dir.join("values.yaml");
     if !values_path.is_file() {
@@ -170,8 +170,8 @@ fn check_chart(chart_dir: &Path, report: &mut Report) -> Result<Option<(usize, u
     Ok(Some((keys, resolved.len() - keys)))
 }
 
-// ------------------------------------------------------------------------------------------
-// Rules 1 to 3 — one marker at a time
+// ------------------------------------------------------------------------------------------ Rules
+// 1 to 3: one marker at a time
 // ------------------------------------------------------------------------------------------
 
 /// Every marker that named something real, once per document it binds the key in.
@@ -196,9 +196,9 @@ fn resolve(bound: &Bound, markers: &[Marker], values: &Json, report: &mut Report
 /// Which documents the marker binds its target in; empty when it named nothing real.
 ///
 /// An unscoped marker binds **every** document whose contract declares the target, which is what a
-/// chart does: one template line writes a key into every service that reads it. An earlier design
-/// refused that and asked for a qualifier, which made the case inexpressible — a value carries one
-/// marker, and a qualified marker covers one document and leaves the rest owing.
+/// chart does: one template line writes a key into every service that reads it. Requiring a
+/// qualifier instead would make the case inexpressible: a value carries one marker, and a qualified
+/// marker covers one document and leaves the rest owing.
 ///
 /// A scope narrows it, for the case the default over-claims. Naming a document that does not declare
 /// the target is refused rather than ignored, because that is how a scope goes stale.
@@ -387,13 +387,13 @@ pub fn has_path(values: &Json, path: &str) -> bool {
     true
 }
 
-// ------------------------------------------------------------------------------------------
-// Rule 4 — markers against each other
+// ------------------------------------------------------------------------------------------ Rule
+// 4: markers against each other
 // ------------------------------------------------------------------------------------------
 
-/// One key, one value — unless every value binding it says `composed`.
+/// One key, one value, unless every value binding it says `composed`.
 ///
-/// Only this direction is checked here. The other one — a value binding two keys — belongs to the
+/// Only this direction is checked here. The other one, a value binding two keys, belongs to the
 /// marker reader, because two markers in one block never reach this far.
 fn check_uniqueness(resolved: &[Resolved], report: &mut Report) {
     let mut by_target: BTreeMap<(&str, &str), Vec<&Marker>> = BTreeMap::new();
@@ -431,17 +431,17 @@ fn check_uniqueness(resolved: &[Resolved], report: &mut Report) {
     }
 }
 
-// ------------------------------------------------------------------------------------------
-// Rule 5 — the coverage rule
+// ------------------------------------------------------------------------------------------ Rule
+// 5: the coverage rule
 // ------------------------------------------------------------------------------------------
 
 /// Every `unbound` key names something some contract in its scope declares.
 ///
 /// A chart-level question rather than a per-document one, and the distinction is the whole reason
-/// this is its own pass. An unscoped entry writes a key off *wherever it is declared*, so a document
-/// that does not declare it is not an error — it is the ordinary case for a chart whose services
-/// share a configuration crate and read different halves of it. An entry no document at all
-/// recognises is a different thing: a key renamed or removed upstream, still written off here,
+/// this is its own pass. An unscoped entry writes a key off *wherever it is declared*, so a
+/// document that does not declare it is not an error. It is the ordinary case for a chart whose
+/// services share a configuration crate and read different halves of it. An entry no document at
+/// all recognises is a different thing: a key renamed or removed upstream, still written off here,
 /// quietly covering nothing.
 fn check_write_offs(bound: &Bound, report: &mut Report) {
     let mut declared: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -490,8 +490,8 @@ fn check_write_offs(bound: &Bound, report: &mut Report) {
 /// Every contract key of an enrolled chart is bound, or written off with a reason.
 ///
 /// Over the keys only. A declared external variable is a namespace the loader does not own, so a
-/// chart that offers no value for one has declined to expose somebody else's variable — which is
-/// not the omission this rule is looking for.
+/// chart that offers no value for one has declined to expose somebody else's variable, which is not
+/// the omission this rule is looking for.
 fn check_coverage(bound: &Bound, resolved: &[Resolved], report: &mut Report) {
     let missing = missing_keys(bound, resolved);
 
@@ -554,7 +554,7 @@ fn bound_in<'a>(resolved: &'a [Resolved], document: &str) -> BTreeSet<&'a str> {
 ///
 /// The premises of rule 5, lifted out for the writer that acts on rule 5's answer. A marker naming
 /// a key that does not exist means the chart's mapping is already wrong somewhere, and the keys
-/// [`missing_keys`] would then call owed are whatever that mistake left over — so a writer that
+/// [`missing_keys`] would then call owed are whatever that mistake left over, so a writer that
 /// planned past a finding here would write values for keys that are bound, under names nobody
 /// chose. It runs exactly the rules [`check`] runs before coverage, in the same order, so the two
 /// cannot disagree about which charts are fit to be written to.
@@ -575,7 +575,7 @@ pub fn premises(
 /// Lifted out of the rule that reports it because a second caller acts on the same set: the writer
 /// that adds the values which would satisfy it. Two readers of "which keys are owed" would agree
 /// today and disagree the first time a scope or a write-off changed, and the one that drifts is the
-/// writer — it would either scaffold a value for a key somebody deliberately wrote off, or leave the
+/// writer: it would either scaffold a value for a key somebody deliberately wrote off, or leave the
 /// gate red after a run that reported success.
 ///
 /// Keyed by document and never sparse: a document whose keys are all bound maps to an empty list, so
@@ -598,16 +598,16 @@ pub fn missing_keys(bound: &Bound, resolved: &[Resolved]) -> BTreeMap<String, Ve
     missing
 }
 
-// ------------------------------------------------------------------------------------------
-// Rule 6 — the key reaches a template at all
+// ------------------------------------------------------------------------------------------ Rule
+// 6: the key reaches a template at all
 // ------------------------------------------------------------------------------------------
 
 /// The final segment of a marker's target: the literal key a template has to render.
 ///
 /// `scheduler.chapter_rollup_verify_interval_secs` renders as a
 /// `chapter_rollup_verify_interval_secs` key nested under a `scheduler` table, and the leaf is what
-/// a template line actually spells — the dotted path never appears verbatim anywhere, YAML-nested
-/// or TOML-nested alike.
+/// a template line actually spells. The dotted path never appears verbatim anywhere, YAML-nested or
+/// TOML-nested alike.
 pub fn leaf_of(target: &str) -> &str {
     target.rsplit_once('.').map_or(target, |(_, leaf)| leaf)
 }
@@ -617,24 +617,25 @@ pub fn leaf_of(target: &str) -> &str {
 /// Rules 1 to 5 hold a marker against the *contract*, and none of them reads a template. So a
 /// marker can pass all five while the chart renders nothing for it: the value exists, is typed,
 /// documented and bound, and the define nobody edited still emits exactly what it emitted before.
-/// That is a measured case, not a hypothetical one — a `tankovault` change gave `scheduler.*` and
-/// `statementTimeouts.*` markers, schemas and round-trip tests, and reached no `[scheduler]` table
-/// anywhere until the generated round-trip suite happened to be run.
+/// That is a measured case, not a hypothetical one: a chart can give `scheduler.*` and
+/// `statementTimeouts.*` markers, schemas and round-trip tests, and reach no `[scheduler]` table
+/// anywhere until the generated round-trip suite runs.
 ///
-/// The `projection`, `structured` and `composed` markers are checked — the classes whose target is
-/// a contract key. An `external` marker feeds an environment variable, not a template's document.
+/// The `projection`, `structured` and `composed` markers are checked: the classes whose target is a
+/// contract key. An `external` marker feeds an environment variable, not a template's document.
 ///
-/// **Deliberately crude**: a plain search of `templates/*.tpl` for `leaf:` or `"leaf"`, nothing that
-/// parses a Go template or the TOML it emits, because nothing here can round-trip a template and a
-/// line-based reader is the only one that cannot silently disagree with itself. Two spellings cover
-/// every hand-written chart: a YAML-style mapping key, and a `dict` or `set` call building the same
-/// table from quoted arguments — `tankovault`'s `branding` and `telemetry.sentry` blocks are built
-/// entirely the second way, and a search for only the first flags every key in both. A key rendered
-/// some third way is a false negative this accepts, in exchange for never crying wolf on a real one.
+/// **Deliberately crude**: a plain search of `templates/*.tpl` for `leaf:` or `"leaf"`, nothing
+/// that parses a Go template or the TOML it emits, because nothing here can round-trip a template
+/// and a line-based reader is the only one that cannot silently disagree with itself. Two spellings
+/// cover every hand-written chart: a YAML-style mapping key, and a `dict` or `set` call building
+/// the same table from quoted arguments. `tankovault`'s `branding` and `telemetry.sentry` blocks
+/// are built entirely the second way, and a search for only the first flags every key in both. A
+/// key rendered some third way is a false negative this accepts, in exchange for never crying wolf
+/// on a real one.
 ///
 /// So a hit proves the name is rendered *somewhere*, not that it is wired to the right value, gated
-/// on the right service, or guarded against the right falsy-versus-null distinction. Its only job is
-/// turning "nobody wired it at all" from silence into a failure, for every marker — including the
+/// on the right service, or guarded against the right falsy-versus-null distinction. Its only job
+/// is turning "nobody wired it at all" from silence into a failure, for every marker, including the
 /// many whose wiring no generator could ever write, and which have no other net under them.
 ///
 /// Folded into this gate rather than standing beside it because it has exactly this gate's
@@ -676,8 +677,8 @@ fn check_wired(
 
 /// Every `*.tpl` file directly under `templates`, in name order, joined by newlines.
 ///
-/// One text rather than a search per file, which is equivalent — the newline between two files
-/// keeps a match from spanning them — and is what the rule this was ported from searched.
+/// One text rather than a search per file, which is equivalent, because the newline between two
+/// files keeps a match from spanning them.
 fn template_text(templates: &Path) -> Result<String, Error> {
     if !templates.is_dir() {
         return Ok(String::new());
@@ -767,7 +768,7 @@ scheduler:
 ";
 
     /// A template building the same table through a `dict` call, as `tankovault`'s `branding` and
-    /// `telemetry.sentry` blocks are built entirely — a search for only `leaf:` flags every key in
+    /// `telemetry.sentry` blocks are built entirely. A search for only `leaf:` flags every key in
     /// both, which is the false positive this rules out.
     const RENDERED_THROUGH_DICT: &str = "\
 {{- define \"fixture.derivedConfig\" -}}

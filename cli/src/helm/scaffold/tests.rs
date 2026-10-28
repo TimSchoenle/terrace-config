@@ -186,8 +186,8 @@ fn keys_are_planned_in_path_order_whatever_order_they_came_in() {
 
 #[test]
 fn a_key_whose_parent_is_another_key_is_refused() {
-    // `a` cannot be both a scalar value and the map `a.b` lives in. Refused rather than
-    // rendered as whichever YAML happens to win — in either order.
+    // `a` cannot be both a scalar value and the map `a.b` lives in. Refused rather than rendered as
+    // whichever YAML happens to win, in either order.
     let plan = plan_of(vec![key("a", &json!({})), key("a.b", &json!({}))]);
     let error = tree_at(&plan.projected, 0).expect_err("the two cannot both exist");
     assert!(
@@ -472,8 +472,8 @@ fn a_numeric_key_is_not_quoted() {
 
 #[test]
 fn an_optional_number_or_boolean_is_guarded_against_null_not_falsy() {
-    // `with` would drop a deliberate `0` or `false`, which are settings and not "unset" —
-    // whether the contract spells the type as a list or as a bare string.
+    // `with` would drop a deliberate `0` or `false`, which are settings and not "unset", whether
+    // the contract spells the type as a list or as a bare string.
     for (path, constraint) in [
         ("a.count", json!({"type": ["integer", "null"]})),
         ("a.enabled", json!({"type": ["boolean", "null"]})),

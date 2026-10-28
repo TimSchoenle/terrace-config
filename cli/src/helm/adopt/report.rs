@@ -214,10 +214,10 @@ pub(super) const AFTERWARDS: &str =
 /// The rows a chart repository's tree-level test asserts, for the charts this run wrote into.
 ///
 /// That test holds the per-chart marker counts as literals, so every adoption moves one of them and
-/// the suite goes red until somebody edits it. The number is the bindings gate's own — markers
-/// times the documents each binds — and re-deriving it here would be a second implementation of
-/// exactly the arithmetic that test pins. So it is read back out of the gate after the write, and
-/// printed as the line to paste rather than written: a test whose expected values a generator edits
+/// the suite goes red until somebody edits it. The number is the bindings gate's own (markers times
+/// the documents each binds), and re-deriving it here would be a second implementation of exactly
+/// the arithmetic that test pins. So it is read back out of the gate after the write, and printed
+/// as the line to paste rather than written: a test whose expected values a generator edits
 /// silently is a test nobody reads.
 ///
 /// # Errors

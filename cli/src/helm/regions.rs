@@ -1,27 +1,26 @@
 //! A chart's YAML files as the lines each mapping value occupies, for a writer rather than a reader.
 //!
 //! [`super::markers`] answers what a value *says*: its dotted path and the markers in its `@schema`
-//! block. A writer inserting a new sibling needs the other fact — where the value *ends* — so that
+//! block. A writer inserting a new sibling needs the other fact, where the value *ends*, so that
 //! the new block lands after it and nowhere else. That is what a [`Region`] is.
 //!
 //! # Why this is a line walk and not the event parser
 //!
-//! The marker reader takes a value's path from `saphyr`'s events, which is right for a reader:
-//! a `port: 1` inside a block scalar is one scalar event and never a key. A writer has a different
-//! obligation. Every line number it reports is a line it will splice into, so it has to agree with
-//! the implementation it replaces about *which* lines belong to a value, byte for byte, and that
-//! implementation walked lines by indentation. The walk is ported as it was, with the same three
-//! patterns and the same three blind spots — a sequence item's interior, a block scalar's body and a
-//! key the key pattern cannot spell. None of the three holds a values path a marker may be written
-//! against, so none is reported; all three are counted as content, so the value they belong to
-//! ends after them rather than before.
+//! The marker reader takes a value's path from `saphyr`'s events, which is right for a reader: a
+//! `port: 1` inside a block scalar is one scalar event and never a key. A writer has a different
+//! obligation. Every line number it reports is a line it will splice into, so it has to agree, byte
+//! for byte, with the indentation walk the chart files are maintained against about *which* lines
+//! belong to a value. The walk here is that one, with the same three patterns and the same three
+//! blind spots: a sequence item's interior, a block scalar's body and a key the key pattern cannot
+//! spell. None of the three holds a values path a marker may be written against, so none is
+//! reported; all three are counted as content, so the value they belong to ends after them rather
+//! than before.
 //!
-//! One departure, where the walk it replaces was wrong: inside a block scalar's body or a sequence
-//! item's interior, *every* line is content, a line that looks like a comment or like a `# @schema`
-//! delimiter included. The original checked for those two before it checked whether it was inside
-//! such a body, so a `|` scalar with a `# ...` line in its text ended early — and one with a
-//! `# @schema` line swallowed every line after it — and a writer then inserted into the middle of
-//! the text.
+//! One departure from that walk: inside a block scalar's body or a sequence item's interior,
+//! *every* line is content, a line that looks like a comment or like a `# @schema` delimiter
+//! included. A walk that checks for those two before it checks whether it is inside such a body
+//! ends a `|` scalar with a `# ...` line in its text early (and lets one with a `# @schema` line
+//! swallow every line after it), and a writer then inserts into the middle of the text.
 //!
 //! # Lines are counted the way the files were always counted
 //!
@@ -38,7 +37,7 @@ use super::markers::split_comment;
 ///
 /// `end` is the last line of content under the key, and deliberately not the last line before the
 /// next sibling: the comment run between two values belongs to the second one, and an insertion
-/// that landed inside it would separate a value from its `@schema` block — the one placement the
+/// that landed inside it would separate a value from its `@schema` block, the one placement the
 /// marker reader refuses to read. A leaf's `end` is its own line.
 ///
 /// Lines are 1-based, as they are in every message this crate prints, so a line `n` is the
@@ -53,7 +52,7 @@ pub struct Region {
     pub indent: usize,
     /// The last line of content belonging to it.
     pub end: usize,
-    /// Whether the key stands alone on its line, comment aside — `auth:` rather than `auth: {}`,
+    /// Whether the key stands alone on its line, comment aside: `auth:` rather than `auth: {}`,
     /// `auth: null` or `auth: |`. Only such a key can take a block child: a line under `auth: {}`
     /// is a second value for one key, which no YAML parser accepts.
     pub bare: bool,
@@ -84,9 +83,9 @@ pub fn regions(text: &str) -> Vec<Region> {
 
         // Inside a block scalar's body or a sequence item's interior every line is content,
         // whatever it looks like: `# not a comment` in a `|` scalar is text, and so is a line that
-        // reads `# @schema`. Counting it before the comment and delimiter checks is what keeps
-        // the value above from ending early — and a value that ended early would take a new
-        // sibling in the middle of its own text, truncating it.
+        // reads `# @schema`. Counting it before the comment and delimiter checks is what keeps the
+        // value above from ending early, and a value that ended early would take a new sibling in
+        // the middle of its own text, truncating it.
         if skip_deeper_than.is_some_and(|limit| indent > limit) {
             content.push((number, indent));
             continue;

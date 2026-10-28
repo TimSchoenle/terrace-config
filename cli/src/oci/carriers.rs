@@ -1,7 +1,7 @@
 //! The two carriers of a published contract, and the proofs that tie one to a digest.
 //!
-//! Every function here takes the [`Registry`] seam rather than a client, so each rule — which
-//! carrier answers, in which order the registry is asked, what a mismatch is called — is tested
+//! Every function here takes the [`Registry`] seam rather than a client, so each rule (which
+//! carrier answers, in which order the registry is asked, what a mismatch is called) is tested
 //! against recorded shapes rather than against a live registry.
 
 use std::collections::BTreeMap;
@@ -13,10 +13,10 @@ use super::{ARTIFACT_TYPE, Registry, hex_sha256};
 use crate::document::{CONTRACT_VERSION, LABEL_PATH, LABEL_PREFIX, LABEL_VERSION};
 use crate::error::Error;
 
-/// Fetch and verify one image's contract. Returns the published bytes and their hash.
+/// Fetches and verifies one image's contract. Returns the published bytes and their hash.
 ///
 /// Two things are proven here, and they answer different questions. The blob is what its descriptor
-/// says it is — a registry content-addresses its blobs, so hashing what arrived and comparing is the
+/// says it is: a registry content-addresses its blobs, so hashing what arrived and comparing is the
 /// whole integrity check. And the image and the document belong together: the prefix label is how a
 /// consumer discovers that the image publishes a contract at all, so a label naming one namespace
 /// over a document describing another is an image whose two halves came from different builds, and
@@ -136,10 +136,10 @@ pub fn agreed_labels(
 
 /// The contract attached to a digest, looked for on the index and on each platform.
 ///
-/// Which of the two a producer attaches to is a real choice — the index is what a chart pins, a
-/// platform manifest is what actually runs — and a consumer that only looked at one would report "no
-/// contract" for an image that publishes one perfectly well. The index is tried first because that
-/// is the digest everything else is tied to.
+/// Which of the two a producer attaches to is a real choice (the index is what a chart pins, a
+/// platform manifest is what actually runs), and a consumer that only looked at one would report
+/// "no contract" for an image that publishes one perfectly well. The index is tried first because
+/// that is the digest everything else is tied to.
 ///
 /// # Errors
 /// As [`Registry::discover`].
@@ -249,7 +249,7 @@ pub fn fetch_referrer(
 ///
 /// Read by walking the layer blobs from the top down, because that is the order a filesystem
 /// resolves them: the last layer to write a path is the one the container sees. The first hit wins
-/// and that platform's walk stops, so the usual case — the document copied in a late, tiny layer —
+/// and that platform's walk stops, so the usual case (the document copied in a late, tiny layer)
 /// costs one small blob per platform rather than the whole image.
 ///
 /// No container runtime and no local daemon: the images this validates may be built from scratch

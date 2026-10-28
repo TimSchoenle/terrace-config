@@ -115,8 +115,8 @@ pub(super) fn insertions_for(
             .find(|candidate| placed.contains(candidate.as_str()))
             .unwrap_or_default();
 
-        // A mapping key written with nothing under it — `feed:` whose only child was removed — is
-        // a parent to insert into rather than a leaf to refuse: `null` there is the absence of
+        // A mapping key written with nothing under it (`feed:` whose only child was removed) is a
+        // parent to insert into rather than a leaf to refuse: `null` there is the absence of
         // children, and every other scalar is a value that cannot also be a mapping.
         let occupant = crate::helm::dig(values, &ancestor).filter(|held| !held.is_null());
         if !ancestor.is_empty() && occupant.is_some_and(|held| !held.is_object()) {
@@ -200,8 +200,8 @@ pub(super) fn insertions_for(
 
 /// Why a key whose chart value already exists is refused, and what to write instead.
 ///
-/// The one refusal that is a rule rather than an obstacle — see this module's documentation. A
-/// credential gets a different sentence because it never carries a marker: what an existing value
+/// The one refusal that is a rule rather than an obstacle, as this module's documentation explains.
+/// A credential gets a different sentence because it never carries a marker: what an existing value
 /// is owed there is the write-off and the Secret line, not a binding.
 pub(super) fn occupied_refusal(placement: &Placement) -> String {
     let values_path = quoted(&placement.values_path);
@@ -234,7 +234,7 @@ pub(super) fn occupied_refusal(placement: &Placement) -> String {
 /// rather than filled in, the values-documentation gate went red on a block with no description at
 /// all, and in between a `TODO` was published into the README table and into the values schema.
 ///
-/// So this writes the plainest true sentence instead — the same fallback a key whose producer wrote
+/// So this writes the plainest true sentence instead: the same fallback a key whose producer wrote
 /// no prose gets. Nothing is left to delete, the README row is dull rather than wrong, and the
 /// closing output still names every block worth a better sentence.
 pub(super) fn branch_description(node: &Tree, depth: usize) -> Result<String, Error> {

@@ -2,7 +2,7 @@
 //!
 //! Every rule lives in the library, returns a value, and decides nothing about where it is printed
 //! or whether the run fails. That split is what lets a Gradle plugin, a build script or a test call
-//! the same code without going through a process — and it is what keeps the rules testable by
+//! the same code without going through a process, and it is what keeps the rules testable by
 //! calling them rather than by capturing stdout.
 //!
 //! `args` holds the clap types and their help text, `settings` resolves terrace.yaml, `output`

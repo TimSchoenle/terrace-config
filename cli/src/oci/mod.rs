@@ -25,9 +25,9 @@
 //! # The network is behind one seam
 //!
 //! [`Registry`] is the only thing that leaves this machine and every read goes through it, so
-//! everything above is testable against recorded shapes — including the two things only a real
-//! image revealed: the pinned digest being an index rather than a manifest, and the document
-//! arriving through the embedded file rather than through an attachment.
+//! everything above is testable against recorded shapes, including the two things only a real image
+//! revealed: the pinned digest being an index rather than a manifest, and the document arriving
+//! through the embedded file rather than through an attachment.
 //!
 //! Shelling out to `oras` and `cosign` rather than linking a registry client is deliberate. Both are
 //! already pinned and installed by the repositories that call this; linking one would carry a TLS
@@ -58,7 +58,7 @@ pub const ARTIFACT_TYPE: &str = "application/vnd.terrace.config-schema.v1+json";
 /// The OIDC issuer a hosted CI workflow signs under.
 ///
 /// Paired with the signer identity, which names the workflow itself, so a signature from any other
-/// workflow — in any other repository — is refused rather than accepted as "signed".
+/// workflow, in any other repository, is refused rather than accepted as "signed".
 pub const OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com";
 
 /// Every call that leaves this machine, behind one seam.
@@ -93,7 +93,7 @@ pub trait Registry {
     /// As [`Self::resolve`].
     fn blob(&self, reference: &str) -> Result<Vec<u8>, Error>;
 
-    /// Refuse anything not signed by the named identity.
+    /// Refuses anything not signed by the named identity.
     ///
     /// # Errors
     /// [`Error::Invalid`] when the signature is absent, or belongs to somebody else.
@@ -112,7 +112,7 @@ pub trait Registry {
 
     /// The per-platform image manifests behind a digest, or the digest itself.
     ///
-    /// A multi-architecture image is pushed as an index, and the index is what a chart pins — so the
+    /// A multi-architecture image is pushed as an index, and the index is what a chart pins, so the
     /// digest in a values file is usually *not* an image manifest and has no config blob to carry
     /// labels. The real manifests are one level down.
     ///
@@ -155,9 +155,9 @@ pub trait Registry {
 
 /// The two pinned binaries every registry call is delegated to.
 ///
-/// `oras` reads and attaches; `cosign` only verifies a signature, so a caller that verifies none —
+/// `oras` reads and attaches; `cosign` only verifies a signature, so a caller that verifies none (
 /// `image verify` without `--signer`, or anything reading an OCI image layout, which carries no
-/// signature to verify — runs without it.
+/// signature to verify) runs without it.
 #[derive(Debug, Clone)]
 pub struct Tools {
     oras: PathBuf,
@@ -166,7 +166,7 @@ pub struct Tools {
 }
 
 impl Tools {
-    /// Find both, from the environment or from the path.
+    /// Finds both, from the environment or from the path.
     ///
     /// # Errors
     /// [`Error::Invalid`] naming whichever is missing, and how to supply it.
@@ -178,7 +178,7 @@ impl Tools {
         })
     }
 
-    /// Find `oras`, and `cosign` only if it is there.
+    /// Finds `oras`, and `cosign` only if it is there.
     ///
     /// For a caller that may verify no signature at all. [`Registry::verify`] on the result fails,
     /// naming `cosign`, when it was not found, so a signature is never skipped for want of the tool.
@@ -193,8 +193,8 @@ impl Tools {
         })
     }
 
-    /// Read every reference as an OCI image layout — a directory or a tarball, followed by
-    /// `:tag` or `@digest` — rather than as a registry address.
+    /// Reads every reference as an OCI image layout (a directory or a tarball, followed by `:tag`
+    /// or `@digest`) rather than as a registry address.
     ///
     /// This is how an image is checked after it is built and before it is pushed: `docker buildx
     /// build --output type=oci` writes one, and so does `docker save` from Docker 25 on. A layout
@@ -205,8 +205,8 @@ impl Tools {
         self
     }
 
-    /// Attach a document to a digest as a referrer of [`ARTIFACT_TYPE`], and return the digest of
-    /// the attached artifact.
+    /// Attaches a document to a digest as a referrer of [`ARTIFACT_TYPE`], and returns the digest
+    /// of the attached artifact.
     ///
     /// `document` is attached under its file name, read from its own directory: `oras` refuses an
     /// absolute or parent-relative path by default, and the name is what the artifact's title
@@ -230,8 +230,8 @@ impl Tools {
             directory
         };
         let file = format!("{name}:application/json");
-        // `oras` runs in the document's directory, so a layout's path — relative to this process,
-        // not to the document — is made absolute first. A registry reference is no path.
+        // `oras` runs in the document's directory, so a layout's path (relative to this process,
+        // not to the document) is made absolute first. A registry reference is no path.
         let reference = if self.layout {
             let (path, pinned) = reference.rsplit_once('@').unwrap_or((reference, ""));
             let path = std::path::absolute(path).map_err(|e| Error::io(path, e))?;
@@ -272,7 +272,7 @@ impl Tools {
             })
     }
 
-    /// One `oras` call, reading the reference — always the last argument — as a layout when asked.
+    /// One `oras` call, reading the reference (always the last argument) as a layout when asked.
     fn oras(&self, directory: Option<&Path>, argv: &[&str]) -> Result<Vec<u8>, Error> {
         let mut argv = argv.to_vec();
         if self.layout {
@@ -300,7 +300,7 @@ fn required(name: &str, variable: &str) -> Result<PathBuf, Error> {
     })
 }
 
-/// Run one delegated tool and return what it printed, or its complaint as the error.
+/// Runs one delegated tool and returns what it printed, or its complaint as the error.
 fn run(binary: &Path, directory: Option<&Path>, argv: &[&str]) -> Result<Vec<u8>, Error> {
     let name = binary
         .file_name()
@@ -454,7 +454,7 @@ fn which(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Read a referrers listing, whose top-level key has changed across releases.
+/// Reads a referrers listing, whose top-level key differs between `oras` releases.
 ///
 /// # Errors
 /// [`Error::Invalid`] when the output is not JSON at all.

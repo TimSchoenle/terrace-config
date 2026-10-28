@@ -1,7 +1,7 @@
 //! Whether a change to a key needs a restart: `FORMAT.md`'s ordered list, as a consumer applies it.
 //!
-//! A contract states two facts — whether the image rebuilds, and whether a rebuild applies each
-//! key — and a consumer supplies the third: how its own deployment delivers the key. This module is
+//! A contract states two facts (whether the image rebuilds, and whether a rebuild applies each
+//! key), and a consumer supplies the third: how its own deployment delivers the key. This module is
 //! the combination, written once, so that `explain`, `diff`, the Helm generator and the gates can
 //! never disagree about which keys a chart has to roll its pods for.
 //!
@@ -16,8 +16,8 @@
 //!
 //! # What is not here
 //!
-//! Step 7 — a channel the orchestrator never updates in place — is a defect of the *deployment*,
-//! not a class of the key, and `FORMAT.md` says to report it rather than classify it. It needs a
+//! Step 7, a channel the orchestrator never updates in place, is a defect of the *deployment*, not
+//! a class of the key, and `FORMAT.md` says to report it rather than classify it. It needs a
 //! rendered manifest to see, so it lives with the gates that read one.
 
 use serde_json::Value as Json;
@@ -77,7 +77,7 @@ impl Effective {
 pub enum Why {
     /// The container runs once per pod.
     InitContainer,
-    /// The contract has no `schema.reload` — a document written before the field existed.
+    /// The contract has no `schema.reload`: a document written before the field existed.
     Undeclared,
     /// The image declares that it applies nothing after start.
     NoRebuild,
@@ -196,7 +196,7 @@ pub fn classify(contract: &Contract, key: &Key, channel: Channel, init: bool) ->
     }
 }
 
-/// Whether the image rebuilds on a change at all — `mode: rebuild` with at least one layer.
+/// Whether the image rebuilds on a change at all: `mode: rebuild` with at least one layer.
 #[must_use]
 pub fn rebuilds(contract: &Contract) -> bool {
     contract

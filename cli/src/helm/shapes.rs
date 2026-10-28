@@ -4,7 +4,7 @@
 //! object was flat: no way to say what one *element* of a container held. A `Vec<RouteConfig>`
 //! arrived as `{"type": "array"}`, which was all the producer could say, and a chart that wanted an
 //! operator's editor to catch a misspelt field before the service did had to transcribe the struct
-//! by hand — a copy of a fact somebody else owns, and a copy nothing regenerates is the one that
+//! by hand: a copy of a fact somebody else owns, and a copy nothing regenerates is the one that
 //! goes stale.
 //!
 //! `schema_version: 2` publishes that shape. This is what turns it into the block the chart ships.
@@ -16,13 +16,13 @@
 //! value that says which key it feeds has said everything a generator needs, and a second marker
 //! repeating "yes, really" is one more thing to forget.
 //!
-//! It was the other way round once, and the cost was measured rather than argued: nine values were
-//! enrolled and 185 were not, while 114 of the 185 carried a block byte-identical to the one their
-//! contract describes — hand copies that happened to still be right, with nothing holding them
+//! Opt-in enrolment has a measured cost: in one chart repository, nine values were enrolled and 185
+//! were not, while 114 of the 185 carried a block byte-identical to the one their contract
+//! describes. Those were hand copies that happened to still be right, with nothing holding them
 //! there. The other 71 differed, and every one of those differences was invisible.
 //!
-//! Three markers remain, and each says the *opposite* of what enrolment used to: not "derive this",
-//! but "here is where the chart departs from what was derived".
+//! Three markers exist, and each says the *opposite* of what opt-in enrolment says: not "derive
+//! this", but "here is where the chart departs from what was derived".
 //!
 //! ```text
 //! # @config-shape <values-path> handwritten <release> <source>
@@ -30,7 +30,7 @@
 //! # @config-shape-narrow <values-path> <sub-path> <reason>
 //! ```
 //!
-//! Written as plain comments *above* the block and separated from it by nothing but comments — the
+//! Written as plain comments *above* the block and separated from it by nothing but comments: the
 //! placement measured to be invisible to both generators, and the reason a `@config` marker cannot
 //! use it: inside the delimiters the text *is* the schema.
 //!
@@ -77,9 +77,9 @@ pub const NARROW_MARKER: &str = "@config-shape-narrow";
 /// Keywords in the order a generated block spells them: what the value *is*, then its bounds, then
 /// what it holds.
 ///
-/// Anything outside this list is appended alphabetically rather than dropped — under-reporting a
-/// constraint is the failure this whole toolchain exists to remove, and it would be no better
-/// coming from a renderer.
+/// Anything outside this list is appended alphabetically rather than dropped, because
+/// under-reporting a constraint is the failure this whole toolchain exists to remove, and it would
+/// be no better coming from a renderer.
 const ORDER: [&str; 20] = [
     "type",
     "enum",
@@ -106,7 +106,7 @@ const ORDER: [&str; 20] = [
 /// Whether a binding class has a constraint of its own to derive a block from.
 ///
 /// `composed` is the one left out, and the reason is that such a value is *an input* to the key's
-/// text rather than the key's value — a port inside a `printf` — so the key's constraint describes
+/// text rather than the key's value (a port inside a `printf`), so the key's constraint describes
 /// the composition and generating from it would type the part as the whole.
 fn derives(class: Class) -> bool {
     matches!(
@@ -171,7 +171,7 @@ pub struct Divergence {
     pub line: usize,
     /// The value whose block it departs from.
     pub values_path: String,
-    /// A dotted walk of *schema keywords* — `items.properties.guild_id` — because that is what the
+    /// A dotted walk of *schema keywords* (`items.properties.guild_id`), because that is what the
     /// thing being addressed is.
     pub sub_path: String,
     /// Why. Mandatory: a departure from the contract without a reason is one nobody can review.
@@ -214,7 +214,7 @@ pub struct Resolved {
 }
 
 impl Resolved {
-    /// The furthest-ahead release publishing this key — what a transcription is read at.
+    /// The furthest-ahead release publishing this key: what a transcription is read at.
     ///
     /// A hand copy is one description of a type several images share, so the release to read it at
     /// is the newest of them: read at the newest it is a true statement about that image and at
@@ -231,7 +231,7 @@ impl Resolved {
 /// A release as a comparable tuple, for the one comparison made here.
 ///
 /// Leading numeric segments only: `8.9.1` sorts under `8.10.0`, which a string comparison gets
-/// backwards, and a tag nobody writes — a pre-release, a date, a bare word — degrades to nothing
+/// backwards, and a tag nobody writes (a pre-release, a date, a bare word) degrades to nothing
 /// rather than failing. Two of those compare equal, which the caller turns into "re-read it" rather
 /// than "it is current".
 fn ordinal(version: &str) -> Vec<u64> {
@@ -257,7 +257,7 @@ pub struct Chart {
     /// The values file, verbatim. Read without newline translation, because a rewrite that
     /// normalised line endings would reflow every line of every file it touched.
     pub text: String,
-    /// Everything found wrong, in the order it was found.
+    /// Everything found wrong, in the order it is found.
     pub problems: Vec<String>,
     /// The values whose block the chart owns.
     pub transcribed: Vec<Shape>,
@@ -276,7 +276,7 @@ pub struct Chart {
 }
 
 impl Chart {
-    /// Read one chart, resolving everything that can be resolved before a block is compared.
+    /// Reads one chart, resolving everything that can be resolved before a block is compared.
     ///
     /// # Errors
     /// [`Error::Invalid`] when the markers or the declaration cannot be read at all, and
@@ -412,7 +412,7 @@ impl Chart {
     ///
     /// Placement is checked rather than assumed, for a shape a marker declares. The marker is
     /// matched to its value by name, so one written at the other end of the file would still
-    /// resolve — and would then assert something about a block nobody reading that block can see.
+    /// resolve, and would then assert something about a block nobody reading that block can see.
     ///
     /// A generated shape is not declared anywhere, so there is nothing to place: it *is* the block,
     /// found through the `@config` marker written inside it.
@@ -529,7 +529,7 @@ impl Chart {
     /// The older marker: a copy of a struct, held against the release it was copied at.
     ///
     /// Reached from the checker only. Every other problem here is one the writer repairs on the
-    /// same pass, so raising it from both halves costs nothing; this one it cannot repair —
+    /// same pass, so raising it from both halves costs nothing; this one it cannot repair:
     /// re-reading a struct somebody else owns is a person's job, and a writer that refused over it
     /// would turn the job that repairs the tree into a gate over the one thing in it no repair
     /// reaches.
@@ -573,7 +573,7 @@ impl Chart {
         let read_at = shape.version.clone().unwrap_or_default();
         let source = shape.source.clone().unwrap_or_default();
         if published.is_empty() {
-            // No contract carries the key — an unbound transcription, whose only release is the
+            // No contract carries the key: an unbound transcription, whose only release is the
             // chart's own. Nothing here can be more precise, and equality is the check.
             if super::release(&read_at) != super::release(&self.app_version) {
                 self.problems.push(format!(
@@ -684,7 +684,7 @@ pub fn check(chart: &mut Chart) {
         // Compared as text rather than as meaning, and the writer compares the same way. A block
         // that differs only in quoting is still a block a regeneration would rewrite, so a gate
         // that passed it would leave the writer with a diff to commit on a tree it had just called
-        // current — which is how a generated artefact ends up perpetually dirty.
+        // current, which is how a generated artefact ends up perpetually dirty.
         chart.problems.push(format!(
             "{}: the `@schema` block for '{}' is not what its contract describes; regenerate it\n{}",
             shape.at(),

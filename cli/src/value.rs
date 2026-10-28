@@ -1,4 +1,4 @@
-//! Checking one value, in the two steps `FORMAT.md` names — and asking the loader for the second.
+//! Checking one value, in the two steps `FORMAT.md` names, and asking the loader for the second.
 //!
 //! ```text
 //! 1. form   the raw characters, against `text_constraint`   published, portable, unconditional
@@ -15,23 +15,23 @@
 //! `FORMAT.md`: the reads it tabulates are normative for `producer.loader == "figment"` "and for
 //! nothing else. A consumer meeting a loader it does not know MUST skip step 2 and say so."
 //!
-//! The implementation this half was ported from performed both steps unconditionally and never read
-//! `producer` at all — invisible while there was one producer, and wrong in the expensive direction
-//! the moment there are two. A pattern *refusing* text the loader accepts stops a deployment that
-//! was correct, and it does so at a gate with a false message rather than at boot with a true one.
+//! Performing both steps unconditionally, without reading `producer`, is invisible while there is
+//! one producer and wrong in the expensive direction the moment there are two. A pattern *refusing*
+//! text the loader accepts stops a deployment that was correct, and it does so at a gate with a
+//! false message rather than at boot with a true one.
 //!
 //! So the reads are a registry returning [`Option`], and the type is what makes the skip
 //! unforgettable: there is no default row to fall through to and nothing to forget to branch on.
 //! [`range`] hands back [`Range::NotChecked`] for a loader with no row, which the caller reports at
-//! warning severity — never a pass, and never a failure.
+//! warning severity: never a pass, and never a failure.
 //!
 //! # Adding a row
 //!
 //! A row is a *measured* table, not a plausible one. Two things have to be true before one is added
 //! here: the reads are published under a heading of their own in `spec/v1/FORMAT.md`, as figment's
 //! are; and the implementation carries a test asserting its loader agrees with what this file says.
-//! That dependency direction is what keeps the registry honest — the binary states the reads and
-//! the implementations are held to them, rather than the binary guessing at loaders it cannot run.
+//! That dependency direction is what keeps the registry honest: the binary states the reads and the
+//! implementations are held to them, rather than the binary guessing at loaders it cannot run.
 
 use serde_json::{Map, Value as Json};
 
@@ -40,18 +40,18 @@ use crate::error::Error;
 
 /// One loader's environment reads, as measured against that loader.
 ///
-/// [`None`] from [`Self::parse`] means the loader cannot read this text as this form at all —
-/// `"http"` as an integer — which is a finding about the value. It is distinct from
-/// [`reads_for`] returning [`None`], which means nothing is known about how *any* text would be
-/// read and is a finding about this build.
+/// [`None`] from [`Self::parse`] means the loader cannot read this text as this form at all
+/// (`"http"` as an integer), which is a finding about the value. It is distinct from [`reads_for`]
+/// returning [`None`], which means nothing is known about how *any* text would be read and is a
+/// finding about this build.
 pub trait Reads: Sync {
-    /// Read `text` as `form` names, or [`None`] when this loader cannot.
+    /// Reads `text` as `form` names, or [`None`] when this loader cannot.
     fn parse(&self, form: TextForm, text: &str) -> Option<Json>;
 }
 
 /// The reads `spec/v1/FORMAT.md` publishes under `figment`.
 ///
-/// Every read begins by trimming, because the environment layer trims before it parses anything —
+/// Every read begins by trimming, because the environment layer trims before it parses anything,
 /// for a plain string and a single character as much as for an integer. A read that skipped it
 /// would refuse `" x "` against a `minLength` of 1, on a value that loads.
 struct Figment;
@@ -73,9 +73,9 @@ impl Reads for Figment {
                 .parse::<i64>()
                 .ok()
                 .map(Json::from),
-            // "compare to `true`", so `TRUE`, `1` and `yes` are all false rather than unreadable.
-            // A boolean therefore always reads, and it is `constraint` — never this — that could
-            // reject one.
+            // "compare to `true`", so `TRUE`, `1` and `yes` are all false rather than unreadable. A
+            // boolean therefore always reads, and it is `constraint`, never this, that could reject
+            // one.
             TextForm::Boolean => Some(Json::Bool(trimmed == "true")),
             TextForm::Choice => Some(Json::String(trimmed.to_owned())),
             TextForm::Structured => {
@@ -89,7 +89,7 @@ impl Reads for Figment {
                 let value: toml::Value = trimmed.parse().ok()?;
                 serde_json::to_value(&value).ok()
             }
-            // A string is already its own value, and `unknown` never reaches here — `range` skips
+            // A string is already its own value, and `unknown` never reaches here: `range` skips
             // it, because "nothing could be determined" is a gap rather than an answer.
             TextForm::Text | TextForm::Unknown => Some(Json::String(trimmed.to_owned())),
         }
@@ -109,8 +109,8 @@ fn is_toml_literal(text: &str) -> bool {
 ///
 /// `terrace-java` shares figment's row rather than carrying a copy of it: it implements the read
 /// `FORMAT.md` publishes directly, which is what its tier 2 claim means. The day the two disagree
-/// the shared row is wrong and must be split — and the test each implementation carries against
-/// this table is what would say so, rather than a deployment failing at boot.
+/// the shared row is wrong and must be split, and the test each implementation carries against this
+/// table is what would say so, rather than a deployment failing at boot.
 ///
 /// **`spring-boot` is deliberately absent.** Spring's `Binder` has its own relaxed-binding rules,
 /// which is the case `CONFORMANCE.md` predicts by name, and nothing here has measured them. An
@@ -200,11 +200,11 @@ impl<'a> Entry<'a> {
     ///
     /// The secrets directory and `_FILE` targets deliver their contents as strings with no parse,
     /// and no loader here coerces one into a number, a boolean or a TOML literal. So only a `text`
-    /// key can be file-supplied, whatever the file contains — a chart mounting an integer key as a
+    /// key can be file-supplied, whatever the file contains: a chart mounting an integer key as a
     /// secret file has made a mistake no file contents can fix.
     ///
     /// `unknown` is refused too, and deliberately: nothing is known about how the loader will read
-    /// it, so nothing says a raw string will do. That is the direction to be wrong in — a false
+    /// it, so nothing says a raw string will do. That is the direction to be wrong in: a false
     /// report on a mount is one line in review, and a missing one is a credential silently unread.
     ///
     /// # Errors
@@ -214,13 +214,13 @@ impl<'a> Entry<'a> {
     }
 }
 
-/// Step 1 — the form: the raw characters, against `text_constraint`.
+/// Step 1, the form: the raw characters, against `text_constraint`.
 ///
 /// Unconditional, and the same for every loader: `text_constraint` is what the *producer* published
 /// about its own reads, so a consumer holding text to it is repeating the producer's statement
 /// rather than making one of its own.
 ///
-/// `text_constraint: null` means only that there is no pattern to match — `text_form` is what says
+/// `text_constraint: null` means only that there is no pattern to match; `text_form` is what says
 /// whether that is because any text is correct or because nothing is known.
 ///
 /// # Errors
@@ -247,13 +247,13 @@ pub enum Range {
     NotChecked(String),
 }
 
-/// Step 2 — the range: the text read as `text_form` says, against `constraint`.
+/// Step 2, the range: the text read as `text_form` says, against `constraint`.
 ///
 /// The only step a `minimum`, a `maximum` or a document-space `enum` is reachable from. Assumes
 /// [`form`] already ran and passed, so text that does not satisfy the published pattern is
 /// somebody else's report rather than a second line about the same value.
 ///
-/// `loader` is `producer.loader`, or the empty string for a document that names none — which every
+/// `loader` is `producer.loader`, or the empty string for a document that names none, which every
 /// document written before the field existed does. Both take the same branch, because both mean the
 /// same thing: nothing here knows how this text becomes a value.
 ///
@@ -268,7 +268,7 @@ pub fn range(entry: Entry<'_>, loader: &str, text: &str) -> Result<Range, Error>
     //
     // `structured` is deliberately *not* here, and the distinction cost a real defect. A container
     // still has to be read before anything can be said about it, and the read is what says that
-    // `a,b` is not a list — which is the deployment this form exists to name. Whether it is one is
+    // `a,b` is not a list, which is the deployment this form exists to name. Whether it is one is
     // the loader's question and not this crate's: figment wants a TOML literal, and a binder that
     // splits on commas reads the same text as two items. Skipping the read here made the check
     // silently unreachable for every loader at once.
@@ -408,10 +408,10 @@ const ANNOTATIONS: &[&str] = &[
 /// Keywords of a constraint that are neither a flat assertion nor an annotation.
 ///
 /// What a caller synthesising a value has to know: a keyword outside the flat vocabulary is one no
-/// candidate walk can be steered by, so the key it belongs to is reported as unprobeable rather than
-/// probed with a value nothing checked. The `schema_version: 2` container keywords are outside it on
-/// purpose — a key carrying one describes a container, and a container's leaves are the operator's
-/// own names.
+/// candidate walk can be steered by, so the key it belongs to is reported as unprobeable rather
+/// than probed with a value nothing checked. The `schema_version: 2` container keywords are outside
+/// it on purpose: a key carrying one describes a container, and a container's leaves are the
+/// operator's own names.
 #[must_use]
 pub fn beyond_scalar_vocabulary(constraint: &Json) -> Vec<String> {
     let Some(schema) = constraint.as_object() else {
@@ -428,7 +428,7 @@ pub fn beyond_scalar_vocabulary(constraint: &Json) -> Vec<String> {
     found
 }
 
-/// Validate one value against the JSON Schema subset a contract may use.
+/// Validates one value against the JSON Schema subset a contract may use.
 ///
 /// Recurses, as of `schema_version: 2`: a container-typed key carries its element under `items` or
 /// `additionalProperties`, and a walker that stopped at the top would report an array of the right
@@ -438,7 +438,7 @@ pub fn beyond_scalar_vocabulary(constraint: &Json) -> Vec<String> {
 /// while reporting success is the failure this whole half exists to remove, and a validator that
 /// walked past a keyword it did not implement would be doing exactly that.
 ///
-/// `at` names the position inside the value a failure was found at, so a caller's message still
+/// `at` names the position inside the value a failure is found at, so a caller's message still
 /// points at something a person can edit: `[2].method` rather than the whole array.
 ///
 /// # Errors
@@ -482,7 +482,7 @@ pub fn assert_value(constraint: &Json, value: &Json, at: &str) -> Result<Option<
 /// The `schema_version: 4` half: schemas combined with others.
 ///
 /// A member of `allOf` carrying `description` is a condition a producer stated, and its failure is
-/// reported as that sentence — the operator reads the rule, not its encoding.
+/// reported as that sentence: the operator reads the rule, not its encoding.
 fn combined(schema: &Map<String, Json>, value: &Json, at: &str) -> Result<Option<String>, Error> {
     if let Some(Json::Array(members)) = schema.get("allOf") {
         for member in members {
@@ -579,7 +579,7 @@ fn flat(schema: &Map<String, Json>, value: &Json) -> Option<String> {
         return Some(format!("{value} is not {constant}"));
     }
 
-    // A bound on a boolean is meaningless, and JSON's `true` is not a number — so unlike Python,
+    // A bound on a boolean is meaningless, and JSON's `true` is not a number, so unlike Python,
     // where `bool` is an `int`, there is no trap to remember here.
     if let Some(number) = value.as_f64().filter(|_| !value.is_boolean())
         && let Some(failure) = bounds(schema, value, number)
@@ -657,7 +657,7 @@ fn bounds(schema: &Map<String, Json>, value: &Json, number: f64) -> Option<Strin
 ///
 /// Every keyword here is skipped when the value is not the shape it applies to, exactly as the
 /// numeric and string bounds are. A `minItems` on a value that is not a list is not a failure of
-/// that value — `type` is what says the value is the wrong shape, and reporting the same defect
+/// that value: `type` is what says the value is the wrong shape, and reporting the same defect
 /// twice makes the first line harder to find.
 fn container(schema: &Map<String, Json>, value: &Json, at: &str) -> Result<Option<String>, Error> {
     if let Json::Array(items) = value {
@@ -748,8 +748,8 @@ fn container(schema: &Map<String, Json>, value: &Json, at: &str) -> Result<Optio
         }
 
         // Only the object spelling is an element schema. `true` and `false` are the open/closed
-        // flag, and neither says anything about a value — the union is where closure is decided,
-        // and it decides it for the document rather than for one key.
+        // flag, and neither says anything about a value. The union is where closure is decided, and
+        // it decides it for the document rather than for one key.
         if let Some(element) = schema
             .get("additionalProperties")
             .filter(|element| element.is_object())
@@ -1080,7 +1080,7 @@ mod tests {
     #[test]
     fn a_container_keyword_is_outside_it_and_an_annotation_is_not() {
         // The container keywords belong to a key that describes a container, whose leaves are the
-        // operator's own names — so a caller synthesising a value has nothing to synthesise. An
+        // operator's own names, so a caller synthesising a value has nothing to synthesise. An
         // annotation asserts nothing, so it steers nothing and refuses nothing.
         assert_eq!(
             beyond_scalar_vocabulary(&json!({"type": "array", "items": {}, "minItems": 1})),
