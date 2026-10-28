@@ -184,12 +184,12 @@ pub(super) fn occupied_reason(placement: &Placement) -> Result<String, Error> {
 
 /// The `unbound` groups this adoption owes, in a scaffolded declaration's layout.
 ///
-/// A group every key of which the declaration already writes off is not written again — a second
-/// entry for a key that has one is the same drift as a missing entry, one reason saying what
-/// another already said, and the gate would not catch it because both are true. `occupied` are the
-/// credentials whose value the chart already had; they get the same sentence with the clause naming
-/// the chart value removed, since that is the claim this refuses to make about a value it did not
-/// write.
+/// A key the declaration already writes off is not written again, and a group left with no key is
+/// dropped. A second entry for a key that has one is the same drift as a missing entry: one reason
+/// saying what another already said, which the gate would not catch because both are true.
+/// `occupied` are the credentials whose value the chart already had; they get the same sentence
+/// with the clause naming the chart value removed, since that is the claim this refuses to make
+/// about a value it did not write.
 pub(super) fn owed_write_offs(
     plan: &Plan,
     occupied: &[Placement],
@@ -203,7 +203,14 @@ pub(super) fn owed_write_offs(
 
     let mut groups: Vec<(Vec<String>, String)> = write_off_groups(plan)?
         .into_iter()
-        .filter(|(paths, _)| !paths.iter().all(|path| already.contains(path.as_str())))
+        .map(|(paths, reason)| {
+            let fresh: Vec<String> = paths
+                .into_iter()
+                .filter(|path| !already.contains(path.as_str()))
+                .collect();
+            (fresh, reason)
+        })
+        .filter(|(paths, _)| !paths.is_empty())
         .collect();
     for item in occupied {
         if !already.contains(item.path()) {

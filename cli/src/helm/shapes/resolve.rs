@@ -26,7 +26,8 @@ pub(super) fn one_binding<'a>(
         .collect();
     if derived.is_empty() {
         refuse(format!(
-            "{}: '{}' carries no `{MARKER}` marker naming the contract key it feeds, so there is              nothing to derive its schema from",
+            "{}: '{}' carries no `{MARKER}` marker naming the contract key it feeds, so there is \
+             nothing to derive its schema from",
             shape.at(),
             shape.values_path
         ));
@@ -34,7 +35,8 @@ pub(super) fn one_binding<'a>(
     }
     if derived.len() > 1 {
         refuse(format!(
-            "{}: '{}' binds {}, and a value feeding several keys has no single constraint to be              derived from",
+            "{}: '{}' binds {}, and a value feeding several keys has no single constraint to be \
+             derived from",
             shape.at(),
             shape.values_path,
             derived

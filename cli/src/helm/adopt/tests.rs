@@ -938,6 +938,35 @@ fn a_key_already_written_off_is_not_written_off_twice() {
 }
 
 #[test]
+fn a_group_only_partly_written_off_writes_only_its_new_keys() {
+    // Every reserved key shares one reason, so two of them form one group. One is already written
+    // off; only the other may gain an entry.
+    let chart = Chart::new();
+    chart.declaration(&format!(
+        "{DECLARATION}unbound:\n  - keys:\n      - runtime.node_id\n    reason: Already decided.\n"
+    ));
+    chart.contract(
+        "api",
+        &[
+            session_ttl(),
+            key("runtime.node_id", &json!({"reserved": true})),
+            key("runtime.zone", &json!({"reserved": true})),
+        ],
+    );
+    chart.write();
+
+    let declared = chart.declared();
+    let written_off: Vec<&Vec<String>> = declared.unbound.iter().map(|entry| &entry.keys).collect();
+    assert_eq!(
+        written_off,
+        [
+            &vec!["runtime.node_id".to_owned()],
+            &vec!["runtime.zone".to_owned()]
+        ]
+    );
+}
+
+#[test]
 fn a_group_appends_to_the_block_a_chart_already_has() {
     let chart = Chart::new();
     chart.declaration(&format!(
@@ -1512,6 +1541,7 @@ fn a_key_whose_text_form_this_build_does_not_know_is_refused_and_the_rest_adopte
 // Writing: all or nothing, and only inside the chart
 // --------------------------------------------------------------------------------------
 
+#[cfg(unix)]
 #[test]
 fn a_file_that_resolves_outside_its_chart_fails_the_whole_write_before_anything_lands() {
     // Two charts planned together; the second's helper is a link to a file outside it. The
@@ -1547,6 +1577,7 @@ fn a_file_that_resolves_outside_its_chart_fails_the_whole_write_before_anything_
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn a_write_keeps_each_files_permissions() {
     use std::os::unix::fs::PermissionsExt as _;

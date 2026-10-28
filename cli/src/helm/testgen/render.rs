@@ -129,12 +129,13 @@ pub(super) fn yaml_scalar(value: &Json) -> String {
     match value {
         Json::Bool(true) => return "true".to_owned(),
         Json::Bool(false) => return "false".to_owned(),
-        held if held.is_i64() || held.is_u64() => return held.to_string(),
+        // A JSON number's spelling is a YAML number of the same value, and `null` deletes the key.
+        Json::Number(number) => return number.to_string(),
+        Json::Null => return "null".to_owned(),
         _ => {}
     }
     let text = match value {
         Json::String(text) => text.clone(),
-        Json::Null => "None".to_owned(),
         other => other.to_string(),
     };
     if plain_scalar(&text) {
@@ -494,7 +495,10 @@ pub(super) fn skipped_note(skipped: &[Skipped]) -> Vec<String> {
     lines.push(String::new());
     for entry in skipped {
         let indent = " ".repeat(entry.path.len() + 2);
-        let wrapped = wrap(&entry.reason, COMMENT_WIDTH - 4 - indent.len());
+        let wrapped = wrap(
+            &entry.reason,
+            COMMENT_WIDTH.saturating_sub(4 + indent.len()),
+        );
         lines.push(format!("{}: {}", entry.path, wrapped[0]));
         lines.extend(wrapped[1..].iter().map(|line| format!("{indent}{line}")));
     }

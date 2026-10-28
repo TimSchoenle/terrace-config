@@ -1139,3 +1139,16 @@ fn a_key_a_real_contract_declares_is_probed_the_same_way_a_hand_built_one_is() {
         .count();
     assert!(probed > 0, "no key of a real contract carries a probe");
 }
+
+#[test]
+fn a_set_scalar_keeps_its_yaml_type() {
+    use super::render::yaml_scalar;
+
+    assert_eq!(yaml_scalar(&json!(3)), "3");
+    assert_eq!(yaml_scalar(&json!(0.5)), "0.5");
+    assert_eq!(yaml_scalar(&json!(-1.25)), "-1.25");
+    assert_eq!(yaml_scalar(&Json::Null), "null");
+    assert_eq!(yaml_scalar(&json!(true)), "true");
+    assert_eq!(yaml_scalar(&json!("0.5")), "'0.5'");
+    assert_eq!(yaml_scalar(&json!("plain")), "plain");
+}
