@@ -259,8 +259,9 @@ what "already correct" means. Exit codes are `0` clean, `1` findings and `2` cou
 
 The binary does not produce a contract, which needs the types; does not write `Chart.yaml`, because
 only a reviewer knows whether a moved key matters; does not run `helm template`, because the gates
-must read the same render every other linter reads; and reaches the network only in `pull`, `image
-verify --image` and `image attach`.
+must read the same render every other linter reads; and reaches the network only in `pull`,
+`sync` (through its `pull` step, unless `--no-pull`), `helm init`, `image verify --image` and
+`image attach`.
 
 ### Refusals: normative, with a fast path
 
@@ -385,9 +386,10 @@ first three stay cheap.
 
 `terrace-contract` ships as a multi-architecture image at `ghcr.io/timschoenle/terrace-contract`
 and as four release binaries (`x86_64` and `aarch64` Linux on musl, Windows, macOS on Apple silicon)
-with a signed `SHA256SUMS`. The image is built from `scratch`, so a Docker build copies the binary
-into a stage with a shell. The Gradle plugin runs the same binary from a Java build, and
-`TERRACE_CONTRACT_BIN` points any caller at a local build.
+with a signed `SHA256SUMS`. The image is built from `scratch` and holds only the binary, so a
+consumer's Docker build copies the binary out of it into a stage that has a shell to run it in. The
+Gradle plugin runs the same binary from a Java build, and `TERRACE_CONTRACT_BIN` points any caller
+at a local build.
 
 `cli/` is its own release-please package and versions independently of every implementation. Its
 compatibility statement is the envelope versions it reads, `terrace_contract: 1` and
