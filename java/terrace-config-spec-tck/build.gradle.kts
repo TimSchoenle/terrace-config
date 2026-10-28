@@ -1,6 +1,8 @@
-// The corpus runner and tier comparator. Knows about documents, not about binders: a
-// Spring import here would be a design failure. Its own tests need no producer: they validate the
-// stored corpus against the meta-schema.
+// The corpus runner and tier comparator. Its `main` classes know about documents, not about
+// binders or producers: a Spring import there would be a design failure. Its tests are where the
+// producers come in: they validate the stored corpus against the meta-schema, and they assemble
+// the fixtures through the loader and the Spring producer to hold both documents to the corpus and
+// to `terrace-contract conform`.
 description = "The meta-schema validator and tier comparator checked against spec/v1/, and " +
     "the Java producers' documents held to `terrace-contract conform`. See java/README.md."
 
@@ -21,9 +23,9 @@ dependencies {
     // Test-only: the fixture types under src/test/.../fixtures/ are real `@TerraceConfig` classes,
     // assembled into a real `Contract` through the real loader and rendered through the real
     // Jackson 2 codec: exactly the pipeline a consumer runs, not a hand-maintained restatement of
-    // it. Kept out of `implementation` above: this module's own two classes (MetaSchemaValidator,
-    // TierComparator) know nothing about descriptors, loaders or bean-shaped config types, and
-    // that stays true for anything published from `main`.
+    // it. Kept out of `implementation` above: this module's `main` classes know nothing about
+    // descriptors, loaders or bean-shaped config types, and that stays true for anything published
+    // from `main`.
     testImplementation(project(":terrace-config-annotations"))
     testImplementation(project(":terrace-config-core"))
     testImplementation(project(":terrace-config-loader"))

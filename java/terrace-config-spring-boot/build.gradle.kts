@@ -1,8 +1,7 @@
-// The Spring Boot starter and producer. `producer.loader` is `spring-boot`, target tier 1
-// with the `_` vs `__` divergence documented in java/README.md's `terrace-config-spring-boot`
-// section. Ships the
-// missing layers as Spring machinery (an EnvironmentPostProcessor for _FILE indirection) rather
-// than describing a dialect nothing implements.
+// The Spring Boot starter and producer. `producer.loader` is `spring-boot`, target tier 1, with
+// the `_` vs `__` divergence documented in java/README.md's `terrace-config-spring-boot` section.
+// Ships the missing layers as Spring machinery (an EnvironmentPostProcessor for _FILE indirection)
+// rather than describing a dialect nothing implements.
 description = "terrace-config-spring: the _FILE indirection layer over Spring's Binder, and " +
     "`SpringContractMain`, the build-time producer of its contract, target tier 1. " +
     "See java/README.md."
@@ -17,10 +16,9 @@ plugins {
 // follows whichever Jackson major version the app's own Spring Boot BOM resolves (2.x under Boot
 // 3, 3.x under Boot 4's `tools.jackson` coordinates). `SpringContractMain` runs at build time and
 // needs the Jackson 2 codec, so it compiles against it `compileOnly` and finds it on the
-// generator's own classpath (see `SpringContractMain`), never on the service's. If Boot 4
-// support is needed before Boot 3 support is dropped, ship it as a sibling
-// `terrace-config-spring-boot4` module rather than branching this one; see
-// java/README.md's "Dual Jackson 2 / 3 support" section.
+// generator's own classpath (see `SpringContractMain`), never on the service's. No
+// `-spring-boot4` sibling is needed; java/README.md's "Dual Jackson 2 / 3 support" section has
+// the reasoning.
 dependencies {
     implementation(project(":terrace-config-core"))
     implementation(project(":terrace-config-annotations"))
