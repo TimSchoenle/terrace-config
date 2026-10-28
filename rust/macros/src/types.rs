@@ -4,8 +4,6 @@
 use quote::quote;
 use syn::{Field, GenericArgument, PathArguments, Type};
 
-use crate::field::ElementKind;
-
 /// Refuse a field whose type publishes nothing and which was not told what it holds.
 ///
 /// `values` and `nested` are opt-in and have to stay opt-in: a derive has only tokens, so it
@@ -136,14 +134,14 @@ pub(crate) const KNOWN_LEAVES: &[&str] = &[
     "NonZeroIsize",
 ];
 
-/// The error for `#[config(element)]` on a field this derive cannot find a container in.
+/// The error for `#[config(element)]` or `#[config(element_values)]`, named by `attribute`, on a
+/// field this derive cannot find a container in.
 ///
 /// Named rather than guessed at, because the guess would be silent and wrong: a schema saying
 /// `routes` is an object because its element is a struct describes a file nobody can write. The
 /// alias case is called out because it is the one that looks like a bug in the derive — the type
 /// *is* a container, and a derive cannot see through a name to know it.
-pub(crate) fn not_a_container(field: &Field, element: &ElementKind) -> syn::Error {
-    let attribute = element.attribute();
+pub(crate) fn not_a_container(field: &Field, attribute: &str) -> syn::Error {
     syn::Error::new_spanned(
         field,
         format!(

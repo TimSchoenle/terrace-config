@@ -256,7 +256,7 @@ pub(crate) fn field_body(
     // Asked for even by the literal form, which has no use for the item type: the check is that
     // the field *is* a container, and reporting an element schema at a key that holds one value
     // would say the key is an array of itself.
-    let item = element_type(bare).ok_or_else(|| not_a_container(field, element))?;
+    let item = element_type(bare).ok_or_else(|| not_a_container(field, element.attribute()))?;
     let reported = match element {
         ElementKind::Fields => {
             quote! { #krate::schema::Element::Fields(<#item as #krate::schema::Describe>::describe) }
