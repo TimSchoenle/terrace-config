@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.7.0...terrace-config-java-v0.7.1) (2026-10-28)
+
+
+### Dependencies
+
+* **deps:** update dependency com.fasterxml.jackson.core:jackson-databind to v2.22.4 ([#318](https://github.com/TimSchoenle/terrace-config/issues/318)) ([d9cce8c](https://github.com/TimSchoenle/terrace-config/commit/d9cce8c09bf311ec618bf29424d385dec652096c))
+* **deps:** update dependency tools.jackson.core:jackson-databind to v3.2.4 ([#321](https://github.com/TimSchoenle/terrace-config/issues/321)) ([130254f](https://github.com/TimSchoenle/terrace-config/commit/130254f3cebeb4085f8cd5c1c0205c9adcd265a8))
+* **deps:** update gradle to v9.8.2 ([#325](https://github.com/TimSchoenle/terrace-config/issues/325)) ([59b3716](https://github.com/TimSchoenle/terrace-config/commit/59b371636a6a6f4488a50edeaad543df03531abd))
+* **deps:** update spring boot to v4.1.2 ([#326](https://github.com/TimSchoenle/terrace-config/issues/326)) ([27271cb](https://github.com/TimSchoenle/terrace-config/commit/27271cbf6a70c29ee78e63cc62dfdf35ddc44183))
+
 ## [0.7.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.6.2...terrace-config-java-v0.7.0) (2026-10-20)
 
 
