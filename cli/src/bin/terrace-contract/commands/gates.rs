@@ -89,7 +89,9 @@ pub(crate) fn shapes_command(
                 std::fs::write(chart_dir.join("values.yaml"), text)
                     .map_err(|e| Error::io(chart_dir.join("values.yaml").display(), e))?;
                 written += count;
-                println!("wrote: {} ({count} block(s))", chart.name);
+                if format != Output::Json {
+                    println!("wrote: {} ({count} block(s))", chart.name);
+                }
             }
         }
 
@@ -99,7 +101,10 @@ pub(crate) fn shapes_command(
     }
 
     if format == Output::Text || format == Output::Github {
-        if check && !report.failed() {
+        if check && !report.failed() && derived + transcriptions == 0 {
+            // A run that examined nothing must not read like a clean one.
+            println!("==> no selected chart carries a config shape; nothing to check");
+        } else if check && !report.failed() {
             println!(
                 "==> {derived} generated and {transcriptions} hand-transcribed config shape(s), all current"
             );
@@ -130,7 +135,7 @@ pub(crate) fn check_command(
         )));
     }
     let checked = helm::check(charts, selection, manifests)?;
-    if checked.charts == 0 {
+    if checked.charts == 0 && format != Output::Json {
         // Worth saying out loud: a run that validated nothing looks exactly like a clean one from
         // the outside.
         println!("==> no chart declares a configuration contract; nothing to validate");

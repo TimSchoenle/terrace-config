@@ -9,6 +9,7 @@ use terrace_contract::{Error, helm, oci};
 use crate::args::ConfigCommand;
 use crate::settings::{Repo, environment_charts, environment_signer, unknown_key_lines, variable};
 
+/// Dispatch the `config` subcommands: `show` (the settings, or one chart's declaration) and `init`.
 pub(crate) fn config_command(command: ConfigCommand, repo: &Repo) -> Result<ExitCode, Error> {
     match command {
         ConfigCommand::Show {
