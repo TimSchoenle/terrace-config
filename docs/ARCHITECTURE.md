@@ -56,7 +56,10 @@ types ──> Schema ──> Contract ──JSON──> render   markdown, toml,
 Everything left of the arrow needs the language's toolchain and is per-language. Everything right of
 it needs a JSON document and nothing else. A new implementation's obligation is therefore one
 sentence: **emit a document that passes `terrace-contract conform --tier <n>`.** It writes no
-renderer, no validator and no conformance kit.
+renderer, no validator and no conformance kit. Passing `conform` is the document's half of a tier,
+not the whole claim: tier 1 also needs the implementation's reads documented in
+`spec/v1/FORMAT.md`, and tier 3 needs its fixtures to match the corpus goldens byte for byte (see
+"Adding an implementation" in `spec/v1/CONFORMANCE.md`).
 
 | | Rust | Java | Another language |
 |---|---|---|---|
@@ -279,11 +282,12 @@ spec/v1/conformance/<case>/
     schema.json  labels.txt          Dockerfile.part
 ```
 
-`terrace-contract` is the reference renderer and regenerates the goldens under `TERRACE_SPEC_BLESS`.
-Anything else that renders is checked against those bytes, so a drift is a failing test in the
-implementation that drifted. A Java service's README table and a Rust service's are the same bytes,
-which `CONFORMANCE.md` says the document itself can reach only between implementations sharing a
-loader and a type mapping.
+The goldens have one author, the Rust reference implementation's `TERRACE_SPEC_BLESS` run (the
+command is in `spec/v1/CONFORMANCE.md`). `terrace-contract` renders the same documents and is
+checked against those bytes, never blessing them, as is anything else that renders, so a drift is a
+failing test in the implementation that drifted. A Java service's README table and a Rust service's
+are the same bytes, which `CONFORMANCE.md` says the document itself can reach only between
+implementations sharing a loader and a type mapping.
 
 ## Reading documents this repository did not write
 
