@@ -14,8 +14,10 @@ non-null unless annotated `@Nullable`. The example modules' packages carry docum
 
 Both jspecify and `org.jetbrains.annotations` define nullness annotations, and using both for the
 same purpose would give one audience two vocabularies. jspecify is the vendor-neutral standard
-([jspecify.dev](https://jspecify.dev)) that javac, IntelliJ, the Checker Framework, NullAway and
-Error Prone all read, so nullness is jspecify's alone.
+([jspecify.dev](https://jspecify.dev)) that IntelliJ, the Checker Framework, NullAway and Error
+Prone read, so nullness is jspecify's alone. javac records the annotations but enforces nothing, and
+this build runs no nullness checker, so a violation surfaces in an IDE or an external checker rather
+than as a compile error.
 
 `org.jetbrains.annotations` is declared for the inspection vocabulary jspecify does not cover:
 

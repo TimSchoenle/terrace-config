@@ -40,8 +40,9 @@ builds no `ObjectMapper`; see [JACKSON.md](JACKSON.md) for the codecs.
   `json_schema` half, which has no closed shape. Every class carries an explicit
   `@JsonPropertyOrder` and a `@JsonProperty` per field, because a class-level `@JsonNaming` is
   understood only by Jackson 2's `databind`. `Key` and `ExternalVar` set `@JsonInclude` per field:
-  the meta-schema's `required` list and its open properties list do not coincide (`constraint` is
-  optional, `ty` is required but nullable), so inclusion is decided field by field.
+  the meta-schema's `required` list and its open properties list do not coincide, so inclusion is
+  decided field by field. `constraint` is optional on both; `Key.ty` is required but nullable, and
+  `ExternalVar.ty` is optional and omitted when null.
 - **`ContractValidator.validate(Contract)`** runs `spec/v1/FORMAT.md`'s "What a producer MUST
   refuse" and throws the first violation as its own `ContractRefusalException` subclass. Both
   producers build the same `Contract` shape and must refuse the same twelve things, so it is
@@ -188,7 +189,7 @@ the product.
   names and `_FILE` indirections), then the file-backed layers. The merged map is bound to the
   caller's type with Jackson's `ObjectMapper.convertValue`, an internal detail. `load(Class<T>,
   Map<String, String>)` takes the environment as a map instead of `System.getenv()`.
-- **`schema()` and `schemaAt(descriptor, root)`** describe every key a `TypeDescriptor` can carry,
+- **`schema(descriptor)` and `schemaAt(descriptor, root)`** describe every key a `TypeDescriptor` can carry,
   spelled in this loader's dialect, mirroring `Terrace::schema` and `schema_at`. They supply the
   loader's dialect to `SchemaAssembler`, plus the loader-read variables (`config`, `secrets_dir`
   and each reserved key) as `LoaderVar`s, which no descriptor can see.

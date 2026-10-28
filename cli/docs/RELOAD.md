@@ -24,5 +24,6 @@ A chart may add keys to the restart set with a `restart:` entry per document in
 `config-contract.yaml`, each with a reason, and never remove one. `explain` prints what a change to
 each setting costs.
 
-Nothing changes for a chart until one of its images declares `mode: rebuild`. The rules are in
+`reload` skips a chart none of whose images declares `mode: rebuild`, unless the chart already has
+a `_config-reload.tpl`, which it keeps current either way. The rules are in
 [`FORMAT.md`](../../spec/v1/FORMAT.md#reloading).

@@ -73,7 +73,8 @@ docker run --rm -v "$PWD:/work" -w /work \
 - **Gate** it: `conform` runs the refusals and a conformance tier, `validate` the meta-schema, and
   `stamp` writes build identity onto it.
 - **Check images**: `image verify` holds a Dockerfile, a built image or an OCI layout to the
-  document, and `image attach` attaches it as a signed referrer. See [IMAGES.md](docs/IMAGES.md).
+  document, and `image attach` attaches it as a referrer whose printed digest `cosign sign` then
+  signs. See [IMAGES.md](docs/IMAGES.md).
 - **Gate Helm charts** against the contracts of the images they pin: `check`, `bindings`, `shapes`,
   `diff`, `coverage`, `secrets` and `pull`, plus `sync` to run them in order, `adopt` and
   `helm init` to write chart values from a contract, and `migrate` to find what a removal broke.
@@ -166,9 +167,14 @@ In a Docker build, the contract-producing stage is the only language-specific pa
 Boot service's Dockerfile differs only in its `contract-builder` stage:
 
 ```dockerfile
-FROM ghcr.io/timschoenle/terrace-contract:0.12 AS contract
+FROM ghcr.io/timschoenle/terrace-contract:0.12 AS terrace-contract
+
+# The image is built from `scratch` and has no shell, so the binary runs in a stage that has one.
+FROM debian:trixie-slim AS contract
+COPY --from=terrace-contract /terrace-contract /usr/local/bin/terrace-contract
 COPY --from=contract-builder /out/contract.json /in/contract.json
-RUN terrace-contract conform --tier 2 /in/contract.json \
+RUN mkdir -p /out \
+ && terrace-contract conform --tier 2 /in/contract.json \
  && terrace-contract render --format labels /in/contract.json > /out/labels
 ```
 

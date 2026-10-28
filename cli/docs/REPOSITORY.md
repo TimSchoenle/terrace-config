@@ -20,7 +20,7 @@ helm:
 ```
 
 ```bash
-terrace-contract config init                    # writes one, moving .github/configs/first-party-images.txt into it
+terrace-contract config init                    # writes one, copying .github/configs/first-party-images.txt into it
 terrace-contract config show                    # every setting, its value, and where it came from
 terrace-contract config show --chart portfolio  # the chart's declaration with every default written out
 terrace-contract doctor                         # the settings, the pinned CLI and the tools, one line each
@@ -79,7 +79,8 @@ it wrote. It does not write the round-trip suites, because a generated test that
 author reading it is a test nobody has read; run `tests` for those.
 
 With `--check` it writes nothing and needs no network. It runs `bindings`, `shapes --check`,
-`readme --check`, `tests --check` and, when `helm.firstParty` is set, `coverage`. With `--manifests`
+`readme --check`, `tests --check` and, when `helm.firstParty` is set or
+`.github/configs/first-party-images.txt` exists, `coverage`. With `--manifests`
 it also runs `check` on that render. Every step runs even when an earlier one failed, so one run
 reports everything. The exit code is `0` when every step passed, `1` when a step found something,
 and `2` when a step could not run. `--format github` puts each step in a collapsible log group and

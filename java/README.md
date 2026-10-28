@@ -103,6 +103,7 @@ the repository to the build, and to `pluginManagement` with the plugin mapping i
 
 ```kotlin
 repositories {
+    mavenCentral()
     maven { url = uri("https://jitpack.io") }
 }
 
@@ -112,6 +113,9 @@ dependencies {
     // The generated descriptors are -core types.
     implementation("com.github.TimSchoenle.terrace-config:terrace-config-core:terrace-config-java-v0.7.0")
     annotationProcessor("com.github.TimSchoenle.terrace-config:terrace-config-processor:terrace-config-java-v0.7.0")
+    // Only for the quick start's `@Getter` and `@Setter`; hand-written accessors work as well.
+    compileOnly("org.projectlombok:lombok:1.18.48")
+    annotationProcessor("org.projectlombok:lombok:1.18.48")
 }
 ```
 

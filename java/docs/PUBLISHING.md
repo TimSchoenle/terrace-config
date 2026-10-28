@@ -54,14 +54,14 @@ something unreleased:
 
 ```kotlin
 repositories {
+    // The modules' own dependencies, such as Jackson, resolve from Maven Central.
+    mavenCentral()
     maven { url = uri("https://jitpack.io") }
 }
 
 dependencies {
-    // One module: the group is `com.github.<user>.<repo>`, the artifact is the Gradle module name.
+    // The group is `com.github.<user>.<repo>`, the artifact is the Gradle module name.
     implementation("com.github.TimSchoenle.terrace-config:terrace-config-loader:<tag>")
-    // Every published module at once: the group is `com.github.<user>`, the artifact is the repo.
-    implementation("com.github.TimSchoenle:terrace-config:<tag>")
 }
 ```
 
