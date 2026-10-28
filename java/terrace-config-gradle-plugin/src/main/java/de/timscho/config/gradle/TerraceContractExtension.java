@@ -25,74 +25,90 @@ import org.gradle.api.provider.Property;
  */
 public abstract class TerraceContractExtension {
 
-    /** The root {@code @TerraceConfig} type, by binary name ({@code com.example.Outer$Inner}). */
+    /** Creates the extension. */
+    public TerraceContractExtension() {
+        // Gradle generates the subclass that implements the abstract properties.
+    }
+
+    /**
+     * {@return the root {@code @TerraceConfig} type, by binary name ({@code
+     * com.example.Outer$Inner})}
+     */
     public abstract Property<String> getType();
 
-    /** The environment prefix, taken verbatim ({@code MYAPP_}). */
+    /** {@return the environment prefix, taken verbatim ({@code MYAPP_})} */
     public abstract Property<String> getPrefix();
 
-    /** The contract's {@code app.name}. Defaults to the project's name. */
+    /** {@return the contract's {@code app.name}} Defaults to the project's name. */
     public abstract Property<String> getAppName();
 
     /**
-     * Reserved keys in their full environment spelling ({@code MYAPP_PROFILE}). Only {@code
-     * terrace-java} reads reserved keys; setting one for {@code spring-boot} fails the emission.
+     * {@return reserved keys in their full environment spelling ({@code MYAPP_PROFILE})} Only
+     * {@code terrace-java} reads reserved keys; setting one for {@code spring-boot} fails the
+     * emission.
      */
     public abstract ListProperty<String> getReserve();
 
     /**
-     * Further options passed to the entry point as they are, for the producer settings this block
-     * has no property for ({@code --nesting-separator}, {@code --file-suffix}, and {@code
-     * terrace-java}'s {@code --config-var}, {@code --secrets-dir-var} and {@code
-     * --default-config-path}). Pass the same values the service boots with.
+     * {@return further options passed to the entry point as they are, for the producer settings
+     * this block has no property for ({@code --nesting-separator}, {@code --file-suffix}, and
+     * {@code terrace-java}'s {@code --config-var}, {@code --secrets-dir-var} and {@code
+     * --default-config-path})} Pass the same values the service boots with.
      */
     public abstract ListProperty<String> getProducerArguments();
 
     /**
-     * Which producer emits the contract: {@code terrace-java} or {@code spring-boot}. Defaults to
-     * the one whose module ({@code terrace-config-loader} or {@code terrace-config-spring-boot}) is
-     * on the runtime classpath, and must be set when both or neither is.
+     * {@return which producer emits the contract: {@code terrace-java} or {@code spring-boot}}
+     * Defaults to the one whose module ({@code terrace-config-loader} or {@code
+     * terrace-config-spring-boot}) is on the runtime classpath, and must be set when both or
+     * neither is.
      */
     public abstract Property<String> getLoader();
 
     /**
-     * The tier {@code terrace-contract conform} holds the stamped contract to. Defaults to the
-     * producer's own claim: 2 for {@code terrace-java}, 1 for {@code spring-boot}.
+     * {@return the tier {@code terrace-contract conform} holds the stamped contract to} Defaults to
+     * the producer's own claim: 2 for {@code terrace-java}, 1 for {@code spring-boot}.
      */
     public abstract Property<Integer> getTier();
 
     /**
-     * {@code app.version}: {@code terraceContract.appVersion}, then the project's version unless it
-     * is {@code unspecified}.
+     * {@return {@code app.version}: {@code terraceContract.appVersion}, then the project's version
+     * unless it is {@code unspecified}}
      */
     public abstract Property<String> getAppVersion();
 
-    /** {@code app.revision}: {@code terraceContract.revision}, then {@code TERRACE_CONTRACT_REVISION}. */
+    /**
+     * {@return {@code app.revision}: {@code terraceContract.revision}, then {@code
+     * TERRACE_CONTRACT_REVISION}}
+     */
     public abstract Property<String> getRevision();
 
     /**
-     * {@code app.created}, as RFC 3339: {@code terraceContract.created}, then {@code
-     * TERRACE_CONTRACT_CREATED}. Left unset by default, so two builds of one commit stamp the same
+     * {@return {@code app.created}, as RFC 3339: {@code terraceContract.created}, then {@code
+     * TERRACE_CONTRACT_CREATED}} Left unset by default, so two builds of one commit stamp the same
      * document.
      */
     public abstract Property<String> getCreated();
 
-    /** {@code app.source}, where the source lives. */
+    /** {@return {@code app.source}, where the source lives} */
     public abstract Property<String> getSource();
 
     /**
-     * The {@code terrace-contract} binary. Defaults to {@code TERRACE_CONTRACT_BIN} (a relative path
-     * is resolved against the root project), then {@code PATH}, and nothing else.
+     * {@return the {@code terrace-contract} binary} Defaults to {@code TERRACE_CONTRACT_BIN} (a
+     * relative path is resolved against the root project), then {@code PATH}, and nothing else.
      */
     public abstract RegularFileProperty getExecutable();
 
-    /** Where {@code terraceContract} writes the stamped contract. Defaults to {@code build/terrace/contract.json}. */
+    /**
+     * {@return where {@code terraceContract} writes the stamped contract} Defaults to {@code
+     * build/terrace/contract.json}.
+     */
     public abstract RegularFileProperty getOutput();
 
     /**
-     * The committed copy {@code terraceContractCheck} compares the unstamped emission with, and
-     * {@code terraceContractUpdate} rewrites. Defaults to {@code contract.json} in the project
-     * directory.
+     * {@return the committed copy {@code terraceContractCheck} compares the unstamped emission
+     * with, and {@code terraceContractUpdate} rewrites} Defaults to {@code contract.json} in the
+     * project directory.
      */
     public abstract RegularFileProperty getCommittedContract();
 }

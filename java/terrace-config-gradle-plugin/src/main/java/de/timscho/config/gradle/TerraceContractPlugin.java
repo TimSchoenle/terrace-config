@@ -63,6 +63,11 @@ public final class TerraceContractPlugin implements Plugin<Project> {
 
     private static final String GROUP = "terrace contract";
 
+    /** Creates the plugin. Gradle instantiates it when a build applies it. */
+    public TerraceContractPlugin() {
+        // Stateless: everything it configures hangs off the project passed to apply.
+    }
+
     @Override
     public void apply(final Project project) {
         project.getPluginManager().apply(JavaPlugin.class);

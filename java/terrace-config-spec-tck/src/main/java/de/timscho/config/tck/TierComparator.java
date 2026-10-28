@@ -8,8 +8,8 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Compares a produced document against a stored corpus case, at the level the claimed tier
- * covers — no more.
+ * Compares a produced document against a stored corpus case, at the level the claimed tier covers,
+ * and no more.
  *
  * <p>The output is a readable diff, one entry per disagreement, never an assertion message: the
  * diff is the deliverable when a rendering changes, not an afterthought a failure message happens
@@ -32,10 +32,10 @@ public final class TierComparator {
     private TierComparator() {}
 
     /**
-     * Every disagreement between {@code produced} and {@code expected} that the given tier cares
-     * about. Empty means the produced document satisfies the claimed tier against this case.
+     * {@return every disagreement between {@code produced} and {@code expected} that the given tier
+     * cares about} Empty means the produced document satisfies the claimed tier against this case.
      *
-     * @param tier     how strictly to compare — see {@link Tier}
+     * @param tier     how strictly to compare; see {@link Tier}
      * @param produced the document actually rendered
      * @param expected the document stored in the conformance corpus
      */

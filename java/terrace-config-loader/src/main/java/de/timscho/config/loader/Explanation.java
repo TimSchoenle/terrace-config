@@ -15,8 +15,8 @@ import lombok.experimental.Accessors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Where every value {@link TerraceLoader} can see would come from — the Java equivalent of the
- * Rust crate's {@code explain::Explanation}, built by {@link TerraceLoader#explain()}.
+ * Where every value {@link TerraceLoader} can see would come from: the Java equivalent of the Rust
+ * crate's {@code explain::Explanation}, built by {@link TerraceLoader#explain()}.
  *
  * <pre>{@code
  * terrace-config: prefix `MYAPP_`, 4 keys, 1 supplied by more than one layer
@@ -36,13 +36,14 @@ import org.jspecify.annotations.Nullable;
  * }</pre>
  *
  * <p><b>Nothing here holds a value.</b> An {@link Explanation} records <i>where</i> each key came
- * from and never <i>what</i> it was — there is no field to leak, so {@link #toString()} is safe
- * to log by construction rather than by remembering to redact. A TOML fragment that will not
- * parse is reported as {@link Fragment.Unreadable} with no reason attached for the same reason: a
- * parse error quotes the line it failed on, and that line can be the credential.
- * {@link TerraceLoader#load(Class, Map)} fails with the parser's own message, which is where the
- * detail belongs.
+ * from and never <i>what</i> it was. There is no field to leak, so {@link #toString()} is safe to
+ * log by construction rather than by remembering to redact. A TOML fragment that will not parse is
+ * reported as {@link Fragment.Unreadable} with no reason attached for the same reason: a parse
+ * error quotes the line it failed on, and that line can be the credential. {@link
+ * TerraceLoader#load(Class, Map)} fails with the parser's own message, which is where the detail
+ * belongs.
  */
+@SuppressWarnings("doclint:missing")
 @Accessors(fluent = true)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public final class Explanation {
@@ -80,7 +81,7 @@ public final class Explanation {
     private final List<Origin> origins;
 
     /**
-     * Report on already-collected layers.
+     * Reports on already-collected layers.
      *
      * <p>Package-private, and takes the loader's own assembly product rather than re-reading the
      * environment: a report that did its own reading could disagree with the load it describes.

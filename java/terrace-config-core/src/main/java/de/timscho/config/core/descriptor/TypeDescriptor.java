@@ -4,9 +4,9 @@ import java.util.List;
 
 /**
  * The whole of what {@code terrace-config-processor} reads off one {@code @TerraceConfig}-
- * annotated type — a struct's keys, or an enum's accepted spellings. Generated as a {@code
- * public static final TypeDescriptor DESCRIPTOR} field on a {@code <Type>Descriptor} class beside
- * the annotated type.
+ * annotated type: a struct's keys, or an enum's accepted spellings. Generated as a {@code public
+ * static final TypeDescriptor DESCRIPTOR} field on a {@code <Type>Descriptor} class beside the
+ * annotated type.
  *
  * @param qualifiedName the annotated type's fully qualified name
  * @param kind          {@link Kind#STRUCT} for a class or record, {@link Kind#ENUM} for an enum
@@ -21,7 +21,9 @@ public record TypeDescriptor(
 
     /** Whether a described type is a struct (keys of its own) or an enum (values one key accepts). */
     public enum Kind {
+        /** A class or record with keys of its own. */
         STRUCT,
+        /** An enum whose constants are the values one key accepts. */
         ENUM
     }
 }

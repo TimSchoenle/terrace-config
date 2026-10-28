@@ -23,25 +23,25 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * Checks the Java-side rendering of every named spec case against every level {@code
  * spec/v1/CONFORMANCE.md} describes, from a real {@code @TerraceConfig} fixture (see {@code
- * fixtures/}) through the real loader and Jackson 2 codec — never a hand-written JSON literal
+ * fixtures/}) through the real loader and Jackson 2 codec, never a hand-written JSON literal
  * standing in for what the pipeline actually renders.
  *
  * <ul>
- *   <li><b>Meta-schema (tier 1)</b>: the produced envelope, and its {@code schema} half alone,
- *       both validate against {@code contract.schema.json} — see {@link MetaSchemaValidatorTest}
- *       for the same check run against the stored corpus itself.
- *   <li><b>Spec corpus (tier 2, cross-language)</b>: every dialect spelling — {@code env}, the
- *       file forms, every alias list, {@code unreachable} — agrees with the shared Rust-authored
- *       case in {@code spec/v1/conformance/}. Type names, the {@code json_schema} rendering and
- *       the {@code external} surface are exempt by design: {@code spec/v1/CONFORMANCE.md}
- *       reserves those for an implementation's own language, and forcing them to match would
- *       defeat the point of publishing a native one.
+ *   <li><b>Meta-schema (tier 1)</b>: the produced envelope, and its {@code schema} half alone, both
+ *       validate against {@code contract.schema.json}; see {@link MetaSchemaValidatorTest} for the
+ *       same check run against the stored corpus itself.
+ *   <li><b>Spec corpus (tier 2, cross-language)</b>: every dialect spelling ({@code env}, the file
+ *       forms, every alias list, {@code unreachable}) agrees with the shared Rust-authored case in
+ *       {@code spec/v1/conformance/}. Type names, the {@code json_schema} rendering and the {@code
+ *       external} surface are exempt by design: {@code spec/v1/CONFORMANCE.md} reserves those for
+ *       an implementation's own language, and forcing them to match would defeat the point of
+ *       publishing a native one.
  *   <li><b>Java golden (tier 3, self-conformance)</b>: byte-identical, after {@code
- *       producer.version} is substituted, against a Java-only corpus this module keeps under
- *       {@code src/test/resources/conformance-java/}. Regenerate it with {@code ./gradlew
- *       :terrace-config-spec-tck:blessJavaConformance} (or {@code -Dterrace.spec.bless=true})
- *       after an intentional rendering change, then review the diff under {@code git diff} before
- *       committing it alongside that change — nothing else keeps Java's own output from drifting
+ *       producer.version} is substituted, against a Java-only corpus this module keeps under {@code
+ *       src/test/resources/conformance-java/}. Regenerate it with {@code ./gradlew
+ *       :terrace-config-spec-tck:blessJavaConformance} (or {@code -Dterrace.spec.bless=true}) after
+ *       an intentional rendering change, then review the diff under {@code git diff} before
+ *       committing it alongside that change. Nothing else keeps Java's own output from drifting
  *       release to release the way {@code ContractCorpusRoundTripTest} (in {@code
  *       terrace-config-core-jackson2}/{@code -jackson3}) keeps it from drifting away from the
  *       corpus it already ships.
@@ -172,9 +172,9 @@ class JavaConformanceTest {
 
     /**
      * The refinement cases use no type whose spelling differs between the two languages, so every
-     * key's whole {@code constraint} — element schema included, as deep as it nests — has to be
-     * the one the Rust crate publishes. This is what holds {@code SchemaAssembler}'s port of the
-     * element schema to the reference, rather than only the positions a refinement tightened.
+     * key's whole {@code constraint}, element schema included and as deep as it nests, has to be
+     * the one the Rust crate publishes. This is what holds {@code SchemaAssembler}'s counterpart of
+     * the element schema to the reference, rather than only the positions a refinement tightened.
      */
     @ParameterizedTest
     @ValueSource(strings = {"required-entries", "entry-names", "element-patterns"})
@@ -194,7 +194,7 @@ class JavaConformanceTest {
     }
 
     /**
-     * Every tightening a constraint publishes, as {@code position keyword value} lines — the walk
+     * Every tightening a constraint publishes, as {@code position keyword value} lines: the walk
      * {@code FORMAT.md} names, over the JSON both sides render, so the two element schemas may
      * differ everywhere else and still be compared where it matters.
      */

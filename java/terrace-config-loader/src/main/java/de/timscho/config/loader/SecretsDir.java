@@ -14,10 +14,10 @@ import lombok.experimental.Accessors;
 /**
  * A directory of key-named files, which is what a Kubernetes {@code Secret} volume looks like.
  *
- * <p>Entries whose name begins with {@code .} are skipped, and so is anything that is not a
- * regular file — checked with {@link Files#isRegularFile(Path, java.nio.file.LinkOption...)}
- * with no {@code NOFOLLOW_LINKS} option, so that a projected {@code Secret} volume's per-key
- * symlinks are followed rather than classified as "not a file".
+ * <p>Entries whose name begins with {@code .} are skipped, and so is anything that is not a regular
+ * file, checked with {@link Files#isRegularFile(Path, java.nio.file.LinkOption...)} with no {@code
+ * NOFOLLOW_LINKS} option, so that a projected {@code Secret} volume's per-key symlinks are followed
+ * rather than classified as "not a file".
  */
 @Getter(AccessLevel.PACKAGE)
 @Accessors(fluent = true)
@@ -31,7 +31,7 @@ final class SecretsDir {
     private final Map<String, FileValue> values;
 
     /**
-     * Read every key-named file directly inside {@code dir}.
+     * Reads every key-named file directly inside {@code dir}.
      *
      * <p>{@code origin} names whatever pointed at {@code dir} and is quoted back in any error.
      */

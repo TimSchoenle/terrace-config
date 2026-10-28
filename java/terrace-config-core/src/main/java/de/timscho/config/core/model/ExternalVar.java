@@ -11,11 +11,12 @@ import lombok.extern.jackson.Jacksonized;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A variable this image reads that is nobody's configuration key — {@code
+ * A variable this image reads that is nobody's configuration key: {@code
  * spec/v1/contract.schema.json}'s {@code #/$defs/external_var}. Never carries {@code
- * dialect.prefix}: everything in that namespace is a configuration key (see
- * {@link de.timscho.config.core.refusal.ExternalVariableInPrefixException}).
+ * dialect.prefix}: everything in that namespace is a configuration key (see {@link
+ * de.timscho.config.core.refusal.ExternalVariableInPrefixException}).
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder(toBuilder = true)
 @Jacksonized
@@ -41,7 +42,7 @@ public class ExternalVar {
 
     String name;
 
-    /** What reads it — a toolchain, a base image, a library. */
+    /** What reads it: a toolchain, a base image, a library. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @Nullable String owner;
 

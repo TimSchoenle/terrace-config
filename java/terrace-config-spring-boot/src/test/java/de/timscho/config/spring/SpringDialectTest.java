@@ -46,7 +46,7 @@ class SpringDialectTest {
         // The divergence from `terrace-config-loader`'s `__` separator, made concrete: a field
         // genuinely named `github_token` and a nested key path `github.token` are both spelled
         // `MYAPP_GITHUB_TOKEN` in the environment, so both fold to the identical property name
-        // here — an ambiguity `__` never has, since it never appears inside one segment's name.
+        // here, an ambiguity `__` never has, since it never appears inside one segment's name.
         assertThat(dialect.propertyName("MYAPP_GITHUB_TOKEN")).isEqualTo("myapp.github.token");
     }
 

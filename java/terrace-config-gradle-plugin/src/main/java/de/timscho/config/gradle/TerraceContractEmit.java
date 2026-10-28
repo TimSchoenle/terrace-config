@@ -29,55 +29,67 @@ import org.gradle.process.ExecResult;
  * service's runtime classpath: no application context, no network, nothing the service does at
  * boot.
  *
- * <p>Cacheable because the document is a pure function of what is declared here — the classes,
- * the entry point and its options, and the JVM — and deliberately of nothing else: build identity
+ * <p>Cacheable because the document is a pure function of what is declared here (the classes, the
+ * entry point and its options, and the JVM) and deliberately of nothing else: build identity
  * (version, revision, a timestamp) is {@link TerraceContractStamp}'s, so a new commit or a new
  * second never invalidates this task's output.
  */
 @CacheableTask
 public abstract class TerraceContractEmit extends DefaultTask {
 
-    /** The service's classes and runtime dependencies, plus the generator's own. */
+    /** Creates the task. */
+    public TerraceContractEmit() {
+        // Gradle generates the subclass that implements the abstract properties.
+    }
+
+    /** {@return the service's classes and runtime dependencies, plus the generator's own} */
     @Classpath
     public abstract ConfigurableFileCollection getClasspath();
 
-    /** The entry point: {@code ContractMain} or {@code SpringContractMain}. */
+    /** {@return the entry point: {@code ContractMain} or {@code SpringContractMain}} */
     @Input
     public abstract Property<String> getMainClass();
 
-    /** The root {@code @TerraceConfig} type, by binary name. */
+    /** {@return the root {@code @TerraceConfig} type, by binary name} */
     @Input
     public abstract Property<String> getType();
 
-    /** The environment prefix. */
+    /** {@return the environment prefix} */
     @Input
     public abstract Property<String> getPrefix();
 
-    /** The contract's {@code app.name}. */
+    /** {@return the contract's {@code app.name}} */
     @Input
     public abstract Property<String> getAppName();
 
-    /** Reserved keys, each passed as {@code --reserve}. */
+    /** {@return reserved keys, each passed as {@code --reserve}} */
     @Input
     public abstract ListProperty<String> getReserve();
 
-    /** Further options, passed as they are. */
+    /** {@return further options, passed as they are} */
     @Input
     public abstract ListProperty<String> getProducerArguments();
 
-    /** The JVM the entry point runs on: the project's toolchain, so the classes load as compiled. */
+    /**
+     * {@return the JVM the entry point runs on: the project's toolchain, so the classes load as
+     * compiled}
+     */
     @Nested
     public abstract Property<JavaLauncher> getJavaLauncher();
 
-    /** The unstamped document. */
+    /** {@return the unstamped document} */
     @OutputFile
     public abstract RegularFileProperty getOutput();
 
-    /** Runs the entry point. */
+    /** {@return the process launcher the entry point runs through} */
     @Inject
     protected abstract ExecOperations getExecOperations();
 
-    /** Runs the entry point and fails with what it printed when it refuses or is misused. */
+    /**
+     * Runs the entry point and fails with what it printed when it refuses or is misused.
+     *
+     * @throws IOException if the previous document cannot be deleted
+     */
     @TaskAction
     public void emit() throws IOException {
         final File output = this.getOutput().get().getAsFile();

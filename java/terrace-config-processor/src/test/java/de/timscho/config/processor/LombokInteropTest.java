@@ -16,30 +16,28 @@ import javax.tools.JavaFileObject;
 import org.junit.jupiter.api.Test;
 
 /**
- * Proves {@link FieldResolver#hasLombokBuilderDefault} actually works, by running this
- * processor's own {@link TerraceConfigProcessor} alongside Lombok's real processor in the same
- * {@code compile-testing} compilation — the only way to reproduce the exact failure this class
- * exists to fix. {@link #lombokProcessor} loads Lombok's actual SPI-registered class,
- * {@code lombok.launch.AnnotationProcessorHider$AnnotationProcessor}, reflectively: it is
- * package-private, so nothing outside {@code lombok.launch} can import or {@code new} it, but a
- * {@link Processor} reference to an instance of it is exactly as usable as one to any other
- * processor — {@code compile-testing}'s own {@code withProcessors} takes the interface, never the
- * concrete type.
+ * Proves {@link FieldResolver#hasLombokBuilderDefault} actually works, by running this processor's
+ * own {@link TerraceConfigProcessor} alongside Lombok's real processor in the same {@code
+ * compile-testing} compilation, the only way to reproduce the exact failure this class exists to
+ * fix. {@link #lombokProcessor} loads Lombok's actual SPI-registered class, {@code
+ * lombok.launch.AnnotationProcessorHider$AnnotationProcessor}, reflectively: it is package-private,
+ * so nothing outside {@code lombok.launch} can import or {@code new} it, but a {@link Processor}
+ * reference to an instance of it is exactly as usable as one to any other processor: {@code
+ * compile-testing}'s own {@code withProcessors} takes the interface, never the concrete type.
  *
  * <p><b>The bug this guards against.</b> A field like {@code @Builder.Default String bindAddr =
- * "127.0.0.1";} has a real, working default — Lombok's generated builder falls back to it exactly
+ * "127.0.0.1";} has a real, working default: Lombok's generated builder falls back to it exactly
  * when a bean-style field initializer would. But Lombok's {@code @Builder} handler rewrites the
- * field's AST node in place, during its own annotation-processing round: the initializer is
- * lifted into a synthetic {@code $default$bindAddr()} method and the field declaration's own
- * initializer is nulled out. Whichever processor's round runs first is not something either
- * guarantees — {@code withProcessors} above deliberately lists Lombok's processor before this
- * one, forcing its rewrite to happen first, because that ordering is what actually exercises the
- * bug: with {@link FieldResolver#hasLombokBuilderDefault} temporarily disabled (only {@link
- * FieldResolver#hasInitializer}, reading the compiler's public {@code Trees} API), this test
- * fails in that order and passes in the reverse one — proof the field's initializer really can be
- * gone by the time this processor's own round runs, not just in theory. {@code
- * hasLombokBuilderDefault} reads {@code @Builder.Default}'s own presence instead, a signal
- * Lombok's rewrite does not touch.
+ * field's AST node in place, during its own annotation-processing round: the initializer is lifted
+ * into a synthetic {@code $default$bindAddr()} method and the field declaration's own initializer
+ * is nulled out. Whichever processor's round runs first is not something either guarantees. {@code
+ * withProcessors} above deliberately lists Lombok's processor before this one, forcing its rewrite
+ * to happen first, because that ordering is what actually exercises the bug: with {@link
+ * FieldResolver#hasLombokBuilderDefault} temporarily disabled (only {@link
+ * FieldResolver#hasInitializer}, reading the compiler's public {@code Trees} API), this test fails
+ * in that order and passes in the reverse one, proof the field's initializer really can be gone by
+ * the time this processor's own round runs, not just in theory. {@code hasLombokBuilderDefault}
+ * reads {@code @Builder.Default}'s own presence instead, a signal Lombok's rewrite does not touch.
  */
 class LombokInteropTest {
 
@@ -78,7 +76,7 @@ class LombokInteropTest {
                 "a field with no default at all must resolve to `hasDefault = false`:\n" + content);
     }
 
-    /** A fresh instance of Lombok's own processor, loaded by name — see the class doc for why. */
+    /** A fresh instance of Lombok's own processor, loaded by name; see the class doc for why. */
     private static Processor lombokProcessor() throws ReflectiveOperationException {
         Class<?> hider = Class.forName("lombok.launch.AnnotationProcessorHider$AnnotationProcessor");
         Constructor<?> constructor = hider.getDeclaredConstructor();
@@ -89,9 +87,9 @@ class LombokInteropTest {
     /**
      * {@code KeyDescriptor}'s {@code hasDefault} argument for the field named {@code fieldName}'s
      * own generated call. {@code hasDefault} is the second-to-last constructor argument, followed
-     * only by the trailing {@code aliases} list — anchoring on that fixed {@code
-     * , java.util.List.of(...))} suffix finds it regardless of the (possibly non-empty) alias
-     * list's own contents.
+     * only by the trailing {@code aliases} list, and anchoring on that fixed {@code ,
+     * java.util.List.of(...))} suffix finds it regardless of the (possibly non-empty) alias list's
+     * own contents.
      */
     private static boolean lastBooleanArgumentFor(String content, String fieldName) {
         Pattern pattern = Pattern.compile(

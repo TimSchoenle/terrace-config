@@ -7,10 +7,11 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
 /**
- * The surface outside the loader's namespace — {@code spec/v1/contract.schema.json}'s
- * {@code #/$defs/external}. A positive declaration rather than a suppression list: a declared
- * variable is checked exactly like a configuration key, an ignored one may be misspelt freely.
+ * The surface outside the loader's namespace: {@code spec/v1/contract.schema.json}'s {@code
+ * #/$defs/external}. A positive declaration rather than a suppression list: a declared variable is
+ * checked exactly like a configuration key, an ignored one may be misspelt freely.
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder(toBuilder = true)
 @Jacksonized

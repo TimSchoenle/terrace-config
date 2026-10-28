@@ -7,8 +7,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 /**
- * The example's own {@link OrdersProperties}, bound through a real Spring {@code Binder} exactly
- * as {@link OrdersServiceApplication} boots it — the property-binding half of the story {@code
+ * The example's own {@link OrdersProperties}, bound through a real Spring {@code Binder} exactly as
+ * {@link OrdersServiceApplication} boots it: the property-binding half of the story {@code
  * OrdersServiceFileIndirectionIntegrationTest} finishes with the one layer binding alone cannot
  * exercise. Mirrors the scenarios {@code tests/example_service.rs} and {@code
  * terrace-config-example-service}'s own {@code OrdersServiceConfigTest} pin for the other two

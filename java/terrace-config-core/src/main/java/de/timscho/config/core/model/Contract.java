@@ -7,7 +7,7 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
 /**
- * The whole document a producer publishes — {@code spec/v1/contract.schema.json}'s root object.
+ * The whole document a producer publishes: {@code spec/v1/contract.schema.json}'s root object.
  *
  * <p>This is the model {@code -loader} and {@code -spring-boot} build and {@code -spec-tck}
  * compares against the corpus; it knows nothing about either binder (see {@code
@@ -18,6 +18,7 @@ import lombok.extern.jackson.Jacksonized;
  * terrace-contract render --format labels|dockerfile} and {@code terrace-contract image verify},
  * so every producer's image carries the same bytes ({@code docs/contract-cli-plan.md} §5).
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder(toBuilder = true)
 @Jacksonized

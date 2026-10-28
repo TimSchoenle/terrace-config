@@ -4,13 +4,13 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One field of a {@code @TerraceConfig}-annotated type, described independently of any dialect —
- * no environment spelling, no alias derivation, no {@code text_form}. A loader or Spring producer
+ * One field of a {@code @TerraceConfig}-annotated type, described independently of any dialect: no
+ * environment spelling, no alias derivation, no {@code text_form}. A loader or Spring producer
  * combines this with its own dialect to build the actual {@code Key} model in {@link
  * de.timscho.config.core.model}.
  *
- * @param name       the field's own name — {@code @JsonProperty}'s value when present, otherwise
- *                   as declared — the last segment of the eventual key path
+ * @param name       the field's own name ({@code @JsonProperty}'s value when present, otherwise
+ *                   as declared), the last segment of the eventual key path
  * @param docs       the field's full Javadoc, verbatim; empty if none
  * @param summary    the first paragraph of {@code docs}, matching rustdoc's own summary convention
  * @param typeName   the field's Java type, simple-named (e.g. {@code "String"}, {@code
@@ -35,12 +35,12 @@ import org.jspecify.annotations.Nullable;
  *                   struct itself, or the {@code @Element} struct each element is; meaningful only
  *                   when {@code nestedKeys} or {@code element} carries a nested struct
  * @param hasDefault whether the field declaration carries an initializer ({@code private String
- *                   port = "8080";}, not {@code private String port;}) — the Java equivalent of a
- *                   Rust field carrying {@code #[serde(default = "…")]}, read from source by
- *                   {@code FieldResolver} via the compiler's {@code Trees} API. A key whose field
- *                   has one is never {@link de.timscho.config.core.model.Key#isRequired()}: the
- *                   binder leaves an omitted key at exactly the value written here, so this is
- *                   what actually determines {@code required} — {@code container ==
+ *                   port = "8080";}, not {@code private String port;}), the Java equivalent of a
+ *                   Rust field carrying {@code #[serde(default = "…")]}, read from source by {@code
+ *                   FieldResolver} via the compiler's {@code Trees} API. A key whose field has one
+ *                   is never {@link de.timscho.config.core.model.Key#isRequired()}: the binder
+ *                   leaves an omitted key at exactly the value written here, so this is what
+ *                   actually determines {@code required}; {@code container ==
  *                   ContainerKind.OPTIONAL} is a second, independent way for a key to be optional
  * @param aliases    alternative names the field accepts, from {@code @JsonAlias}; empty if none
  */
@@ -62,10 +62,15 @@ public record KeyDescriptor(
 
     /** Which container, if any, wraps a field's declared type. */
     public enum ContainerKind {
+        /** A bare field. */
         NONE,
+        /** An {@code Optional}. */
         OPTIONAL,
+        /** A {@code List}. */
         LIST,
+        /** A {@code Set}. */
         SET,
+        /** A {@code Map}, whose element is its value type. */
         MAP
     }
 }

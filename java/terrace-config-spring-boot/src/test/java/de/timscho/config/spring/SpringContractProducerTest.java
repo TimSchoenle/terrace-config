@@ -10,11 +10,10 @@ import de.timscho.config.core.refusal.EmptyPrefixException;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link SpringContractProducer#produce} against a real generated descriptor
- * ({@link ServiceConfig}/{@code ServiceConfigDescriptor}), proving the whole path from an
- * annotated type to a validated {@link Contract} — {@code SpringDialect}'s single-underscore
- * nesting, an empty {@code schema.loader}, and the eight refusals still firing through
- * {@code ContractValidator}.
+ * {@link SpringContractProducer#produce} against a real generated descriptor ({@link
+ * ServiceConfig}/{@code ServiceConfigDescriptor}), proving the whole path from an annotated type to
+ * a validated {@link Contract}: {@code SpringDialect}'s single-underscore nesting, an empty {@code
+ * schema.loader}, and the eight refusals still firing through {@code ContractValidator}.
  */
 class SpringContractProducerTest {
 

@@ -24,8 +24,8 @@ public record ConfigurationType(Class<?> type) {
     private static final String DESCRIPTOR_FIELD = "DESCRIPTOR";
 
     /**
-     * The type of this binary name, loaded without initialising it — its static initialisers are
-     * the service's, and the descriptor alone says everything a contract needs.
+     * {@return the type of this binary name, loaded without initialising it, since its static
+     * initialisers are the service's, and the descriptor alone says everything a contract needs}
      *
      * @param binaryName e.g. {@code com.example.Config}, or {@code com.example.Outer$Inner}
      * @param loader     where to look
@@ -40,7 +40,7 @@ public record ConfigurationType(Class<?> type) {
     }
 
     /**
-     * The descriptor generated for this type.
+     * {@return the descriptor generated for this type}
      *
      * @throws IllegalArgumentException when no generated descriptor is found beside the type: it is
      *                                  not annotated, or the processor did not run
@@ -78,8 +78,8 @@ public record ConfigurationType(Class<?> type) {
     }
 
     /**
-     * A default-constructed instance: what a boot with no configuration at all binds, and so the
-     * value whose fields are the published defaults.
+     * {@return a default-constructed instance: what a boot with no configuration at all binds, and
+     * so the value whose fields are the published defaults}
      *
      * @throws IllegalArgumentException when the type has no no-argument constructor, or that
      *                                  constructor throws

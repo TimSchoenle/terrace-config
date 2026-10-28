@@ -7,6 +7,11 @@ package de.timscho.config.core.refusal;
  */
 public abstract class ContractRefusalException extends RuntimeException {
 
+    /**
+     * Creates a refusal carrying its explanation.
+     *
+     * @param message what the contract would violate, in a form fit to show the author
+     */
     protected ContractRefusalException(final String message) {
         super(message);
     }

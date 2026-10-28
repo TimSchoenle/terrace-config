@@ -12,7 +12,12 @@ import java.nio.file.Path;
  */
 public sealed interface Layer {
 
-    /** A TOML fragment: the file {@code $<PREFIX>CONFIG} names, or one of a directory's {@code *.toml} files. */
+    /**
+     * A TOML fragment: the file {@code $<PREFIX>CONFIG} names, or one of a directory's {@code
+     * *.toml} files.
+     *
+     * @param path the fragment's path
+     */
     record Toml(Path path) implements Layer {
         @Override
         public String toString() {
@@ -20,7 +25,11 @@ public sealed interface Layer {
         }
     }
 
-    /** A {@code <PREFIX>}-prefixed environment variable, in the spelling it was set in. */
+    /**
+     * A {@code <PREFIX>}-prefixed environment variable, in the spelling it was set in.
+     *
+     * @param var the variable's name
+     */
     record Env(String var) implements Layer {
         @Override
         public String toString() {
@@ -28,7 +37,11 @@ public sealed interface Layer {
         }
     }
 
-    /** A key-named file directly inside {@code $<PREFIX>SECRETS_DIR}. */
+    /**
+     * A key-named file directly inside {@code $<PREFIX>SECRETS_DIR}.
+     *
+     * @param path the file's path
+     */
     record SecretsFile(Path path) implements Layer {
         @Override
         public String toString() {
@@ -36,7 +49,12 @@ public sealed interface Layer {
         }
     }
 
-    /** {@code <PREFIX><KEY><SUFFIX>} indirection. */
+    /**
+     * {@code <PREFIX><KEY><SUFFIX>} indirection: a variable naming the file that holds the value.
+     *
+     * @param var the indirection variable's name
+     * @param path the file it names
+     */
     record Indirection(String var, Path path) implements Layer {
         @Override
         public String toString() {

@@ -9,9 +9,9 @@ import javax.lang.model.element.ExecutableElement;
 /**
  * Reads {@code com.fasterxml.jackson.annotation.*} annotations by qualified name off {@link
  * AnnotationMirror} rather than by importing the annotation classes, so this processor takes no
- * compile dependency on either Jackson major — {@code jackson-annotations} is the one package
- * both majors share (see {@code docs/migration-progress.md}, "Dual Jackson 2 / 3 support"), and
- * even that is avoided here since an annotated service may compile against neither Jackson major
+ * compile dependency on either Jackson major. {@code jackson-annotations} is the one package both
+ * majors share (see {@code docs/migration-progress.md}, "Dual Jackson 2 / 3 support"), and even
+ * that is avoided here since an annotated service may compile against neither Jackson major
  * directly at the point the processor runs.
  */
 final class JacksonReflection {

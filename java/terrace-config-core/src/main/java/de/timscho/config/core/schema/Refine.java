@@ -3,8 +3,8 @@ package de.timscho.config.core.schema;
 import java.util.List;
 
 /**
- * A source of refinements — a library whose runtime validation should be published. The port of
- * the Rust crate's {@code schema::Refine}.
+ * A source of refinements: a library whose runtime validation should be published. The Java
+ * counterpart of the Rust crate's {@code schema::Refine}.
  *
  * <p>Implemented by whatever owns the check a type cannot state, so the contract and the check
  * cannot drift. Paths are relative to where the library's configuration is mounted, which only the
@@ -14,7 +14,9 @@ import java.util.List;
 @FunctionalInterface
 public interface Refine {
 
-    /** Every refinement this source publishes, each with its path relative to the mount. */
+    /**
+     * {@return every refinement this source publishes, each with its path relative to the mount}
+     */
     List<At> refinements();
 
     /**

@@ -16,7 +16,12 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface ElementValues {
 
+    /**
+     * {@return the enum carrying {@link TerraceConfig} whose constants are the element's spellings}
+     * {@link Void} means the element type itself is that enum, or {@link #value()} lists them.
+     */
     Class<?> from() default Void.class;
 
+    /** {@return the element's spellings as a literal list, for a foreign enum no mirror fits} */
     String[] value() default {};
 }

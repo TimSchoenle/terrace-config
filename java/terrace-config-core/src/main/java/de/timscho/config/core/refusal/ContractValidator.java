@@ -22,7 +22,7 @@ import java.util.Set;
  * {@code -spring-boot} build the same {@link Contract} shape and must refuse the same twelve
  * things, so the check is written once here rather than twice downstream.
  *
- * <p>No streams, per the project's convention — every scan below is a plain loop.
+ * <p>No streams, per the project's convention: every scan below is a plain loop.
  */
 public final class ContractValidator {
 

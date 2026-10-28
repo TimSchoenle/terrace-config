@@ -8,22 +8,22 @@ import lombok.experimental.Accessors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * How {@link JsonSchemaRenderer} renders — ported from the Rust crate's {@code JsonSchema}
- * options type. Immutable; {@code with}-style methods return a new instance.
+ * How {@link JsonSchemaRenderer} renders. Mirrors the Rust crate's {@code JsonSchema} options type.
+ * Immutable; {@code with}-style methods return a new instance.
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @With
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Accessors(fluent = true)
 public class JsonSchemaOptions {
 
-    /** The meta-schema URI for JSON Schema 2020-12 — what a current editor implements. */
+    /** The meta-schema URI for JSON Schema 2020-12: what a current editor implements. */
     public static final String DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
     /**
-     * The meta-schema URI for JSON Schema draft-07 — what Helm validates {@code
-     * values.schema.json} against. Nothing but the URI differs from 2020-12 for anything this
-     * renderer emits.
+     * The meta-schema URI for JSON Schema draft-07: what Helm validates {@code values.schema.json}
+     * against. Nothing but the URI differs from 2020-12 for anything this renderer emits.
      */
     public static final String DRAFT_07 = "http://json-schema.org/draft-07/schema#";
 
@@ -58,11 +58,10 @@ public class JsonSchemaOptions {
     }
 
     /**
-     * The options a {@code Contract}'s embedded {@code json_schema} half uses: {@link
-     * #DRAFT_07} (what Helm validates {@code values.schema.json} against), closed, and {@code
-     * requirePresent} off, since the reader checking a rendered document is not looking at the
-     * only layer that could have supplied a key — the environment or a mounted file are just as
-     * valid.
+     * The options a {@code Contract}'s embedded {@code json_schema} half uses: {@link #DRAFT_07}
+     * (what Helm validates {@code values.schema.json} against), closed, and {@code requirePresent}
+     * off, since the reader checking a rendered document is not looking at the only layer that
+     * could have supplied a key; the environment or a mounted file are just as valid.
      */
     public static JsonSchemaOptions forContract() {
         return standard().withMetaSchema(DRAFT_07).withRequirePresent(false);

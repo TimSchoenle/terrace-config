@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Found, in order, at:
  *
  * <ol>
- *   <li>{@code TERRACE_CONTRACT_BIN}, which must name an executable file when set — an explicit
+ *   <li>{@code TERRACE_CONTRACT_BIN}, which must name an executable file when set: an explicit
  *       setting that points nowhere is a mistake to report, never a reason to look elsewhere;
  *   <li>{@code cli/target/release/terrace-contract}, then {@code cli/target/debug/terrace-contract},
  *       under the repository root, which is where {@code cargo build} in {@code cli/} leaves it;

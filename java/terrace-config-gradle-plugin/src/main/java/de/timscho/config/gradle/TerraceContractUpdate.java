@@ -25,16 +25,25 @@ import org.gradle.work.DisableCachingByDefault;
 @DisableCachingByDefault(because = "Writes into the source tree, which is never restored from a cache")
 public abstract class TerraceContractUpdate extends DefaultTask {
 
-    /** The unstamped document the types emit today. */
+    /** Creates the task. */
+    public TerraceContractUpdate() {
+        // Gradle generates the subclass that implements the abstract properties.
+    }
+
+    /** {@return the unstamped document the types emit today} */
     @InputFile
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getEmitted();
 
-    /** The committed copy, rewritten. */
+    /** {@return the committed copy, rewritten} */
     @OutputFile
     public abstract RegularFileProperty getCommitted();
 
-    /** Copies the emission over the committed copy. */
+    /**
+     * Copies the emission over the committed copy.
+     *
+     * @throws IOException if the copy fails
+     */
     @TaskAction
     public void update() throws IOException {
         final File committed = this.getCommitted().get().getAsFile();

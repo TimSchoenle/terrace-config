@@ -38,54 +38,66 @@ import org.jspecify.annotations.Nullable;
 @DisableCachingByDefault(because = "Stamping and conforming are cheaper than a cache lookup")
 public abstract class TerraceContractStamp extends DefaultTask {
 
-    /** The unstamped document {@link TerraceContractEmit} wrote. */
+    /** Creates the task. */
+    public TerraceContractStamp() {
+        // Gradle generates the subclass that implements the abstract properties.
+    }
+
+    /** {@return the unstamped document {@link TerraceContractEmit} wrote} */
     @InputFile
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getUnstamped();
 
-    /** The binary; absent when none was found, which fails the task with {@link #getSearched()}. */
+    /**
+     * {@return the binary; absent when none was found, which fails the task with {@link
+     * #getSearched()}}
+     */
     @InputFile
     @Optional
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getExecutable();
 
-    /** Where the binary was looked for, for the message when it was not found. */
+    /** {@return where the binary was looked for, for the message when it was not found} */
     @Internal
     public abstract Property<String> getSearched();
 
-    /** The tier {@code conform} holds the stamped document to. */
+    /** {@return the tier {@code conform} holds the stamped document to} */
     @Input
     public abstract Property<Integer> getTier();
 
-    /** {@code app.version}, or nothing. */
+    /** {@return {@code app.version}, or nothing} */
     @Input
     @Optional
     public abstract Property<String> getAppVersion();
 
-    /** {@code app.revision}, or nothing. */
+    /** {@return {@code app.revision}, or nothing} */
     @Input
     @Optional
     public abstract Property<String> getRevision();
 
-    /** {@code app.created}, or nothing. */
+    /** {@return {@code app.created}, or nothing} */
     @Input
     @Optional
     public abstract Property<String> getCreated();
 
-    /** {@code app.source}, or nothing. */
+    /** {@return {@code app.source}, or nothing} */
     @Input
     @Optional
     public abstract Property<String> getSource();
 
-    /** The stamped, conformed document. */
+    /** {@return the stamped, conformed document} */
     @OutputFile
     public abstract RegularFileProperty getOutput();
 
-    /** Runs the binary. */
+    /** {@return the process launcher the binary runs through} */
     @Inject
     protected abstract ExecOperations getExecOperations();
 
-    /** Stamps, then conforms; deletes the output and fails when either step does. */
+    /**
+     * Stamps, then conforms; deletes the output and fails when either step does.
+     *
+     * @throws IOException if the output cannot be deleted, created or written
+     */
     @TaskAction
     public void stampAndConform() throws IOException {
         if (!this.getExecutable().isPresent()) {

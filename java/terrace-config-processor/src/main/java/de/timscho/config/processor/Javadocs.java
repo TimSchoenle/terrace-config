@@ -4,7 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The first-paragraph "summary" rule {@code rust/docs/SCHEMA.md}'s {@code Purpose} column applies
- * to a doc comment, ported from rustdoc's own convention: everything up to the first blank line.
+ * to a doc comment, following rustdoc's own convention: everything up to the first blank line.
  */
 final class Javadocs {
 

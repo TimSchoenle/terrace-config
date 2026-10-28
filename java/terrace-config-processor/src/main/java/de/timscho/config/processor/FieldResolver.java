@@ -25,9 +25,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves one field of a {@code @TerraceConfig} struct to the Java source of a {@code new
- * KeyDescriptor(...)} expression, or throws {@link DescriptorException} naming the field, its
- * type and the attributes that would resolve it — the diagnostic {@code rust/docs/SCHEMA.md}
- * calls "the whole point of the feature".
+ * KeyDescriptor(...)} expression, or throws {@link DescriptorException} naming the field, its type
+ * and the attributes that would resolve it: the diagnostic {@code rust/docs/SCHEMA.md} calls "the
+ * whole point of the feature".
  */
 final class FieldResolver {
 
@@ -37,7 +37,7 @@ final class FieldResolver {
     FieldResolver(final ProcessingEnvironment env) {
         this.elements = env.getElementUtils();
         // `Trees` is the compiler's own public tree API (`com.sun.source.util`/`com.sun.source.tree`,
-        // exported unconditionally by `jdk.compiler` since Java 9 — unlike `com.sun.tools.javac.*`,
+        // exported unconditionally by `jdk.compiler` since Java 9; unlike `com.sun.tools.javac.*`,
         // it needs no `--add-exports`), the only way this processor can see whether a field
         // declaration carries an initializer at all: `VariableElement` alone answers that only for
         // a `static final` constant (`getConstantValue()`), never for an ordinary instance field
@@ -52,7 +52,7 @@ final class FieldResolver {
         }
 
         // `@JsonProperty`'s value when present, exactly as `TerraceConfigProcessor.renderEnum`
-        // already reads it for an enum constant — a field renamed for Jackson's own binding is a
+        // reads it for an enum constant. A field renamed for Jackson's own binding is a
         // field the loader actually reads under that name, and a key path built from the Java
         // identifier instead would describe an environment variable nothing in the loader
         // responds to.
@@ -92,13 +92,13 @@ final class FieldResolver {
     }
 
     /**
-     * Whether {@code field} carries a default — the Java equivalent of a Rust field carrying
-     * {@code #[serde(default = "…")]}, and what {@link
-     * de.timscho.config.core.descriptor.SchemaAssembler} uses to decide {@link
-     * de.timscho.config.core.model.Key#isRequired()}. Two independent signals, because one field
-     * shape hides the other: {@link #hasInitializer} sees a plain {@code private String port =
-     * "8080";}, but not a Lombok {@code @Builder.Default} field, whose initializer {@link
-     * #hasLombokBuilderDefault} has to find a different way — see that method for why.
+     * Whether {@code field} carries a default: the Java equivalent of a Rust field carrying {@code
+     * #[serde(default = "…")]}, and what {@link de.timscho.config.core.descriptor.SchemaAssembler}
+     * uses to decide {@link de.timscho.config.core.model.Key#isRequired()}. Two independent
+     * signals, because one field shape hides the other: {@link #hasInitializer} sees a plain {@code
+     * private String port = "8080";}, but not a Lombok {@code @Builder.Default} field, whose
+     * initializer {@link #hasLombokBuilderDefault} has to find a different way; see that method for
+     * why.
      */
     private boolean hasDefault(final VariableElement field) {
         return this.hasInitializer(field) || this.hasLombokBuilderDefault(field);
@@ -107,12 +107,12 @@ final class FieldResolver {
     /**
      * Whether {@code field}'s own declaration carries an initializer, read straight off the
      * compiler's own tree for it. {@code VariableElement} alone answers this only for a {@code
-     * static final} constant ({@code getConstantValue()}), never for an ordinary instance field —
+     * static final} constant ({@code getConstantValue()}), never for an ordinary instance field, so
      * this is the only way to see one on a field Lombok has not touched. A field the compiler
      * cannot recover a tree for (only possible for one resolved from a previously compiled {@code
      * .class}, never a field this processor is generating a descriptor for in the same round) is
-     * treated as having none, the conservative reading — the same one an absent initializer
-     * itself gets.
+     * treated as having none, the conservative reading, the same one an absent initializer itself
+     * gets.
      */
     private boolean hasInitializer(final VariableElement field) {
         final Tree tree = this.trees.getTree(field);
@@ -120,8 +120,8 @@ final class FieldResolver {
     }
 
     /**
-     * Whether {@code field} carries {@code @lombok.Builder.Default}, read by qualified name off
-     * its {@link AnnotationMirror}s rather than importing the annotation type — the same reason
+     * Whether {@code field} carries {@code @lombok.Builder.Default}, read by qualified name off its
+     * {@link AnnotationMirror}s rather than importing the annotation type, for the same reason
      * {@link JacksonReflection} reads Jackson's own annotations that way: this processor takes no
      * compile dependency on Lombok, and an annotated service may not have it on its own classpath
      * at all.
@@ -130,16 +130,15 @@ final class FieldResolver {
      * @Builder}/{@code @Jacksonized} handler rewrites a {@code @Builder.Default} field's AST node
      * in place, during its own annotation-processing round: the initializer is lifted out into a
      * synthetic {@code private static X $default$fieldName()} method, and the field declaration's
-     * own initializer is nulled out — verified empirically against this exact processor (compiled
-     * a small {@code @Value @Builder @Jacksonized} type with a {@code @Builder.Default} field and
-     * inspected the generated descriptor: {@code hasInitializer} alone reports {@code false} for
-     * it). Whether Lombok's round runs before this processor's own is not something either
-     * processor's ordering guarantees, so by the time {@link #hasInitializer} calls {@link
-     * Trees#getTree}, the initializer may already be gone — the same {@code JCTree} object,
-     * mutated, not a separate pre-Lombok snapshot. The annotation's own presence is the
-     * unaffected signal: Lombok refuses to compile {@code @Builder.Default} on a field with no
-     * initializer at all, so seeing the annotation is itself proof one was written, whatever the
-     * tree looks like by the time this processor reads it.
+     * own initializer is nulled out. {@code LombokInteropTest} reproduces this against this exact
+     * processor: for a {@code @Value @Builder @Jacksonized} type with a {@code @Builder.Default}
+     * field, {@code hasInitializer} alone reports {@code false}. Whether Lombok's round runs before
+     * this processor's own is not something either processor's ordering guarantees, so by the time
+     * {@link #hasInitializer} calls {@link Trees#getTree}, the initializer may already be gone: the
+     * same {@code JCTree} object, mutated, not a separate pre-Lombok snapshot. The annotation's own
+     * presence is the unaffected signal: Lombok refuses to compile {@code @Builder.Default} on a
+     * field with no initializer at all, so seeing the annotation is itself proof one was written,
+     * whatever the tree looks like by the time this processor reads it.
      */
     private boolean hasLombokBuilderDefault(final VariableElement field) {
         for (final AnnotationMirror mirror : field.getAnnotationMirrors()) {
@@ -152,7 +151,7 @@ final class FieldResolver {
 
     // VisibilityModifier: these fields carry no access modifier in source, relying on
     // java/lombok.config's project-wide `lombok.fieldDefaults.defaultPrivate = true` to become
-    // private once Lombok processes them — a transform Checkstyle, which reads plain source before
+    // private once Lombok processes them, a transform Checkstyle, which reads plain source before
     // Lombok runs, cannot see. See Node.java for the same shape.
     @SuppressWarnings("checkstyle:VisibilityModifier")
     private static final class Shape {
@@ -200,7 +199,7 @@ final class FieldResolver {
         final TypeMirror elementType = shape.element();
         if (elementType == null) {
             // Unreachable in practice: `ContainerShape.of` never pairs a non-`NONE` kind (the
-            // only way to reach this method — see `resolve`) with a `null` element.
+            // only way to reach this method; see `resolve`) with a `null` element.
             throw new IllegalStateException("container shape " + shape.kind() + " has no element type");
         }
 
@@ -249,7 +248,7 @@ final class FieldResolver {
     }
 
     /** Rejects a container field that also carries a leaf-only annotation, or more than one of
-     * the container-element annotations — exactly one of them describes an element, if any. */
+     * the container-element annotations: exactly one of them describes an element, if any. */
     private void requireSingleContainerAnnotation(
             final VariableElement field,
             final de.timscho.config.annotations.Element elementAnn,

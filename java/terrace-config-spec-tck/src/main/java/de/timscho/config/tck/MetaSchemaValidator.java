@@ -21,8 +21,8 @@ import org.jetbrains.annotations.Blocking;
  * <p>Mirrors the two halves {@code rust/tests/spec.rs} checks: the whole envelope against the
  * schema root, and the {@code schema} object alone against {@code #/$defs/schema}, because that
  * half is published as an artefact in its own right (the {@code json} rendering). Configured to
- * resolve nothing over the network — {@code contract.schema.json} is self-contained by design,
- * and a validator that happened not to need the network is not the same guarantee as one that is
+ * resolve nothing over the network: {@code contract.schema.json} is self-contained by design, and a
+ * validator that happened not to need the network is not the same guarantee as one that is
  * configured to refuse it.
  *
  * <p>The validator is built on Jackson 3 while this module's public surface, and every caller of
@@ -42,7 +42,11 @@ public final class MetaSchemaValidator {
         this.schemaHalf = schemaHalf;
     }
 
-    /** Loads {@code spec/v1/contract.schema.json} and compiles both entry points. */
+    /**
+     * Loads {@code spec/v1/contract.schema.json} and compiles both entry points.
+     *
+     * @return a validator for the whole envelope and for the schema half alone
+     */
     @Blocking
     public static MetaSchemaValidator load() {
         return forSchema(readMetaSchema());
@@ -61,7 +65,7 @@ public final class MetaSchemaValidator {
     /**
      * A local pointer into {@code #/$defs/schema}, not a resolver-mediated one: the definitions
      * live in the same document, so a copy with its root swapped reaches them without a registry
-     * — a test that needed one would be testing the resolver, not the schema.
+     * and a test that needed one would be testing the resolver, not the schema.
      */
     private static JsonNode schemaHalfNode(final JsonNode metaSchema) {
         final ObjectNode sub = metaSchema.deepCopy();
@@ -80,7 +84,9 @@ public final class MetaSchemaValidator {
         }
     }
 
-    /** Every error validating {@code instance} against the full envelope, empty if it is valid.
+    /**
+     * {@return every error validating {@code instance} against the full envelope, empty if it is
+     * valid}
      *
      * @param instance the document to validate
      */
@@ -88,7 +94,7 @@ public final class MetaSchemaValidator {
         return describe(this.fullSchema.validate(toJson(instance), InputFormat.JSON));
     }
 
-    /** Every error validating {@code instance} against {@code #/$defs/schema} alone.
+    /** {@return every error validating {@code instance} against {@code #/$defs/schema} alone}
      *
      * @param instance the {@code json_schema} half to validate
      */

@@ -15,6 +15,7 @@ import org.jspecify.annotations.Nullable;
  * crate's {@code Origin} keeps by construction: a key is here <i>because</i> some layer supplied
  * it, so there is always exactly one {@link #effective()} layer.
  */
+@SuppressWarnings("doclint:missing")
 @Getter
 @Accessors(fluent = true)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -29,9 +30,8 @@ public final class Origin {
     /**
      * The layers that also supplied this key and lost, lowest precedence first.
      *
-     * <p>Empty for almost every key. When it is not, it is the answer to "why is my mounted
-     * secret not being picked up" — the mount is right there in the list, underneath whatever
-     * beat it.
+     * <p>Empty for almost every key. When it is not, it is the answer to "why is my mounted secret
+     * not being picked up": the mount is right there in the list, underneath whatever beat it.
      */
     private final List<Layer> shadowed;
 
@@ -49,8 +49,8 @@ public final class Origin {
 
     /**
      * One key's sources, in merge order, split into the one in effect and the rest. {@code null}
-     * for an empty list, which cannot happen in practice — an entry exists because a layer wrote
-     * into it.
+     * for an empty list, which cannot happen in practice, because an entry exists because a layer
+     * wrote into it.
      */
     static @Nullable Origin fromSources(final String key, final List<Layer> sources) {
         if (sources.isEmpty()) {

@@ -8,12 +8,14 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
 /**
- * Whether an image applies a configuration change without restarting, and through which layers —
- * {@code spec/v1/contract.schema.json}'s {@code #/$defs/reload}, published as {@code schema.reload}.
+ * Whether an image applies a configuration change without restarting, and through which layers:
+ * {@code spec/v1/contract.schema.json}'s {@code #/$defs/reload}, published as {@code
+ * schema.reload}.
  *
  * <p>A fact about the binary rather than about {@code producer.loader}. Absent means undeclared,
  * which a consumer treats as {@link ReloadMode#NONE}.
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder(toBuilder = true)
 @Jacksonized

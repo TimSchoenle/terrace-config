@@ -5,9 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One level of the configuration: the keys directly under a path, and the levels below it —
- * ported from the Rust crate's {@code tree::Node}, which groups a flat key list into the nested
- * {@code properties} objects of the JSON Schema half a contract embeds.
+ * One level of the configuration: the keys directly under a path, and the levels below it. Mirrors
+ * the Rust crate's {@code tree::Node}, which groups a flat key list into the nested {@code
+ * properties} objects of the JSON Schema half a contract embeds.
  *
  * <p>Order is first-appearance order at every level, which is declaration order for a schema
  * built from one type. Package-private: only {@link JsonSchemaRenderer} builds and walks one.
@@ -36,7 +36,7 @@ final class Node {
     }
 
     /**
-     * Group {@code keys} by the path each one carries, split on {@code .} — the same split a
+     * Groups {@code keys} by the path each one carries, split on {@code .}: the same split a
      * dialect's nesting separator ultimately maps back onto.
      */
     static Node of(final List<Key> keys) {
@@ -85,7 +85,7 @@ final class Node {
         return false;
     }
 
-    /** The last segment of a dotted path — the key's own name, as a file spells it. */
+    /** The last segment of a dotted path: the key's own name, as a file spells it. */
     static String name(final String path) {
         final int lastDot = path.lastIndexOf('.');
         return lastDot < 0 ? path : path.substring(lastDot + 1);

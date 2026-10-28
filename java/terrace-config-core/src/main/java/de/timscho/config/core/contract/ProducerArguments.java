@@ -31,6 +31,7 @@ public final class ProducerArguments {
      * @param args       the command line, as {@code main} received it
      * @param single     the options that may appear at most once, without their {@code --}
      * @param repeatable the options that may appear any number of times, without their {@code --}
+     * @return the parsed options, by name
      * @throws IllegalArgumentException for an unknown option, a missing value, or a single-valued
      *                                  option given twice
      */
@@ -60,7 +61,7 @@ public final class ProducerArguments {
     }
 
     /**
-     * The value of a single-valued option that must be present and non-empty.
+     * {@return the value of a single-valued option that must be present and non-empty}
      *
      * @param name the option, without its {@code --}
      * @throws IllegalArgumentException when it is absent or empty
@@ -74,7 +75,7 @@ public final class ProducerArguments {
     }
 
     /**
-     * The value of a single-valued option, or {@code null} when it was not given.
+     * {@return the value of a single-valued option, or {@code null} when it was not given}
      *
      * @param name the option, without its {@code --}
      */
@@ -84,7 +85,7 @@ public final class ProducerArguments {
     }
 
     /**
-     * Every value of a repeatable option, in the order given; empty when it was not given.
+     * {@return every value of a repeatable option, in the order given; empty when it was not given}
      *
      * @param name the option, without its {@code --}
      */

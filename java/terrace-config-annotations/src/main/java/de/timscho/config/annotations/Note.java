@@ -14,5 +14,6 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface Note {
 
+    /** {@return the prose shown beside the default} */
     String value();
 }

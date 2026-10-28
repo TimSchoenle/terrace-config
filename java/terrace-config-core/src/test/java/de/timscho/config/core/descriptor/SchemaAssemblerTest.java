@@ -145,7 +145,7 @@ class SchemaAssemblerTest {
 
     /**
      * Closed exactly where the type says so: the element's own level from the container field's
-     * {@code closed}, a {@code @Nested} level inside it from that field's — and the open level
+     * {@code closed}, a {@code @Nested} level inside it from that field's, and the open level
      * between them stays open.
      */
     @Test

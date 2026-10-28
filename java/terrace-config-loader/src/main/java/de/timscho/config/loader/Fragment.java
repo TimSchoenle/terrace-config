@@ -8,6 +8,8 @@ public sealed interface Fragment {
     /**
      * Read, and supplied this many keys. Zero is a real answer: an empty file, or one holding
      * only section headers.
+     *
+     * @param keys how many keys the file supplied
      */
     record Read(int keys) implements Fragment {
         @Override
@@ -23,9 +25,9 @@ public sealed interface Fragment {
     /**
      * Named but not there.
      *
-     * <p>Not an error — an absent path is simply skipped, and a service with no configuration
-     * file at all is the normal development case. It is, however, the most common reason a
-     * configured path supplies nothing, which is why it is reported rather than passed over.
+     * <p>Not an error: an absent path is simply skipped, and a service with no configuration file
+     * at all is the normal development case. It is, however, the most common reason a configured
+     * path supplies nothing, which is why it is reported rather than passed over.
      */
     record Missing() implements Fragment {
         @Override

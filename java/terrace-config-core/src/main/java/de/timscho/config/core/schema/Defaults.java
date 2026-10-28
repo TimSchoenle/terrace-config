@@ -9,14 +9,15 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Fills in each key's observed default from an already-assembled value — a port of the Rust
- * crate's {@code Schema::with_defaults_from_value}, wired onto {@link Schema#withDefaultsFromValue}.
+ * Fills in each key's observed default from an already-assembled value: the Java counterpart of the
+ * Rust crate's {@code Schema::with_defaults_from_value}, wired onto {@link
+ * Schema#withDefaultsFromValue}.
  *
  * <p>{@code -core} has no Jackson runtime of its own by design (see {@code
  * terrace-config-core-jackson2}/{@code -jackson3}), so this class takes an already-nested {@code
- * Map<String, Object>} rather than a live configuration instance the way the Rust crate's
- * {@code with_defaults_from} does — the same escape hatch the Rust type itself falls back to for
- * a value it cannot {@code Serialize}. A caller with an {@code ObjectMapper} on its own classpath
+ * Map<String, Object>} rather than a live configuration instance the way the Rust crate's {@code
+ * with_defaults_from} does. It is the same escape hatch the Rust type itself falls back to for a
+ * value it cannot {@code Serialize}. A caller with an {@code ObjectMapper} on its own classpath
  * gets the same result from {@code mapper.convertValue(instance, Map.class)}.
  */
 @UtilityClass
@@ -25,6 +26,14 @@ public class Defaults {
     /** The same bound {@link Node} enforces, for the same reason: a value this deep is a stack overflow risk. */
     private static final int MAX_DEPTH = 32;
 
+    /**
+     * Fills in each key's observed default from {@code root}. See {@link
+     * Schema#withDefaultsFromValue} for the rules.
+     *
+     * @param schema the schema whose keys to fill in
+     * @param root the already-assembled default value, nested as a {@code Map}
+     * @return a copy of {@code schema} with each observed default filled in
+     */
     public static Schema withDefaultsFromValue(final Schema schema, final Map<String, Object> root) {
         final List<Key> keys = new ArrayList<>(schema.getKeys().size());
         for (final Key key : schema.getKeys()) {
@@ -71,9 +80,10 @@ public class Defaults {
     }
 
     /**
-     * {@code value} with every unset field of every table taken out — the Rust crate's {@code
-     * without_unset}. A {@code null} inside a table is a field no TOML file can spell and no element
-     * schema admits; what the loader sees for it is absence. An item of a list keeps its place.
+     * {@code value} with every unset field of every table taken out: the Rust crate's {@code
+     * without_unset}. A {@code null} inside a table is a field no TOML file can spell and no
+     * element schema admits; what the loader sees for it is absence. An item of a list keeps its
+     * place.
      */
     private static @Nullable Object withoutUnset(@Nullable final Object value, final int depth) {
         if (depth > MAX_DEPTH) {
@@ -98,7 +108,10 @@ public class Defaults {
         return value;
     }
 
-    /** The value at a dotted path, or {@code null} for one {@code root} does not carry — see {@link #containsPath}. */
+    /**
+     * The value at a dotted path, or {@code null} for one {@code root} does not carry; see {@link
+     * #containsPath}.
+     */
     private static @Nullable Object find(final Map<String, Object> root, final String path) {
         Object current = root;
         for (final String segment : path.split("\\.")) {
@@ -124,7 +137,7 @@ public class Defaults {
     }
 
     /**
-     * A default value as a table would show it, or {@code null} for one that means "absent" — an
+     * A default value as a table would show it, or {@code null} for one that means "absent". An
      * explicit null and a missing key render the same way, which is what they mean to an operator.
      */
     private static @Nullable String renderValue(@Nullable final Object value, final int depth) {

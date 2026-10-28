@@ -13,7 +13,7 @@ import java.nio.file.Path;
 import org.jetbrains.annotations.Blocking;
 
 /**
- * Reads and writes a {@link Contract} as the {@code json} rendering — {@code
+ * Reads and writes a {@link Contract} as the {@code json} rendering: {@code
  * spec/v1/contract.schema.json}'s envelope, byte for byte.
  *
  * <p>One {@link ObjectMapper}, configured once, rather than one built ad hoc per call site: the
@@ -36,9 +36,11 @@ public final class ContractCodec {
         return mapper;
     }
 
-    /** Renders {@code contract} as {@code json}, terminated with one trailing newline.
+    /**
+     * Renders {@code contract} as {@code json}, terminated with one trailing newline.
      *
      * @param contract the contract to render
+     * @return the rendered document, UTF-8 encoded
      */
     public static byte[] write(final Contract contract) {
         try {
@@ -49,6 +51,13 @@ public final class ContractCodec {
         }
     }
 
+    /**
+     * Renders {@code contract} as {@code json} into {@code target}, replacing whatever it held.
+     *
+     * @param contract the contract to render
+     * @param target   the file to write
+     * @throws UncheckedIOException if the file cannot be written
+     */
     @Blocking
     public static void write(final Contract contract, final Path target) {
         try {
@@ -58,6 +67,13 @@ public final class ContractCodec {
         }
     }
 
+    /**
+     * Parses a {@code json} rendering. Unknown properties are ignored.
+     *
+     * @param json the document, UTF-8 encoded
+     * @return the parsed contract
+     * @throws UncheckedIOException if {@code json} is not a contract
+     */
     public static Contract read(final byte[] json) {
         try {
             return MAPPER.readValue(json, Contract.class);
@@ -66,6 +82,13 @@ public final class ContractCodec {
         }
     }
 
+    /**
+     * Parses the {@code json} rendering held in {@code source}.
+     *
+     * @param source the file to read
+     * @return the parsed contract
+     * @throws UncheckedIOException if the file cannot be read or is not a contract
+     */
     @Blocking
     public static Contract read(final Path source) {
         try (InputStream in = Files.newInputStream(source)) {

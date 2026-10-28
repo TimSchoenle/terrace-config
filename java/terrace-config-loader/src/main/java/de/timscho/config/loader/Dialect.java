@@ -27,6 +27,7 @@ import lombok.experimental.Accessors;
  * assert dialect.envSpelling("auth.jwt_secret").equals("MYAPP_AUTH__JWT_SECRET");
  * }</pre>
  */
+@SuppressWarnings("doclint:missing")
 @Getter
 @Accessors(fluent = true)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -55,7 +56,7 @@ public final class Dialect {
         return new Dialect(prefix, DEFAULT_SEPARATOR, DEFAULT_FILE_SUFFIX, Collections.emptySet());
     }
 
-    /** Replace the nesting separator. Defaults to {@code __}.
+    /** Replaces the nesting separator. Defaults to {@code __}.
      *
      * @param newSeparator what separates nesting levels in an environment key
      */
@@ -64,7 +65,7 @@ public final class Dialect {
     }
 
     /**
-     * Reserve a key, in its <b>full environment spelling</b>, e.g. {@code MYAPP_PROFILE}.
+     * Reserves a key, in its <b>full environment spelling</b>, e.g. {@code MYAPP_PROFILE}.
      *
      * <p>A reserved key is read straight from the environment, before or outside the layered
      * config, so a file cannot supply it. Matching is case-insensitive, see {@link
@@ -83,7 +84,7 @@ public final class Dialect {
         return this.fileSuffix;
     }
 
-    /** Whether {@code name} — a full environment spelling — is reserved. Case-insensitive.
+    /** Whether {@code name}, a full environment spelling, is reserved. Case-insensitive.
      *
      * @param name the full environment spelling to check
      */
@@ -118,8 +119,8 @@ public final class Dialect {
     }
 
     /**
-     * The key an indirection variable names, if {@code name} is one — {@code
-     * <PREFIX><KEY><SUFFIX>} with a non-empty {@code <KEY>}.
+     * The key an indirection variable names, if {@code name} is one: {@code <PREFIX><KEY><SUFFIX>}
+     * with a non-empty {@code <KEY>}.
      */
     java.util.Optional<String> indirectionTarget(final String name) {
         if (!name.startsWith(this.prefix)) {

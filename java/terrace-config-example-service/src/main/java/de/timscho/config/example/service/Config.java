@@ -35,6 +35,7 @@ import lombok.Setter;
  * describing different keys. See {@code FieldResolver.resolve} in {@code terrace-config-processor}
  * for the fix that made this true.
  */
+@SuppressWarnings("doclint:missing")
 @TerraceConfig
 @Getter
 @Setter

@@ -23,8 +23,8 @@ import java.util.Set;
  * <p>Defaults come from the properties class itself: a default-constructed instance, which is what
  * Spring's binder leaves a field at when nothing supplies it, converted to the nested map that
  * {@link SpringContractProducer}'s {@code defaults} parameter reads. No {@code ApplicationContext}
- * is created, so nothing the service would do at boot — connecting, reading secrets, failing on a
- * missing value — happens while its build emits the contract. Build identity is {@code
+ * is created, so nothing the service would do at boot (connecting, reading secrets, failing on a
+ * missing value) happens while its build emits the contract. Build identity is {@code
  * terrace-contract stamp}'s, applied to the emitted document.
  *
  * <p><b>Needs {@code terrace-config-core-jackson2} on the classpath it runs with.</b> This module
@@ -33,7 +33,7 @@ import java.util.Set;
  * dependency, which the Gradle plugin's {@code terraceContractGenerator} configuration supplies.
  *
  * <p>Exits {@code 0} when the document was written, {@code 1} when it was refused, {@code 2} on a
- * usage or classpath error — see {@link ProducerCommandLine}.
+ * usage or classpath error; see {@link ProducerCommandLine}.
  */
 public final class SpringContractMain {
 

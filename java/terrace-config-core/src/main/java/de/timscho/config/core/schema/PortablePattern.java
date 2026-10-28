@@ -6,8 +6,8 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The portable pattern subset — the port of the Rust crate's {@code schema::pattern}, and {@code
- * spec/v1/FORMAT.md}'s <em>Portable patterns</em>.
+ * The portable pattern subset: the Java counterpart of the Rust crate's {@code schema::pattern},
+ * and {@code spec/v1/FORMAT.md}'s <em>Portable patterns</em>.
  *
  * <p>A pattern a {@link Refinement} publishes is read by whatever validates the contract: an
  * ECMA-262 engine behind a JSON Schema validator, Rust's {@code regex}, {@code java.util.regex},
@@ -37,7 +37,8 @@ public class PortablePattern {
     private static final String SYNTAX = "^$\\.*+?()[]{}|";
 
     /**
-     * Why {@code source} lies outside the portable subset, or {@code null} when it lies inside.
+     * {@return why {@code source} lies outside the portable subset, or {@code null} when it lies
+     * inside}
      *
      * @param source the pattern
      */
@@ -62,7 +63,8 @@ public class PortablePattern {
     }
 
     /**
-     * {@code source} compiled for matching, when it lies inside the subset; {@code null} otherwise.
+     * {@return {@code source} compiled for matching, when it lies inside the subset; {@code null}
+     * otherwise}
      *
      * <p>Match with {@link java.util.regex.Matcher#find()}: a JSON Schema pattern is unanchored.
      *

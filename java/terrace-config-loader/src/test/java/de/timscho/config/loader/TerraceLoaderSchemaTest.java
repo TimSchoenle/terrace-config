@@ -11,10 +11,10 @@ import de.timscho.config.core.model.UnreachableReason;
 import org.junit.jupiter.api.Test;
 
 /**
- * Proves {@link TerraceLoader#schema} against a real generated descriptor
- * ({@link AppConfig}/{@code AppConfigDescriptor}), covering a nested struct, a choice enum, a
- * secret, a numeric range, and the reserved-key/indirection spelling rules ported from the Rust
- * crate's {@code Schema::describe_at}.
+ * Proves {@link TerraceLoader#schema} against a real generated descriptor ({@link AppConfig}/{@code
+ * AppConfigDescriptor}), covering a nested struct, a choice enum, a secret, a numeric range, and
+ * the reserved-key/indirection spelling rules shared with the Rust crate's {@code
+ * Schema::describe_at}.
  */
 class TerraceLoaderSchemaTest {
 
@@ -54,9 +54,9 @@ class TerraceLoaderSchemaTest {
         assertThat(retries.getTextForm()).isEqualTo(TextForm.INTEGER);
         assertThat(retries.getConstraint()).containsEntry("minimum", 0.0).containsEntry("maximum", 65535.0);
 
-        // `retryLimit` is declared `@JsonProperty("max_retries")`: the key path — and so the
-        // environment spelling below — follows that rename rather than the Java field name, the
-        // same way `TerraceConfigProcessor.renderEnum` already follows it for an enum constant.
+        // `retryLimit` is declared `@JsonProperty("max_retries")`: the key path, and so the
+        // environment spelling below, follows that rename rather than the Java field name, the
+        // same way `TerraceConfigProcessor.renderEnum` follows it for an enum constant.
         // `TEST_RETRYLIMIT` genuinely does not reach this field; `TEST_MAX_RETRIES` does.
         Key maxRetries = keyAt(schema, "max_retries");
         assertThat(maxRetries.getEnv()).isEqualTo("TEST_MAX_RETRIES");

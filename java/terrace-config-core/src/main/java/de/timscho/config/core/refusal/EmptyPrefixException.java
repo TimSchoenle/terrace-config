@@ -6,6 +6,7 @@ package de.timscho.config.core.refusal;
  */
 public final class EmptyPrefixException extends ContractRefusalException {
 
+    /** Creates the refusal. */
     public EmptyPrefixException() {
         super("schema.dialect.prefix must not be empty");
     }

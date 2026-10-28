@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Assembles a full {@link Contract} for a Spring service — the tier-1 producer this module ships,
+ * Assembles a full {@link Contract} for a Spring service: the tier-1 producer this module ships,
  * combining {@link SpringDialect}, {@link SchemaAssembler} and {@link ContractAssembler} the way
  * {@code terrace-config-loader}'s {@code TerraceLoader.schemaAt} combines its own {@code Dialect}
  * with the same two.
@@ -26,18 +26,19 @@ import java.util.Set;
  * terraceContract} task runs it. A contract assembled inside a running application would need the
  * application to boot first, and would be a second, unconformed copy of the same document.
  *
- * <p><b>Schema.loader is empty.</b> {@code terrace-config-loader}'s own three loader-read
- * variables ({@code config}, {@code secrets_dir}, each {@code reserve}d key) have no equivalent
- * here: Spring's {@code Binder} decides what the layers are from its own property sources, not
- * from a variable this module reads first, so there is nothing to publish under {@code
- * schema.loader} — an empty list is the honest answer, not an omission.
+ * <p><b>Schema.loader is empty.</b> {@code terrace-config-loader}'s own three loader-read variables
+ * ({@code config}, {@code secrets_dir}, each {@code reserve}d key) have no equivalent here:
+ * Spring's {@code Binder} decides what the layers are from its own property sources, not from a
+ * variable this module reads first, so there is nothing to publish under {@code schema.loader}, and
+ * an empty list is the honest answer, not an omission.
  */
 public final class SpringContractProducer {
 
     private SpringContractProducer() {}
 
-    /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External)} using {@link SpringDialect#standard()}
-     * and no declared external surface.
+    /**
+     * {@return {@link #produce(TypeDescriptor, String, SpringDialect, App, External)} using {@link
+     * SpringDialect#standard()} and no declared external surface}
      *
      * @param descriptor the configuration type's own field-level descriptor
      * @param prefix     the environment prefix keys are reachable under
@@ -57,6 +58,7 @@ public final class SpringContractProducer {
      * @param springDialect the nesting-separator and indirection-suffix conventions to spell keys with
      * @param app           the published contract's {@code app} metadata
      * @param external      the service's declared external variable surface
+     * @return the validated contract
      * @throws de.timscho.config.core.refusal.ContractRefusalException the first of {@code
      *                                                                  spec/v1/FORMAT.md}'s eight
      *                                                                  refusals this contract
@@ -71,8 +73,9 @@ public final class SpringContractProducer {
         return produce(descriptor, prefix, springDialect, app, external, Map.of());
     }
 
-    /** {@link #produce(TypeDescriptor, String, SpringDialect, App, External, Map)} using {@link
-     * SpringDialect#standard()} and no declared external surface.
+    /**
+     * {@return {@link #produce(TypeDescriptor, String, SpringDialect, App, External, Map)} using
+     * {@link SpringDialect#standard()} and no declared external surface}
      *
      * @param descriptor the configuration type's own field-level descriptor
      * @param prefix     the environment prefix keys are reachable under
@@ -86,10 +89,10 @@ public final class SpringContractProducer {
     }
 
     /**
-     * {@link #produce(TypeDescriptor, String, SpringDialect, App, External)}, additionally filling
-     * in each non-required key's observed default from {@code defaults} — an already-nested map,
-     * typically {@code objectMapper.convertValue(defaultInstance, Map.class)} run against a
-     * default-constructed instance of the type {@code descriptor} describes. See {@link
+     * {@return {@link #produce(TypeDescriptor, String, SpringDialect, App, External)}, additionally
+     * filling in each non-required key's observed default from {@code defaults}, an already-nested
+     * map, typically {@code objectMapper.convertValue(defaultInstance, Map.class)} run against a
+     * default-constructed instance of the type {@code descriptor} describes} See {@link
      * Schema#withDefaultsFromValue} for exactly what filling in means; {@code Map.of()} (what the
      * four-argument overload above passes) leaves every key's default unset, the same as never
      * calling this method at all.

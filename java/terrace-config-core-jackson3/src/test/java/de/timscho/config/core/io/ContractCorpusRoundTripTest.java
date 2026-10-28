@@ -25,8 +25,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 class ContractCorpusRoundTripTest {
 
     /**
-     * {@code java/terrace-config-core-jackson3} is two levels below the repository root, the
-     * same depth as {@code java/terrace-config-spec-tck} — see that module's {@code SpecPaths}.
+     * {@code java/terrace-config-core-jackson3} is two levels below the repository root, the same
+     * depth as {@code java/terrace-config-spec-tck}; see that module's {@code SpecPaths}.
      */
     private static Path conformanceDir() {
         return Paths.get("")

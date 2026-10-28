@@ -11,12 +11,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * producer refuses to publish (see {@link de.timscho.config.core.refusal.IndirectionCollisionException}).
  */
 public enum UnreachableReason {
+    /** No variable names the key, so the document is the only layer left. */
     @JsonProperty("unnameable")
     UNNAMEABLE,
 
+    /** A name this schema gives another key also fills this one. */
     @JsonProperty("indirection")
     INDIRECTION,
 
+    /** Any reason this version of the format does not name. */
     @JsonProperty("other")
     OTHER
 }

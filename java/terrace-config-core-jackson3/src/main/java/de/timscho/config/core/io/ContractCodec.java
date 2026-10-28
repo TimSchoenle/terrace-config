@@ -14,14 +14,14 @@ import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads and writes a {@link Contract} as the {@code json} rendering — {@code
+ * Reads and writes a {@link Contract} as the {@code json} rendering: {@code
  * spec/v1/contract.schema.json}'s envelope, byte for byte.
  *
  * <p>Mirrors {@code terrace-config-core-jackson2}'s class of the same name, built on Jackson 3's
- * {@code tools.jackson.databind} instead — see that module's copy for the full rationale. One
- * {@link ObjectMapper}, built once through Jackson 3's builder (Jackson 3's mapper is immutable
- * once built, unlike Jackson 2's), is what makes two renders of the same {@link Contract} produce
- * the same bytes (see {@code spec/v1/FORMAT.md}'s "Publication").
+ * {@code tools.jackson.databind} instead; see that module's copy for the full rationale. One {@link
+ * ObjectMapper}, built once through Jackson 3's builder (Jackson 3's mapper is immutable once
+ * built, unlike Jackson 2's), is what makes two renders of the same {@link Contract} produce the
+ * same bytes (see {@code spec/v1/FORMAT.md}'s "Publication").
  */
 public final class ContractCodec {
 
@@ -38,15 +38,24 @@ public final class ContractCodec {
                 .build();
     }
 
-    /** Renders {@code contract} as {@code json}, terminated with one trailing newline.
+    /**
+     * Renders {@code contract} as {@code json}, terminated with one trailing newline.
      *
      * @param contract the contract to render
+     * @return the rendered document, UTF-8 encoded
      */
     public static byte[] write(final Contract contract) {
         final String rendered = MAPPER.writeValueAsString(contract);
         return (rendered + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Renders {@code contract} as {@code json} into {@code target}, replacing whatever it held.
+     *
+     * @param contract the contract to render
+     * @param target   the file to write
+     * @throws UncheckedIOException if the file cannot be written
+     */
     @Blocking
     public static void write(final Contract contract, final Path target) {
         try {
@@ -56,10 +65,25 @@ public final class ContractCodec {
         }
     }
 
+    /**
+     * Parses a {@code json} rendering. Unknown properties are ignored.
+     *
+     * @param json the document, UTF-8 encoded
+     * @return the parsed contract
+     * @throws tools.jackson.core.JacksonException if {@code json} is not a contract
+     */
     public static Contract read(final byte[] json) {
         return MAPPER.readValue(json, Contract.class);
     }
 
+    /**
+     * Parses the {@code json} rendering held in {@code source}.
+     *
+     * @param source the file to read
+     * @return the parsed contract
+     * @throws UncheckedIOException if the file cannot be read
+     * @throws tools.jackson.core.JacksonException if the file does not hold a contract
+     */
     @Blocking
     public static Contract read(final Path source) {
         try (InputStream in = Files.newInputStream(source)) {

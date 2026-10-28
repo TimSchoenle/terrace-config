@@ -8,15 +8,15 @@ import javax.lang.model.util.Elements;
 
 /**
  * The generated descriptor is always a top-level class, even for a {@code @TerraceConfig} type
- * nested inside another class — {@code javax.annotation.processing.Filer#createSourceFile} treats
+ * nested inside another class. {@code javax.annotation.processing.Filer#createSourceFile} treats
  * every dot in the name it is given as a package separator, so a qualified name like {@code
  * test.Outer.Inner} cannot be turned into {@code test.Outer.InnerDescriptor} by simple
  * concatenation: that would ask the filer for a class named {@code InnerDescriptor} in a
  * (non-existent) package {@code test.Outer}.
  *
- * <p>Instead, every enclosing simple name is joined with {@code $} — the same character the JVM's
- * own binary class names use for nesting — into one top-level class living directly in the
- * annotated type's package.
+ * <p>Instead, every enclosing simple name is joined with {@code $} (the same character the JVM's
+ * own binary class names use for nesting) into one top-level class living directly in the annotated
+ * type's package.
  */
 final class DescriptorNaming {
 

@@ -40,13 +40,13 @@ final class TomlLayers {
     private final List<Path> files;
 
     /**
-     * Expand {@code path} into the TOML files it denotes.
+     * Expands {@code path} into the TOML files it denotes.
      *
-     * <p>A plain path is returned as-is, missing or not — a missing file is simply skipped when
+     * <p>A plain path is returned as-is, missing or not. A missing file is simply skipped when
      * merged, which is deliberate: a service with no configuration file at all is the normal
-     * development case. A <b>directory</b> is expanded to every {@code *.toml} directly inside
-     * it, sorted by name so a {@code 10-base.toml} / {@code 20-overrides.toml} pair merges in the
-     * order an operator reading the mount would predict.
+     * development case. A <b>directory</b> is expanded to every {@code *.toml} directly inside it,
+     * sorted by name so a {@code 10-base.toml} / {@code 20-overrides.toml} pair merges in the order
+     * an operator reading the mount would predict.
      *
      * <p>Dot-prefixed entries are skipped, matching {@link SecretsDir}: a Kubernetes {@code
      * ConfigMap} volume is a directory of symlinks beside a {@code ..data} directory.
@@ -84,8 +84,8 @@ final class TomlLayers {
     }
 
     /**
-     * The directory a reload would have to watch, if there is one — the directory itself when
-     * {@code root} names one, otherwise its parent (unless it names a bare file name with none).
+     * The directory a reload would have to watch, if there is one: the directory itself when {@code
+     * root} names one, otherwise its parent (unless it names a bare file name with none).
      */
     java.util.Optional<Path> watchDir() {
         if (Files.isDirectory(this.root)) {
@@ -96,9 +96,9 @@ final class TomlLayers {
     }
 
     /**
-     * Every key path {@code path} supplies, or {@code null} if it will not parse as TOML —
-     * {@link Explanation}'s own reporting, kept separate from {@link #merged()} since a report
-     * has to name each file's own keys rather than the merged result.
+     * Every key path {@code path} supplies, or {@code null} if it will not parse as TOML, for
+     * {@link Explanation}'s own reporting, kept separate from {@link #merged()} since a report has
+     * to name each file's own keys rather than the merged result.
      */
     static @Nullable List<String> fragmentKeys(final Path path) {
         final TomlParseResult result;
@@ -115,7 +115,7 @@ final class TomlLayers {
         return keys;
     }
 
-    /** Push the dotted path of every leaf in {@code table} into {@code keys}. */
+    /** Pushes the dotted path of every leaf in {@code table} into {@code keys}. */
     private static void pushLeaves(
             final TomlTable table, final String prefix, final List<String> keys, final int depth) {
         for (final String segment : table.keySet()) {
@@ -160,10 +160,10 @@ final class TomlLayers {
     }
 
     /**
-     * A {@link TomlTable} converted into a plain, deeply nested {@link Map} — {@code
-     * TomlTable#toMap()} leaves nested tables as {@code TomlTable} instances rather than
-     * converting them, which Jackson then misreads as a bean (picking up methods like {@code
-     * isEmpty()} as a spurious {@code "empty"} property) instead of a JSON object.
+     * A {@link TomlTable} converted into a plain, deeply nested {@link Map}. {@code
+     * TomlTable#toMap()} leaves nested tables as {@code TomlTable} instances rather than converting
+     * them, which Jackson then misreads as a bean (picking up methods like {@code isEmpty()} as a
+     * spurious {@code "empty"} property) instead of a JSON object.
      */
     private static Map<String, Object> convertTable(final TomlTable table) {
         final Map<String, Object> map = new LinkedHashMap<>();

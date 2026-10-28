@@ -15,9 +15,9 @@ import java.io.File;
  * never in the plugin: the published plugin runs only a binary its build named.
  *
  * <p><b>The rule for a missing binary:</b> under {@code CI=true} it fails the test, and anywhere
- * else it skips the test through a JUnit assumption — the same rule the TCK's conform tests follow,
- * for the same reason: CI must not go green by skipping the check, and a contributor without a
- * Rust toolchain must still be able to run the Java build.
+ * else it skips the test through a JUnit assumption. This is the same rule the TCK's conform tests
+ * follow, for the same reason: CI must not go green by skipping the check, and a contributor
+ * without a Rust toolchain must still be able to run the Java build.
  */
 final class TerraceContractBinary {
 
