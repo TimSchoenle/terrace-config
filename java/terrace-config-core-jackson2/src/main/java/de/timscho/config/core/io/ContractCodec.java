@@ -70,9 +70,13 @@ public final class ContractCodec {
     /**
      * Parses a {@code json} rendering. Unknown properties are ignored.
      *
+     * <p>Binding is not validation: nothing here checks the document against {@code
+     * spec/v1/contract.schema.json}, so a document missing a required field binds with that field
+     * {@code null}. A caller that needs a valid envelope validates the result.
+     *
      * @param json the document, UTF-8 encoded
      * @return the parsed contract
-     * @throws UncheckedIOException if {@code json} is not a contract
+     * @throws UncheckedIOException if {@code json} is not JSON or does not bind to {@link Contract}
      */
     public static Contract read(final byte[] json) {
         try {
@@ -83,11 +87,13 @@ public final class ContractCodec {
     }
 
     /**
-     * Parses the {@code json} rendering held in {@code source}.
+     * Parses the {@code json} rendering held in {@code source}. Binds without validating, as
+     * {@link #read(byte[])} does.
      *
      * @param source the file to read
      * @return the parsed contract
-     * @throws UncheckedIOException if the file cannot be read or is not a contract
+     * @throws UncheckedIOException if the file cannot be read, is not JSON, or does not bind to
+     *     {@link Contract}
      */
     @Blocking
     public static Contract read(final Path source) {

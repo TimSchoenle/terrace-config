@@ -10,7 +10,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class FileIndirectionException extends RuntimeException {
 
-    private static final long serialVersionUID = 1L;
+    // The UID the Lombok-generated class had, so an instance serialized before the explicit
+    // constructors still deserializes.
+    private static final long serialVersionUID = 5320318304645889206L;
 
     /** Creates an exception with neither message nor cause. */
     public FileIndirectionException() {

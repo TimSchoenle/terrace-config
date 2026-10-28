@@ -260,9 +260,14 @@ public final class TerraceLoader {
      * Where every value this loader can see would come from, reading {@code System.getenv()} and
      * the configured paths.
      *
-     * <p>Reports the same layers {@link #load} would bind, without binding them to any type, useful
-     * even when {@link #load} itself would refuse (a shadowed key, say), since the report needs no
-     * target type to succeed.
+     * <p>Reports the same layers {@link #load} would bind, without binding them to any type, so it
+     * still succeeds where binding would fail (a value the target type cannot hold, say). It reads
+     * the layers exactly as {@link #load} does, so a source {@link #load} cannot read, or a shadowed
+     * key under {@link ShadowPolicy#REJECT}, makes it throw too.
+     *
+     * @return the report
+     * @throws LoaderException if a configured source cannot be read or parsed, or a key is shadowed under
+     *     {@link ShadowPolicy#REJECT}
      */
     public Explanation explain() {
         return this.explain(System.getenv());
