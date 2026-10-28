@@ -331,7 +331,9 @@ pub struct Key {
     /// The producer's `///` comment, whole.
     #[serde(default)]
     pub docs: String,
-    /// The producer's own name for the type. **Not portable**; [`Key::ty`] says why.
+    /// The producer's own name for the type, in its own language's spelling. **Not portable**: it
+    /// is for a person reading a table, and a consumer checking a value reads
+    /// [`constraint`](Key::constraint) instead (`spec/v1/FORMAT.md`).
     #[serde(default)]
     pub ty: Option<String>,
     /// The choices, when the type is a closed set.
