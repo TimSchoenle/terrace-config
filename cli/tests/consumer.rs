@@ -335,16 +335,16 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
         // Names the three dialect fields in order to compare the old document's values against the
         // new one's. It derives no spelling from any of them — a comparison of what two documents
         // state is the opposite of an assumption about what they imply.
-        "diff.rs",
+        "diff/sections.rs",
         // Prints the separator in the header of an explanation, which is the one place a person is
         // told what it is. Printing a published field is the opposite of deriving from it.
-        "explain.rs",
+        "helm/explain/render.rs",
         // `helm init`'s renderers and its placeholder fill, which copy the published separator into
         // generated prose: the `secretData` comment in `_helpers.tpl` and `%%SEPARATOR%%` in a
         // template's comment. Every name they write — a secret file, a variable — is the key's own
         // published `secrets_file` or `env`, never one spelt with the separator.
-        "chart.rs",
-        "init.rs",
+        "helm/scaffold/chart.rs",
+        "helm/init.rs",
     ];
 
     let mut found: Vec<String> = Vec::new();
@@ -354,12 +354,7 @@ fn only_the_rules_that_admit_to_a_tier_2_assumption_read_the_separator() {
             // Test fixtures spell a whole dialect and assume nothing; the rules are what matter.
             let rules = body.split("#[cfg(test)]").next().unwrap_or(body);
             if rules.contains("nesting_separator") {
-                found.push(
-                    path.file_name()
-                        .expect("a named file")
-                        .to_string_lossy()
-                        .into_owned(),
-                );
+                found.push(relative(path));
             }
         },
     );
@@ -443,8 +438,8 @@ fn only_the_volume_reader_looks_inside_a_secret_at_all() {
         // Reads the *ConfigMap* holding the rendered configuration document, which is the plain
         // text a chart chose to render and the one thing a credential is never allowed to be.
         // Named here because the field spelling is the same, not because a Secret is opened.
-        "document.rs",
-        "secrets.rs",
+        "gate/document.rs",
+        "helm/secrets.rs",
     ];
 
     let mut found: Vec<String> = Vec::new();
@@ -453,12 +448,7 @@ fn only_the_volume_reader_looks_inside_a_secret_at_all() {
         &mut |path, body| {
             let rules = body.split("#[cfg(test)]").next().unwrap_or(body);
             if rules.contains("\"stringData\"") || rules.contains("\"data\"") {
-                found.push(
-                    path.file_name()
-                        .expect("a named file")
-                        .to_string_lossy()
-                        .into_owned(),
-                );
+                found.push(relative(path));
             }
         },
     );
@@ -476,12 +466,27 @@ fn only_the_volume_reader_looks_inside_a_secret_at_all() {
 }
 
 /// Every `.rs` file under a directory, with its body.
+/// `path` relative to `src/`, with `/` separators, so two files sharing a name stay apart.
+fn relative(path: &Path) -> String {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    path.strip_prefix(&src)
+        .expect("a path under src/")
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn walk(at: &Path, apply: &mut impl FnMut(&Path, &str)) {
     for entry in std::fs::read_dir(at).expect("the source tree is readable") {
         let path = entry.expect("a source entry").path();
         if path.is_dir() {
             walk(&path, apply);
-        } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("rs") {
+        } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("rs")
+            // A `tests.rs` is a unit-test module moved out of its parent's `#[cfg(test)]` block,
+            // and the callers skip that block, so the file is skipped too.
+            && path.file_name().and_then(std::ffi::OsStr::to_str) != Some("tests.rs")
+        {
             let body = std::fs::read_to_string(&path).expect("a source file is readable");
             apply(&path, &body);
         }

@@ -105,7 +105,7 @@
 //!   row under the new `unbound:`, where the declaration refuses it. Here the runs land in the
 //!   order they are planned.
 //! - **Two keys spelling one chart value.** `a.b_c` and `a.bC` both need `a.bC`. The script kept
-//!   whichever came second; [`tree_at`] refuses the pair as a mapping to write by hand.
+//!   whichever came second; [`tree_at`](super::scaffold::tree_at) refuses the pair as a mapping to write by hand.
 //! - **Two documents agreeing on a key.** The script compared the fields' Python `repr`, so the
 //!   same constraint published with its members in another order read as a disagreement. Here
 //!   the fields are compared as JSON, where member order means nothing.

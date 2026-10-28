@@ -15,7 +15,7 @@ use super::{Adoption, posix};
 /// One chart's result: what was inserted, what was refused, and what is still owed.
 ///
 /// # Errors
-/// As [`secrets_file_name`], for a credential still owed its `secretData` line.
+/// As [`secrets_file_name`](crate::helm::scaffold::secrets_file_name), for a credential still owed its `secretData` line.
 pub fn report(adoption: &Adoption, written: bool) -> Result<String, Error> {
     let rule = "=".repeat(92);
     let mut out = format!("\n{rule}\n{}\n{rule}\n", adoption.chart);
