@@ -11,8 +11,8 @@ name: docs
 # README would otherwise start advertising the previous tag. Rendering here means the released
 # README already points at the tag the merge is about to create.
 #
-# Everywhere it cannot commit — a push to `main`, a pull request from a fork — it renders in
-# `check` mode instead, writing nothing and failing if the committed `README.md` is stale.
+# On every event, including those pull requests, it also renders in `check` mode, writing nothing
+# and failing if the committed `README.md` is stale. That job is the required check.
 # Without it, editing `README.md` directly would appear to work right up until the next pull
 # request silently reverted it.
 
@@ -205,10 +205,9 @@ jobs:
 
   check:
     name: readme
-    # The complement of `render`: it covers the pushes to `main` that no pull request rendered,
-    # and the fork pull requests that could not be committed to. Between the two conditions every
-    # event this workflow sees is handled by exactly one job.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    # Runs on every event so that branch protection can require it. On a same-repository pull
+    # request whose READMEs are stale it fails on that commit; `render-commit` then pushes the
+    # rendered files with the App token, which starts a new run where it passes.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
