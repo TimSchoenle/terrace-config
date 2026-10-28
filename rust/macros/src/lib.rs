@@ -1,4 +1,4 @@
-//! The `Describe` derive — the compile-time half of `terrace-config`'s schema export.
+//! The `Describe` derive, the compile-time half of `terrace-config`'s schema export.
 //!
 //! This crate exists only because a proc-macro crate cannot export anything else. Everything it
 //! generates names types in `terrace_config::schema`, and it is depended on with `=` so the two
@@ -6,9 +6,9 @@
 //! `schema` feature; never on this crate directly.
 //!
 //! The one thing only a macro can do is read the `///` comments. Every other column of a
-//! configuration table — the key path, the environment spelling, whether a value is required —
-//! is recoverable at runtime; the sentence explaining what the key is *for* exists nowhere but
-//! the source, and vanishes before any runtime sees the type.
+//! configuration table (the key path, the environment spelling, whether a value is required) is
+//! recoverable at runtime. The sentence explaining what the key is *for* exists nowhere but the
+//! source, and vanishes before any runtime sees the type.
 //!
 //! `container` and `field` parse the attributes, `types` reads the Rust types, and `expand` emits
 //! the impls; `attrs` holds the small `syn` readers the two parsers share.
@@ -28,13 +28,13 @@ use syn::{Data, DeriveInput, Fields, parse_macro_input};
 use crate::container::Container;
 use crate::expand::{expand_enum, expand_struct};
 
-/// Describe a configuration type: its keys, their documentation, and what each one accepts.
+/// Describes a configuration type: its keys, their documentation, and what each one accepts.
 ///
 /// Two shapes, two outputs:
 ///
-/// - On a **struct of named fields** — a type that *has* configuration keys — this derives
+/// - On a **struct of named fields**, a type that *has* configuration keys, this derives
 ///   `terrace_config::schema::Describe`, reporting one key per field.
-/// - On an **enum of unit variants** — a type that *is* the set of values one key accepts — it
+/// - On an **enum of unit variants**, a type that *is* the set of values one key accepts, it
 ///   derives `terrace_config::schema::Values` instead, reporting the variant spellings. Pull them
 ///   into a key with `#[config(values)]` on the field that holds it.
 ///
@@ -43,14 +43,14 @@ use crate::expand::{expand_enum, expand_struct};
 ///
 /// # Serde attributes
 ///
-/// The key path a field produces has to be the one `serde` will actually look for, so the
-/// following are read from the field's existing `#[serde(...)]` attributes rather than
-/// duplicated: `rename`, `rename_all` (on the container, for fields *and* for variants — the two
-/// rules differ and both are implemented), `alias`, `skip`, `skip_deserializing`, `default`, and
-/// `flatten`. Annotating a field twice is how the documentation drifts from the loader.
+/// The key path a field produces has to be the one `serde` will actually look for, so the following
+/// are read from the field's existing `#[serde(...)]` attributes rather than duplicated: `rename`,
+/// `rename_all` (on the container, for fields *and* for variants, whose rules differ and are both
+/// implemented), `alias`, `skip`, `skip_deserializing`, `default`, and `flatten`. Annotating a
+/// field twice is how the documentation drifts from the loader.
 ///
 /// `#[serde(deny_unknown_fields)]` on the container is read for the same reason and reported the
-/// same way — see [Closed structs](#closed-structs).
+/// same way, as [Closed structs](#closed-structs) describes.
 ///
 /// # `#[config(...)]`
 ///
@@ -77,11 +77,11 @@ use crate::expand::{expand_enum, expand_struct};
 ///
 /// # Reloading
 ///
-/// `#[config(reload = "live")]` says a rebuild applies a change to every key under it — the value
-/// is consumed inside the runtime `reload::run` reconstructs. `#[config(reload = "restart")]` says
-/// only a process start does: the value is read before the supervisor runs, or changing it under
-/// live traffic is unsafe. On a struct it covers every field, nested types included; on a field it
-/// covers that key, or everything under it for `nested`.
+/// `#[config(reload = "live")]` says a rebuild applies a change to every key under it, because the
+/// value is consumed inside the runtime `reload::run` reconstructs. `#[config(reload = "restart")]`
+/// says only a process start does: the value is read before the supervisor runs, or changing it
+/// under live traffic is unsafe. On a struct it covers every field, nested types included. On a
+/// field it covers that key, or everything under it for `nested`.
 ///
 /// ```ignore
 /// #[derive(Deserialize, Describe)]
@@ -98,21 +98,21 @@ use crate::expand::{expand_enum, expand_struct};
 ///
 /// **An explicit `restart` anywhere on a key's path wins**, over a `live` above it and below it
 /// alike. A key nothing marks is undeclared, and the contract publishes it as `restart` once the
-/// loader declares what the binary supports — so `live` is always something an author wrote.
+/// loader declares what the binary supports, so `live` is always something an author wrote.
 ///
 /// # A named type has to say something
 ///
 /// Opt-in is not the same as optional. A field whose type is a bare name this crate does not
-/// recognise — not one of the leaf spellings, not a container — publishes *nothing*: no type, no
-/// values, no keys, and a row that looks exactly like a field which was described. That silence
-/// is the gap this derive exists to close, so it is a compile error rather than an omission:
+/// recognise, neither one of the leaf spellings nor a container, publishes *nothing*: no type, no
+/// values, no keys, and a row that looks exactly like a field which was described. That silence is
+/// the gap this derive exists to close, so it is a compile error rather than an omission:
 ///
 /// ```ignore
 /// /// How much the service says.
 /// log_level: LogLevel,   // error: publishes no shape at all
 /// ```
 ///
-/// Six attributes resolve it — `values`, `nested`, `element`, `element_values`, `range` for a
+/// Six attributes resolve it: `values`, `nested`, `element`, `element_values`, `range` for a
 /// numeric newtype whose interval is the whole of what a schema can say about it, and `skip` for a
 /// field that genuinely has no publishable shape. The error names the field, its type and all of
 /// them.
@@ -143,7 +143,7 @@ use crate::expand::{expand_enum, expand_struct};
 /// compression: other::Compression,
 /// ```
 ///
-/// **`values("…", "…")` lists the spellings**, for a type no mirror can be written for — serde's
+/// **`values("…", "…")` lists the spellings**, for a type no mirror can be written for. Serde's
 /// `remote` needs a shape it can mirror, and a newtype over a private enum has none:
 ///
 /// ```ignore
@@ -153,14 +153,14 @@ use crate::expand::{expand_enum, expand_struct};
 /// compression: other::Compression,
 /// ```
 ///
-/// Both have element forms — `element_values_from = "…"` and `element_values("…", "…")` — for a
-/// container of one. All four satisfy the diagnostic above, and bare `#[config(values)]` is
-/// unchanged.
+/// Both have element forms, `element_values_from = "…"` and `element_values("…", "…")`, for a
+/// container of one. All four satisfy the diagnostic above, and bare `#[config(values)]` still
+/// reads the field type's own implementation.
 ///
 /// **A list is an assertion this crate cannot check**, the same standing as
 /// `#[config(note = "…")]`: nothing here reads the type's `Deserialize`, so a list that disagrees
 /// with it publishes a schema rejecting a file the loader takes. Prefer `values_from` wherever a
-/// mirror can be written — variants read off a type cannot drift from it. An empty list and a
+/// mirror can be written, since variants read off a type cannot drift from it. An empty list and a
 /// repeated spelling are rejected.
 ///
 /// # The accepted set is the deserialiser's answer, not the type's
@@ -173,17 +173,17 @@ use crate::expand::{expand_enum, expand_struct};
 /// follow.
 ///
 /// `tracing::Level` is the worked example of why, and the one to *not* copy. It has no
-/// `Deserialize` of its own, so a field holding one goes through its `FromStr` — which matches
+/// `Deserialize` of its own, so a field holding one goes through its `FromStr`, which matches
 /// case-insensitively **and** accepts `"1"` through `"5"`. A field annotated
-/// `values("trace", "debug", "info", "warn", "error")` therefore publishes a schema refusing
-/// `INFO` and `3`, both of which load, which is the one thing this crate will not do. Read the
-/// accepted set off the conversion rather than off the variant names; where it is not a fixed set
-/// of spellings at all, `#[config(skip)]` the key or implement `Describe` by hand.
+/// `values("trace", "debug", "info", "warn", "error")` therefore publishes a schema refusing `INFO`
+/// and `3`, both of which load, which is the one thing this crate will not do. Read the accepted
+/// set off the conversion rather than off the variant names. Where it is not a fixed set of
+/// spellings at all, `#[config(skip)]` the key or implement `Describe` by hand.
 ///
 /// # Container-typed keys
 ///
-/// `routes: Vec<RouteConfig>` is one key — an array index is not a key segment, and no
-/// environment variable names one — but it is a key whose *element* has a shape, and the type
+/// `routes: Vec<RouteConfig>` is one key, since an array index is not a key segment and no
+/// environment variable names one. It is a key whose *element* has a shape, though, and the type
 /// token `Vec<RouteConfig>` carries only half of it. `element` supplies the other half:
 ///
 /// ```ignore
@@ -198,23 +198,23 @@ use crate::expand::{expand_enum, expand_struct};
 /// paths: HashMap<String, HashSet<Method>>,
 /// ```
 ///
-/// The element type is read off the container: through `Option`, `Box`, `Arc`, `Rc` and `Cow`,
-/// into the item of a `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `[T]` or `[T; N]` and into the
-/// *value* of a `HashMap` or `BTreeMap`, however deep they are stacked — `HashMap<String,
-/// HashSet<Method>>` reaches `Method`. A field whose type is not one of those is an error rather
-/// than a guess, and a type alias for a container is one of them: a derive has only tokens, so
-/// `type Routes = Vec<RouteConfig>` is a bare identifier here and has to be spelled out.
+/// The element type is read off the container: through `Option`, `Box`, `Arc`, `Rc` and `Cow`, into
+/// the item of a `Vec`, `VecDeque`, `HashSet`, `BTreeSet`, `[T]` or `[T; N]` and into the *value*
+/// of a `HashMap` or `BTreeMap`, however deep they are stacked, so
+/// `HashMap<String, HashSet<Method>>` reaches `Method`. A field whose type is not one of those is
+/// an error rather than a guess, and a type alias for a container is one of them: a derive has only
+/// tokens, so `type Routes = Vec<RouteConfig>` is a bare identifier here and has to be spelled out.
 ///
-/// `element` requires the element type to derive `Describe`; `element_values` requires it to
-/// derive `Describe` as an enum, which is what produces `Values`. Neither combines with `nested`
-/// or `values`, which describe the field's own type rather than its elements. The key itself is
-/// reported exactly as it is without them — the schema gains a nested `items` or
+/// `element` requires the element type to derive `Describe`, and `element_values` requires it to
+/// derive `Describe` as an enum, which is what produces `Values`. Neither combines with `nested` or
+/// `values`, which describe the field's own type rather than its elements. The key itself is
+/// reported exactly as it is without them: the schema gains a nested `items` or
 /// `additionalProperties`, and not one extra key.
 ///
 /// # Numeric bounds
 ///
 /// `sample_rate: f32` publishes `{"type": "number"}` and nothing more. That the value is a
-/// *fraction* is not in the type — every consumer that knows it has been writing `minimum: 0` and
+/// *fraction* is not in the type, so every consumer that knows it would write `minimum: 0` and
 /// `maximum: 1` itself. `range` says it once, where the field is:
 ///
 /// ```ignore
@@ -234,16 +234,16 @@ use crate::expand::{expand_enum, expand_struct};
 /// backoff: Vec<f64>,
 /// ```
 ///
-/// It takes `min`, `max`, `exclusive_min` and `exclusive_max` — at least one, and at most one per
-/// end — and emits `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum`. An integer
-/// literal stays an integer in the output and a float stays a float, so a bound is never rounded
-/// on its way into the schema.
+/// It takes `min`, `max`, `exclusive_min` and `exclusive_max`, at least one and at most one per
+/// end, and emits `minimum`, `maximum`, `exclusiveMinimum` and `exclusiveMaximum`. An integer
+/// literal stays an integer in the output and a float stays a float, so a bound is never rounded on
+/// its way into the schema.
 ///
 /// **The bound lands where the type's own reading stops**, which for a container is the element:
-/// `Vec<f64>` bounds the numbers in the vector, because a `minimum` on the vector itself would
-/// mean nothing. That is the position `element` fills for a container of structs, reached by the
-/// same walk — through any depth of `Option`, `Vec`, `HashMap` and the rest — which is why the two
-/// do not combine.
+/// `Vec<f64>` bounds the numbers in the vector, because a `minimum` on the vector itself would mean
+/// nothing. That is the position `element` fills for a container of structs, reached by the same
+/// walk through any depth of `Option`, `Vec`, `HashMap` and the rest, which is why the two do not
+/// combine.
 ///
 /// **A bound is never allowed to widen one the type already justifies.** `max = 100_000` on a
 /// `u16` is dropped rather than published, because `maximum` is one keyword and replacing the
@@ -253,7 +253,7 @@ use crate::expand::{expand_enum, expand_struct};
 ///
 /// A struct reported through `element` publishes its `properties` and its `required`, which leaves
 /// a consumer unable to tell it from an open map: a misspelt field passes validation. A container
-/// whose element type carries `#[serde(deny_unknown_fields)]` now says so, with
+/// whose element type carries `#[serde(deny_unknown_fields)]` says so, with
 /// `additionalProperties: false` beside those:
 ///
 /// ```ignore
@@ -265,15 +265,15 @@ use crate::expand::{expand_enum, expand_struct};
 /// }
 /// ```
 ///
-/// Read from the serde attribute rather than a second annotation of this crate's own, so the
-/// schema and the deserialiser cannot come to disagree about which fields exist. Nothing is
-/// emitted for a struct without it — `serde` accepts an undeclared field by default, and a schema
-/// refusing one would refuse a file that loads.
+/// Read from the serde attribute rather than a second annotation of this crate's own, so the schema
+/// and the deserialiser cannot come to disagree about which fields exist. Nothing is emitted for a
+/// struct without it: `serde` accepts an undeclared field by default, and a schema refusing one
+/// would refuse a file that loads.
 // `serde` is declared as a helper attribute as well as `config`. It is read, never consumed, and
-// serde's own derives declare it too — which is allowed, and is what lets a struct carry
-// `#[serde(rename_all = "…")]` under `Describe` alone. Without this, deriving `Describe` on a
-// type that is not simultaneously `Deserialize` is a "cannot find attribute" error pointing at
-// the user's serde attribute rather than at anything they did wrong.
+// serde's own derives declare it too, which is allowed, and is what lets a struct carry
+// `#[serde(rename_all = "…")]` under `Describe` alone. Without this, deriving `Describe` on a type
+// that is not simultaneously `Deserialize` is a "cannot find attribute" error pointing at the
+// user's serde attribute rather than at anything they did wrong.
 #[proc_macro_derive(Describe, attributes(config, serde))]
 pub fn derive_describe(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -286,7 +286,7 @@ pub fn derive_describe(input: TokenStream) -> TokenStream {
 ///
 /// A struct of named fields *has* configuration keys, so it gets a `Describe` implementation. An
 /// enum of unit variants *is* the set of values one key accepts, so it gets a `Values`
-/// implementation instead — which is what lets a table print `trace | debug | info` rather than
+/// implementation instead, which is what lets a table print `trace | debug | info` rather than
 /// naming a type whose inside the operator cannot see.
 fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let container = Container::parse(input)?;

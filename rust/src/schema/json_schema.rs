@@ -6,16 +6,16 @@
 //! - **An editor.** Point a TOML language server at this file and every key completes, every
 //!   `///` comment is the hover text, and `port = "8080"` is underlined in the editor rather
 //!   than at the next deployment.
-//! - **A Helm chart.** `values.schema.json` is validated by `helm install` before anything
-//!   reaches a cluster, and a chart whose values *are* the service's configuration has been
-//!   hand-writing this file until now.
+//! - **A Helm chart.** `values.schema.json` is validated by `helm install` before anything reaches
+//!   a cluster, and a chart whose values *are* the service's configuration would otherwise
+//!   hand-write this file.
 //!
 //! # What it does not claim
 //!
 //! A JSON Schema is a set of things a document must not be, so every keyword here has to be
-//! certainly true — a schema that rejects a file the loader would have accepted is worse than one
+//! certainly true. A schema that rejects a file the loader would have accepted is worse than one
 //! that accepts a file the loader will reject, because the first stops a deployment that was
-//! correct. Two consequences:
+//! correct. The consequences:
 //!
 //! - `type` comes from [`super::rust_type`], which produces nothing at all for a spelling it does
 //!   not recognise. A key whose type is a domain newtype is left unconstrained.
@@ -27,12 +27,12 @@
 //!   a field nobody declared, so a schema refusing one would refuse a file that loads.
 //! - The shape of one *element* of a container-typed key is carried only where the element type
 //!   opted in with [`Sink::repeated`](super::Sink::repeated). `Vec<RouteConfig>` renders as a bare
-//!   array until `RouteConfig` describes itself — the alternative is a schema derived from a
-//!   guess about a name, which would reject the file it guessed wrong about.
+//!   array until `RouteConfig` describes itself. The alternative is a schema derived from a guess
+//!   about a name, which would reject the file it guessed wrong about.
 //! - A [`reserved`](super::Key::reserved) key is left out entirely. The loader reads it from the
 //!   environment and a file may not supply it, so a schema listing it would complete a key that
-//!   does nothing — and with [`JsonSchema::closed`] on, a file that sets one is flagged, which is
-//!   what the loader says about it too.
+//!   does nothing. With [`JsonSchema::closed`] on, a file that sets one is flagged, which is what
+//!   the loader says about it too.
 //! - Every [`alias`](super::Key::aliases) is a property of its own. A closed schema that listed
 //!   only the canonical spelling would underline `user = "…"` in a file that loads, which is the
 //!   rejection this whole section is about.
@@ -44,16 +44,16 @@ use serde_json::{Map, Value as Json, json};
 use super::tree::{self, Node};
 use super::{Bounds, Docs, Error, Key, Schema, TextForm, rust_type};
 
-/// The meta-schema URI for JSON Schema 2020-12 — what a current editor implements.
+/// The meta-schema URI for JSON Schema 2020-12, which is what a current editor implements.
 pub const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
 
-/// The meta-schema URI for JSON Schema draft-07 — what Helm validates `values.schema.json`
+/// The meta-schema URI for JSON Schema draft-07, which is what Helm validates `values.schema.json`
 /// against.
 ///
-/// Nothing but the URI changes. Every keyword this rendering emits — `type`, `enum`,
-/// `properties`, `required`, `additionalProperties`, `items`, `uniqueItems`, the numeric bounds,
-/// `not`, `const`, `default`, `description`, `writeOnly` — is in draft-07 with the same meaning
-/// it has in 2020-12, so the choice is which dialect the consumer wants to be told it is reading.
+/// Nothing but the URI changes. Every keyword this rendering emits is in draft-07 with the same
+/// meaning it has in 2020-12: `type`, `enum`, `properties`, `required`, `additionalProperties`,
+/// `items`, `uniqueItems`, the numeric bounds, `not`, `const`, `default`, `description` and
+/// `writeOnly`. The choice is which dialect the consumer wants to be told it is reading.
 pub const DRAFT_07: &str = "http://json-schema.org/draft-07/schema#";
 
 /// How [`Schema::to_json_schema`] renders.
@@ -151,8 +151,8 @@ impl JsonSchema {
     /// The document's `title`, unless one was already chosen.
     ///
     /// For a caller supplying a default the user is expected to override rather than one that
-    /// overrides the user — which is [`Contract`](super::Contract), whose title falls back to the
-    /// app's name and must not silently replace a title the generator asked for.
+    /// overrides the user. That caller is [`Contract`](super::Contract), whose title falls back to
+    /// the app's name and must not silently replace a title the generator asked for.
     pub(super) fn or_title(mut self, title: impl Into<String>) -> Self {
         self.title = self.title.or_else(|| Some(title.into()));
         self
@@ -171,10 +171,10 @@ impl JsonSchema {
     ///
     /// Defaults to `true`.
     ///
-    /// An annotation, not a behaviour: no validator supplies it, and neither does Helm. It is
-    /// there for the editor that offers it as the completion. A [`secret`](Key::secret) key never
-    /// carries one whatever this says — there is nothing to carry, because
-    /// [`Schema::with_defaults_from`] keeps no value for one.
+    /// An annotation, not a behaviour: no validator supplies it, and neither does Helm. It is there
+    /// for the editor that offers it as the completion. A [`secret`](Key::secret) key never carries
+    /// one whatever this says. There is nothing to carry, because [`Schema::with_defaults_from`]
+    /// keeps no value for one.
     #[must_use]
     pub fn defaults(mut self, defaults: bool) -> Self {
         self.defaults = defaults;
@@ -185,9 +185,9 @@ impl JsonSchema {
     ///
     /// Defaults to `true`.
     ///
-    /// On, because the loader's own posture is that a key nobody reads is a mistake rather than a
-    /// courtesy — `ShadowPolicy` exists to make one loud — and a misspelled key in a config file
-    /// is silently ignored by `serde` unless something says otherwise. This is that something.
+    /// On, because the loader's own posture is that a key nobody reads is a mistake, which is why
+    /// `ShadowPolicy` makes one loud. A misspelled key in a config file is silently ignored by
+    /// `serde` unless something says otherwise, and this is that something.
     ///
     /// Off for a schema that describes *part* of a document: a Helm chart's values carry keys
     /// belonging to the chart rather than to the service, and `additionalProperties: false` at
@@ -204,15 +204,15 @@ impl JsonSchema {
     ///
     /// The two meanings of "required" are not the same and this is where they part. A JSON Schema
     /// `required` says **this document must carry the property**. [`Key::required`] says **some
-    /// layer must supply the key** — and the loader is satisfied by the environment or by a
-    /// mounted file just as well as by the file this schema describes.
+    /// layer must supply the key**, and the loader is satisfied by the environment or by a mounted
+    /// file just as well as by the file this schema describes.
     ///
     /// On for an editor validating a hand-written `config.toml`, where the document is the only
     /// layer there is. Off for a [`Contract`](super::Contract), whose reader is checking what a
-    /// chart rendered — because a chart supplying a required *secret* from a mounted file, which
-    /// is the only way to supply a secret, renders a document that fails this and a deployment
-    /// that starts. That consumer checks [`Key::required`] across every layer it can see instead,
-    /// which is where the evidence is.
+    /// chart rendered, because a chart supplying a required *secret* from a mounted file, which is
+    /// the only way to supply a secret, renders a document that fails this and a deployment that
+    /// starts. That consumer checks [`Key::required`] across every layer it can see instead, which
+    /// is where the evidence is.
     #[must_use]
     pub fn require_present(mut self, require_present: bool) -> Self {
         self.require_present = require_present;
@@ -223,9 +223,9 @@ impl JsonSchema {
 impl Schema {
     /// The schema as a JSON Schema document, for an editor or a Helm chart to validate against.
     ///
-    /// Nested keys become nested `properties` objects — `csp.cloudflare.turnstile` is three
-    /// levels deep, exactly as it is in the file — and a key with no default lands in its
-    /// object's `required` list, which makes the table holding it required in turn.
+    /// Nested keys become nested `properties` objects, so `csp.cloudflare.turnstile` is three
+    /// levels deep, exactly as it is in the file. A key with no default lands in its object's
+    /// `required` list, which makes the table holding it required in turn.
     ///
     /// Use [`Self::to_json_schema_with`] to choose the dialect, the title, or how strict it is.
     ///
@@ -275,8 +275,9 @@ pub(super) fn document(schema: &Schema, options: &JsonSchema) -> Map<String, Jso
 
 /// One level of the configuration as a JSON Schema object.
 ///
-/// `path` is where this level sits, dotted, empty at the root — the spelling `closed` holds. Both
-/// are carried down rather than derived from [`Node`], which knows only its own segment.
+/// `path` is where this level sits, dotted and empty at the root, which is the spelling `closed`
+/// holds. Both are carried down rather than derived from [`Node`], which knows only its own
+/// segment.
 fn object(
     node: &Node<'_>,
     path: &str,
@@ -287,7 +288,7 @@ fn object(
     let mut required = Vec::new();
     // A required key with aliases is not one property that must be present but a *choice* of
     // properties, one of which must be. `required` cannot say that and `anyOf` can, so those keys
-    // collect here and go in under one `allOf` — a second `anyOf` on the same object would
+    // collect here and go in under one `allOf`, since a second `anyOf` on the same object would
     // overwrite the first.
     let mut either = Vec::new();
 
@@ -295,9 +296,9 @@ fn object(
         let name = tree::name(&key.path);
         let schema = leaf(key, options);
 
-        // Every alias, as its own property. An alias is a spelling the loader accepts, so a
-        // closed schema that left it out would underline a key that loads perfectly well — the
-        // same bug the Markdown table's `Aliases` column exists to keep out of the reference.
+        // Every alias, as its own property. An alias is a spelling the loader accepts, so a closed
+        // schema that left it out would underline a key that loads perfectly well. That is the same
+        // bug the Markdown table's `Aliases` column exists to keep out of the reference.
         for alias in &key.aliases {
             let mut spelling = schema.clone();
             spelling.insert(
@@ -321,9 +322,9 @@ fn object(
             }
         }
     }
-    // After the leaves, so that the one shape neither format can carry — a key and a table of the
-    // same name in one parent — resolves to the table. That is the half a reader can act on, and
-    // it is what the TOML rendering comments the key out in favour of.
+    // After the leaves, so that the one shape neither format can carry, a key and a table of the
+    // same name in one parent, resolves to the table. That is the half a reader can act on, and it
+    // is what the TOML rendering comments the key out in favour of.
     for child in &node.children {
         let child_path = if path.is_empty() {
             child.segment.to_owned()
@@ -381,15 +382,15 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
 
     if key.secret {
         // The keyword for a value that is written but never read back, which is as close as JSON
-        // Schema comes to saying "credential" — and a hint an editor renders.
+        // Schema comes to saying "credential", and a hint an editor renders.
         schema.insert("writeOnly".to_owned(), json!(true));
     }
 
     if options.defaults
         && !key.secret
         && let Some(value) = &key.default_value
-        // A default that JSON cannot hold — an infinity, an integer past `f64`'s exact range —
-        // is left out. It is an annotation, so losing one costs a completion rather than a
+        // A default that JSON cannot hold, such as an infinity or an integer past `f64`'s exact
+        // range, is left out. It is an annotation, so losing one costs a completion rather than a
         // validation, and writing it wrong would cost the validation.
         && let Ok(default) = serde_json::to_value(value)
     {
@@ -399,27 +400,28 @@ fn leaf(key: &Key, options: &JsonSchema) -> Map<String, Json> {
     schema
 }
 
-/// What a value of this type must be, as JSON Schema keywords — `type`, `enum`, the numeric
-/// bounds, `items`, `uniqueItems`.
+/// What a value of this type must be, as JSON Schema keywords.
 ///
-/// The whole of what a *type* can say and nothing about the key that has it, which is what makes
-/// it reusable: [`leaf`] adds the description and the default for a key in a rendered document,
-/// and [`Key::constraint`] carries it flat for a consumer checking the *environment variable* that
+/// The keywords are `type`, `enum`, the numeric bounds, `items` and `uniqueItems`.
+///
+/// The whole of what a *type* can say and nothing about the key that has it, which is what makes it
+/// reusable: [`leaf`] adds the description and the default for a key in a rendered document, and
+/// [`Key::constraint`] carries it flat for a consumer checking the *environment variable* that
 /// supplies the same key. Every value in an environment is a string, so that consumer has nothing
-/// but this to check against — and without it, every consumer in every language reimplements a
-/// vocabulary of Rust type names, with `PathBuf` as the trap: it is a string and nothing in the
-/// name says so.
+/// but this to check against. Without it, every consumer in every language reimplements a
+/// vocabulary of Rust type names, with `PathBuf` as the trap, because it is a string and nothing in
+/// the name says so.
 ///
 /// `element` is the shape of one element of a container-typed key, from
 /// [`Sink::repeated`](super::Sink::repeated). It fills the position the type spelling leaves blank
 /// and nothing else: the containers around it are still read from the tokens, so a key whose
-/// element is described gains `items` or `additionalProperties` and keeps every keyword it had.
-/// A key whose [`Key::ty`] is not a container this crate reads keeps today's answer, because
-/// [`rust_type::interpret_with`] refuses rather than guessing where the element would go.
+/// element is described gains `items` or `additionalProperties` and keeps every keyword it had. A
+/// key whose [`Key::ty`] is not a container this crate reads keeps the answer it has without one,
+/// because [`rust_type::interpret_with`] refuses rather than guessing where the element would go.
 ///
 /// `bounds` is the interval a `#[config(range(...))]` field asked for, and lands at the same
-/// position for the same reason — the field's own type for a scalar, the element for a container
-/// of numbers. It narrows what the spelling justified and never widens it; see [`Bounds`].
+/// position for the same reason: the field's own type for a scalar, the element for a container of
+/// numbers. It narrows what the spelling justified and never widens it, as [`Bounds`] says.
 ///
 /// [`None`] means unconstrained: a type [`rust_type::interpret`] does not recognise, no fixed set
 /// of values and no bounds. A domain newtype lands here, and a validator can say nothing about it
@@ -432,8 +434,8 @@ pub(super) fn constraint(
 ) -> Option<Map<String, Json>> {
     if !values.is_empty() {
         // A fixed set of values is stronger than any type could be, and stronger than anything an
-        // element could say — a key that *is* a choice holds one variant, not a container of them.
-        // The derive refuses the pair; a hand-written `Describe` that reports both gets this.
+        // element could say: a key that *is* a choice holds one variant, not a container of them.
+        // The derive refuses the pair, and a hand-written `Describe` that reports both gets this.
         return Some(choice(values));
     }
 
@@ -448,9 +450,9 @@ pub(super) fn constraint(
 /// A fixed set of spellings, as the value in a *document* must be written.
 ///
 /// Always a set of strings: [`Values::VARIANTS`](super::Values::VARIANTS) holds the spellings
-/// `serde` accepts for unit variants. A bare `enum`, with no whitespace tolerated — the document
-/// layer trims nothing, so `level = "info "` really is refused. [`rust_type::one_of`] is the same
-/// set for the layer that does trim.
+/// `serde` accepts for unit variants. A bare `enum`, with no whitespace tolerated, because the
+/// document layer trims nothing and `level = "info "` really is refused. [`rust_type::one_of`] is
+/// the same set for the layer that does trim.
 pub(super) fn choice(values: &[impl AsRef<str>]) -> Map<String, Json> {
     let spellings: Vec<&str> = values.iter().map(AsRef::as_ref).collect();
     let mut schema = Map::new();
@@ -467,22 +469,21 @@ pub(super) fn choice(values: &[impl AsRef<str>]) -> Map<String, Json> {
 /// for the document itself.
 ///
 /// Fixed rather than driven by [`JsonSchema`], because what it produces ends up in
-/// [`Key::constraint`] — one value, read by every consumer of the document, that no rendering
+/// [`Key::constraint`]: one value, read by every consumer of the document, that no rendering
 /// option reaches. The four choices, and why each is the one that survives that:
 ///
 /// - **Descriptions are kept.** An element's fields are not keys, so their `///` comments have
-///   nowhere else in the document to live. Dropping them here would lose them altogether, which is
-///   what the hand-transcribed element schemas this replaces had to do.
+///   nowhere else in the document to live. Dropping them here would lose them altogether.
 /// - **`required` is kept and means what it says.** The two readings of "required" that
 ///   [`JsonSchema::require_present`] separates coincide inside an element: no environment variable
 ///   and no mounted file can reach a field of an array element, so the document really is the only
 ///   layer that could supply it.
 /// - **It is open unless the type closed it.** `serde` accepts a field nobody declared unless the
-///   struct says otherwise, so the default is open — but a struct that *did* say otherwise reports
-///   it, through [`Sink::deny_unknown_fields`](super::Sink::deny_unknown_fields), and `closed`
-///   holds the levels that did. Without that, a closed struct and an open map are the same
-///   `properties` object and a misspelt field passes every validator. Whether an undeclared key is
-///   an error *elsewhere* is still a rendering decision, and [`close`] applies that one.
+///   struct says otherwise, so the default is open. A struct that *did* say otherwise reports it,
+///   through [`Sink::deny_unknown_fields`](super::Sink::deny_unknown_fields), and `closed` holds
+///   the levels that did. Without that, a closed struct and an open map are the same `properties`
+///   object and a misspelt field passes every validator. Whether an undeclared key is an error
+///   *elsewhere* is still a rendering decision, and [`close`] applies that one.
 /// - **No `default`.** An element has no observed value to take one from: `with_defaults_from`
 ///   sees the container, not the elements a deployment happens to put in it.
 ///
@@ -496,7 +497,7 @@ pub(super) fn element_object(keys: &[Key], closed: &BTreeSet<String>) -> Map<Str
     )
 }
 
-/// Close every object inside a rendered constraint, the way [`object`] closes the document's own.
+/// Closes every object inside a rendered constraint, the way [`object`] closes the document's own.
 ///
 /// Only where a schema declares `properties` and says nothing yet about the rest: a map's
 /// `additionalProperties` is a *schema* and must be recursed into rather than overwritten with
@@ -531,15 +532,15 @@ fn close(schema: &mut Map<String, Json>) {
 
 /// What the *unparsed text* supplying this key must be, as JSON Schema keywords.
 ///
-/// [`constraint`] describes the value once it is in the document; this describes the characters
-/// an environment variable holds before anything parses them. `"0"` satisfies the second and
-/// fails the first, and a consumer told only the first has to know that `u64` means "TOML-parse
-/// the text, then check" — the Rust-type vocabulary [`rust_type`] exists to stop publishing.
+/// [`constraint`] describes the value once it is in the document; this describes the characters an
+/// environment variable holds before anything parses them. `"0"` satisfies the second and fails the
+/// first, and a consumer told only the first has to know that `u64` means "TOML-parse the text,
+/// then check", which is the Rust-type vocabulary [`rust_type`] exists to stop publishing.
 ///
 /// [`None`] means the text is unconstrained, and is the answer for every string-like type: an
-/// environment value is already a string, so `{"type": "string"}` would say nothing. See
-/// [`rust_type::in_text`] for what is emitted, and for why the measured accepted set rather than
-/// TOML's grammar is what decides it.
+/// environment value is already a string, so `{"type": "string"}` would say nothing.
+/// [`rust_type::in_text`] says what is emitted, and why the measured accepted set and not TOML's
+/// grammar decides it.
 pub(super) fn text_constraint(
     ty: Option<&str>,
     values: &[String],
@@ -549,8 +550,8 @@ pub(super) fn text_constraint(
     }
 
     // Not the bare `enum` `constraint` carries. figment's `Env` provider trims, so `"info "` loads
-    // where the same text in a TOML document does not — and copying the enum into both fields was
-    // the one thing the two-field design exists to prevent. See `rust_type::one_of`.
+    // where the same text in a TOML document does not. Copying the enum into both fields is the one
+    // thing the two-field design exists to prevent, as `rust_type::one_of` explains.
     (TextForm::Choice, Some(rust_type::one_of(values)))
 }
 

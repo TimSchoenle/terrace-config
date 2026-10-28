@@ -1,10 +1,10 @@
-//! Fuzzes the environment layer — `Terrace::load` and `Terrace::load_watched` over arbitrary
+//! Fuzzes the environment layer: `Terrace::load` and `Terrace::load_watched` over arbitrary
 //! `TEST_*` variables.
 //!
-//! The environment is not attacker-controlled the way a mounted secret is, so the threat model
-//! is a typo: figment ignores an unknown key rather than rejecting it, so this oracle looks for
-//! the worse case — a correctly-spelled key whose value aborts a service at startup instead of
-//! producing a typed error.
+//! The environment is not attacker-controlled the way a mounted secret is, so the threat model is a
+//! typo: figment ignores an unknown key rather than rejecting it, so this oracle looks for the
+//! worse case: a correctly-spelled key whose value aborts a service at startup instead of producing
+//! a typed error.
 //!
 //! # Oracle
 //! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic. Deep `__` nesting is the
@@ -13,7 +13,7 @@
 //! 2. **Boot and reload see the same configuration.** `load` and `load_watched` must agree on
 //!    success, and on success the extracted value must equal `load_watched`'s fingerprint. A
 //!    divergence means a reload could rebuild a service with values a fresh boot would never
-//!    produce — and nothing about the happy path would look different.
+//!    produce, and nothing about the happy path would look different.
 //! 3. **An unchanged environment is not a change.** Two consecutive `load_watched` calls must
 //!    report `differs_from == false`. This is the no-op detection the supervisor relies on to
 //!    avoid rebinding a listener for a `..data` swap that moved no key.
@@ -22,10 +22,10 @@
 //! `e:<SUFFIX>=<VALUE>` per line, with the `TEST_` prefix supplied here so seeds stay readable
 //! and mutation time is not spent on a prefix `Env::prefixed` discards.
 //!
-//! The keys that make a load read the filesystem are filtered out — `TEST_CONFIG`,
-//! `TEST_SECRETS_DIR` and anything ending `_FILE`. A reproducer whose behaviour depends on a
-//! file elsewhere on the machine is not a reproducer. Those layers have oracles of their own,
-//! which build the directory they read.
+//! The keys that make a load read the filesystem are filtered out: `TEST_CONFIG`,
+//! `TEST_SECRETS_DIR` and anything ending `_FILE`. A reproducer whose behaviour depends on a file
+//! elsewhere on the machine is not a reproducer. Those layers have oracles of their own, which
+//! build the directory they read.
 
 use figment::value::Value;
 use secrecy::SecretString;
@@ -81,12 +81,12 @@ fn layers() -> Terrace {
 /// under test.
 ///
 /// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
-/// not a convenience here — it is the only way in.
+/// the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }
 
-/// Run the oracle.
+/// Runs the oracle.
 ///
 /// Panics when the loader breaks one of the rules above.
 ///

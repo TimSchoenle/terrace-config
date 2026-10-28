@@ -1,9 +1,9 @@
 //! The `config.example.toml` rendering: the file an operator edits, generated rather than kept.
 //!
-//! The artefact this replaces is the one that drifts fastest. A reference table drifts and reads
-//! wrong; an example file drifts and is *copied* — into a deployment, as the config the service
-//! actually loads — so a key added six months after the example was written is a key nobody in
-//! that deployment knows exists.
+//! A hand-kept example file is the artefact that drifts fastest. A reference table drifts and reads
+//! wrong. An example file drifts and is *copied* into a deployment, as the config the service
+//! actually loads, so a key added six months after the example was written is a key nobody in that
+//! deployment knows exists.
 //!
 //! Two things separate this from the Markdown rendering, and both come from the output being a
 //! file rather than a page:
@@ -41,10 +41,9 @@ const WIDTH: usize = 96;
 /// How [`Schema::to_toml_example`] renders.
 ///
 /// The default is the whole file: a preamble naming the variables the loader reads, and every key
-/// under its purpose, its type and its spellings. Turn parts off for a shorter file — a service
-/// whose README already carries the reference table wants
-/// `TomlExample::new().spellings(false)`, and one whose configuration is generated into a
-/// container image wants no preamble.
+/// under its purpose, its type and its spellings. Turn parts off for a shorter file: a service
+/// whose README already carries the reference table wants `TomlExample::new().spellings(false)`,
+/// and one whose configuration is generated into a container image wants no preamble.
 ///
 /// ```
 /// # use terrace_config::Terrace;
@@ -148,8 +147,8 @@ impl TomlExample {
     ///
     /// Only reached when the key's type suggests nothing better: a `bool` with no default is
     /// written as `false` and a `Vec<_>` as `[]`, because those are values of the right type that
-    /// are still obviously not answers. A type this crate does not recognise has no such value,
-    /// so the placeholder goes in as a string — wrong-typed on purpose, so that a file left
+    /// are still obviously not answers. A type this crate does not recognise has no such value, so
+    /// the placeholder goes in as a string. It is wrong-typed on purpose, so that a file left
     /// unedited fails at the key that was never filled in rather than at whatever it broke later.
     #[must_use]
     pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
@@ -175,10 +174,10 @@ impl Schema {
     /// # token = "<secret>"
     /// ```
     ///
-    /// A key is commented out when leaving it out changes nothing — it has a default, or the
-    /// loader [reserves](Key::reserved) it and no file may supply it. What is left uncommented is
-    /// exactly the set of [`required`](Key::required) keys, so the generated file is both a
-    /// complete reference and the shortest file that loads.
+    /// A key is commented out when leaving it out changes nothing: it has a default, or the loader
+    /// [reserves](Key::reserved) it and no file may supply it. What is left uncommented is exactly
+    /// the set of [`required`](Key::required) keys, so the generated file is both a complete
+    /// reference and the shortest file that loads.
     ///
     /// Use [`Self::to_toml_example_with`] for a shorter one. Ends with a newline unless it is
     /// empty, which only a schema with no keys and no preamble is.
@@ -247,7 +246,7 @@ impl Schema {
     }
 }
 
-/// Push this level's block, then every level below it.
+/// Pushes this level's block, then every level below it.
 ///
 /// Depth first and leaves first, which is what TOML requires rather than a preference: a bare
 /// assignment belongs to the table header above it, so a key written after `[csp.cloudflare]`
@@ -343,18 +342,18 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
     if key.secret {
         comment(&mut out, "Secret: the value below is a placeholder.");
     } else if !key.required && key.default_value.is_none() {
-        // Without this the line below reads as a default. `repos = []` is the *shape* of the
-        // value and not what the key is when nothing sets it, which for an optional key is
-        // nothing at all — the distinction the whole `Option<Vec<_>>` spelling exists to make.
+        // Without this the line below reads as a default. `repos = []` is the *shape* of the value
+        // and not what the key is when nothing sets it, which for an optional key is nothing at
+        // all. That is the distinction the whole `Option<Vec<_>>` spelling exists to make.
         comment(
             &mut out,
             "Unset by default: the value below is only the shape.",
         );
     }
 
-    // The one shape TOML cannot write down: a key and a table of the same name in one parent.
-    // It means a field wanted `#[config(nested)]` and did not get it, and the table below is the
-    // half a reader can act on — so the key is commented out and told why.
+    // The one shape TOML cannot write down: a key and a table of the same name in one parent. It
+    // means a field wanted `#[config(nested)]` and did not get it, and the table below is the half
+    // a reader can act on, so the key is commented out and told why.
     let name = tree::name(&key.path);
     let shadowed = parent.opens(name);
     if shadowed {
@@ -415,8 +414,8 @@ fn literal(key: &Key, options: &TomlExample) -> String {
 
 /// A value of the key's type that is still obviously not an answer.
 fn placeholder(ty: Option<&str>, text: &str) -> String {
-    // No bounds: this picks a placeholder from the *shape* — a number, a string, an array — and
-    // the interval a number has to fall in does not change which of those it is.
+    // No bounds: this picks a placeholder from the *shape* (a number, a string, an array), and the
+    // interval a number has to fall in does not change which of those it is.
     let interpreted = ty.and_then(|ty| super::rust_type::interpret(ty, None));
     let shape = interpreted
         .as_ref()
@@ -457,8 +456,8 @@ fn toml_literal(value: &figment::value::Value, depth: usize) -> Option<String> {
         Value::Array(_, items) => {
             let mut rendered = Vec::with_capacity(items.len());
             for item in items {
-                // An array element cannot be left out the way a table entry can — dropping one
-                // would write a shorter array than the default actually is.
+                // An array element cannot be left out the way a table entry can: dropping one would
+                // write a shorter array than the default actually is.
                 rendered.push(toml_literal(item, depth + 1)?);
             }
             format!("[{}]", rendered.join(", "))
@@ -551,7 +550,7 @@ fn toml_string(text: &str) -> String {
 /// A key name as TOML spells it: bare where it can be, quoted where it cannot.
 ///
 /// `#[serde(rename = "…")]` accepts any string at all, and a bare key accepts none of the
-/// interesting ones. Quoting is not cosmetic here — an unquoted `a.b` is two levels of nesting.
+/// interesting ones. Quoting is not cosmetic here: an unquoted `a.b` is two levels of nesting.
 fn toml_key(name: &str) -> String {
     let bare = !name.is_empty()
         && name.chars().all(|character| {
@@ -568,11 +567,9 @@ fn toml_key(name: &str) -> String {
 ///
 /// A comment is the one part of this file that carries text nobody chose: a `///` comment, a key
 /// name, an alias. TOML permits no control character but tab in a comment, so what cannot be
-/// written raw is written as an escape — the same escape a quoted key two lines below would use,
-/// so the two spellings of one name read as the same name.
-///
-/// Found by the `schema` fuzz oracle, which described a key whose name contained a NUL and got
-/// back an example that does not parse.
+/// written raw is written as an escape, the same escape a quoted key two lines below would use, so
+/// the two spellings of one name read as the same name. The `schema` fuzz oracle describes keys
+/// whose names contain a NUL and checks the example still parses.
 fn comment(out: &mut String, text: &str) {
     if text.is_empty() {
         out.push_str("#\n");

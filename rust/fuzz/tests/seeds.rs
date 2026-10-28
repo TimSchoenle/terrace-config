@@ -1,14 +1,14 @@
 //! Replays the committed corpus through the oracles, without libFuzzer.
 //!
-//! Two jobs. The first is regression: every seed under `seeds/` — and every input a campaign
-//! promoted into `corpus/` — is run through the matching oracle on a plain `cargo test`, so a
+//! Two jobs. The first is regression: every seed under `seeds/`, and every input a campaign
+//! promoted into `corpus/`, is run through the matching oracle on a plain `cargo test`, so a
 //! reproducer keeps being checked long after whoever found it moved on.
 //!
 //! The second is validating the oracles themselves. An oracle that models the loader wrongly
 //! reports crashes that are not bugs, and the way to find that out is to run it over inputs
-//! designed to hit its edges — two spellings of one key, a name that is only separators, a
-//! collision between every pair of layers. [`generated`] does that from a fixed seed, so a
-//! failure is reproducible from the test name alone rather than from a `corpus/` blob.
+//! designed to hit its edges: two spellings of one key, a name that is only separators, a collision
+//! between every pair of layers. [`generated`] does that from a fixed seed, so a failure is
+//! reproducible from the test name alone rather than from a `corpus/` blob.
 
 use std::path::{Path, PathBuf};
 
@@ -29,7 +29,7 @@ fn corpus_dir(target: &str) -> PathBuf {
         .join(target)
 }
 
-/// Run every file in `dir` through `oracle`, naming the file if it panics.
+/// Runs every file in `dir` through `oracle`, naming the file if it panics.
 ///
 /// A directory that does not exist is not a failure: `corpus/` is where a campaign writes, and a
 /// fresh clone has only the `.gitkeep`.
@@ -94,10 +94,10 @@ fn schema_seeds() {
 
 /// A deterministic input generator, standing in for a mutation engine.
 ///
-/// Not a substitute for a real campaign — it has no coverage feedback, so it explores by
-/// combination rather than by discovery. What it is good at is the thing a campaign is slow at:
-/// hitting every *pairing* of the interesting tokens quickly, which is where an oracle that
-/// models the loader wrongly gives itself away.
+/// Not a substitute for a real campaign: it has no coverage feedback, so it explores by combination
+/// rather than by discovery. What it is good at is the thing a campaign is slow at: hitting every
+/// *pairing* of the interesting tokens quickly, which is where an oracle that models the loader
+/// wrongly gives itself away.
 mod generated {
     use super::{Oracle, oracle};
 
@@ -165,7 +165,7 @@ mod generated {
 
     const KINDS: &[&str] = &["f", "e", "p", "t", "q"];
 
-    /// Build one input of up to five directives.
+    /// Builds one input of up to five directives.
     fn generate(rng: &mut Rng) -> String {
         let lines = 1 + rng.next() % 5;
         (0..lines)
@@ -181,8 +181,8 @@ mod generated {
             .join("\n")
     }
 
-    /// The default budget per target. Large enough to pair most tokens, small enough that the
-    /// suite stays a few seconds — every iteration builds a real temp directory.
+    /// The default budget per target. Large enough to pair most tokens, small enough that the suite
+    /// stays a few seconds, since every iteration builds a real temp directory.
     const DEFAULT_ITERATIONS: usize = 600;
 
     /// The budget, overridable so a longer hunt does not need a recompile.
@@ -195,15 +195,15 @@ mod generated {
             .unwrap_or(DEFAULT_ITERATIONS)
     }
 
-    /// Run `oracle` over the generated inputs, naming the one that fails.
+    /// Runs `oracle` over the generated inputs, naming the one that fails.
     ///
     /// `catch_unwind` rather than a panic hook, which was the first attempt and was wrong: a hook
     /// is process-global, these tests run in parallel, and the input it printed belonged to
     /// whichever sweep installed the hook last. `catch_unwind` attributes the failure to the
     /// iteration that actually produced it.
     ///
-    /// The corpus replay above deliberately does *not* do this — there the file name is the
-    /// context, and the harness already prints it.
+    /// The corpus replay above deliberately does *not* do this: there the file name is the context,
+    /// and the harness already prints it.
     fn sweep(seed: u64, oracle: Oracle) {
         sweep_with(seed, oracle, generate);
     }
@@ -279,8 +279,8 @@ mod generated {
         " by",
         " ",
         "",
-        // A leading or trailing dot, which makes a segment whose parent is the empty
-        // prefix -- the branch of `subset` that means "the whole schema".
+        // A leading or trailing dot, which makes a segment whose parent is the empty prefix: the
+        // branch of `subset` that means "the whole schema".
         ".ab",
         "ab.",
     ];
@@ -319,7 +319,7 @@ mod generated {
         "trailing space ",
     ];
 
-    /// Build one schema-oracle input.
+    /// Builds one schema-oracle input.
     fn generate_schema(rng: &mut Rng) -> String {
         let mut lines = Vec::new();
         if rng.next().is_multiple_of(3) {

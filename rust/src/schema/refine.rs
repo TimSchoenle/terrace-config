@@ -10,7 +10,7 @@
 //! [`Schema::refine`] is how the application says so, and [`Refine`] is how a library that owns the
 //! runtime check publishes it without knowing where it is mounted. Both go through one rule: **a
 //! refinement tightens and never loosens.** It is a typed enum of tightenings rather than a JSON
-//! Schema fragment for exactly that reason — a fragment can say anything, including something that
+//! Schema fragment for exactly that reason. A fragment can say anything, including something that
 //! widens what the type stated, and nothing downstream could tell.
 
 use std::collections::BTreeSet;
@@ -30,9 +30,9 @@ use super::{
 
 /// The path segment that addresses every element of a map or a sequence.
 ///
-/// An element has no name of its own — a map's entries are the operator's to choose, and a
-/// sequence's are counted — so a refinement reaching inside one names the element schema all of
-/// them share, not any one of them.
+/// An element has no name of its own, because a map's entries are the operator's to choose and a
+/// sequence's are counted. A refinement reaching inside one names the element schema all of them
+/// share, not any one of them.
 pub const ELEMENT: &str = "*";
 
 /// The segment standing in for an element when an entry name inside one is spelled for the
@@ -55,56 +55,59 @@ pub enum Refinement {
     ///
     /// An empty set is **accepted and changes nothing**, once the path and the map's shape have
     /// been checked. A library computing its required entries at runtime can legitimately compute
-    /// none, and refusing that would make every caller special-case it — while skipping the checks
-    /// for an empty set would let a mistyped path through exactly when the set happens to be empty.
+    /// none, and refusing that would make every caller special-case it. Skipping the checks for an
+    /// empty set would let a mistyped path through exactly when the set happens to be empty.
     RequiredEntries(BTreeSet<String>),
     /// Every entry name of a map must match this pattern.
     ///
     /// Published as JSON Schema's `propertyNames: {"pattern": …}` at the map's position. The
-    /// pattern is matched as JSON Schema matches one — unanchored, so a pattern meaning the whole
-    /// name says so with `^` and `$` — and it must lie inside the *portable subset*: the constructs
+    /// pattern is matched as JSON Schema matches one, unanchored, so a pattern meaning the whole
+    /// name says so with `^` and `$`. It must lie inside the *portable subset*: the constructs
     /// every engine a contract is read by agrees on. [`Schema::refine`] refuses anything outside
     /// it, naming the construct and the portable spelling. The subset is set out in
-    /// `spec/v1/FORMAT.md`, under *Portable patterns*; in short, no `.`, no `\d`, `\w`, `\s` or
-    /// `\b`, no lookaround and no lazy repetition — a class naming exactly the characters meant
-    /// says the same thing in every engine.
+    /// `spec/v1/FORMAT.md`, under *Portable patterns*. In short: no `.`, no `\d`, `\w`, `\s` or
+    /// `\b`, no lookaround and no lazy repetition. A class naming exactly the characters meant says
+    /// the same thing in every engine.
     ///
     /// **The environment folds names to lower case.** A pattern admitting an upper-case name
-    /// describes an entry no environment variable can supply, since `PORTFOLIO_LEGAL__DOCUMENTS__TERMS`
-    /// arrives as `terms` whatever case it was written in. That is weaker than the loader, not wrong
-    /// — the entry is still supplied from a file — so it is published as written; a pattern meant to
-    /// describe what every layer can supply names lower-case characters only.
+    /// describes an entry no environment variable can supply, since
+    /// `PORTFOLIO_LEGAL__DOCUMENTS__TERMS` arrives as `terms` whatever case it was written in. That
+    /// is weaker than the loader, not wrong, because the entry can still be supplied from a file,
+    /// so it is published as written. A pattern meant to describe what every layer can supply names
+    /// lower-case characters only.
     EntryNames(String),
     /// A string must match this pattern.
     ///
-    /// Published as JSON Schema's `pattern` at the string's position — a string-typed key, or a
-    /// string inside one's element schema. The same portable subset as [`Self::EntryNames`], matched
-    /// the same way. [`Self::non_blank`] is the one pattern common enough, and easy enough to get
-    /// wrong, to ship ready-made.
+    /// Published as JSON Schema's `pattern` at the string's position: a string-typed key, or a
+    /// string inside one's element schema. The same portable subset as [`Self::EntryNames`],
+    /// matched the same way. [`Self::non_blank`] is the one pattern common enough, and easy enough
+    /// to get wrong, to ship ready-made.
     Pattern(String),
     /// A condition between the fields of a struct must hold.
     ///
-    /// Stated on a struct position — in practice the element of a map or sequence of structs,
-    /// `legal.documents.*` — and published as one member of that position's `allOf`: the condition's
-    /// JSON Schema, with its readable form as the member's `description`. Every rendering shows that
-    /// sentence; a validator applies the schema. A condition is a conjunct, so it only tightens.
+    /// Stated on a struct position, in practice the element of a map or sequence of structs such as
+    /// `legal.documents.*`, and published as one member of that position's `allOf`: the condition's
+    /// JSON Schema, with its readable form as the member's `description`. Every rendering shows
+    /// that sentence, and a validator applies the schema. A condition is a conjunct, so it only
+    /// tightens.
     ///
     /// [`Condition`] is the vocabulary, and [`Schema::refine`] checks every field it names against
     /// the struct and every predicate against the field's type. What it cannot check is that the
-    /// condition says exactly what the runtime check does; see `spec/v1/FORMAT.md`, *Refinements*,
-    /// for the traps a condition meets — an early return in the check that a flat condition would
+    /// condition says exactly what the runtime check does. `spec/v1/FORMAT.md`, *Refinements*,
+    /// lists the traps a condition meets: an early return in the check that a flat condition would
     /// not share, and a format the check accepts more of than a pattern would.
     Holds(Condition),
 }
 
 impl Refinement {
-    /// Text holding at least one character that is not white space — the negation of Rust's
-    /// `str::trim().is_empty()`, exactly.
+    /// Text holding at least one character that is not white space.
+    ///
+    /// It is exactly the negation of Rust's `str::trim().is_empty()`.
     ///
     /// The class is Unicode's `White_Space` property, which is what [`char::is_whitespace`] tests.
     /// **`\S` is not a substitute**, and the subset refuses it: ECMA-262's `\s` holds U+FEFF, which
     /// is not `White_Space`, so a pattern of `\S` rejects a value consisting of U+FEFF that
-    /// `trim()` leaves non-empty — a contract stricter than the check it describes.
+    /// `trim()` leaves non-empty, which makes the contract stricter than the check it describes.
     pub const NON_BLANK: &str = "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]";
 
     /// [`Self::RequiredEntries`] from any list of names.
@@ -164,13 +167,13 @@ impl Refinement {
     }
 }
 
-/// A source of refinements — a library whose runtime validation should be published.
+/// A source of refinements: a library whose runtime validation should be published.
 ///
 /// Implemented by whatever owns the check the type cannot state, so the contract and the check
 /// cannot drift: the library that refuses to start without an `imprint` document is the one that
-/// says so here. Paths are **relative to where the library's configuration is mounted**, which
-/// only the host knows — [`Schema::refine_with`] takes that mount point, so a library never
-/// hard-codes it.
+/// says so here. Paths are **relative to where the library's configuration is mounted**, which only
+/// the host knows. [`Schema::refine_with`] takes that mount point, so a library never hard-codes
+/// it.
 ///
 /// A relative path may be empty, meaning the mount point itself: a library whose whole
 /// configuration *is* the map.
@@ -216,16 +219,16 @@ pub trait Refine {
 }
 
 impl Schema {
-    /// Tighten the constraint at `path` beyond what its type states.
+    /// Tightens the constraint at `path` beyond what its type states.
     ///
     /// `path` is a key's canonical path, optionally continued into the key's constraint: a
     /// [`ELEMENT`] segment (`*`) steps into the element every entry of a map or every item of a
     /// sequence shares, and a field name steps into a struct's field. So `legal.documents.*.body`
     /// is the `body` field of every document in the `legal.documents` map, and
     /// `legal.documents.*.body.*` is every text in that map of texts. Only what the type described
-    /// can be addressed: a map whose element the walk did not read, a field that is not declared,
-    /// or a single entry of a map — whose name the operator chooses, so it is no position of the
-    /// schema — is refused with the reason.
+    /// can be addressed. A map whose element the walk did not read, a field that is not declared,
+    /// or a single entry of a map is refused with the reason. An entry's name is the operator's to
+    /// choose, so it is no position of the schema.
     ///
     /// Validated before anything is published, because a refinement that silently did nothing is
     /// a contract claiming a check it does not carry:
@@ -233,8 +236,8 @@ impl Schema {
     /// - The key must exist under its canonical path. An alias, a table, or a typo is an error
     ///   naming it.
     /// - [`Refinement::RequiredEntries`] and [`Refinement::EntryNames`] need a **map** at the
-    ///   position: `{"type": "object"}` with no declared `properties`, whose element — when the type
-    ///   described one — sits under `additionalProperties`. A map closed to every entry cannot hold
+    ///   position: `{"type": "object"}` with no declared `properties`, whose element, when the type
+    ///   described one, sits under `additionalProperties`. A map closed to every entry cannot hold
     ///   one. [`Refinement::Pattern`] needs a **string**.
     /// - Every [required entry](Refinement::RequiredEntries) must be spellable wherever the key
     ///   itself is: its environment spelling nested down to the entry, and its secrets-directory
@@ -244,8 +247,8 @@ impl Schema {
     /// - A pattern must lie inside the portable subset, and a position carries at most one of each
     ///   kind: a second, different pattern is refused rather than guessed at.
     /// - **Refinements must agree**, in whichever order they are applied. A required entry the
-    ///   entry-name pattern rejects makes the map unsatisfiable, and so does a pattern no value of a
-    ///   choice matches; the second refinement to arrive is refused, naming both.
+    ///   entry-name pattern rejects makes the map unsatisfiable, and so does a pattern no value of
+    ///   a choice matches. The second refinement to arrive is refused, naming both.
     ///
     /// What it does:
     ///
@@ -255,16 +258,16 @@ impl Schema {
     /// - **A default the refined constraint rejects is not a default.** If the key's
     ///   [`default_value`](Key::default_value) satisfied the constraint its type stated and fails
     ///   the refined one, the key becomes [`required`](Key::required) and loses both default
-    ///   fields — the existing rule that a required key has no default, applied to a default the
-    ///   image itself would refuse at boot. A default that already failed the type's own constraint
-    ///   is left alone, for [`ContractBuilder::build`](super::ContractBuilder::build) to refuse:
-    ///   turning it into a required key here would hide a defect in the type.
+    ///   fields. That is the existing rule that a required key has no default, applied to a default
+    ///   the image itself would refuse at boot. A default that already failed the type's own
+    ///   constraint is left alone, for [`ContractBuilder::build`](super::ContractBuilder::build) to
+    ///   refuse: turning it into a required key here would hide a defect in the type.
     ///   [`Self::with_defaults_from`] applies the same rule, so refining before or after observing
     ///   the defaults produces the same schema.
     /// - A key with **no** default keeps its `required` flag: whether absence is acceptable is what
     ///   the type stated, and a refinement of the value's shape does not reach it.
     /// - [`Self::schema_version`] rises to the version the refinement's keyword needs, and never
-    ///   falls. See [`SCHEMA_VERSION`](super::SCHEMA_VERSION).
+    ///   falls, as [`SCHEMA_VERSION`](super::SCHEMA_VERSION) describes.
     ///
     /// Refine after [`Self::merge`], not before: a refined key and an unrefined one are two
     /// descriptions of one path, which is what `merge` refuses.
@@ -272,7 +275,7 @@ impl Schema {
     /// # Errors
     /// [`Error::Invalid`] for an unknown path, a position the type did not describe, a position of
     /// the wrong shape, an entry name that cannot be spelled, a pattern outside the portable
-    /// subset, or two refinements that contradict each other — each naming the path and saying why.
+    /// subset, or two refinements that contradict each other, each naming the path and saying why.
     pub fn refine(mut self, path: &str, refinement: Refinement) -> Result<Self, Error> {
         let (index, inside) = locate(&self, path)?;
         let dialect = self.spelling_rules();
@@ -306,9 +309,9 @@ impl Schema {
         Ok(self)
     }
 
-    /// Apply every refinement `source` publishes, its paths read relative to `at`.
+    /// Applies every refinement `source` publishes, its paths read relative to `at`.
     ///
-    /// `at` is where the source's configuration is mounted in this schema — `legal` for a
+    /// `at` is where the source's configuration is mounted in this schema, such as `legal` for a
     /// legal-pages library read under `[legal]`. An empty `at` is the root.
     ///
     /// # Errors
@@ -329,7 +332,7 @@ impl Schema {
     /// The dialect this schema was spelled under, rebuilt from what it published.
     ///
     /// Everything the spelling functions read: the prefix, the separator and the indirection
-    /// suffix. Reserved names are not published and not needed — they decide whether a *file* may
+    /// suffix. Reserved names are not published and not needed: they decide whether a *file* may
     /// supply a key, not how a name is spelled.
     fn spelling_rules(&self) -> Dialect {
         Dialect::new(self.dialect.prefix.clone())
@@ -390,8 +393,9 @@ impl Reach {
 
 /// The key `path` names, and the segments of `path` that continue inside its constraint.
 ///
-/// A key's own path wins; otherwise the longest key path `path` continues. Keys never nest inside
-/// one another — a key is a leaf of the document — so at most one can be a proper prefix.
+/// A key's own path wins, and otherwise the longest key path `path` continues. Keys never nest
+/// inside one another, because a key is a leaf of the document, so at most one can be a proper
+/// prefix.
 fn locate(schema: &Schema, path: &str) -> Result<(usize, Vec<String>), Error> {
     if let Some(index) = schema.keys.iter().position(|key| key.path == path) {
         return Ok((index, Vec::new()));
@@ -715,7 +719,7 @@ fn hold(target: &mut Map<String, Json>, at: &str, condition: &Condition) -> Resu
     Ok(true)
 }
 
-/// Refuse a pattern outside the portable subset.
+/// Refuses a pattern outside the portable subset.
 fn portable(source: &str, what: &str, at: &str) -> Result<(), Error> {
     pattern::check(source).map_err(|why| {
         Error::Invalid(format!(
@@ -734,7 +738,7 @@ fn refused(schema: &Json, text: &str) -> Option<String> {
     }
 }
 
-/// Refuse a schema at `at` that is not a map `what` can be stated about.
+/// Refuses a schema at `at` that is not a map `what` can be stated about.
 fn map_constraint(schema: &Map<String, Json>, at: &str, what: &str) -> Result<(), Error> {
     // Absent, `true` or an element schema: every one of those admits an entry. `false` admits
     // none, and requiring one would publish a map no value satisfies.
@@ -752,7 +756,7 @@ fn map_constraint(schema: &Map<String, Json>, at: &str, what: &str) -> Result<()
     )))
 }
 
-/// Refuse an entry name some layer reaching the map could not spell.
+/// Refuses an entry name some layer reaching the map could not spell.
 fn spellable(reach: &Reach, dialect: &Dialect, entry: &str) -> Result<(), Error> {
     let at = &reach.at;
     let refuse = |why: String| {
@@ -802,7 +806,7 @@ fn spellable(reach: &Reach, dialect: &Dialect, entry: &str) -> Result<(), Error>
     Ok(())
 }
 
-/// Drop a default the refinement just made invalid, making the key required.
+/// Drops a default the refinement just made invalid, making the key required.
 fn forget_rejected_default(key: &mut Key) {
     if key
         .default_value
@@ -828,16 +832,16 @@ pub(super) enum Tightening<'a> {
     Holds(&'a str),
 }
 
-/// Every tightening a key's constraint publishes, each with its position relative to the key —
-/// empty for the key itself, `*.body` for the `body` field of every element.
+/// Every tightening a key's constraint publishes, each with its position relative to the key.
 ///
-/// The single source every rendering reads: there is no parallel field on [`Key`] that could come
-/// to disagree with the constraint a validator actually applies. In the order a reader meets them:
-/// the key's own first — entries, entry names, pattern — then its element, then its fields in the
-/// order the constraint lists them.
+/// The position is empty for the key itself, and `*.body` for the `body` field of every element.
+/// This is the single source every rendering reads: there is no parallel field on [`Key`] that
+/// could come to disagree with the constraint a validator actually applies. They come in the order
+/// a reader meets them: the key's own first (entries, entry names, pattern), then its element, then
+/// its fields in the order the constraint lists them.
 ///
 /// Only what a refinement can write is read. A struct's `required` names its fields, not a map's
-/// entries, and is not one; a `propertyNames` other than a lone pattern is not a refinement this
+/// entries, and is not one. A `propertyNames` other than a lone pattern is not a refinement this
 /// crate writes.
 pub(super) fn tightenings(key: &Key) -> Vec<(String, Tightening<'_>)> {
     let mut found = Vec::new();
@@ -901,8 +905,8 @@ fn walk<'a>(schema: &'a Json, at: &str, depth: usize, found: &mut Vec<(String, T
 
 /// The readable forms of the conditions a struct schema carries, in the order it lists them.
 ///
-/// A condition is an `allOf` member carrying `description`. The members a derive writes — the
-/// choice of spellings for a required field with an alias — carry none, and are not conditions.
+/// A condition is an `allOf` member carrying `description`. The members a derive writes, such as
+/// the choice of spellings for a required field with an alias, carry none and are not conditions.
 pub(super) fn conditions(schema: &Map<String, Json>) -> impl Iterator<Item = &str> {
     schema
         .get("allOf")
@@ -915,9 +919,9 @@ pub(super) fn conditions(schema: &Map<String, Json>) -> impl Iterator<Item = &st
 /// Whether an observed default is one the key's *refinements* reject.
 ///
 /// Only a failure the refinements introduced counts: the default satisfies the constraint the type
-/// stated and fails the refined one. A default failing for some *other* reason — a wrong type, an
-/// element out of range — is a defect in what the type published, which
-/// [`ContractBuilder::build`](super::ContractBuilder::build) refuses; turning it into a required
+/// stated and fails the refined one. A default failing for some *other* reason, such as a wrong
+/// type or an element out of range, is a defect in what the type published, which
+/// [`ContractBuilder::build`](super::ContractBuilder::build) refuses. Turning it into a required
 /// key here would hide it.
 pub(super) fn rejected_by_refinement(key: &Key, value: &figment::value::Value) -> bool {
     let (Some(refined), Ok(value)) = (&key.constraint, serde_json::to_value(value)) else {

@@ -1,9 +1,9 @@
 //! The test harness's own tests.
 //!
 //! Everything in `terrace_config::testing` is load-bearing for every test in every consuming
-//! project, and a harness that arranges the wrong thing does not fail — it passes, quietly,
-//! against a mount nobody has. So the assertions here are mostly about what ended up on disk and
-//! in the environment, rather than about what the loader made of it.
+//! project, and a harness that arranges the wrong thing does not fail. It passes, quietly, against
+//! a mount nobody has. So the assertions here are mostly about what ended up on disk and in the
+//! environment, rather than about what the loader made of it.
 
 #![cfg(all(feature = "loader", feature = "testing"))]
 
@@ -187,8 +187,8 @@ fn every_variable_is_derived_from_the_loader_under_test() {
     });
 }
 
-/// The two halves of a layer are arranged together — the file and the variable that makes the
-/// loader read it — for each of the four the loader has.
+/// The two halves of a layer are arranged together, the file and the variable that makes the loader
+/// read it, for each of the four the loader has.
 #[test]
 fn each_layer_arranges_its_file_and_its_variable() {
     harness().run(|jail| {
@@ -261,9 +261,9 @@ fn the_projected_layout_writes_the_names_a_volume_has() {
     });
 }
 
-/// The layout the kubelet actually writes. The distinction from the one above is the whole
-/// reason [`Layout`] is an enum rather than a flag: only a real symlink reproduces the mount
-/// that shipped a live incident.
+/// The layout the kubelet actually writes. The distinction from the one above is the whole reason
+/// [`Layout`] is an enum rather than a flag: only a real symlink reproduces the mount the kubelet
+/// builds.
 #[cfg(unix)]
 #[test]
 fn the_symlinked_layout_links_every_key_through_dot_data() {

@@ -1,9 +1,9 @@
 //! The generator for `examples/service/`'s contract, in the one-call form.
 //!
 //! This is the whole of what a service writes to publish a contract: its own configuration module,
-//! the loader it boots with, and the identity of its image. Everything else — the `--format`
-//! vocabulary, the labels, the Dockerfile block, the stamping — is
-//! [`terrace_config::schema::cli`]. `examples/service/Dockerfile` runs it in a build stage:
+//! the loader it boots with, and the identity of its image. Everything else (the `--format`
+//! vocabulary, the labels, the Dockerfile block, the stamping) is [`terrace_config::schema::cli`].
+//! `examples/service/Dockerfile` runs it in a build stage:
 //!
 //! ```text
 //! cargo run --example service-contract --features schema-cli -- --format contract

@@ -1,15 +1,15 @@
 //! Conditions between the fields of a struct, as a typed vocabulary rather than a schema fragment.
 //!
-//! Some rules relate one field to another: a legal document is hosted *or* external, never both
-//! and never neither; a consent requirement other than `none` needs a version. JSON Schema says
-//! these with `oneOf` and `if`/`then`, and a raw fragment could say them — along with anything
-//! else, including something that widens what the type stated. [`Condition`] is the closed set of
-//! shapes a refinement may publish instead: each is checked against the struct it is stated on, and
-//! each has a readable form every rendering shows.
+//! Some rules relate one field to another: a legal document is hosted *or* external, never both and
+//! never neither; a consent requirement other than `none` needs a version. JSON Schema says these
+//! with `oneOf` and `if`/`then`, and a raw fragment could say them, along with anything else,
+//! including something that widens what the type stated. [`Condition`] is the closed set of shapes
+//! a refinement may publish instead: each is checked against the struct it is stated on, and each
+//! has a readable form every rendering shows.
 //!
 //! A condition published by [`Refinement::Holds`](super::Refinement::Holds) is a conjunct added to
 //! what the type stated, so it can only tighten. Whether it describes the runtime check *exactly*
-//! is the publisher's to get right; what this module guarantees is that it names only fields the
+//! is the publisher's to get right. What this module guarantees is that it names only fields the
 //! struct declares, and asks of each only what that field's type can answer.
 
 use serde_json::{Map, Number, Value as Json};
@@ -24,7 +24,7 @@ use super::{MAX_DEPTH, pattern};
 /// struct declares.
 ///
 /// "Set" means what the loader means by it: the field is present in the document. A field whose
-/// type is `Option<T>` and holds `None` is absent, and one holding a value is present — a document
+/// type is `Option<T>` and holds `None` is absent, and one holding a value is present. A document
 /// cannot spell a present `None`, since the field's own constraint does not admit `null`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -36,7 +36,7 @@ pub enum Condition {
     /// The field is set and not empty: a map or struct with at least one entry, a sequence with at
     /// least one item, a string with at least one character.
     NonEmpty(String),
-    /// The field is not set, or set and empty — the negation of [`Self::NonEmpty`].
+    /// The field is not set, or set and empty: the negation of [`Self::NonEmpty`].
     Empty(String),
     /// The field is set and equal to the value.
     Equals(String, Json),

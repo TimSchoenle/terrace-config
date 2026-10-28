@@ -1,4 +1,4 @@
-//! What `Terrace::explain` reports, and — the assertion that matters most — what it never does.
+//! What `Terrace::explain` reports, and, the assertion that matters most, what it never does.
 //!
 //! Two halves. The provenance tests pin the answer to "which layer supplied this key" for each of
 //! the four layers, and for the case where two of them supplied it. The redaction tests pin the
@@ -71,7 +71,7 @@ fn a_toml_key_is_attributed_to_the_fragment_it_is_in() {
 
 /// The report's whole reason for existing: the file is there, the value is not the file's, and
 /// nothing in the loader's own output says so. `ShadowPolicy::Reject` refuses the environment
-/// against a *mount* — see below — but says nothing about the TOML layer, where a checked-in
+/// against a *mount*, as below, but says nothing about the TOML layer, where a checked-in
 /// `config.toml` overridden by a variable is an ordinary, intended override. Ordinary until it is
 /// the one you did not know about.
 #[test]
@@ -228,7 +228,7 @@ fn no_value_from_any_layer_reaches_the_report() {
     });
 }
 
-/// A fragment that will not parse is reported as such, and its contents stay out of the report —
+/// A fragment that will not parse is reported as such, and its contents stay out of the report,
 /// which is why no reason is attached: the parser's message quotes the line, and the line can be
 /// the credential.
 #[test]

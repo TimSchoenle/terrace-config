@@ -1,9 +1,9 @@
 //! The supervisor over [`Terrace::reloader`]: a restart-class key keeps its boot value.
 //!
-//! The contract publishes some keys as `restart`, and a chart acting on that leaves them out of
-//! the digest that rolls its pods for a `live` change. That is only true if the running process
-//! agrees — if a rebuild triggered by a `live` key did not quietly apply a `restart` key changed
-//! in the same mount. These tests hold the runtime to what the document says.
+//! The contract publishes some keys as `restart`, and a chart acting on that leaves them out of the
+//! digest that rolls its pods for a `live` change. That is only true if the running process agrees:
+//! if a rebuild triggered by a `live` key did not quietly apply a `restart` key changed in the same
+//! mount. These tests hold the runtime to what the document says.
 
 #![cfg(all(
     feature = "loader",

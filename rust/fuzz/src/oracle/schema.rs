@@ -5,10 +5,10 @@
 //! boot, whereas a reference table that names the wrong environment variable sends an operator
 //! to set something that silently does nothing.
 //!
-//! So the property is not "the schema is internally consistent" — it is end-to-end. For every
-//! key, take the spelling the schema printed, *set it that way*, run the real
-//! [`Terrace`] over the result, and require the value to arrive at the path the schema
-//! promised. Three mechanisms, three passes, each in its own jail:
+//! So the property is end-to-end, and stronger than "the schema is internally consistent". For
+//! every key, take the spelling the schema printed, *set it that way*, run the real [`Terrace`]
+//! over the result, and require the value to arrive at the path the schema promised. Three
+//! mechanisms, three passes, each in its own jail:
 //!
 //! | Advertised as | Set by | Must arrive at |
 //! |---|---|---|
@@ -36,9 +36,9 @@
 //! A:<a>/<b>=alt       an extra name the key answers to
 //! ```
 //!
-//! Segments are split on `/` rather than on `.` so that a segment can *contain* a `.` — which is
-//! the case where a key path and a figment path stop meaning the same thing, and so exactly the
-//! case worth reaching.
+//! Segments are split on `/` rather than on `.` so that a segment can *contain* a `.`, which is the
+//! case where a key path and a figment path stop meaning the same thing, and so exactly the case
+//! worth reaching.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -72,8 +72,8 @@ struct LeafSpec {
     note: Option<String>,
     /// Whether it is marked secret.
     secret: bool,
-    /// Whether loading fails when nothing supplies it — which is what leaves it uncommented in
-    /// the generated example, and so the half of that file the loader actually reads.
+    /// Whether loading fails when nothing supplies it, which is what leaves it uncommented in the
+    /// generated example, and so the half of that file the loader actually reads.
     required: bool,
     /// The field's type as written.
     ty: Option<String>,
@@ -95,9 +95,9 @@ struct Spec {
 thread_local! {
     /// The leaves the current iteration is describing.
     ///
-    /// [`Describe::describe`] takes no value — the whole point is that it is a property of the
-    /// *type* — so a fuzzer-driven implementation has nowhere else to read its input from. Thread
-    /// local rather than global because the replay suite runs oracles in parallel.
+    /// [`Describe::describe`] takes no value, because the whole point is that it is a property of
+    /// the *type*, so a fuzzer-driven implementation has nowhere else to read its input from.
+    /// Thread local rather than global because the replay suite runs oracles in parallel.
     static LEAVES: std::cell::RefCell<Vec<LeafSpec>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -114,7 +114,7 @@ impl Describe for Fuzzed {
     }
 }
 
-/// Walk `segments`, opening a subtree per segment and reporting the leaf at the end.
+/// Walks `segments`, opening a subtree per segment and reporting the leaf at the end.
 fn describe_one(sink: &mut Sink, segments: &[String], leaf: &LeafSpec) {
     match segments {
         [] => unreachable!("a spec always has at least one segment"),
@@ -139,13 +139,13 @@ fn describe_one(sink: &mut Sink, segments: &[String], leaf: &LeafSpec) {
     }
 }
 
-/// Parse the line grammar, skipping anything that does not fit it.
+/// Parses the line grammar, skipping anything that does not fit it.
 fn parse(data: &str) -> Spec {
     let mut spec = Spec::default();
     // Keyed on the *joined* path, which is what `Sink` keys on. Keying on the segments instead
-    // let `a/b` and a single segment literally named `a.b` both through, and they are one key
-    // path — a duplicate `Sink::leaf` panics on by design, so feeding it would be fuzzing the
-    // assertion rather than the code under it. Found by a long sweep.
+    // would let `a/b` and a single segment literally named `a.b` both through, and they are one key
+    // path. A duplicate `Sink::leaf` panics on by design, so feeding it would be fuzzing the
+    // assertion rather than the code under it.
     let mut by_path: BTreeMap<String, usize> = BTreeMap::new();
 
     for line in data.lines().take(MAX_DIRECTIVES) {
@@ -249,7 +249,7 @@ fn segments(path: &str) -> Option<Vec<String>> {
         .then_some(segments)
 }
 
-/// Run every property over one input.
+/// Runs every property over one input.
 pub fn check(data: &str) {
     let spec = parse(data);
     if spec.leaves.is_empty() {
@@ -271,7 +271,7 @@ pub fn check(data: &str) {
     json_schema_lists_every_reachable_key(&schema);
     subsets_are_prefixes(&schema);
 
-    // The end-to-end passes. Only over keys that can be set *independently* — see `settable`.
+    // The end-to-end passes. Only over keys that can be set *independently*, as `settable` decides.
     let settable = settable(&schema);
     env_spelling_reaches_its_key(&spec, &settable);
     secrets_file_reaches_its_key(&spec, &settable);
@@ -402,10 +402,10 @@ fn indirection_reaches_its_key(spec: &Spec, keys: &[Key]) {
     });
 }
 
-/// Load through the real loader and require every key to have arrived.
+/// Loads through the real loader and requires every key to have arrived.
 fn assert_arrives(terrace: &Terrace, keys: &[&Key], mechanism: &str) {
-    // A refusal is a legitimate outcome — a reserved key supplied by a file, a shadowed key —
-    // and not a claim about spelling. What must never happen is a *silent* miss.
+    // A refusal (a reserved key supplied by a file, a shadowed key) is a legitimate outcome and not
+    // a claim about spelling. What must never happen is a *silent* miss.
     let Ok(figment) = terrace.figment() else {
         return;
     };
@@ -446,8 +446,8 @@ fn an_unreachable_key_stays_unreachable(spec: &Spec, schema: &Schema) {
     let dialect = terrace(spec).dialect();
     // The obvious spelling is only worth trying when an operating system could hold it. A name
     // carrying a NUL or an `=` cannot be created at all, so "setting it does not reach the key"
-    // would be true for a reason that has nothing to do with the schema — and `set_var` panics
-    // rather than failing, which is what took down the first libFuzzer campaign to run this.
+    // would be true for a reason that has nothing to do with the schema, and `set_var` panics
+    // rather than failing, which would abort a libFuzzer campaign on the first such name.
     let unreachable: Vec<&Key> = unreachable
         .into_iter()
         .filter(|key| settable_name(&dialect.env_spelling(&key.path)))
@@ -487,9 +487,9 @@ fn aliases_sit_beside_the_key_they_alias(spec: &Spec, schema: &Schema) {
     for (leaf, key) in spec.leaves.iter().zip(&schema.keys) {
         assert_eq!(leaf.aliases.len(), key.aliases.len(), "`{}`", key.path);
         // The parent comes from the *declared segments*, never from splitting the path. A segment
-        // may itself contain a `.` — `a.b` as one name — and then the path no longer says where
-        // the segment boundaries were. The crate is right here because it keeps a prefix stack;
-        // this assertion was splitting strings, and the sweep found it in four iterations.
+        // may itself contain a `.` (`a.b` as one name), and then the path no longer says where the
+        // segment boundaries were. The crate is right here because it keeps a prefix stack; this
+        // assertion was splitting strings, and the sweep found it in four iterations.
         let mut parent = leaf.segments[..leaf.segments.len() - 1].join(".");
         if !parent.is_empty() {
             parent.push('.');
@@ -589,9 +589,9 @@ fn subsets_are_prefixes(schema: &Schema) {
             continue;
         };
         let head = head.to_owned();
-        // The contract has two branches, and this asserted only one of them. An empty prefix
-        // keeps *everything* — it is how "the whole schema" is spelled — and a key whose own name
-        // begins with a `.` is how a fuzzer reaches that branch through this loop.
+        // The contract has two branches, and this asserts both. An empty prefix keeps *everything*,
+        // since that is how "the whole schema" is spelled, and a key whose own name begins with a
+        // `.` is how a fuzzer reaches that branch through this loop.
         let expected: Vec<String> = if head.is_empty() {
             schema.keys.iter().map(|k| k.path.clone()).collect()
         } else {
@@ -617,13 +617,13 @@ fn subsets_are_prefixes(schema: &Schema) {
 ///
 /// The same question as the three spelling passes, asked of the fourth mechanism: this rendering
 /// *writes a file*, so a key whose name needed quoting and did not get it is a key the file puts
-/// somewhere else — under a table it accidentally opened, or nowhere, because the file no longer
+/// somewhere else: under a table it accidentally opened, or nowhere, because the file no longer
 /// parses at all. The fuzzer reaches that directly, since a `k:` directive names a segment
 /// containing anything at all.
 ///
 /// Both directions, because both are claims the file makes:
 ///
-/// - A key left **uncommented** — a required one — must arrive at [`Key::path`].
+/// - A key left **uncommented**, which is a required one, must arrive at [`Key::path`].
 /// - A key **commented out** must not arrive anywhere, which is what makes a commented line and
 ///   a deleted line the same thing.
 fn the_example_is_a_file_the_loader_reads(spec: &Spec, schema: &Schema, settable: &[Key]) {

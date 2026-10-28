@@ -1,9 +1,8 @@
 //! How a deployment spells a configuration key in its environment.
 //!
-//! Every name this crate reads or reports is derived from one [`Dialect`]: the prefix, the
-//! nesting separator, the `_FILE` suffix, and the handful of keys that are read before the
-//! layers exist. It is the whole of the parameterisation that turned a project-specific loader
-//! into a crate — in the original there were four `const`s here and a hardcoded array.
+//! Every name this crate reads or reports is derived from one [`Dialect`]: the prefix, the nesting
+//! separator, the `_FILE` suffix, and the handful of keys that are read before the layers exist.
+//! Nothing else about a deployment's spelling is configurable.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,9 +37,9 @@ pub struct Dialect {
 impl Dialect {
     /// A dialect over `prefix`, with `__` nesting and the `_FILE` suffix.
     ///
-    /// The prefix is taken verbatim, trailing underscore included — `Dialect::new("MYAPP_")`,
-    /// not `Dialect::new("MYAPP")`. Appending a separator here would be a guess about a
-    /// convention the caller has already expressed.
+    /// The prefix is taken verbatim, trailing underscore included: `Dialect::new("MYAPP_")`, not
+    /// `Dialect::new("MYAPP")`. Appending a separator here would be a guess about a convention the
+    /// caller has already expressed.
     #[must_use]
     pub fn new(prefix: impl Into<String>) -> Self {
         Self {
@@ -51,7 +50,7 @@ impl Dialect {
         }
     }
 
-    /// Replace the nesting separator.
+    /// Replaces the nesting separator.
     ///
     /// Defaults to `__`.
     #[must_use]
@@ -60,7 +59,7 @@ impl Dialect {
         self
     }
 
-    /// Replace the file-indirection suffix.
+    /// Replaces the file-indirection suffix.
     ///
     /// Defaults to `_FILE`.
     #[must_use]
@@ -69,14 +68,14 @@ impl Dialect {
         self
     }
 
-    /// Reserve a key, in its **full environment spelling**, e.g. `MYAPP_PROFILE`.
+    /// Reserves a key, in its **full environment spelling**, e.g. `MYAPP_PROFILE`.
     ///
     /// A reserved key is read straight from the environment, before or outside the layered
     /// config, so a file cannot supply it: naming one from a secrets directory or a `_FILE`
     /// variable is refused rather than ignored, because an ignored key is exactly the silent
     /// misconfiguration these layers exist to remove.
     ///
-    /// Matching is **case-insensitive** — see [`Self::is_reserved`].
+    /// Matching is **case-insensitive**, as [`Self::is_reserved`] explains.
     #[must_use]
     pub fn reserve(mut self, key: impl Into<String>) -> Self {
         // Folded on the way in rather than on every comparison, so the set holds one spelling.
@@ -105,17 +104,17 @@ impl Dialect {
         &self.file_suffix
     }
 
-    /// Whether `name` — a full environment spelling — is reserved.
+    /// Whether `name`, a full environment spelling, is reserved.
     ///
     /// **Case-insensitive.** Environment variable names are case-insensitive on Windows, so an
-    /// exact comparison makes the answer depend on how the operator happened to type the
-    /// variable: `MYAPP_profile_FILE` and `MYAPP_PROFILE_FILE` are one variable there, and only
-    /// the second would have been refused. It also left the two file layers disagreeing —
-    /// [`SecretsDir`](crate::provider::SecretsDir) upper-cases a file name before this check
-    /// while [`FileSuffixEnv`](crate::provider::FileSuffixEnv) had nothing to upper-case — so a
-    /// key a secrets directory refused could still be supplied by indirection. Folding here
-    /// makes every caller agree, and errs towards refusing, which is the safe direction for a
-    /// check whose whole job is to refuse.
+    /// exact comparison would make the answer depend on how the operator happened to type the
+    /// variable: `MYAPP_profile_FILE` and `MYAPP_PROFILE_FILE` are one variable there, and only the
+    /// second would be refused. It would also leave the two file layers disagreeing, because
+    /// [`SecretsDir`](crate::provider::SecretsDir) upper-cases a file name before this check while
+    /// [`FileSuffixEnv`](crate::provider::FileSuffixEnv) has nothing to upper-case, so a key a
+    /// secrets directory refused could still be supplied by indirection. Folding here makes every
+    /// caller agree, and errs towards refusing, which is the safe direction for a check whose whole
+    /// job is to refuse.
     #[must_use]
     pub fn is_reserved(&self, name: &str) -> bool {
         self.reserved.contains(&name.to_ascii_uppercase())
@@ -126,18 +125,17 @@ impl Dialect {
     /// The one spelling every layer uses, so a file and an environment variable cannot disagree
     /// about which field they name.
     ///
-    /// **The separator is matched case-insensitively**, which for the default `__` is no
-    /// difference at all and for a separator containing a letter is the whole of the function
-    /// working. Both sides have to be folded because the two callers arrive in opposite cases: an
-    /// environment suffix is `AUTH_X_JWT` by convention, and a secrets-directory file is named
-    /// `auth_x_jwt`. Folding only the input — which is what this did — meant an upper-case
-    /// separator never matched anything and nothing ever nested.
+    /// **The separator is matched case-insensitively**, which for the default `__` is no difference
+    /// at all and for a separator containing a letter is the whole of the function working. Both
+    /// sides have to be folded because the two callers arrive in opposite cases: an environment
+    /// suffix is `AUTH_X_JWT` by convention, and a secrets-directory file is named `auth_x_jwt`.
+    /// Folding only the input would mean an upper-case separator never matched anything and nothing
+    /// ever nested.
     ///
-    /// That was not merely cosmetic. `Env::split` runs before figment lower-cases, so the
-    /// environment layer *did* nest and the shadow check's view of the same variable did not:
-    /// the two disagreed about every key, and
-    /// [`ShadowPolicy::Reject`](crate::ShadowPolicy::Reject) silently stopped rejecting
-    /// anything — the exact failure it exists to prevent.
+    /// That would not be cosmetic. `Env::split` runs before figment lower-cases, so the environment
+    /// layer nests regardless, and a shadow check that did not would disagree with it about every
+    /// key. [`ShadowPolicy::Reject`](crate::ShadowPolicy::Reject) would then silently stop
+    /// rejecting anything, which is the exact failure it exists to prevent.
     #[must_use]
     pub fn key_path(&self, suffix: &str) -> String {
         suffix
@@ -172,12 +170,12 @@ impl Dialect {
     /// with the default `_FILE`, `MYAPP_FILE` has nothing between the prefix and the suffix, so it
     /// is an ordinary key called `file` rather than an indirection naming a file.
     ///
-    /// One definition with three callers — [`Self::plain_env_keys`],
-    /// [`FileSuffixEnv`](crate::provider::FileSuffixEnv), and the schema's reachability check —
-    /// because the cheaper `name.ends_with(suffix)` test they each used to carry disagreed with
-    /// this one about exactly that case. A found-by-fuzzing disagreement: the environment layer
-    /// supplied `file` from `MYAPP_FILE` while the shadow check could not see it, so a secrets
-    /// file of the same name shadowed it silently.
+    /// One definition with three callers, [`Self::plain_env_keys`],
+    /// [`FileSuffixEnv`](crate::provider::FileSuffixEnv) and the schema's reachability check,
+    /// because the cheaper `name.ends_with(suffix)` test disagrees with this one about exactly that
+    /// case. A caller using it would let the environment layer supply `file` from `MYAPP_FILE`
+    /// while the shadow check could not see it, so a secrets file of the same name would shadow it
+    /// silently.
     pub(crate) fn indirection_target<'a>(&self, name: &'a str) -> Option<&'a str> {
         name.strip_prefix(&self.prefix)
             .and_then(|key| key.strip_suffix(&self.file_suffix))
@@ -194,14 +192,14 @@ impl Dialect {
 
     /// Every key the environment supplies directly, against the variables that supply it.
     ///
-    /// The set [`Self::plain_env_keys`] returns, with the spelling each key was found under kept
-    /// rather than discarded — which is the whole of what an operator asking "where did this
-    /// value come from" needs back.
+    /// The set [`Self::plain_env_keys`] returns, with the spelling each key was found under kept.
+    /// That spelling is the whole of what an operator asking "where did this value come from" needs
+    /// back.
     ///
-    /// A key maps to a *set* of variables because more than one can produce it: environment
-    /// names are case-sensitive on Linux and this dialect's key paths are not, so `MYAPP_PORT`
-    /// and `MYAPP_port` are two variables and one key. Reporting both is the honest answer —
-    /// figment reads both and one of them wins — and a set keeps the report deterministic where
+    /// A key maps to a *set* of variables because more than one can produce it: environment names
+    /// are case-sensitive on Linux and this dialect's key paths are not, so `MYAPP_PORT` and
+    /// `MYAPP_port` are two variables and one key. Reporting both is the honest answer, because
+    /// figment reads both and one of them wins, and a set keeps the report deterministic where
     /// picking one out of `env::vars_os` order would not.
     pub(crate) fn plain_env_entries(&self) -> BTreeMap<String, BTreeSet<String>> {
         let mut keys: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -274,9 +272,9 @@ mod tests {
         assert!(!dialect.is_reserved("TEST_OTHER"));
     }
 
-    /// A separator containing a letter used to break the round trip in one direction only:
-    /// `key_path` folded the *input* to lower case and then looked for `_X_` in it, so nothing
-    /// ever nested, while `env_spelling` substituted `_X_` verbatim going the other way.
+    /// A separator containing a letter survives the round trip in both directions. Folding only the
+    /// *input* to lower case before looking for `_X_` would nest nothing, while `env_spelling`
+    /// substitutes `_X_` verbatim going the other way.
     #[test]
     fn a_separator_containing_a_letter_round_trips() {
         let dialect = Dialect::new("TEST_").nesting_separator("_X_");
@@ -295,10 +293,10 @@ mod tests {
         }
     }
 
-    /// The reason the above is a correctness bug rather than a cosmetic one. `Env::split` runs
-    /// before figment folds case, so the environment layer nests on `_X_` regardless; if
-    /// `plain_env_keys` does not, the shadow check compares two different spellings of every key
-    /// and `ShadowPolicy::Reject` quietly stops rejecting.
+    /// Why the above is a correctness property and not a cosmetic one. `Env::split` runs before
+    /// figment folds case, so the environment layer nests on `_X_` regardless. If `plain_env_keys`
+    /// did not, the shadow check would compare two different spellings of every key and
+    /// `ShadowPolicy::Reject` would quietly stop rejecting.
     #[test]
     fn shadow_detection_sees_the_same_key_the_environment_layer_produces() {
         Harness::over(Terrace::new("TEST_").nesting_separator("_X_")).run(|jail| {
@@ -310,10 +308,9 @@ mod tests {
         });
     }
 
-    /// Found by the `schema` fuzz oracle. `TEST_FILE` *ends with* `_FILE` and is still an
-    /// ordinary key called `file`: the indirection layer needs something between the prefix and
-    /// the suffix, and the cheaper `ends_with` test every caller used to carry disagreed with it
-    /// about exactly this name.
+    /// `TEST_FILE` *ends with* `_FILE` and is still an ordinary key called `file`: the indirection
+    /// layer needs something between the prefix and the suffix, and the cheaper `ends_with` test
+    /// disagrees with it about exactly this name. The `schema` fuzz oracle exercises the same case.
     #[test]
     fn a_name_that_is_only_the_prefix_and_the_suffix_is_not_an_indirection() {
         let dialect = Dialect::new("TEST_");
@@ -325,10 +322,10 @@ mod tests {
         assert_eq!(dialect.indirection_target("OTHER_AUTH_FILE"), None);
     }
 
-    /// The consequence of the above, and the reason it is a correctness bug rather than a
-    /// cosmetic one: `TEST_FILE` supplies the key `file` through the environment layer, so the
-    /// shadow check has to see it there. While it did not, a secrets file of the same name
-    /// shadowed it silently — which is the failure `ShadowPolicy::Reject` exists to prevent.
+    /// The consequence of the above, and why it is a correctness property: `TEST_FILE` supplies the
+    /// key `file` through the environment layer, so the shadow check has to see it there. Otherwise
+    /// a secrets file of the same name would shadow it silently, which is the failure
+    /// `ShadowPolicy::Reject` exists to prevent.
     #[test]
     fn a_key_named_for_the_suffix_is_still_seen_by_the_shadow_check() {
         Harness::new("TEST_").run(|jail| {
@@ -340,10 +337,10 @@ mod tests {
         });
     }
 
-    /// Found by the `secrets_dir` fuzz oracle. An exact comparison let `TEST_profile_FILE`
-    /// supply a key that a secrets-directory file named `profile` was refused — and on Windows
-    /// those two variables are the same variable, so the outcome depended on how the operator
-    /// typed it.
+    /// An exact comparison would let `TEST_profile_FILE` supply a key that a secrets-directory file
+    /// named `profile` is refused, and on Windows those two variables are the same variable, so the
+    /// outcome would depend on how the operator typed it. The `secrets_dir` fuzz oracle exercises
+    /// the same case.
     #[test]
     fn reserving_ignores_case_in_both_directions() {
         let upper = Dialect::new("TEST_").reserve("TEST_PROFILE");

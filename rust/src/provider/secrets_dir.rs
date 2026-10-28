@@ -24,26 +24,25 @@ pub struct SecretsDir {
 }
 
 impl SecretsDir {
-    /// Read every key-named file directly inside `dir`.
+    /// Reads every key-named file directly inside `dir`.
     ///
     /// Entries whose name begins with `.` are skipped, and so is anything that is not a regular
-    /// file. Both are what makes a Kubernetes projected `Secret` volume work: it holds a
-    /// `..data` symlink pointing at a timestamped directory, plus one symlink per key. The
-    /// per-key symlinks must be followed, which is why this uses `fs::metadata` and **not**
-    /// `DirEntry::metadata()`: despite the name the latter does *not* traverse symlinks — it
-    /// carries `symlink_metadata` semantics — so it classifies every real key as "not a file"
-    /// and silently yields an empty layer. That is not hypothetical: it is what shipped, and
-    /// every service then booted on compiled defaults and died naming the first required field
-    /// it was missing.
+    /// file. Both are what makes a Kubernetes projected `Secret` volume work: it holds a `..data`
+    /// symlink pointing at a timestamped directory, plus one symlink per key. The per-key symlinks
+    /// must be followed, which is why this uses `fs::metadata` and **not** `DirEntry::metadata()`.
+    /// Despite the name, the latter does *not* traverse symlinks (it carries `symlink_metadata`
+    /// semantics), so it classifies every real key as "not a file" and silently yields an empty
+    /// layer. Every service then boots on compiled defaults and dies naming the first required
+    /// field it is missing.
     ///
-    /// `origin` names whatever pointed at `dir` — an environment variable, a CLI flag — and is
-    /// quoted back in any error, because an operator who mounted the wrong path needs to be
-    /// told which knob they set wrong.
+    /// `origin` names whatever pointed at `dir`, such as an environment variable or a CLI flag, and
+    /// is quoted back in any error, because an operator who mounted the wrong path needs to be told
+    /// which knob they set wrong.
     ///
     /// # Errors
     /// Returns [`Error::Source`] if the directory cannot be read, if a file's contents are not
-    /// UTF-8, or if a file name is not a usable key — it contains the nesting separator's
-    /// disallowed `.`, or it names a key reserved by `dialect`.
+    /// UTF-8, or if a file name is not a usable key: it contains the nesting separator's disallowed
+    /// `.`, or it names a key reserved by `dialect`.
     pub fn read(origin: &str, dir: impl Into<PathBuf>, dialect: &Dialect) -> Result<Self, Error> {
         let dir = dir.into();
         let entries = std::fs::read_dir(&dir).map_err(|e| {
@@ -117,9 +116,9 @@ impl Provider for SecretsDir {
 /// The figment key a secrets-directory file name denotes.
 ///
 /// # Errors
-/// A name containing `.` — Kubernetes allows it in a `Secret` key, but the nesting separator
-/// here is the dialect's, so `auth.jwt_secret` would silently mean something other than it
-/// looks like. Or a name that spells a reserved key, which a file may not supply.
+/// A name containing `.`, which Kubernetes allows in a `Secret` key, but the nesting separator here
+/// is the dialect's, so `auth.jwt_secret` would silently mean something other than it looks like.
+/// Or a name that spells a reserved key, which a file may not supply.
 fn key_from_name(name: &str, path: &Path, dialect: &Dialect) -> Result<String, Error> {
     if name.contains('.') {
         let separator = dialect.separator();

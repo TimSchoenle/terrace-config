@@ -2,15 +2,14 @@
 //!
 //! [`ContractBuilder::build`](super::ContractBuilder::build) refuses a key whose default fails its
 //! own [`Key::constraint`](super::Key::constraint), and [`Schema::refine`](super::Schema::refine)
-//! is the API that made that possible to write: a refinement tightens a constraint after a default
-//! was already observed against the looser one. Refusing needs an evaluator, and this crate links
-//! no JSON Schema engine — it is a library a service links, and the engine is a dev-dependency on
-//! purpose.
+//! is what makes that case possible: a refinement tightens a constraint after a default was already
+//! observed against the looser one. Refusing needs an evaluator, and this crate links no JSON
+//! Schema engine. It is a library a service links, and the engine is a dev-dependency on purpose.
 //!
 //! So this is a small one, over exactly the vocabulary a producer here emits into a constraint, and
 //! it is written to the same rule as everything it evaluates: **a refusal must be certain.** Every
 //! answer is one of three, and only [`Verdict::Fails`] refuses. A keyword outside the vocabulary
-//! makes a schema [`Verdict::Undecided`] rather than satisfied, which matters in exactly one place —
+//! makes a schema [`Verdict::Undecided`] rather than satisfied, which matters in exactly one place:
 //! under `not`, where an undecided subschema must not be read as one that holds.
 
 use serde_json::{Map, Number, Value as Json};
@@ -28,8 +27,8 @@ pub(super) enum Verdict {
     Holds,
     /// A keyword failed, in a sentence naming where and how.
     Fails(String),
-    /// Nothing failed, and something could not be evaluated — a keyword outside the vocabulary,
-    /// or a tree deeper than [`MAX_DEPTH`].
+    /// Nothing failed, and something could not be evaluated, such as a keyword outside the
+    /// vocabulary or a tree deeper than [`MAX_DEPTH`].
     Undecided,
 }
 
@@ -126,7 +125,7 @@ fn of_type(argument: &Json, value: &Json, at: &str) -> Verdict {
 
 /// Whether `value` is an instance of the JSON Schema type `name`.
 ///
-/// An integer is any number with no fractional part, `1.0` included — which is JSON Schema's own
+/// An integer is any number with no fractional part, `1.0` included. That is JSON Schema's own
 /// definition from draft-06 on, and what a figment `f64` default of a whole number serialises to.
 fn is_type(value: &Json, name: &str) -> bool {
     match name {
@@ -254,8 +253,8 @@ fn length(keyword: &str, argument: &Json, value: &Json, at: &str) -> Verdict {
     }
 }
 
-/// `pattern`, for a pattern inside the portable subset — the only patterns this crate can promise
-/// every other engine reads as it does. Any other is [`Verdict::Undecided`].
+/// `pattern`, for a pattern inside the portable subset, which holds the only patterns this crate
+/// can promise every other engine reads as it does. Any other is [`Verdict::Undecided`].
 fn pattern(argument: &Json, value: &Json, at: &str) -> Verdict {
     let Some(text) = value.as_str() else {
         return Verdict::Holds;

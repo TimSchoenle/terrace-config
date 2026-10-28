@@ -2,9 +2,9 @@
 //! `$TEST_SECRETS_DIR`, and `FileSuffixEnv` over `TEST_<KEY>_FILE` indirection.
 //!
 //! This is the oracle that matters. The secrets-directory provider is the one part of this crate
-//! with no equivalent anywhere on crates.io, its rules are a list of things that failed in
-//! production, and unlike the environment layer its input genuinely is attacker-shaped — a
-//! mounted `Secret` is written by whatever wrote the `Secret`.
+//! with no equivalent anywhere on crates.io, each of its rules guards a failure a running
+//! deployment would otherwise hit, and unlike the environment layer its input genuinely is
+//! attacker-shaped: a mounted `Secret` is written by whatever wrote the `Secret`.
 //!
 //! # Oracle
 //! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic.
@@ -33,9 +33,9 @@
 //! e:<SUFFIX>=<value>     the plain environment variable TEST_<SUFFIX>
 //! ```
 //!
-//! Indirection **paths** are never taken from the input — only the contents of the file this
-//! module itself creates. A fuzzer-chosen path would have it reading arbitrary files on the
-//! host, which is a harness bug waiting to be reported as a crate bug.
+//! Indirection **paths** are never taken from the input, only the contents of the file this module
+//! itself creates. A fuzzer-chosen path would have it reading arbitrary files on the host, which is
+//! a harness bug waiting to be reported as a crate bug.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -59,10 +59,10 @@ const ALL_RESERVED: &[&str] = &[RESERVED, "TEST_CONFIG", "TEST_SECRETS_DIR"];
 
 /// Whether an environment name is one of [`ALL_RESERVED`], **ignoring case**.
 ///
-/// Case-insensitively, and that is not fussiness. Windows environment names are
-/// case-insensitive, so setting `TEST_secrets_dir` overwrites the `TEST_SECRETS_DIR` this module
-/// pointed at the directory it built — the load then fails on a directory that does not exist,
-/// correctly, and the model has no way to know. A generated input found exactly that.
+/// Case-insensitively, and that is not fussiness. Windows environment names are case-insensitive,
+/// so setting `TEST_secrets_dir` overwrites the `TEST_SECRETS_DIR` this module pointed at the
+/// directory it built. The load then fails on a directory that does not exist, correctly, and the
+/// model has no way to know. A generated input reaches exactly that.
 ///
 /// The loader's own [`terrace_config::Dialect`] compares reserved names exactly, which is right
 /// on Linux, where the two really are different variables. Matching loosely here costs a little
@@ -75,17 +75,17 @@ fn is_reserved(name: &str) -> bool {
 
 /// Planted every iteration.
 ///
-/// Dot-prefixed, so the loader must skip it — and must skip it *before* noticing that the name also
+/// Dot-prefixed, so the loader must skip it, and must skip it *before* noticing that the name also
 /// contains a `.`, which on its own is a hard error.
 const SENTINEL: &str = ".sentinel_hidden";
 
 /// Planted contents, and the thing actually asserted about.
 ///
-/// Not the *key*, which was the first attempt and was almost useless: every dot-prefixed name
-/// also contains a dot, so a loader that stopped skipping them would reject the whole directory
-/// rather than leak it — a failure the exact-outcome oracle already catches. The reachable bug
-/// is the plausible "fix" of stripping the leading dot instead of skipping the entry, and that
-/// arrives under an ordinary key. Only the contents give it away.
+/// Not the *key*, which was the first attempt and was almost useless: every dot-prefixed name also
+/// contains a dot, so a loader that stopped skipping them would reject the whole directory rather
+/// than leak it, a failure the exact-outcome oracle already catches. The reachable bug is the
+/// plausible "fix" of stripping the leading dot instead of skipping the entry, and that arrives
+/// under an ordinary key. Only the contents give it away.
 const SENTINEL_BODY: &str = "terrace-fuzz-sentinel-must-not-be-read";
 
 fn layers() -> Terrace {
@@ -96,7 +96,7 @@ fn layers() -> Terrace {
 /// under test.
 ///
 /// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
-/// not a convenience here — it is the only way in.
+/// the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }
@@ -185,7 +185,7 @@ impl Model {
     }
 }
 
-/// Run the oracle. Panics when the loader breaks one of the rules above.
+/// Runs the oracle. Panics when the loader breaks one of the rules above.
 ///
 /// # Panics
 /// That is the contract: a panic is the finding.
@@ -293,9 +293,9 @@ pub fn check(data: &str) {
             }
         };
 
-        // (4) The skip contract. Reaching here at all is half of it — a dot-prefixed entry that
-        // stopped being skipped would be rejected for its dot and caught by (2) above. This is
-        // the other half: it was not read under a rewritten name either.
+        // (4) The skip contract. Reaching here at all is half of it: a dot-prefixed entry that
+        // stopped being skipped would be rejected for its dot and caught by (2) above. This is the
+        // other half: it was not read under a rewritten name either.
         if sentinel_planted && !model.sentinel_shadowed {
             assert!(
                 !contains_value(&loaded.value, SENTINEL_BODY),

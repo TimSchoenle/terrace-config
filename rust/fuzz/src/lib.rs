@@ -1,9 +1,8 @@
 //! The fuzz oracles, as an ordinary library.
 //!
-//! Each `fuzz_targets/*.rs` binary is a shim over one function in [`oracle`]. The bodies live
-//! here rather than in the targets so they can be **replayed without libFuzzer** — see
-//! `tests/seeds.rs`, which runs every committed seed through the matching oracle on a plain
-//! `cargo test`.
+//! Each `fuzz_targets/*.rs` binary is a shim over one function in [`oracle`]. The bodies live here
+//! rather than in the targets so they can be **replayed without libFuzzer** by `tests/seeds.rs`,
+//! which runs every committed seed through the matching oracle on a plain `cargo test`.
 //!
 //! That split is not only a convenience. `cargo fuzz` needs `-Z sanitizer=address`, which is
 //! nightly-only and, on Windows, needs an `AddressSanitizer` runtime that ships with Visual

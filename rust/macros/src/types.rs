@@ -4,23 +4,23 @@
 use quote::quote;
 use syn::{Field, GenericArgument, PathArguments, Type};
 
-/// Refuse a field whose type publishes nothing and which was not told what it holds.
+/// Refuses a field whose type publishes nothing and which was not told what it holds.
 ///
-/// `values` and `nested` are opt-in and have to stay opt-in: a derive has only tokens, so it
-/// cannot tell whether a named type implements `Values` or `Describe`, and guessing is unsound in
-/// the direction that matters — a type whose `Deserialize` is `#[serde(try_from = "String")]` over
-/// a case-insensitive `FromStr` accepts spellings that are not variants, and publishing the
-/// variant list unasked would emit a schema rejecting a file the loader takes.
+/// `values` and `nested` are opt-in and have to stay opt-in: a derive has only tokens, so it cannot
+/// tell whether a named type implements `Values` or `Describe`, and guessing is unsound in the
+/// direction that matters. A type whose `Deserialize` is `#[serde(try_from = "String")]` over a
+/// case-insensitive `FromStr` accepts spellings that are not variants, and publishing the variant
+/// list unasked would emit a schema rejecting a file the loader takes.
 ///
 /// What a derive can do is refuse to be *silent*. `terrace_config` reads a leaf spelling it
 /// recognises and publishes nothing for one it does not, so a field left at that publishes a key
-/// with no shape — indistinguishable in the output from a key that was described. This is where
+/// with no shape, indistinguishable in the output from a key that was described. This is where
 /// forgetting the attribute stops being an invisible gap and becomes a compile error.
 ///
-/// Only a bare name is judged, at the position [`described_position`] stops on. A tuple, a
-/// function pointer, a qualified path and a generic type this derive did not recognise as a
-/// container publish nothing either, and none of them is a shape the resolving attributes have an
-/// answer for — an error naming them would be a dead end rather than a fix.
+/// Only a bare name is judged, at the position [`described_position`] stops on. A tuple, a function
+/// pointer, a qualified path and a generic type this derive did not recognise as a container
+/// publish nothing either, and none of them is a shape the resolving attributes have an answer for,
+/// so an error naming them would be a dead end rather than a fix.
 pub(crate) fn describes_something(field: &Field, ty: &Type) -> syn::Result<()> {
     let position = described_position(ty);
     if !is_undescribed(position) {
@@ -75,10 +75,10 @@ pub(crate) fn is_undescribed(ty: &Type) -> bool {
 /// Every type spelling `terrace_config` reads a shape out of on its own.
 ///
 /// The list `src/schema/rust_type.rs` matches on, restated here because a proc-macro crate cannot
-/// depend on the crate it writes code for. Only *membership* has to agree — what each spelling
-/// publishes is that module's business, and this one asks only whether it publishes anything —
-/// and the two halves are held together by a test in `tests/schema.rs` that runs a field of every
-/// one of these through both.
+/// depend on the crate it writes code for. Only *membership* has to agree: what each spelling
+/// publishes is that module's business, and this one asks only whether it publishes anything. A
+/// test in `tests/schema.rs` holds the two halves together by running a field of every one of these
+/// through both.
 ///
 /// A path is matched by its last segment, exactly as the runtime walk matches it, so a fully
 /// qualified `std::path::PathBuf` and a bare `PathBuf` are the same spelling and neither is
@@ -139,7 +139,7 @@ pub(crate) const KNOWN_LEAVES: &[&str] = &[
 ///
 /// Named rather than guessed at, because the guess would be silent and wrong: a schema saying
 /// `routes` is an object because its element is a struct describes a file nobody can write. The
-/// alias case is called out because it is the one that looks like a bug in the derive — the type
+/// alias case is called out because it is the one that looks like a bug in the derive: the type
 /// *is* a container, and a derive cannot see through a name to know it.
 pub(crate) fn not_a_container(field: &Field, attribute: &str) -> syn::Error {
     syn::Error::new_spanned(
@@ -160,9 +160,10 @@ pub(crate) fn not_a_container(field: &Field, attribute: &str) -> syn::Error {
 ///
 /// The walk `rust_type` performs over the type *token text* at runtime, performed here over the
 /// tokens themselves: past the wrappers serde sees through, then into a sequence's item or a map's
-/// value, until something that is not a container is reached. `HashMap<String,
-/// HashSet<AllowedMethod>>` therefore yields `AllowedMethod` — which is exactly the position the
-/// emitted constraint leaves open, because the two walks stop in the same place by construction.
+/// value, until something that is not a container is reached.
+/// `HashMap<String, HashSet<AllowedMethod>>` therefore yields `AllowedMethod`, which is exactly the
+/// position the emitted constraint leaves open, because the two walks stop in the same place by
+/// construction.
 ///
 /// [`None`] when there is no container to descend into. That is the answer for a type alias as
 /// well, and [`not_a_container`] is where the difference is explained.
@@ -173,7 +174,7 @@ pub(crate) fn element_type(ty: &Type) -> Option<&Type> {
     Some(element_type(item).unwrap_or(item))
 }
 
-/// The item type of a sequence, or the value type of a map — one level, or [`None`].
+/// The item type of a sequence, or the value type of a map, one level down, or [`None`].
 ///
 /// A map's *key* type is skipped on purpose, for the reason the runtime walk skips it: a TOML
 /// table's keys are strings whatever the map is keyed by, so nothing in the file is constrained
@@ -188,11 +189,11 @@ pub(crate) fn container_item(ty: &Type) -> Option<&Type> {
 
 /// The type at the position the schema's reading of these tokens comes to rest.
 ///
-/// The descent [`container_item`] makes, carried all the way down rather than stopping at the
-/// first container: past every transparent wrapper, into every element position, until something
-/// that is neither. `HashMap<String, Vec<Route>>` lands on `Route`, `Option<String>` lands on
-/// `String`, and `u16` lands on itself — which is exactly where `terrace_config`'s own reading of
-/// the type text stops, and so exactly where it has to be told what it cannot see.
+/// The descent [`container_item`] makes, carried all the way down rather than stopping at the first
+/// container: past every transparent wrapper, into every element position, until something that is
+/// neither. `HashMap<String, Vec<Route>>` lands on `Route`, `Option<String>` lands on `String`, and
+/// `u16` lands on itself. That is exactly where `terrace_config`'s own reading of the type text
+/// stops, and so exactly where it has to be told what it cannot see.
 pub(crate) fn described_position(ty: &Type) -> &Type {
     match step(ty) {
         Some(Step::Through(inner) | Step::Into(inner)) => described_position(inner),
@@ -202,17 +203,17 @@ pub(crate) fn described_position(ty: &Type) -> &Type {
 
 /// One step of the walk over a type's tokens.
 ///
-/// The two are distinguished because [`container_item`] needs to know which it took — the `Vec` in
-/// an `Option<Vec<T>>` is the container the field holds and the `Option` is not — while
+/// The two are distinguished because [`container_item`] needs to know which it took (the `Vec` in
+/// an `Option<Vec<T>>` is the container the field holds and the `Option` is not), while
 /// [`described_position`] treats them alike.
 pub(crate) enum Step<'a> {
     /// A wrapper `serde` sees straight through: what it holds *is* the value.
     Through(&'a Type),
-    /// A container's element position — a sequence's item, or a map's value.
+    /// A container's element position: a sequence's item, or a map's value.
     Into(&'a Type),
 }
 
-/// Past one wrapper, or into one container — or [`None`] for a type that is neither.
+/// Past one wrapper, or into one container, or [`None`] for a type that is neither.
 pub(crate) fn step(ty: &Type) -> Option<Step<'_>> {
     match ty {
         Type::Reference(reference) => Some(Step::Through(&reference.elem)),
@@ -254,10 +255,10 @@ pub(crate) fn step(ty: &Type) -> Option<Step<'_>> {
 /// A field's type as an operator would read it.
 ///
 /// The token text, tidied: `Vec < String >` is what a `TokenStream` prints and `Vec<String>` is
-/// what anyone documenting a configuration wants to see. Nothing is resolved — a type alias
-/// prints as its alias and `SecretString` prints as itself — because a derive has no types, only
-/// tokens. That is honest and it is what the field says; inventing a type language that claimed
-/// otherwise would be worse than printing what is written.
+/// what anyone documenting a configuration wants to see. Nothing is resolved, so a type alias
+/// prints as its alias and `SecretString` prints as itself, because a derive has no types, only
+/// tokens. That is what the field says, and inventing a type language that claimed otherwise would
+/// be worse than printing what is written.
 pub(crate) fn type_text(ty: &Type) -> String {
     let mut text = quote!(#ty).to_string();
     // Order matters: the path separator first, so its spaces are gone before the angle brackets
@@ -283,11 +284,11 @@ pub(crate) fn type_text(ty: &Type) -> String {
 
 /// Whether a type is syntactically `Option<_>`.
 ///
-/// Syntactically, because a derive has no types — only tokens. `std::option::Option<T>` and a
-/// type alias for it are the known limits: the first is matched by its last segment, the second
-/// is indistinguishable from any other single identifier and is treated as required. An alias
-/// for `Option` in a configuration struct is rare enough to leave to `#[serde(default)]`, which
-/// the field would carry anyway.
+/// Syntactically, because a derive has no types, only tokens. `std::option::Option<T>` and a type
+/// alias for it are the known limits: the first is matched by its last segment, the second is
+/// indistinguishable from any other single identifier and is treated as required. An alias for
+/// `Option` in a configuration struct is rare enough to leave to `#[serde(default)]`, which the
+/// field would carry anyway.
 pub(crate) fn is_option(ty: &Type) -> bool {
     unwrap_option(ty).is_some()
 }

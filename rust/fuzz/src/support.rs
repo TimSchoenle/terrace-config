@@ -29,22 +29,22 @@ pub const MAX_CONTENT_LEN: usize = 4096;
 /// One line of input, after parsing.
 #[derive(Debug)]
 pub enum Directive<'a> {
-    /// `f:<name>=<content>` — a file in the directory under test.
+    /// `f:<name>=<content>`: a file in the directory under test.
     File {
         /// Verbatim from the input, and not yet through [`is_safe_name`].
         name: &'a str,
         /// Unescaped, so one input line can describe a file body holding newlines.
         content: String,
     },
-    /// `e:<SUFFIX>=<value>` — the environment variable `TEST_<SUFFIX>`.
+    /// `e:<SUFFIX>=<value>`: the environment variable `TEST_<SUFFIX>`.
     Env {
         /// Appended to [`PREFIX`] verbatim, dialect separator and all.
         suffix: &'a str,
         /// Verbatim: a variable holds one line, so there is nothing to unescape.
         value: &'a str,
     },
-    /// `p:<SUFFIX>=<content>` — a `TEST_<SUFFIX>_FILE` indirection, pointing at a file this
-    /// target creates and names.
+    /// `p:<SUFFIX>=<content>`: a `TEST_<SUFFIX>_FILE` indirection, pointing at a file this target
+    /// creates and names.
     ///
     /// The path is **never** taken from the input. An indirection variable holds a path, and a
     /// fuzzer-chosen one would have the target reading arbitrary files on the host machine.
@@ -56,7 +56,7 @@ pub enum Directive<'a> {
     },
 }
 
-/// Parse the line grammar, skipping anything that does not fit it.
+/// Parses the line grammar, skipping anything that does not fit it.
 ///
 /// A malformed line is skipped rather than rejected so that a mutation which corrupts one line
 /// still exercises the rest, instead of the whole iteration collapsing to a no-op.
@@ -84,11 +84,10 @@ pub fn directives(data: &str) -> impl Iterator<Item = Directive<'_>> {
         })
 }
 
-/// Decode `\n`, `\r` and `\\` so a single input line can describe a multi-line file body.
+/// Decodes `\n`, `\r` and `\\` so a single input line can describe a multi-line file body.
 ///
-/// Without this the trailing-terminator contract — the one rule about *which* bytes a value
-/// loses — would be unreachable from a line-oriented grammar, which is the one rule most worth
-/// reaching.
+/// Without this the trailing-terminator contract, the one rule about *which* bytes a value loses,
+/// would be unreachable from a line-oriented grammar, which is the one rule most worth reaching.
 pub fn unescape(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut chars = raw.chars();
@@ -145,8 +144,8 @@ pub fn is_safe_name(name: &str) -> bool {
 
 /// Whether a fuzzer-supplied environment name and value can be set at all.
 ///
-/// `set_var` panics on a NUL in either half and on `=` in the name — platform preconditions,
-/// not loader behaviour, so reaching them would prove nothing.
+/// `set_var` panics on a NUL in either half and on `=` in the name. Those are platform
+/// preconditions, not loader behaviour, so reaching them would prove nothing.
 pub fn is_safe_env(suffix: &str, value: &str) -> bool {
     !suffix.is_empty()
         && suffix.len() <= MAX_NAME_LEN
@@ -155,7 +154,7 @@ pub fn is_safe_env(suffix: &str, value: &str) -> bool {
         && value.len() <= MAX_CONTENT_LEN
 }
 
-/// Write `content` to `dir/name`, returning whether it landed.
+/// Writes `content` to `dir/name`, returning whether it landed.
 ///
 /// A refusal by [`is_safe_name`] or by the platform is not a finding: the target does not assert
 /// anything about a file it never created.

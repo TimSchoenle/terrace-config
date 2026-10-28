@@ -83,7 +83,7 @@ impl Terrace {
         }
     }
 
-    /// Override the variable naming the TOML layer.
+    /// Overrides the variable naming the TOML layer.
     ///
     /// Defaults to `<PREFIX>CONFIG`.
     #[must_use]
@@ -92,7 +92,7 @@ impl Terrace {
         self
     }
 
-    /// Override the variable naming the secrets directory.
+    /// Overrides the variable naming the secrets directory.
     ///
     /// Defaults to `<PREFIX>SECRETS_DIR`.
     #[must_use]
@@ -110,7 +110,7 @@ impl Terrace {
         self
     }
 
-    /// Override the indirection suffix.
+    /// Overrides the indirection suffix.
     ///
     /// Defaults to `_FILE`.
     #[must_use]
@@ -119,7 +119,7 @@ impl Terrace {
         self
     }
 
-    /// Override the nesting separator.
+    /// Overrides the nesting separator.
     ///
     /// Defaults to `__`.
     #[must_use]
@@ -128,12 +128,12 @@ impl Terrace {
         self
     }
 
-    /// Reserve a key, in its **full environment spelling**, e.g. `MYAPP_PROFILE`.
+    /// Reserves a key, in its **full environment spelling**, e.g. `MYAPP_PROFILE`.
     ///
-    /// A reserved key is read from the environment before the layers exist, which a file
-    /// therefore may not supply. The configuration and secrets-directory variables are reserved
-    /// automatically — including when [`Self::config_var`] or [`Self::secrets_dir_var`] renamed
-    /// them after this call, because the set is resolved at load time rather than here.
+    /// A reserved key is read from the environment before the layers exist, which a file therefore
+    /// may not supply. The configuration and secrets-directory variables are reserved
+    /// automatically, including when [`Self::config_var`] or [`Self::secrets_dir_var`] renamed them
+    /// after this call, because the set is resolved at load time rather than here.
     #[must_use]
     pub fn reserve(mut self, key: impl Into<String>) -> Self {
         self.reserved.push(key.into());
@@ -149,20 +149,20 @@ impl Terrace {
         self
     }
 
-    /// Declare whether the binary applies a configuration change without restarting.
+    /// Declares whether the binary applies a configuration change without restarting.
     ///
     /// A fact about the *binary*, which is why it lives here: this builder is the one object both
     /// the contract generator and `main` construct, so the declaration and the supervisor that
     /// makes it true sit in one place. [`Self::schema`] publishes it as `schema.reload`, and
-    /// settles every key's [`Reload`](crate::schema::Reload) against it — see
+    /// settles every key's [`Reload`](crate::schema::Reload) against it with
     /// [`Schema::with_reload`](crate::schema::Schema::with_reload).
     ///
-    /// Undeclared by default, and then nothing is published: a consumer reads that as "no
-    /// reload", and every contract written before this existed stays byte-identical.
+    /// Undeclared by default, and then nothing is published. A consumer reads that as "no reload",
+    /// so a contract that declares nothing carries no reload field at all.
     ///
     /// Declaring [`ReloadSupport::rebuild`](crate::schema::ReloadSupport::rebuild) commits the
     /// binary to loading through [`Self::reloader`], which is what keeps a restart-class key at its
-    /// boot value; [`Self::load_watched`] refuses on such a loader rather than rebuild with it.
+    /// boot value. [`Self::load_watched`] refuses on such a loader rather than rebuild with it.
     #[cfg(feature = "schema")]
     #[must_use]
     pub fn reloads(mut self, support: crate::schema::ReloadSupport) -> Self {
@@ -213,9 +213,9 @@ impl Terrace {
     /// environment the process happens to be running in. That is what makes it usable from a
     /// documentation job, where none of the variables it describes are set.
     ///
-    /// The keys come from `T`'s [`Describe`](crate::schema::Describe) implementation; the
-    /// variables the loader itself reads — `<PREFIX>CONFIG`, `<PREFIX>SECRETS_DIR`, and anything
-    /// [`reserved`](Self::reserve) — come from here, because no derive can see them.
+    /// The keys come from `T`'s [`Describe`](crate::schema::Describe) implementation. The variables
+    /// the loader itself reads (`<PREFIX>CONFIG`, `<PREFIX>SECRETS_DIR`, and anything
+    /// [`reserved`](Self::reserve)) come from here, because no derive can see them.
     ///
     /// # Panics
     /// As [`Schema::describe`](crate::schema::Schema::describe): if two of `T`'s fields resolve
@@ -230,9 +230,9 @@ impl Terrace {
     ///
     /// [`Self::schema`] on the root type already covers a configuration split across modules and
     /// crates: `#[config(nested)]` follows the type, not the file. This is for documenting one
-    /// subsystem on a page of its own — `schema_at::<Csp>("csp")` produces
-    /// `csp.cloudflare.turnstile`, where `schema::<Csp>()` would produce `cloudflare.turnstile`,
-    /// a path that appears in no configuration file anywhere.
+    /// subsystem on a page of its own: `schema_at::<Csp>("csp")` produces
+    /// `csp.cloudflare.turnstile`, where `schema::<Csp>()` would produce `cloudflare.turnstile`, a
+    /// path that appears in no configuration file anywhere.
     ///
     /// # Panics
     /// As [`Self::schema`].
@@ -279,11 +279,11 @@ impl Terrace {
 
     /// Where every value this loader can see would come from.
     ///
-    /// The report [`load`](Self::load) cannot give you, because by the time it has returned a
-    /// `T` the provenance is gone: which layer supplied each key, which file or variable inside
-    /// that layer, and which keys more than one layer supplied. Printable at boot and on every
-    /// reload — an [`Explanation`](crate::explain::Explanation) holds no configuration *value*
-    /// at all, so there is nothing in it to redact.
+    /// The report [`load`](Self::load) cannot give you, because by the time it has returned a `T`
+    /// the provenance is gone: which layer supplied each key, which file or variable inside that
+    /// layer, and which keys more than one layer supplied. Printable at boot and on every reload:
+    /// an [`Explanation`](crate::explain::Explanation) holds no configuration *value* at all, so
+    /// there is nothing in it to redact.
     ///
     /// Reads the environment and the files exactly as [`Self::load`] does, at the moment it is
     /// called, which is what makes it usable from inside a reload.
@@ -301,10 +301,10 @@ impl Terrace {
     /// ```
     ///
     /// # Errors
-    /// Returns [`Error::Source`] if a configured source cannot be read at all — a secrets
-    /// directory that is not mounted, a `_FILE` naming a path that does not exist. Those are
-    /// answers rather than failures of the report, and the message names the path; a TOML
-    /// fragment that is merely absent or unparseable is reported as such instead of raised.
+    /// Returns [`Error::Source`] if a configured source cannot be read at all, such as a secrets
+    /// directory that is not mounted or a `_FILE` naming a path that does not exist. Those are
+    /// answers rather than failures of the report, and the message names the path. A TOML fragment
+    /// that is merely absent or unparseable is reported as such instead of raised.
     #[cfg(feature = "explain")]
     pub fn explain(&self) -> Result<crate::explain::Explanation, Error> {
         let layers = self.collect_layers(ShadowPolicy::LastWins)?;
@@ -319,17 +319,17 @@ impl Terrace {
         Ok(self.assemble()?.0)
     }
 
-    /// Load a typed config.
+    /// Loads a typed config.
     ///
     /// # Errors
     /// Returns [`Error`] if a required value is missing, a value fails to parse, a file-backed
-    /// source cannot be read, or — under [`ShadowPolicy::Reject`] — one key is supplied by more
-    /// than one of the last three layers.
+    /// source cannot be read, or, under [`ShadowPolicy::Reject`], one key is supplied by more than
+    /// one of the last three layers.
     pub fn load<T: DeserializeOwned>(&self) -> Result<T, Error> {
         self.figment()?.extract().map_err(|e| Box::new(e).into())
     }
 
-    /// Load a typed config and everything needed to load it again later.
+    /// Loads a typed config and everything needed to load it again later.
     ///
     /// Every rebuild applies every key. A binary that declared
     /// `schema::ReloadSupport::rebuild` has published that some
@@ -413,25 +413,24 @@ impl Terrace {
 
     /// The environment layer: the prefixed variables that are values, and no others.
     ///
-    /// `Env::prefixed` yields every variable under the prefix, which is one set too many. Two
-    /// kinds of name in it are this loader's own mechanism rather than configuration: anything
-    /// [`reserved`](Self::reserve) — the configuration and secrets-directory variables among
-    /// them, reserved automatically — and every `<PREFIX><KEY>_FILE`, whose value
-    /// [`FileLayers`] has already read and merged as the key it names. Left in, they arrive at
-    /// the deserialiser as fields called `config`, `secrets_dir`, `profile` and `<key>_file`.
+    /// `Env::prefixed` yields every variable under the prefix, which is one set too many. Two kinds
+    /// of name in it are this loader's own mechanism rather than configuration: anything
+    /// [`reserved`](Self::reserve), including the configuration and secrets-directory variables
+    /// reserved automatically, and every `<PREFIX><KEY>_FILE`, whose value [`FileLayers`] has
+    /// already read and merged as the key it names. Left in, they would arrive at the deserialiser
+    /// as fields called `config`, `secrets_dir`, `profile` and `<key>_file`.
     ///
-    /// A permissive root type ignores an unknown field, which is why leaving them in cost
-    /// nothing for as long as it did. A root deriving `#[serde(deny_unknown_fields)]` — the
-    /// reasonable choice when a typo in a mounted `ConfigMap` should stop the boot rather than
-    /// be dropped — refuses each one instead. Setting `<PREFIX>CONFIG` to point at that very
-    /// `ConfigMap` was then a boot failure naming a field the type never declared and no
-    /// operator can remove.
+    /// A permissive root type ignores an unknown field. A root deriving
+    /// `#[serde(deny_unknown_fields)]`, the reasonable choice when a typo in a mounted `ConfigMap`
+    /// should stop the boot rather than be dropped, would refuse each one instead. Setting
+    /// `<PREFIX>CONFIG` to point at that very `ConfigMap` would then be a boot failure naming a
+    /// field the type never declared and no operator can remove.
     ///
-    /// The dialect already answers both questions: this is what [`FileLayers`] asks it to refuse
-    /// a reserved key supplied by a file, asked here of the environment instead. It is also what
-    /// [`Unreachable::Indirection`](crate::schema::Unreachable) already told a consumer — that a
-    /// key whose spelling is another key's indirection cannot be reached from the environment.
-    /// Until now the loader disagreed with the schema describing it.
+    /// The dialect already answers both questions: this is what [`FileLayers`] asks it to refuse a
+    /// reserved key supplied by a file, asked here of the environment instead. It is also what
+    /// [`Unreachable::Indirection`](crate::schema::Unreachable) tells a consumer: a key whose
+    /// spelling is another key's indirection cannot be reached from the environment. Filtering here
+    /// keeps the loader and the schema describing it in agreement.
     fn environment(&self, dialect: Dialect) -> Env {
         let prefix = self.prefix.clone();
         Env::prefixed(&self.prefix)
@@ -444,15 +443,15 @@ impl Terrace {
             .split(&self.separator)
     }
 
-    /// Read what this loader's environment points at, without merging any of it.
+    /// Reads what this loader's environment points at, without merging any of it.
     ///
     /// The half of assembly that touches the world, separated from the half that combines the
     /// result, because the report needs the first and must not repeat it: a report derived from
     /// its own second reading of the environment can disagree with the load it claims to
     /// describe, which is the one thing a diagnostic may never do.
     ///
-    /// `policy` is a parameter rather than `self.shadow_policy` for the same reason — see
-    /// [`Self::explain`].
+    /// `policy` is a parameter rather than `self.shadow_policy` for the reason [`Self::explain`]
+    /// gives.
     fn collect_layers(&self, policy: ShadowPolicy) -> Result<Layers, Error> {
         let dialect = self.dialect();
 
@@ -500,7 +499,7 @@ pub(crate) struct Layers {
     pub(crate) dialect: Dialect,
     /// The variable naming the TOML layer.
     pub(crate) config_var: String,
-    /// What the TOML layer resolved to — a file, or a directory of fragments.
+    /// What the TOML layer resolved to: a file, or a directory of fragments.
     pub(crate) config_path: PathBuf,
     /// Whether [`Self::config_path`] came from the environment or is the compiled default. The
     /// distinction is invisible in the path itself, and is the first thing to check when the

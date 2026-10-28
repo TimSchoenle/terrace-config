@@ -58,8 +58,8 @@ fn a_union_is_rejected() {
     assert!(rejected("union U { a: u8 }").contains("cannot be derived for a union"));
 }
 
-/// A struct with no fields at all is legal and describes nothing — an empty configuration
-/// section is a real thing, and refusing it would be refusing a shape serde accepts.
+/// A struct with no fields at all is legal and describes nothing: an empty configuration section is
+/// a real thing, and refusing it would be refusing a shape serde accepts.
 #[test]
 fn a_struct_with_no_fields_describes_nothing() {
     let body = generated("struct S {}");
@@ -135,8 +135,8 @@ fn an_integer_bound_keeps_its_literal_kind() {
     assert!(body.contains("Bound :: Integer (63i64)"), "{body}");
 }
 
-/// A negation is a unary expression rather than part of the literal, so it has to be unwrapped
-/// — otherwise the error names the wrong problem.
+/// A negation is a unary expression rather than part of the literal, so it has to be unwrapped, or
+/// the error names the wrong problem.
 #[test]
 fn a_negative_bound_is_a_literal_like_any_other() {
     let body = generated("struct S { #[config(range(min = -5))] drift: i16 }");
@@ -223,7 +223,7 @@ fn deny_unknown_fields_is_reported_from_the_serde_attribute() {
 }
 
 /// `serde` accepts a field nobody declared unless the struct says otherwise, so silence is the
-/// answer for a struct that said nothing — and the feature never becomes a default.
+/// answer for a struct that said nothing, and the feature never becomes a default.
 #[test]
 fn a_struct_that_did_not_say_so_reports_nothing() {
     let body = generated("struct S { a: u8 }");
@@ -394,8 +394,8 @@ fn a_field_with_no_doc_comment_reports_an_empty_string_rather_than_inventing_pro
     assert_eq!(field_docs("struct S { a: u8 }"), "");
 }
 
-/// `#[doc = "…"]` is what `///` desugars to, so both have to work — a macro-generated struct
-/// carries the explicit form.
+/// `#[doc = "…"]` is what `///` desugars to, so both have to work: a macro-generated struct carries
+/// the explicit form.
 #[test]
 fn the_explicit_doc_attribute_is_read_too() {
     assert_eq!(
@@ -507,7 +507,7 @@ fn a_type_is_reported_the_way_it_is_written() {
         ("BTreeMap<String, u8>", "BTreeMap<String, u8>"),
         ("[u8; 4]", "[u8; 4]"),
         ("(u8, String)", "(u8, String)"),
-        // The `Option` is stripped — `required` already carries that.
+        // The `Option` is stripped, because `required` already carries that.
         ("Option<Vec<String>>", "Vec<String>"),
     ] {
         let body = generated(&format!("struct S {{ a: {declared} }}"));
@@ -616,8 +616,8 @@ fn a_maps_key_type_is_never_the_element() {
     assert!(!body.contains("RouteName as"), "{body}");
 }
 
-/// Guessing would be silent and wrong — a schema saying `routes` is an object because its
-/// element is a struct describes a file nobody can write.
+/// Guessing would be silent and wrong: a schema saying `routes` is an object because its element is
+/// a struct describes a file nobody can write.
 #[test]
 fn an_element_on_something_that_is_not_a_container_is_rejected() {
     let error = rejected("struct S { #[config(element)] a: Route }");
@@ -777,8 +777,8 @@ fn each_resolving_attribute_silences_the_diagnostic() {
     }
 }
 
-/// A tuple, a qualified path and an unrecognised generic publish nothing either — and none of
-/// the five attributes is an answer for them, so an error naming them would be a dead end.
+/// A tuple, a qualified path and an unrecognised generic publish nothing either, and none of the
+/// five attributes is an answer for them, so an error naming them would be a dead end.
 #[test]
 fn a_shape_that_is_not_a_bare_name_is_left_alone() {
     for declared in ["(u8, String)", "<T as Trait>::Assoc", "Wrapper<Inner>"] {
@@ -978,9 +978,8 @@ fn values_from_takes_a_type_path() {
 
 // ---- a wire form serde does not derive ----
 
-/// The trap `docs/SCHEMA.md` described in prose since the feature shipped. A derived variant
-/// list is serde's *derived* wire form, and each of these says the wire form is something
-/// else.
+/// The trap `docs/SCHEMA.md` describes in prose. A derived variant list is serde's *derived* wire
+/// form, and each of these says the wire form is something else.
 #[test]
 fn a_derived_value_list_is_refused_under_a_custom_deserialiser() {
     for written in ["with", "deserialize_with"] {

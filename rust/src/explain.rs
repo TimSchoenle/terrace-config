@@ -1,12 +1,11 @@
 //! Which layer supplied each configuration key.
 //!
-//! The loader's worst failure is not the one that raises an error — it is the one that raises
-//! none. A value arrives from the layer nobody expected, the service boots, and the first sign
-//! of it is a credential that was rotated a week ago still being presented.
-//! [`ShadowPolicy::Reject`](crate::ShadowPolicy::Reject) catches the three file-and-environment
-//! spellings of that; it deliberately says nothing about the TOML layer, where a checked-in
-//! `config.toml` and a `MYAPP_` variable naming the same key is an ordinary, intended override.
-//! Ordinary until it is the one you did not know about.
+//! The loader's worst failure is the one that raises no error. A value arrives from the layer
+//! nobody expected, the service boots, and the first sign of it is a credential that was rotated a
+//! week ago still being presented. [`ShadowPolicy::Reject`](crate::ShadowPolicy::Reject) catches
+//! the three file-and-environment spellings of that. It deliberately says nothing about the TOML
+//! layer, where a checked-in `config.toml` and a `MYAPP_` variable naming the same key is an
+//! ordinary, intended override. Ordinary until it is the one you did not know about.
 //!
 //! [`Terrace::explain`](crate::Terrace::explain) answers it for every key at once, at boot and
 //! on every reload, without a debugger and without a rebuild:
@@ -32,9 +31,10 @@
 //!
 //! An [`Explanation`] records *where* each key came from and never *what* it was. That is a
 //! property of the type rather than of how it happens to print: there is no field to leak, so
-//! [`Debug`], [`Display`](std::fmt::Display) and anything rendered from the accessors are redacted by construction
-//! rather than by remembering to redact. It is what makes printing one at boot — into a log that
-//! is shipped, indexed and retained for a year — safe by default rather than safe if reviewed.
+//! [`Debug`], [`Display`](std::fmt::Display) and anything rendered from the accessors are redacted
+//! by construction rather than by remembering to redact. That makes printing one at boot, into a
+//! log that is shipped, indexed and retained for a year, safe by default rather than safe if
+//! reviewed.
 //!
 //! The same rule costs the report one thing, and it is worth naming: a TOML fragment that will
 //! not parse is reported as [`Fragment::Unreadable`] with no reason attached, because a parse
@@ -53,10 +53,10 @@ use crate::terrace::Layers;
 
 /// How deep a TOML fragment is walked before the rest of a branch is reported as one path.
 ///
-/// The `toml` parser has a recursion limit of its own, so this is a belt to its braces rather
-/// than the thing standing between a fuzz input and a blown stack — but a report is exactly the
-/// code that runs while something is already wrong, and it does not get to be the part that
-/// crashes. A truncated path is still a real prefix of the key it stands for.
+/// The `toml` parser has a recursion limit of its own, so this is a second guard, not the only
+/// thing standing between a fuzz input and a blown stack. A report is exactly the code that runs
+/// while something is already wrong, and it does not get to be the part that crashes. A truncated
+/// path is still a real prefix of the key it stands for.
 const MAX_DEPTH: usize = 32;
 
 /// The longest key a rendered line pads to, so one absurd path does not indent every other.
@@ -64,10 +64,10 @@ const MAX_KEY_WIDTH: usize = 44;
 
 /// One layer, and the file or variable inside it that carried a value.
 ///
-/// Exhaustive on purpose, unlike [`Error`](crate::Error): these are the layers the crate
-/// documents, a fifth one would be a feature nobody could miss, and a caller filtering a report
-/// down to "everything that came out of a file" should get a compile error when that day comes
-/// rather than a silently incomplete filter.
+/// Exhaustive on purpose, unlike [`Error`](crate::Error): these are the layers the crate documents,
+/// a fifth one would be a feature nobody could miss, and a caller filtering a report down to
+/// "everything that came out of a file" should get a compile error when one is added rather than a
+/// silently incomplete filter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Layer {
     /// A TOML fragment: the file `$<PREFIX>CONFIG` names, or one of the `*.toml` files in the
@@ -132,7 +132,7 @@ impl Origin {
     /// The layers that also supplied this key and lost, lowest precedence first.
     ///
     /// Empty for almost every key. When it is not, it is the answer to "why is my mounted secret
-    /// not being picked up" — the mount is right there in the list, underneath whatever beat it.
+    /// not being picked up": the mount is right there in the list, underneath whatever beat it.
     #[must_use]
     pub fn shadowed(&self) -> &[Layer] {
         &self.shadowed
@@ -159,9 +159,9 @@ pub enum Fragment {
     Read(usize),
     /// Named but not there.
     ///
-    /// Not an error — `Toml::file` skips an absent file, and a service with no configuration
-    /// file at all is the normal development case. It is, however, the most common reason a
-    /// configured path supplies nothing, which is why it is reported rather than passed over.
+    /// Not an error: `Toml::file` skips an absent file, and a service with no configuration file at
+    /// all is the normal development case. It is, however, the most common reason a configured path
+    /// supplies nothing, which is why it is reported rather than passed over.
     Missing,
     /// There, but not parseable as TOML.
     ///
@@ -185,9 +185,10 @@ impl std::fmt::Display for Fragment {
 
 /// Where every value a loader can see would come from.
 ///
-/// Built by [`Terrace::explain`](crate::Terrace::explain). Print it — [`Display`](std::fmt::Display) renders the
-/// whole report, and it carries no configuration value, so a log is a safe place for it — or
-/// walk [`Self::origins`] and emit whatever your own telemetry wants.
+/// Built by [`Terrace::explain`](crate::Terrace::explain). Print it with
+/// [`Display`](std::fmt::Display), which renders the whole report and carries no configuration
+/// value, so a log is a safe place for it. Or walk [`Self::origins`] and emit whatever your own
+/// telemetry wants.
 ///
 /// ```no_run
 /// # use terrace_config::Terrace;
@@ -206,9 +207,9 @@ impl std::fmt::Display for Fragment {
 pub struct Explanation {
     /// The prefix every variable in this report derives from.
     prefix: String,
-    /// What marks an indirection variable. Stored rather than inferred from the variables that
-    /// were found: it is a parameter, and the header has to name it even when the layer supplied
-    /// nothing — which is precisely when an operator is reading the header.
+    /// What marks an indirection variable. Stored rather than inferred from the variables that were
+    /// found: it is a parameter, and the header has to name it even when the layer supplied
+    /// nothing, which is precisely when an operator is reading the header.
     indirection_suffix: String,
     /// The variable naming the TOML layer, and whether it was actually set.
     config_var: String,
@@ -228,7 +229,7 @@ pub struct Explanation {
 }
 
 impl Explanation {
-    /// Report on already-collected layers.
+    /// Reports on already-collected layers.
     ///
     /// Crate-private, and takes the loader's own assembly product rather than re-reading the
     /// environment: a report that did its own reading could disagree with the load it describes.
@@ -327,8 +328,8 @@ impl Explanation {
     ///
     /// Keys nothing supplied are absent: this reports what the *environment* did, not what the
     /// configuration type can carry. The `schema` module answers the other half, and answers it
-    /// without reading anything — named in prose rather than linked, because this module compiles
-    /// without that feature and `broken_intra_doc_links` is denied.
+    /// without reading anything. It is named in prose rather than linked, because this module
+    /// compiles without that feature and `broken_intra_doc_links` is denied.
     #[must_use]
     pub fn origins(&self) -> &[Origin] {
         &self.origins
@@ -463,9 +464,9 @@ impl std::fmt::Display for Explanation {
 impl Origin {
     /// One key's sources, in merge order, split into the one in effect and the rest.
     ///
-    /// [`None`] for an empty list, which cannot happen — an entry exists because a layer wrote
-    /// into it — and which is filtered out rather than asserted away for the reason the whole
-    /// module avoids panicking.
+    /// [`None`] for an empty list, which cannot happen because an entry exists only when a layer
+    /// wrote into it. It is filtered out rather than asserted away for the reason the whole module
+    /// avoids panicking.
     fn from_sources((key, mut sources): (String, Vec<Layer>)) -> Option<Self> {
         let effective = sources.pop()?;
         Some(Self {
@@ -488,7 +489,7 @@ fn fragment_keys(path: &Path) -> Option<Vec<String>> {
     Some(keys)
 }
 
-/// Push the dotted path of every leaf in `dict` into `keys`.
+/// Pushes the dotted path of every leaf in `dict` into `keys`.
 fn push_leaves(dict: &Dict, prefix: &mut String, keys: &mut Vec<String>, depth: usize) {
     for (segment, value) in dict {
         let restore = prefix.len();

@@ -5,11 +5,11 @@
 //! the crate exists, and their comments record failures that already happened once.
 //!
 //! They also run through [`terrace_config::testing`], the harness this crate ships for its
-//! consumers to write exactly these tests with. Two things follow from that. A test says what it
-//! is arranging — a mounted secret, a `ConfigMap` of fragments — rather than which variable
-//! spells it, so a rename of the mechanism cannot leave a green test exercising a name the
-//! loader no longer reads. And this file is the harness's own first consumer: a change that
-//! makes it awkward here makes it awkward everywhere.
+//! consumers to write exactly these tests with. Two things follow from that. A test says what it is
+//! arranging (a mounted secret, a `ConfigMap` of fragments) rather than which variable spells it,
+//! so a rename of the mechanism cannot leave a green test exercising a name the loader no longer
+//! reads. And this file is the harness's own first consumer: a change that makes it awkward here
+//! makes it awkward everywhere.
 
 #![cfg(all(feature = "loader", feature = "testing"))]
 
@@ -18,7 +18,7 @@ use serde::Deserialize;
 use terrace_config::testing::Harness;
 use terrace_config::{ShadowPolicy, Terrace};
 
-/// Two levels of nesting, and a `SecretString` leaf — the shape every real secret has.
+/// Two levels of nesting, and a `SecretString` leaf: the shape every real secret has.
 #[derive(Debug, Deserialize)]
 struct Sample {
     auth: Auth,
@@ -143,10 +143,10 @@ fn a_projected_volume_layout_yields_only_the_real_keys() {
 /// The same layout as above, built the way the kubelet actually builds it: the keys are
 /// **symlinks** into `..data`, not regular files.
 ///
-/// The test above pins the volume's *names* but writes the keys as real files, and that gap is
-/// exactly what let the symlink bug ship — it stayed green while every service in the cluster
-/// booted on compiled defaults, because `DirEntry::metadata()` reports a symlink as "not a
-/// file" and the whole layer came back empty. Only a real symlink reproduces it.
+/// The test above pins the volume's *names* but writes the keys as real files, so it stays green
+/// against a loader that boots every service on compiled defaults because `DirEntry::metadata()`
+/// reports a symlink as "not a file" and the whole layer comes back empty. Only a real symlink
+/// reproduces that.
 #[cfg(unix)]
 #[test]
 fn keys_symlinked_into_dot_data_are_read() {
@@ -165,10 +165,10 @@ fn keys_symlinked_into_dot_data_are_read() {
 /// An all-digit secret reaches the config as a string.
 ///
 /// `figment::providers::Env` runs a TOML-ish parse over every value, so the same secret set as
-/// `TEST_AUTH__JWT_SECRET=12345678` becomes a `Value::Num`, and figment's default interpreter
-/// will not coerce a number back into a string — the boot fails with "invalid type: integer,
-/// expected a string". The file layers emit values unparsed precisely so that a numeric
-/// password is not a deployment that cannot start.
+/// `TEST_AUTH__JWT_SECRET=12345678` becomes a `Value::Num`, and figment's default interpreter will
+/// not coerce a number back into a string: the boot fails with "invalid type: integer, expected a
+/// string". The file layers emit values unparsed precisely so that a numeric password is not a
+/// deployment that cannot start.
 #[test]
 fn an_all_digit_secret_from_a_file_stays_a_string() {
     harness().run(|jail| {
@@ -245,8 +245,8 @@ fn a_file_suffix_path_that_cannot_be_read_is_fatal() {
 }
 
 /// `TEST_AUTH__JWT_SECRET_FILE` is what figment's `Env` turns into the unknown key
-/// `auth.jwt_secret_file`. If the shadowing check confused that with `auth.jwt_secret` — the key
-/// the indirection actually supplies — then every `_FILE` variable would refuse its own value.
+/// `auth.jwt_secret_file`. If the shadowing check confused that with `auth.jwt_secret`, the key the
+/// indirection actually supplies, then every `_FILE` variable would refuse its own value.
 #[test]
 fn the_indirection_variable_does_not_shadow_the_key_it_supplies() {
     harness().run(|jail| {
@@ -297,9 +297,9 @@ fn the_config_and_secrets_variables_are_reserved_automatically() {
 ///
 /// Every assertion in this section is invisible without it. A permissive root ignores an unknown
 /// key, so the environment layer carrying `config`, `secrets_dir`, `profile` and
-/// `strict.value_file` reads as working right up until someone adds `deny_unknown_fields` — and
-/// then every one of this loader's own variables is a boot failure naming a field the type was
-/// never going to have.
+/// `strict.value_file` reads as working right up until someone adds `deny_unknown_fields`, and then
+/// every one of this loader's own variables is a boot failure naming a field the type was never
+/// going to have.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct Strict {
@@ -341,7 +341,7 @@ fn the_secrets_directory_variable_is_not_offered_to_the_deserialiser() {
 }
 
 /// A reserved variable is read before the layers exist and belongs to no layer, so it must not
-/// arrive at the deserialiser either — the same reason a file may not supply one.
+/// arrive at the deserialiser either, for the same reason a file may not supply one.
 #[test]
 fn a_reserved_variable_is_not_offered_to_the_deserialiser() {
     harness().run(|jail| {
@@ -391,8 +391,8 @@ fn env_overrides_and_defaults_apply() {
     });
 }
 
-/// `$TEST_CONFIG` naming a directory merges every `*.toml` in it, later name winning — a
-/// `ConfigMap` mounted as a directory of fragments.
+/// `$TEST_CONFIG` naming a directory merges every `*.toml` in it, later name winning: a `ConfigMap`
+/// mounted as a directory of fragments.
 #[test]
 fn a_toml_directory_merges_its_fragments_in_name_order() {
     harness().run(|jail| {
@@ -418,9 +418,9 @@ fn a_toml_directory_merges_its_fragments_in_name_order() {
 /// The same directory, built the way a `ConfigMap` volume actually is: the fragments are
 /// **symlinks** into `..data` rather than regular files.
 ///
-/// The test above writes them as real files, which is why it stayed green while every service
-/// in the cluster loaded an empty config layer — `DirEntry::metadata()` does not traverse
-/// symlinks and rejected every fragment. Only a real symlink reproduces the mount.
+/// The test above writes them as real files, so it stays green against a loader that leaves every
+/// service with an empty config layer because `DirEntry::metadata()` does not traverse symlinks and
+/// rejects every fragment. Only a real symlink reproduces the mount.
 #[cfg(unix)]
 #[test]
 fn a_configmap_volume_of_symlinked_fragments_is_merged() {
@@ -633,8 +633,8 @@ fn the_toml_directory_is_watched_even_when_the_file_is_absent() {
 // The parameterisation itself
 // ---------------------------------------------------------------------------------------------
 
-/// Renamed variables are honoured, and the derived ones are then *not* read — otherwise a
-/// deployment that renamed one would silently keep obeying the old name too.
+/// Renamed variables are honoured, and the derived ones are then *not* read, or else a deployment
+/// that renamed one would silently keep obeying the old name too.
 ///
 /// Built over the renamed loader rather than renaming inside the jail, so that the volume the
 /// harness wires up is the one that loader actually reads. The decoy is wired by name, because
@@ -670,8 +670,8 @@ fn a_renamed_variable_is_the_one_that_gets_reserved() {
             .expect_err("TEST_VAULT must be reserved once it is the secrets variable");
         assert!(error.to_string().contains("TEST_VAULT"), "{error}");
 
-        // Under the derived name, `TEST_VAULT` is just another key, and the indirection is
-        // honoured rather than refused — it is the rename that reserved it.
+        // Under the derived name, `TEST_VAULT` is just another key, and the indirection is honoured
+        // rather than refused, because it is the rename that reserved it.
         let refused = jail
             .load::<Sample>()
             .expect_err("auth.jwt_secret is missing");
@@ -686,8 +686,8 @@ fn a_renamed_variable_is_the_one_that_gets_reserved() {
 /// The indirection suffix is a parameter: a deployment spelling it `_PATH` gets `_PATH`, and
 /// `_FILE` then means nothing.
 ///
-/// `jail.indirection` derives the variable from the loader it was built over, so this asserts
-/// the rename took effect rather than restating the new spelling — a test naming
+/// `jail.indirection` derives the variable from the loader it was built over, so this asserts the
+/// rename took effect rather than restating the new spelling. A test naming
 /// `TEST_AUTH__JWT_SECRET_PATH` by hand would keep passing if the loader stopped reading it.
 #[test]
 fn a_custom_indirection_suffix_replaces_the_default() {
@@ -703,8 +703,8 @@ fn a_custom_indirection_suffix_replaces_the_default() {
 }
 
 /// The nesting separator is a parameter, and it governs both the environment layer and the
-/// secrets-directory file names — they must agree, or a file and a variable would name
-/// different fields.
+/// secrets-directory file names. They must agree, or a file and a variable would name different
+/// fields.
 #[test]
 fn a_custom_nesting_separator_governs_every_layer() {
     Harness::over(layers().nesting_separator("-")).run(|jail| {
@@ -732,12 +732,12 @@ fn the_default_config_path_is_read_when_no_variable_is_set() {
     });
 }
 
-/// Found by the `toml_layers` fuzz target. `NaN != NaN`, so a configuration holding a float NaN
-/// made its fingerprint unequal to *itself*: every filesystem event looked like a change, and the
-/// supervisor tore the service down and rebuilt it for as long as that key stayed in the file.
+/// `NaN != NaN`, so a naive fingerprint of a configuration holding a float NaN is unequal to
+/// *itself*: every filesystem event looks like a change, and the supervisor tears the service down
+/// and rebuilds it for as long as that key stays in the file.
 ///
 /// A reload loop is worse than any of the failures the fingerprint exists to avoid, and it is
-/// permanent — it does not resolve when the volume settles.
+/// permanent: it does not resolve when the volume settles.
 #[test]
 fn a_configuration_holding_a_nan_is_not_a_perpetual_change() {
     harness().run(|jail| {

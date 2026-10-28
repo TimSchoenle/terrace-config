@@ -21,12 +21,12 @@ pub const USAGE: &str = "usage: config-schema \
 ///
 /// # Reproducibility
 ///
-/// Nothing here is read from the environment, and that is the property the whole design protects:
-/// a documentation job on a laptop and a container build on a runner produce the same bytes.
+/// Nothing here is read from the environment, and that is the property the whole design protects: a
+/// documentation job on a laptop and a container build on a runner produce the same bytes.
 /// [`version`](Self::version), [`revision`](Self::revision) and [`created`](Self::created) are the
-/// three things that legitimately differ between builds of one source tree, so they are arguments
-/// — passed, they make the difference explicit; omitted, `--format contract` is byte-reproducible
-/// and can be committed and diffed in review.
+/// three things that legitimately differ between builds of one source tree, so they are arguments.
+/// Passed, they make the difference explicit. Omitted, `--format contract` is byte-reproducible and
+/// can be committed and diffed in review.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Request {
     format: Format,
@@ -47,7 +47,7 @@ impl Request {
         }
     }
 
-    /// Parse an argument list — the one [`USAGE`] describes.
+    /// Parses an argument list in the form [`USAGE`] describes.
     ///
     /// Takes the arguments themselves, without the program name, so it can be tested and so a
     /// caller can feed it something other than `std::env::args`. [`Self::from_env`] is the usual
@@ -112,7 +112,7 @@ impl Request {
     /// Where the contract is embedded in the image, for the label renderings.
     ///
     /// [`DEFAULT_PATH`](crate::schema::DEFAULT_PATH) unless `--path` said otherwise. An argument
-    /// rather than a constant only because a `scratch` image with an unusual layout exists; almost
+    /// rather than a constant only because a `scratch` image with an unusual layout exists. Almost
     /// nothing should pass it, and a build that does must pass the same value to its `COPY`.
     #[must_use]
     pub fn path(&self) -> &str {
@@ -137,14 +137,14 @@ impl Request {
         self.created.as_deref()
     }
 
-    /// Set the rendering.
+    /// Sets the rendering.
     #[must_use]
     pub fn with_format(mut self, format: Format) -> Self {
         self.format = format;
         self
     }
 
-    /// Keep only the keys under this prefix.
+    /// Keeps only the keys under this prefix.
     ///
     /// Empty for the whole configuration.
     #[must_use]
@@ -163,10 +163,9 @@ impl Request {
     /// The release this build is of, as the image tag spells it.
     ///
     /// This and the two below complete what [`Self::new`] starts, so a consumer parsing arguments
-    /// with `clap` — or one that has its own `--scope` or `--service` flag and therefore cannot
-    /// hand its whole argument list to [`Self::parse`] — can build every field [`stamp`] reads.
-    /// Without them the second layer was usable for a documentation job and not for a container
-    /// build, which is the half that needed it.
+    /// with `clap`, or one that has its own `--scope` or `--service` flag and therefore cannot hand
+    /// its whole argument list to [`Self::parse`], can build every field [`stamp`] reads. Without
+    /// them this layer would serve a documentation job and not a container build.
     ///
     /// [`stamp`]: Self::stamp
     #[must_use]
@@ -191,9 +190,9 @@ impl Request {
 
     /// The release, the commit and the moment this build is of.
     ///
-    /// Each is applied only if it was given, so an [`App`] carrying a compile-time default —
-    /// `concat!("v", env!("CARGO_PKG_VERSION"))` is the usual one — keeps it when the argument is
-    /// absent, and a build passing `--version "$TAG"` overrides it.
+    /// Each is applied only if it was given, so an [`App`] carrying a compile-time default, usually
+    /// `concat!("v", env!("CARGO_PKG_VERSION"))`, keeps it when the argument is absent, and a build
+    /// passing `--version "$TAG"` overrides it.
     #[must_use]
     pub fn stamp(&self, mut app: App) -> App {
         if let Some(version) = &self.version {
@@ -208,10 +207,10 @@ impl Request {
         app
     }
 
-    /// Refuse the combinations that would produce a plausible-looking wrong answer.
+    /// Refuses the combinations that would produce a plausible-looking wrong answer.
     ///
     /// # Errors
-    /// Returns [`UsageError`] if `--only` was given for a rendering it cannot slice — either a
+    /// Returns [`UsageError`] if `--only` was given for a rendering it cannot slice: either a
     /// whole-image format, where the slice would be published as a false claim (see
     /// [`Format::whole_image`]), or one that carries no keys at all, where it would be silently
     /// ignored (see [`Format::reads_keys`]).

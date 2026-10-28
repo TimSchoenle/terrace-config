@@ -2,13 +2,13 @@
 //! [`terrace_config::testing::Harness`].
 //!
 //! This shares `examples/service/config.rs` with `#[path]` rather than redeclaring its `Config`
-//! type here. A test file that keeps its own copy of a config type can drift from what the
-//! example actually loads and stay green while the example itself has stopped compiling, or
-//! worse, still compiles but no longer matches what this file thinks it asserts. Sharing the
-//! module makes that impossible: a change to the example's shape that this file does not know
-//! about is a compile error here, and a behavioural change the example makes is a test failure
-//! here — either way, the example cannot rot silently the way `config-schema` (a `schema`-only
-//! demonstration, checked by `cargo clippy --all-targets` alone) can.
+//! type here. A test file that keeps its own copy of a config type can drift from what the example
+//! actually loads and stay green while the example itself has stopped compiling, or worse, still
+//! compiles but no longer matches what this file thinks it asserts. Sharing the module makes that
+//! impossible: a change to the example's shape that this file does not know about is a compile
+//! error here, and a behavioural change the example makes is a test failure here. Either way, the
+//! example cannot rot silently the way `config-schema` (a `schema`-only demonstration, checked by
+//! `cargo clippy --all-targets` alone) can.
 
 #![cfg(all(feature = "loader", feature = "testing"))]
 
@@ -138,12 +138,12 @@ fn the_database_url_supplied_by_both_a_secret_and_the_environment_is_refused() {
     });
 }
 
-/// `examples/service/contract.json` is a checked-in file, not a build artefact: nothing
-/// regenerates it automatically, so nothing but this test stops it from drifting out from under
+/// `examples/service/contract.json` is a checked-in file, not a build artefact: nothing regenerates
+/// it automatically, so nothing but this test stops it from drifting out from under
 /// `config::Config`'s actual shape the moment a field changes here without `--contract` being
 /// re-run by hand. `cargo test --all-features` already runs in CI on every push, which is what
-/// makes this the same guarantee `cargo fmt --check` gives formatting — checked fresh, every
-/// time, never trusted merely because it once matched.
+/// makes this the same guarantee `cargo fmt --check` gives formatting: checked fresh, every time,
+/// never trusted merely because it once matched.
 #[cfg(feature = "schema")]
 #[test]
 fn the_checked_in_contract_matches_what_the_types_render_today() {

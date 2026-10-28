@@ -6,7 +6,7 @@
 //! diagnostic that points at the wrong thing is worse than none.
 //!
 //! # Oracle
-//! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic — over arbitrary file names,
+//! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic, over arbitrary file names,
 //!    arbitrary TOML, and arbitrary variable spellings.
 //! 2. **Redaction.** A sentinel value is planted in all four layers every iteration and must
 //!    appear in neither the [`Display`](std::fmt::Display) nor the [`Debug`](std::fmt::Debug)
@@ -20,9 +20,9 @@
 //!    `sources() == shadowed() ++ [effective()]`, so `is_contested` cannot disagree with what
 //!    `shadowed` holds.
 //! 5. **A refused boot is an explained boot.** If [`ShadowPolicy::Reject`] refuses to assemble
-//!    while the report itself can be produced, the refusal was about a doubly-supplied key — so
-//!    the report has to name at least one contested key. That is the whole of the feature's
-//!    reason to exist: the loader's error names one pair, and the report names every one of them.
+//!    while the report itself can be produced, the refusal was about a doubly-supplied key, so the
+//!    report has to name at least one contested key. That is the whole of the feature's reason to
+//!    exist: the loader's error names one pair, and the report names every one of them.
 //! 6. **The report never fails where a load succeeds.** It assembles under
 //!    [`ShadowPolicy::LastWins`] on purpose, so it must be at least as permissive as any load.
 //!
@@ -30,7 +30,7 @@
 //! One directive per line; `\n`, `\r` and `\\` are decoded in file bodies.
 //!
 //! ```text
-//! f:<name>=<content>     a file — `*.toml` goes in the config directory, anything else in the
+//! f:<name>=<content>     a file: `*.toml` goes in the config directory, anything else in the
 //!                        secrets directory, which is the split the loader itself makes
 //! t:<name>=<content>     the same directive; both spellings exist so one corpus feeds every target
 //! p:<SUFFIX>=<content>   a TEST_<SUFFIX>_FILE indirection at a path this module names
@@ -53,9 +53,9 @@ const RESERVED: &str = "TEST_PROFILE";
 
 /// The value planted in all four layers, and the only thing rule (2) asserts about.
 ///
-/// A *value*, never a name. The report prints paths and variable spellings by design — that is
-/// what makes it usable — so a sentinel that could be either would be asserting the opposite of
-/// the contract.
+/// A *value*, never a name. The report prints paths and variable spellings by design, which is what
+/// makes it usable, so a sentinel that could be either would be asserting the opposite of the
+/// contract.
 const SENTINEL: &str = "terrace-fuzz-value-must-not-be-printed";
 
 fn layers() -> Terrace {
@@ -66,7 +66,7 @@ fn layers() -> Terrace {
 /// under test.
 ///
 /// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
-/// not a convenience here — it is the only way in.
+/// the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }
@@ -79,7 +79,7 @@ fn mentions_sentinel(name: &str) -> bool {
     name.to_ascii_lowercase().contains(SENTINEL)
 }
 
-/// Whether the report may name this layer at all — rule (3), one layer at a time.
+/// Whether the report may name this layer at all: rule (3), one layer at a time.
 fn exists(layer: &Layer) -> bool {
     match layer {
         Layer::Toml(path) | Layer::SecretsFile(path) => path.is_file(),
@@ -121,7 +121,7 @@ fn check_origins(explanation: &Explanation) {
     }
 }
 
-/// Run the oracle.
+/// Runs the oracle.
 ///
 /// Panics when the report breaks one of the rules above.
 ///
@@ -132,11 +132,10 @@ pub fn check(data: &str) {
     let _ = harness().try_run(|jail| {
         let root = jail.sandbox().root().to_path_buf();
 
-        // (2) The plant, in all four layers, and the two mounts arranged in the same breath —
-        // both through the jail, so the variable naming each is the one the loader under test
-        // actually reads rather than a spelling restated here. Written before the fuzzer's
-        // directives, so one naming the same file overwrites it: that only weakens the
-        // assertion, never breaks it.
+        // (2) The plant, in all four layers, and the two mounts arranged in the same breath, both
+        // through the jail, so the variable naming each is the one the loader under test actually
+        // reads rather than a spelling restated here. Written before the fuzzer's directives, so
+        // one naming the same file overwrites it: that only weakens the assertion, never breaks it.
         let sentinel_toml = format!("[sentinel]\ntoml = \"{SENTINEL}\"\n");
         let (Ok(fragment), Ok(secrets), Ok(_)) = (
             jail.fragment("00-sentinel.toml", &sentinel_toml),

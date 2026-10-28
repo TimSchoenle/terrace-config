@@ -8,10 +8,10 @@
 //! | Does a rebuild apply a change to this key? | [`Reload`] | `#[config(reload = "…")]`, through [`Sink::reload`](super::Sink::reload) |
 //!
 //! The first is a property of the *binary* rather than of the loader library: a service can link
-//! the `reload` supervisor and never run it. The second is a property of the
-//! *code* consuming each value: a key read inside the runtime a rebuild reconstructs is applied by
-//! the rebuild, and one read before the supervisor starts — a `tracing` subscriber's filter, a
-//! metrics recorder's endpoint — is not.
+//! the `reload` supervisor and never run it. The second is a property of the *code* consuming each
+//! value: a key read inside the runtime a rebuild reconstructs is applied by the rebuild, and one
+//! read before the supervisor starts, such as a `tracing` subscriber's filter or a metrics
+//! recorder's endpoint, is not.
 //!
 //! A consumer derives the third fact, how its own deployment delivers each key, and combines the
 //! three under `spec/v1/FORMAT.md`'s *Deciding whether a change needs a restart*. Every unknown
@@ -34,7 +34,7 @@ pub enum Reload {
     ///
     /// Either it is consumed before the supervisor runs, or changing it under live traffic is
     /// unsafe and the author wants a rollout's readiness gating and rollback instead. A rebuild
-    /// keeps it at its boot value — see [`Terrace::reloader`](crate::Terrace::reloader).
+    /// keeps it at its boot value, through [`Terrace::reloader`](crate::Terrace::reloader).
     Restart,
     /// A class a later version of this crate names and this one does not.
     ///
@@ -46,7 +46,7 @@ pub enum Reload {
 }
 
 impl Reload {
-    /// Whether a rebuild applies a change to the key — `true` for [`Self::Live`] only.
+    /// Whether a rebuild applies a change to the key, which is `true` for [`Self::Live`] only.
     #[must_use]
     pub const fn is_live(self) -> bool {
         matches!(self, Self::Live)
@@ -163,17 +163,17 @@ impl ReloadSupport {
 /// **An explicit `restart` anywhere on the path wins; otherwise an explicit `live`; otherwise
 /// undeclared.** The order a field's attribute and a nested type's own attribute are opened in
 /// cannot matter, because either order would let a `live` somewhere silently override a `restart`
-/// somewhere else — and that is the direction in which a change is never applied.
+/// somewhere else, and that is the direction in which a change is never applied.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct Scopes {
     /// How many `live` scopes are open.
     live: usize,
-    /// How many `restart` scopes — or scopes of a class this build does not know — are open.
+    /// How many `restart` scopes, or scopes of a class this build does not know, are open.
     restart: usize,
 }
 
 impl Scopes {
-    /// Open one scope of `class`.
+    /// Opens one scope of `class`.
     pub(super) fn open(&mut self, class: Reload) {
         if class.is_live() {
             self.live += 1;
@@ -182,7 +182,7 @@ impl Scopes {
         }
     }
 
-    /// Close the scope [`Self::open`] opened for `class`.
+    /// Closes the scope [`Self::open`] opened for `class`.
     pub(super) fn close(&mut self, class: Reload) {
         if class.is_live() {
             self.live -= 1;

@@ -1,15 +1,15 @@
 //! The generator every service writes beside its configuration, written once.
 //!
 //! A service using [`schema`](crate::schema) ends up with the same program in `examples/`: parse a
-//! `--format`, build the schema, dispatch to one of six renderings, stamp a build identity onto
-//! the contract, print, exit. It is two hundred lines of which about eight are that service's own,
-//! and it gets copied between repositories — which is how three of them end up disagreeing about
-//! how to cut a `LABEL` block out of a Dockerfile.
+//! `--format`, build the schema, dispatch to one of six renderings, stamp a build identity onto the
+//! contract, print, exit. It is two hundred lines of which about eight are that service's own, and
+//! copies of it in different repositories drift apart, for example about how to cut a `LABEL` block
+//! out of a Dockerfile.
 //!
 //! What is actually service-specific is small and it is exactly this:
 //!
 //! - the root type and the loader's prefix, which produce the [`Schema`];
-//! - the [`App`] identity — name, source URL, and a version from `CARGO_PKG_VERSION`;
+//! - the [`App`] identity: name, source URL, and a version from `CARGO_PKG_VERSION`;
 //! - the JSON Schema's `title` and `$id`;
 //! - the [`External`](crate::schema::External) surface, which no derive can see.
 //!
@@ -18,10 +18,11 @@
 //! # The one-call form
 //!
 //! A service whose defaults are its `Default` impl and that publishes nothing beyond what its types
-//! describe needs none of the builder: [`main`] is the whole generator, given the loader the service
-//! already boots with — so the contract is derived from the same prefix, reserved names and file
-//! variables that [`Terrace::load`](crate::Terrace::load) will read — and the app identity, which
-//! [`cargo_app!`](crate::cargo_app) fills from the calling crate's own `Cargo.toml`:
+//! describe needs none of the builder. [`main`] is the whole generator. It takes the loader the
+//! service already boots with, so the contract is derived from the same prefix, reserved names and
+//! file variables that [`Terrace::load`](crate::Terrace::load) will read. It also takes the app
+//! identity, which [`cargo_app!`](crate::cargo_app) fills from the calling crate's own
+//! `Cargo.toml`:
 //!
 //! ```no_run
 //! # use serde::{Deserialize, Serialize};
@@ -38,8 +39,8 @@
 //! }
 //! ```
 //!
-//! Anything more — an external surface, a JSON Schema `$id`, a TOML preamble — is [`Cli`] with
-//! [`Cli::run`] in place of [`main`], which keeps the same one-call shape.
+//! Anything more, such as an external surface, a JSON Schema `$id` or a TOML preamble, is [`Cli`]
+//! with [`Cli::run`] in place of [`main`], which keeps the same one-call shape.
 //!
 //! # Four layers, and each is usable without the one above it
 //!
@@ -50,10 +51,10 @@
 //! | [`Cli`] | you want the whole program |
 //! | [`verify`] | you have an image to check, and no generator to run |
 //!
-//! The layering is not decoration. [`Cli::main`] is the convenient one and it is also the one that
-//! makes decisions for you — it reads `std::env::args`, prints to stdout and stderr, and returns
-//! an [`ExitCode`]. A consumer with a real argument parser, or one rendering into a build script
-//! rather than a pipe, drops to [`Cli::render`] and keeps everything else.
+//! [`Cli::main`] is the convenient layer and it is also the one that makes decisions for you: it
+//! reads `std::env::args`, prints to stdout and stderr, and returns an [`ExitCode`]. A consumer
+//! with a real argument parser, or one rendering into a build script rather than a pipe, drops to
+//! [`Cli::render`] and keeps everything else.
 //!
 //! # The whole of a service's generator
 //!
@@ -127,9 +128,9 @@ use crate::schema::{
 /// - `cargo_app!()` names the app after the package, `CARGO_PKG_NAME`;
 /// - `cargo_app!("orders")` names it explicitly, for a package not named as its image is.
 ///
-/// The version is `CARGO_PKG_VERSION` prefixed with `v`, the spelling image tags conventionally
-/// use and the one [`Cli::new`] recommends; a build tagging without the prefix, or stamping a
-/// release version, passes `--version` and that wins (see [`Request::stamp`]). The source is
+/// The version is `CARGO_PKG_VERSION` prefixed with `v`, the spelling image tags conventionally use
+/// and the one [`Cli::new`] recommends. A build tagging without the prefix, or stamping a release
+/// version, passes `--version` and that wins (see [`Request::stamp`]). The source is
 /// `CARGO_PKG_REPOSITORY`, left unset when the package declares none.
 #[macro_export]
 macro_rules! cargo_app {
@@ -149,10 +150,10 @@ macro_rules! cargo_app {
 /// The whole generator for a configuration whose defaults are its [`Default`]: parse this
 /// process's arguments, render, print, exit.
 ///
-/// `loader` is the [`Terrace`] the service boots with — pass the same value, not a second one
-/// built to match, because every spelling in the contract is derived from it and a contract
-/// derived from a different loader describes variables the service does not read. `app` is the
-/// identity to publish; [`cargo_app!`](crate::cargo_app) builds it from the calling crate.
+/// `loader` is the [`Terrace`] the service boots with. Pass the same value, not a second one built
+/// to match, because every spelling in the contract is derived from it and a contract derived from
+/// a different loader describes variables the service does not read. `app` is the identity to
+/// publish, which [`cargo_app!`](crate::cargo_app) builds from the calling crate.
 ///
 /// This is [`Cli::new`]`(app)`[`.run::<C>(loader)`](Cli::run), for the service that needs nothing
 /// else from [`Cli`].
@@ -176,10 +177,10 @@ pub struct Cli<'a> {
 impl<'a> Cli<'a> {
     /// A generator for one application.
     ///
-    /// The [`App`] should carry the version the *image tag* uses: `concat!("v",
-    /// env!("CARGO_PKG_VERSION"))` rather than `env!` alone, because the field exists to be
-    /// compared against a tag and the tags say `v2.5.0`. A `--version` argument overrides it — see
-    /// [`Request::stamp`].
+    /// The [`App`] should carry the version the *image tag* uses:
+    /// `concat!("v", env!("CARGO_PKG_VERSION"))` rather than `env!` alone, because the field exists
+    /// to be compared against a tag and the tags say `v2.5.0`. A `--version` argument overrides it
+    /// through [`Request::stamp`].
     #[must_use]
     pub fn new(app: App) -> Self {
         Self {
@@ -226,15 +227,15 @@ impl<'a> Cli<'a> {
 
     /// The contract this image publishes, beyond what the schema already describes.
     ///
-    /// The callback receives the [`ContractBuilder`] with the app and the schema already on it,
-    /// and returns it with whatever the service has to add — almost always an
+    /// The callback receives the [`ContractBuilder`] with the app and the schema already on it, and
+    /// returns it with whatever the service has to add, almost always an
     /// [`External`](crate::schema::External) surface, which is the half no derive can find and the
     /// half a chart most needs.
     ///
-    /// A [`ContractBuilder`] rather than an `External` so that
-    /// [`closed`](ContractBuilder::closed), [`title`](ContractBuilder::title) and
-    /// [`require_present`](ContractBuilder::require_present) stay reachable without this type
-    /// growing a setter per option and going stale the moment the builder gains another.
+    /// A [`ContractBuilder`] rather than an `External` so that [`closed`](ContractBuilder::closed),
+    /// [`title`](ContractBuilder::title) and [`require_present`](ContractBuilder::require_present)
+    /// stay reachable without this type needing a setter per option that the builder's next option
+    /// would leave incomplete.
     #[must_use]
     pub fn contract_with(
         mut self,
@@ -244,11 +245,11 @@ impl<'a> Cli<'a> {
         self
     }
 
-    /// Render one request against a schema.
+    /// Renders one request against a schema.
     ///
     /// The schema is taken by value because [`Request::only`] subsets it. Pass the whole
-    /// configuration: slicing it here is what keeps the real key paths — a page documenting
-    /// `cloudflare.*` when the file says `csp.cloudflare.*` is worse than no page — and what lets
+    /// configuration: slicing it here is what keeps the real key paths (a page documenting
+    /// `cloudflare.*` when the file says `csp.cloudflare.*` is worse than no page), and what lets
     /// [`Request::validate`] refuse a slice for a whole-image format.
     ///
     /// The returned string is whatever the rendering produced, and the renderings disagree
@@ -266,9 +267,9 @@ impl<'a> Cli<'a> {
 
         match request.format() {
             Format::Json => schema.to_json(),
-            // A subsystem page gets the key table alone. The loader's own variables belong once,
-            // on the page documenting the whole configuration, rather than repeated above every
-            // slice — and `to_json` still carries them whichever page this is.
+            // A subsystem page gets the key table alone. The loader's own variables belong once, on
+            // the page documenting the whole configuration, rather than repeated above every slice,
+            // and `to_json` still carries them whichever page this is.
             Format::Markdown if !request.only().is_empty() => {
                 Ok(schema.to_markdown_keys(self.columns))
             }
@@ -303,11 +304,11 @@ impl<'a> Cli<'a> {
 
     /// The whole program: parse this process's arguments, render, print, exit.
     ///
-    /// Prints the rendering to stdout with exactly one trailing newline — the renderings
-    /// themselves disagree about whether they end in one — and returns
-    /// [`ExitCode::SUCCESS`]; on any failure prints the message to stderr and returns
-    /// [`ExitCode::FAILURE`]. Nothing is written to stdout on failure, so a step redirecting into
-    /// a committed file leaves it untouched rather than half-written.
+    /// Prints the rendering to stdout with exactly one trailing newline, since the renderings
+    /// themselves disagree about whether they end in one, and returns [`ExitCode::SUCCESS`]. On any
+    /// failure it prints the message to stderr and returns [`ExitCode::FAILURE`]. Nothing is
+    /// written to stdout on failure, so a step redirecting into a committed file leaves it
+    /// untouched rather than half-written.
     #[must_use]
     pub fn main(&self, schema: Schema) -> ExitCode {
         let request = match Request::from_env() {
@@ -335,7 +336,7 @@ impl<'a> Cli<'a> {
     /// schema to [`Self::main`]. A documentation job runs where none of the configuration's
     /// variables are set, so the defaults come from the type rather than from loading anything.
     ///
-    /// A configuration whose `Default` is not its compiled default — or that has none — builds the
+    /// A configuration whose `Default` is not its compiled default, or that has none, builds the
     /// [`Schema`] itself and calls [`Self::main`].
     #[must_use]
     pub fn run<C: Describe + Default + Serialize>(&self, loader: &Terrace) -> ExitCode {
@@ -356,7 +357,7 @@ impl<'a> Cli<'a> {
     }
 }
 
-/// Report and fail, in the one place both failure paths meet.
+/// Reports and fails, in the one place both failure paths meet.
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
     eprintln!("{error}");
     ExitCode::FAILURE
