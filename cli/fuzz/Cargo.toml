@@ -14,7 +14,7 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
-# The oracles live in a library, not in the target binaries — the same decision the loader's fuzz
+# The oracles live in a library, not in the target binaries: the same decision the loader's fuzz
 # crate made, for the same reason. `cargo fuzz` needs a nightly sanitizer, and on Windows an
 # AddressSanitizer runtime that ships with Visual Studio rather than with rustup; an oracle that
 # only runs under that toolchain is an oracle nobody checks. With the bodies here,

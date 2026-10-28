@@ -1,14 +1,12 @@
-// The corpus runner and tier comparator (PR 3). Knows about documents, not about binders — a
-// Spring import here would be a design failure. Testable before any producer exists: it validates
-// the stored corpus against the meta-schema on its own.
+// The corpus runner and tier comparator. Knows about documents, not about binders: a
+// Spring import here would be a design failure. Its own tests need no producer: they validate the
+// stored corpus against the meta-schema.
 description = "The meta-schema validator and tier comparator checked against spec/v1/, and " +
     "the Java producers' documents held to `terrace-contract conform`. See java/README.md."
 
-// Only the plain conventions, not terrace-config.lombok-conventions: this module's classes
-// (MetaSchemaValidator, TierComparator, Tier, ConformanceVersion) were written and tested before
-// Lombok was wired into the build, and none of them is a bean-shaped model class that Lombok
-// would meaningfully shrink — retrofitting it would touch tested code for no behavioural gain.
-// New classes here can still opt in later.
+// Only the plain conventions, not terrace-config.lombok-conventions: none of this module's classes
+// (MetaSchemaValidator, TierComparator, Tier, ConformanceVersion, TerraceContractCli, SpecPaths)
+// is a bean-shaped model class that Lombok would meaningfully shrink.
 plugins {
     id("terrace-config.java-conventions")
 }
@@ -16,13 +14,13 @@ plugins {
 dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.json.schema.validator)
-    // jspecify's own guidance, not `compileOnly` — see gradle/libs.versions.toml and
+    // jspecify's own guidance, not `compileOnly`; see gradle/libs.versions.toml and
     // terrace-config-annotations/build.gradle.kts for the one deliberate exception to it.
     implementation(libs.jspecify)
 
     // Test-only: the fixture types under src/test/.../fixtures/ are real `@TerraceConfig` classes,
     // assembled into a real `Contract` through the real loader and rendered through the real
-    // Jackson 2 codec — exactly the pipeline a consumer runs, not a hand-maintained restatement of
+    // Jackson 2 codec: exactly the pipeline a consumer runs, not a hand-maintained restatement of
     // it. Kept out of `implementation` above: this module's own two classes (MetaSchemaValidator,
     // TierComparator) know nothing about descriptors, loaders or bean-shaped config types, and
     // that stays true for anything published from `main`.
@@ -39,8 +37,8 @@ dependencies {
 }
 
 // Two isolated runtime classpaths for JacksonParityTest, one per Jackson major version. Both
-// modules publish a class named `de.timscho.config.core.io.ContractCodec` — deliberately the same
-// name, so a consumer never has to know which one it linked against — which means the two can
+// modules publish a class named `de.timscho.config.core.io.ContractCodec`, deliberately the same
+// name, so a consumer never has to know which one it linked against, which means the two can
 // never sit on one classloader's classpath together without one shadowing the other. Resolving
 // each as its own `Usage.JAVA_RUNTIME` configuration (rather than adding either as a normal test
 // dependency) is what lets the test load each into its own `URLClassLoader` and ask both the same
@@ -71,7 +69,7 @@ tasks.test {
     // `inputs.files(...)`, not just reading `.asPath` below: a `Configuration` is `Buildable`, so
     // registering it as a task input is what makes Gradle build `terrace-config-core-jackson2`/
     // `-jackson3`'s jars before `test` runs. Reading `.asPath` alone only computes a path string at
-    // configuration time -- it asks nothing of the task graph, so without this the jars those
+    // configuration time; it asks nothing of the task graph, so without this the jars those
     // paths name may not exist yet the first time this runs.
     inputs.files(jackson2Runtime)
     inputs.files(jackson3Runtime)
@@ -104,7 +102,7 @@ tasks.test {
     }
 }
 
-// `./gradlew :terrace-config-spec-tck:blessJavaConformance` — the named entry point the developer
+// `./gradlew :terrace-config-spec-tck:blessJavaConformance`: the named entry point the developer
 // workflow below documents, rather than making every contributor remember the `-D` spelling.
 // Forces the flag on regardless of the invoking command line, then runs the exact same suite `test`
 // would, so a blessed golden is proven to satisfy every other check (meta-schema, tier 2 against

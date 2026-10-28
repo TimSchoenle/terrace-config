@@ -1,4 +1,4 @@
-# `cargo deny check`. Run in CI on every push and on the weekly schedule — the advisory
+# `cargo deny check`. Run in CI on every push and on the weekly schedule: the advisory
 # database moves without this repository changing, so a filtered run is not enough.
 #
 # `cli/` is its own workspace (see the comment on `[workspace]` in `Cargo.toml`), so the `rust/`

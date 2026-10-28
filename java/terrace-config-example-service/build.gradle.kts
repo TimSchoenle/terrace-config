@@ -2,7 +2,7 @@
 // terrace-config-loader, mirroring rust/examples/service/ field for field so the two can be read
 // side by side as one story about what this contract looks like in each language.
 // `OrdersServiceConfigTest` exercises this module's own `Config` class through `TerraceLoader`,
-// so — like the Rust example — it is kept correct by a real assertion, not merely by compiling.
+// so, like the Rust example, it is kept correct by a real assertion, not merely by compiling.
 // `Config` also carries the `@TerraceConfig` annotations `terrace-config-processor` reads, so the
 // `de.timscho.terrace-config` plugin emits `contract.json` from the exact same class at build
 // time, and `terraceContractCheck` (part of `check`) fails when the committed copy drifts, the way
@@ -31,10 +31,10 @@ dependencies {
     compileOnly(project(":terrace-config-processor"))
     annotationProcessor(project(":terrace-config-processor"))
     // Only for `@JsonProperty`, to spell a multi-word key the same snake_case way in every layer
-    // (a TOML file, an environment variable, a mounted secret) despite Java's camelCase fields —
-    // and, since the fix in `FieldResolver`, the same name `terrace-config-processor` reads for
+    // (a TOML file, an environment variable, a mounted secret) despite Java's camelCase fields,
+    // and the same name `terrace-config-processor` reads for
     // the generated descriptor's own key path. `-loader` already depends on this internally as an
-    // implementation detail, so it is not exposed transitively — this module needs its own
+    // implementation detail, so it is not exposed transitively, so this module needs its own
     // declaration to compile against it.
     implementation(libs.jackson.databind)
 }

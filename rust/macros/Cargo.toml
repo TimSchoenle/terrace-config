@@ -22,10 +22,10 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 # Tracks the major `serde_derive` is on, so a build with the `schema` feature compiles one `syn`
-# rather than two — the derive is only ever enabled alongside `serde/derive` anyway.
+# rather than two; the derive is only ever enabled alongside `serde/derive` anyway.
 #
 # Deliberately *without* `full`. Everything parsed here is a derive input or an attribute
-# argument, and serde's attribute values are all string literals or paths — the `derive`
+# argument, and serde's attribute values are all string literals or paths, and the `derive`
 # feature set covers them. `full` adds statement and expression parsing this never reaches, and
 # it is a measurable share of the crate's compile time.
 syn = { version = "3", default-features = false, features = [

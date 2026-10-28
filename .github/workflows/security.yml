@@ -1,6 +1,6 @@
 name: security
 
-# Static analysis of the workflows themselves — the one body of code in this repository with
+# Static analysis of the workflows themselves: the one body of code in this repository with
 # write access to it, and the one nothing else checks. Catches unpinned actions, over-broad
 # `permissions`, credentials persisted into `.git/config`, and `${{ }}` interpolated into a
 # `run:` block, which is a shell injection rather than a template.

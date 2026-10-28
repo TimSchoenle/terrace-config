@@ -24,7 +24,7 @@ on:
 # Shared with update-files.yaml, not scoped to this workflow: both commit to the pull request
 # branch, and the API call that makes a verified commit rejects one whose parent has moved. Two
 # renders of the same branch racing would leave one of them failing for no reason a reader could
-# act on, so they queue instead. `cancel-in-progress: false` for the same reason — a cancelled
+# act on, so they queue instead. `cancel-in-progress: false` for the same reason: a cancelled
 # run here means a branch left holding a half-generated file.
 concurrency:
   group: branch-writes-${{ github.event.pull_request.head.repo.full_name || github.repository }}:${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -105,7 +105,7 @@ jobs:
 
       # The repository's front door, rendered from the same payload. It quotes none of the
       # crate-specific fields (MSRV, the docs table), so the manifest/docs-directory inputs above
-      # only matter to the crate render — this one only reads `repo`.
+      # only matter to the crate render; this one only reads `repo`.
       - name: Render the root README
         id: root_readme
         uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
@@ -170,8 +170,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      # An App installation token, so the commit is verified and — unlike one made with
-      # `GITHUB_TOKEN` — re-triggers the checks on the branch it lands on.
+      # An App installation token, so the commit is verified and, unlike one made with
+      # `GITHUB_TOKEN`, re-triggers the checks on the branch it lands on.
       - name: Generate Bot Token
         id: generate_token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

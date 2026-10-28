@@ -54,7 +54,7 @@ def findings(report) -> list[dict]:
 
 
 def main(argv: list[str]) -> int:
-    # A document's prose is UTF-8 — an em dash, a non-breaking space — and the default console
+    # A document's prose is UTF-8 (an em dash, a non-breaking space), and the default console
     # encoding on Windows is not, so without this the oracle hands the harness mangled bytes and
     # every difference it reports is its own.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -158,8 +158,8 @@ def main(argv: list[str]) -> int:
             report = Report()
             charts = Path(argv[2]).resolve() if len(argv) > 2 else root / "charts"
             enrolled = module.run(charts, report)
-            # `terrace-contract bindings` also carries the rule `check-config-wired.py` applied —
-            # same enrolment, same markers — so the oracle for it is both scripts into one report.
+            # `terrace-contract bindings` also carries the rule `check-config-wired.py` applied
+            # (same enrolment, same markers), so the oracle for it is both scripts into one report.
             # Its own `checked` rows are not enrolment, and are not compared.
             wired = load(scripts, "check_config_wired", "check-config-wired.py")
             if wired is not None:

@@ -1,4 +1,4 @@
-# libFuzzer dictionary. Tokens the mutator would otherwise have to discover a byte at a time —
+# libFuzzer dictionary. Tokens the mutator would otherwise have to discover a byte at a time:
 # the directive prefixes, the separators every layer is spelled with, and the names that are
 # special to one of them.
 #

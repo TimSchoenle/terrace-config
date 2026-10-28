@@ -1,4 +1,4 @@
-// Aggregator only — no code of its own. Building it builds every module in dependency order;
+// Aggregator only, with no code of its own. Building it builds every module in dependency order;
 // releasing it releases nothing, since each artefact below is versioned and released
 // independently (see release-please-config.json once the Java packages are wired in).
 

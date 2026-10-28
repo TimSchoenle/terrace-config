@@ -3,7 +3,7 @@
 # is committed and only ever read, `corpus/` is where the machine writes.
 #
 # The per-target directories themselves are tracked (via `.gitkeep`) rather than left to be
-# created, because libFuzzer errors out on a corpus directory that does not exist — so a fresh
+# created, because libFuzzer errors out on a corpus directory that does not exist, so a fresh
 # clone would fail the very command README.md documents.
 /corpus/*/*
 !/corpus/*/.gitkeep

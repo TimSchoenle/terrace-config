@@ -55,7 +55,7 @@ jobs:
 
       # Both from the repository root. `fuzz/rust-toolchain.toml` pins nightly for anyone working
       # *inside* that directory, but rustup selects on the working directory rather than on
-      # `--manifest-path`, so resolution here runs on the root pin — which is all dependency
+      # `--manifest-path`, so resolution here runs on the root pin, which is all dependency
       # resolution needs, and one toolchain fewer to install.
       - name: Resolve both lockfiles
         run: |
@@ -103,8 +103,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      # An App installation token, so the commit is verified and — unlike one made with
-      # `GITHUB_TOKEN` — re-triggers the checks on the branch it lands on.
+      # An App installation token, so the commit is verified and, unlike one made with
+      # `GITHUB_TOKEN`, re-triggers the checks on the branch it lands on.
       - name: Generate Bot Token
         id: generate_token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

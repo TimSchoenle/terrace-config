@@ -1,20 +1,23 @@
 # ---------------------------------------------------------------------------
 # Rust / Cargo
 # ---------------------------------------------------------------------------
-# Compiled output for every crate in the workspace (and the wasm frontend,
-# which keeps its own `target/`). A bare `target/` matches any directory of
-# that name at any depth.
+# Compiled output for every workspace: rust/, cli/ and both fuzz crates. A bare `target/` matches
+# any directory of that name at any depth.
 target/
 
-# We are a dependency
+# rust/ is a library: it resolves against whatever a consumer already has, so a lock file would be
+# a claim it cannot keep.
 Cargo.lock
+
+# cli/ ships a binary, so its lock files are committed: they make a release build reproducible,
+# and cargo-deny and Renovate act on them.
+!/cli/Cargo.lock
+!/cli/fuzz/Cargo.lock
 
 # Backup files emitted by `rustfmt`.
 **/*.rs.bk
 
-# `cargo mutants` writes its report here (`missed.txt`, `outcomes.json`, per-mutant logs). It is
-# machine output and a new one is produced by every run; CI uploads it as an artifact instead.
-# The *configuration* — `.cargo/mutants.toml` — is committed, because the scope is a decision.
+# The report a local `cargo mutants` run writes. It is machine output, replaced on every run.
 mutants.out/
 mutants.out.old/
 
@@ -25,11 +28,17 @@ mutants.out.old/
 # Java / Gradle
 # ---------------------------------------------------------------------------
 # Compiled output for every module under java/. A bare `build/` matches any directory of that
-# name at any depth, mirroring how `target/` is handled for Cargo above.
+# name at any depth.
 build/
+# Gradle's per-project cache. The wrapper jar under gradle/wrapper/ is committed: it is how CI
+# and a fresh clone get the pinned Gradle version without a local install.
 .gradle/
-# The wrapper jar itself IS committed (it's how CI and a fresh clone get the exact pinned
-# Gradle version without a local install); only its ad hoc distribution cache is not.
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+# Bytecode the reference producer under spec/v1/producers/python/ leaves behind when run.
+__pycache__/
 
 # ---------------------------------------------------------------------------
 # Environment & secrets (never commit these)
@@ -40,8 +49,8 @@ build/
 *.pem
 *.key
 # Any `*.env` file, wherever it lives. The patterns above match only files *named* `.env…`,
-# so a file such as `deploy/local.env` slips past them and is tracked by accident. Match by
-# suffix as well, and ship `*.env.example` instead.
+# so a file such as `deploy/local.env` would otherwise be tracked by accident. Ship
+# `*.env.example` instead.
 *.env
 !*.env.example
 
@@ -56,32 +65,16 @@ build/
 *~
 
 # ---------------------------------------------------------------------------
-# Agent / assistant tooling caches
+# Agent tooling caches
 # ---------------------------------------------------------------------------
 .serena/cache/
 .serena/*.local.yml
 .junie/tools
 
 # ---------------------------------------------------------------------------
-# Logs & OS junk
+# Logs & OS files
 # ---------------------------------------------------------------------------
 *.log
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# The shared toolchain is its own workspace, so it has its own target directory.
-/cli/target/
-
-# ...and, unlike the library above, its lock file is committed. A library resolves against whatever
-# a consumer already has, so pinning here would be a claim it cannot keep; `cli/` ships a *binary*,
-# and the lock file is what makes a release build reproducible and what cargo-deny and Renovate act
-# on.
-!/cli/Cargo.lock
-!/cli/fuzz/Cargo.lock
-
-# ---------------------------------------------------------------------------
-# Python
-# ---------------------------------------------------------------------------
-# Bytecode the reference producer under spec/v1/producers/python/ leaves behind when run.
-__pycache__/
