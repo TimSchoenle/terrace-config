@@ -64,7 +64,7 @@ pub(crate) const SERVICE_VERSION: &str = "v1.0.0";
 /// could.
 ///
 /// # Errors
-/// Returns [`Error`] if two fields of [`Config`] resolve to one key path, or if building the
+/// Returns [`Error`] if [`Config::default`] cannot be serialised as defaults, or if building the
 /// contract document itself is refused.
 #[cfg(feature = "schema")]
 pub(crate) fn contract() -> Result<String, Error> {

@@ -191,7 +191,9 @@ impl Model {
 /// That is the contract: a panic is the finding.
 #[expect(
     clippy::too_many_lines,
-    reason = "one pass that builds the directory and the model together; splitting them would               put the two halves of every rule in different functions, which is the one thing               an oracle must not do"
+    reason = "one pass that builds the directory and the model together; splitting them would \
+              put the two halves of every rule in different functions, which is the one thing \
+              an oracle must not do"
 )]
 pub fn check(data: &str) {
     // Ignored: a jail-setup failure says nothing about the code under test.

@@ -175,9 +175,11 @@ impl Schema {
     /// ```
     ///
     /// A key is commented out when leaving it out changes nothing: it has a default, or the loader
-    /// [reserves](Key::reserved) it and no file may supply it. What is left uncommented is exactly
-    /// the set of [`required`](Key::required) keys, so the generated file is both a complete
-    /// reference and the shortest file that loads.
+    /// [reserves](Key::reserved) it and no file may supply it. What is left uncommented is the set
+    /// of [`required`](Key::required) keys with two exceptions, both commented out with the reason:
+    /// a reserved key, which only its environment variable supplies, and a key shadowed by a table
+    /// of the same name, which TOML cannot carry beside it. Without either, the generated file is
+    /// both a complete reference and the shortest file that loads.
     ///
     /// Use [`Self::to_toml_example_with`] for a shorter one. Ends with a newline unless it is
     /// empty, which only a schema with no keys and no preamble is.
@@ -213,13 +215,20 @@ impl Schema {
         comment(&mut out, "");
         paragraph(
             &mut out,
-            "Generated from the configuration type, so it lists every key that type can carry              and nothing else. Each key shows the value it already has, commented out: a              commented key and a deleted key mean the same thing to the loader, so uncomment one              only to change it. A key that is not commented out has no default, and nothing              loads until something supplies it.",
+            "Generated from the configuration type, so it lists every key that type can carry \
+             and nothing else. Each key shows the value it already has, commented out: a \
+             commented key and a deleted key mean the same thing to the loader, so uncomment one \
+             only to change it. A key that is not commented out has no default, and nothing \
+             loads until something supplies it.",
         );
         comment(&mut out, "");
         paragraph(
             &mut out,
             &format!(
-                "Three layers can supply any key below, and all three win over this file: the                  environment variable named above the key, a file named by that variable plus                  `{suffix}`, and a key-named file in the secrets directory. A secret belongs in                  one of those — this file is usually committed."
+                "Three layers can supply any key below, and all three win over this file: the \
+                 environment variable named above the key, a file named by that variable plus \
+                 `{suffix}`, and a key-named file in the secrets directory. A secret belongs in \
+                 one of those — this file is usually committed."
             ),
         );
 

@@ -306,9 +306,10 @@ impl<'a> Cli<'a> {
     ///
     /// Prints the rendering to stdout with exactly one trailing newline, since the renderings
     /// themselves disagree about whether they end in one, and returns [`ExitCode::SUCCESS`]. On any
-    /// failure it prints the message to stderr and returns [`ExitCode::FAILURE`]. Nothing is
-    /// written to stdout on failure, so a step redirecting into a committed file leaves it
-    /// untouched rather than half-written.
+    /// failure it prints the message to stderr and returns [`ExitCode::FAILURE`], and writes
+    /// nothing to stdout. A shell redirect truncates its target before this runs, so a step that
+    /// regenerates a committed file should write to a temporary file and replace the target only
+    /// on success.
     #[must_use]
     pub fn main(&self, schema: Schema) -> ExitCode {
         let request = match Request::from_env() {

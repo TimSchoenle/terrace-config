@@ -17,6 +17,7 @@ libfuzzer_sys::fuzz_target!(|data: &str| terrace_config_fuzz::oracle::env_load::
 #[cfg(not(fuzzing))]
 fn main() {
     eprintln!(
-        "built without --cfg fuzzing; run this through `cargo +nightly fuzz run env_load`          or replay the corpus with `cargo test`"
+        "built without --cfg fuzzing; run this through `cargo +nightly fuzz run env_load` \
+         or replay the corpus with `cargo test`"
     );
 }

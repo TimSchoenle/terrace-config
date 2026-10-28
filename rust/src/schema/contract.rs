@@ -27,9 +27,10 @@
 //! would flag all of them.
 //!
 //! [`External`] is where those are declared, and it is deliberately a *positive* declaration rather
-//! than a suppression list. A variable named in [`External::env`] is checked like any other key:
-//! its type is known, so a chart passing `PORT: "http"` fails the same gate that a chart passing
-//! `PORTFOLIO_ISR__TTL_SECS: "soon"` fails. Only [`External::ignore`] suppresses, and it exists for
+//! than a suppression list. A variable named in [`External::env`] is checked like any other key,
+//! as far as its published constraints allow: one declared with an integer type makes a chart
+//! passing `PORT: "http"` fail the same gate that a chart passing `PORTFOLIO_ISR__TTL_SECS: "soon"`
+//! fails, and one declared with no type is accounted for but not type-checked. Only [`External::ignore`] suppresses, and it exists for
 //! the variables that genuinely have no owner here, such as an operator's `TZ` or a base image's
 //! `PATH`.
 //!
@@ -862,8 +863,8 @@ impl ContractBuilder {
     /// [`Key::required`](super::Key::required) says some layer must supply the key, and the loader
     /// takes the environment or a mounted file just as readily.
     ///
-    /// So a chart supplying a required **secret** from a mounted file, which is the only way to
-    /// supply a secret and the arrangement the secrets-directory layer exists for, renders a
+    /// So a chart supplying a required **secret** from a mounted file, which is the recommended way
+    /// to supply a secret and the arrangement the secrets-directory layer exists for, renders a
     /// document that a `required` list refuses and a deployment that starts. Turning it on for a
     /// contract asks a validator to reject correct charts.
     ///

@@ -17,6 +17,7 @@ libfuzzer_sys::fuzz_target!(|data: &str| terrace_config_fuzz::oracle::secrets_di
 #[cfg(not(fuzzing))]
 fn main() {
     eprintln!(
-        "built without --cfg fuzzing; run this through `cargo +nightly fuzz run secrets_dir`          or replay the corpus with `cargo test`"
+        "built without --cfg fuzzing; run this through `cargo +nightly fuzz run secrets_dir` \
+         or replay the corpus with `cargo test`"
     );
 }

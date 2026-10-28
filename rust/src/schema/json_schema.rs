@@ -209,8 +209,8 @@ impl JsonSchema {
     ///
     /// On for an editor validating a hand-written `config.toml`, where the document is the only
     /// layer there is. Off for a [`Contract`](super::Contract), whose reader is checking what a
-    /// chart rendered, because a chart supplying a required *secret* from a mounted file, which is
-    /// the only way to supply a secret, renders a document that fails this and a deployment that
+    /// chart rendered, because a chart supplying a required *secret* from a mounted file, the
+    /// recommended way to supply one, renders a document that fails this and a deployment that
     /// starts. That consumer checks [`Key::required`] across every layer it can see instead, which
     /// is where the evidence is.
     #[must_use]

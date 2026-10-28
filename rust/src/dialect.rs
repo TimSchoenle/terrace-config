@@ -2,7 +2,10 @@
 //!
 //! Every name this crate reads or reports is derived from one [`Dialect`]: the prefix, the nesting
 //! separator, the `_FILE` suffix, and the handful of keys that are read before the layers exist.
-//! Nothing else about a deployment's spelling is configurable.
+//! Apart from the configuration-file and secrets-directory variable names, which
+//! [`Terrace::config_var`](crate::Terrace::config_var) and
+//! [`Terrace::secrets_dir_var`](crate::Terrace::secrets_dir_var) override, nothing else about a
+//! deployment's spelling is configurable.
 
 use std::collections::{BTreeMap, BTreeSet};
 
