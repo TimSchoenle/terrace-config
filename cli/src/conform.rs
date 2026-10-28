@@ -181,7 +181,8 @@ fn reload_refusals(contract: &Contract) -> Vec<Violation> {
         violations.push(Violation {
             rule: "refusal 12",
             at: "/schema/reload/layers".to_owned(),
-            detail: "`mode: rebuild` watches no layer, which is `none` spelled so that it looks                      like support"
+            detail: "`mode: rebuild` watches no layer, which is `none` spelled so that it looks \
+                     like support"
                 .to_owned(),
         });
     }
@@ -202,7 +203,8 @@ fn reload_refusals(contract: &Contract) -> Vec<Violation> {
                 rule: "refusal 11",
                 at: at.clone(),
                 detail: format!(
-                    "`{}` is reserved and published `live`, but it is read before the layers exist                      from an environment that cannot change",
+                    "`{}` is reserved and published `live`, but it is read before the layers exist \
+                     from an environment that cannot change",
                     key.path
                 ),
             });

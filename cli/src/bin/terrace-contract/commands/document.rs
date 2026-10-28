@@ -42,7 +42,9 @@ pub(crate) fn conform_command(
     let contract = Contract::from_json(&text)?;
     if let Some(ahead) = contract.schema_version_ahead() {
         eprintln!(
-            "note: the document declares `schema_version` {ahead}, and this build \n             understands {}. Every field this build knows still means what it \n             meant; there may be more here than was checked.",
+            "note: the document declares `schema_version` {ahead}, and this build \
+             understands {}. Every field this build knows still means what it \
+             meant; there may be more here than was checked.",
             terrace_contract::SCHEMA_VERSION
         );
     }

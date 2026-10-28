@@ -12,6 +12,7 @@ libfuzzer_sys::fuzz_target!(|data: &str| terrace_contract_fuzz::oracle::document
 #[cfg(not(fuzzing))]
 fn main() {
     eprintln!(
-        "built without --cfg fuzzing; run this through `cargo +nightly fuzz run document`          or replay the corpus with `cargo test`"
+        "built without --cfg fuzzing; run this through `cargo +nightly fuzz run document` \
+         or replay the corpus with `cargo test`"
     );
 }
