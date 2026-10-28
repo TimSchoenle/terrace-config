@@ -1,4 +1,5 @@
-# The container image §9.1 of `docs/contract-cli-plan.md` calls the channel that matters most.
+# The `terrace-contract` container image, the distribution channel a Docker build uses
+# (`docs/ARCHITECTURE.md`, "Distribution and versioning").
 #
 # It exists so that a build integration is language-agnostic: a build stage needs no toolchain, no
 # download step and no platform detection, only a `COPY --from`.
@@ -21,8 +22,8 @@
 # `scratch` rather than a distribution base. The binary is statically linked against musl and reads
 # no configuration of its own; what a base image would add is a package manager, a shell and a CVE
 # feed for a container whose whole job is to run one command and exit. The certificate bundle is not
-# needed either: nothing here opens a socket: `pull` shells out to `oras` and `cosign`, which is
-# §9.5's delegation, and those are not in this image.
+# needed either, because nothing here opens a socket: `pull` shells out to `oras` and `cosign`,
+# and those are not in this image.
 FROM scratch
 
 # The per-architecture binary buildx selected, staged by the workflow under the path buildx's own

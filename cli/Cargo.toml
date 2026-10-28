@@ -3,8 +3,8 @@
 # Its own workspace, and a sibling of the Rust implementation rather than a member of it. That is
 # the architectural claim in one file: the binary is not part of the Rust implementation, it is
 # *written in* Rust. A crate nested under the implementation would be read as that implementation's
-# tool by everyone who did not read `docs/contract-cli-plan.md`, and the Java side would be right
-# to treat it that way.
+# tool by everyone who did not read `docs/ARCHITECTURE.md`, and the Java side would be right to
+# treat it that way.
 #
 # The separate workspace follows `fuzz/`'s reasoning: entirely different dependency weight,
 # entirely different audience, and no reason for one lock file to arbitrate between a library that

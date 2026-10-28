@@ -16,7 +16,7 @@ use terrace_config::Terrace;
 
 let terrace = Terrace::new("MYAPP_");
 
-// At boot, and again from inside a reload — it re-reads at the moment it is called.
+// At boot, and again from inside a reload: it re-reads at the moment it is called.
 println!("{}", terrace.explain()?);
 ```
 
@@ -39,13 +39,13 @@ keys:
 
 That is "why is my mounted secret not being picked up" answered without a debugger: the mount is
 listed, and so is the stale variable sitting on top of it. `ShadowPolicy::Reject` refuses that
-particular pair at load time, but it deliberately says nothing about the TOML layer — a
+particular pair at load time, but it deliberately says nothing about the TOML layer: a
 checked-in `config.toml` overridden by an environment variable is an ordinary, intended override,
 ordinary until it is the one you did not know about.
 
 Three properties are worth knowing before you wire it into a boot log:
 
-- **It holds no configuration value.** Not redacted on the way out — never recorded. There is no
+- **It holds no configuration value.** Not redacted on the way out: never recorded. There is no
   field to leak, so `Display`, `Debug` and anything built from the accessors are safe by
   construction. The one thing this costs is that an unparseable TOML fragment is reported as
   `not valid TOML` with no reason attached: a parse error quotes the line it failed on, and that
@@ -54,7 +54,7 @@ Three properties are worth knowing before you wire it into a boot log:
 - **It does not fail for the reason you are running it.** `explain` assembles under
   `ShadowPolicy::LastWins` whatever policy you set, so a configuration `load` *refuses* can still
   be explained, and the doubly-supplied key is reported as one key with two sources.
-- **It reports what the environment did**, not what the type can carry — keys nothing supplied
+- **It reports what the environment did**, not what the type can carry: keys nothing supplied
   are absent. [`schema`](SCHEMA.md) answers the other half, and answers it without reading anything.
 
 For a machine rather than a log, walk it instead of printing it:
@@ -72,7 +72,7 @@ for origin in explanation.contested() {
 ```
 
 With the `testing` feature it is on the jail too, which is what lets a test assert the layer and
-not only the value — a `jail.secret(…)` that a leftover `jail.env_key(…)` is shadowing loads
+not only the value: a `jail.secret(…)` that a leftover `jail.env_key(…)` is shadowing loads
 perfectly well and is testing nothing:
 
 ```rust,ignore

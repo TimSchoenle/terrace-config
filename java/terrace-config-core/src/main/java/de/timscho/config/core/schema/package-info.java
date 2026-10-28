@@ -5,7 +5,7 @@
  *
  * <p>Every other rendering (Markdown, a commented {@code config.toml}, a standalone JSON Schema,
  * image labels) is a pure function of the published document and is {@code terrace-contract
- * render}'s, never this package's ({@code docs/contract-cli-plan.md} §2).
+ * render}'s, never this package's ({@code docs/ARCHITECTURE.md}, "The seam").
  *
  * <p>{@code @NullMarked}: every reference type in this package is non-null unless explicitly
  * marked {@link org.jspecify.annotations.Nullable @Nullable}.

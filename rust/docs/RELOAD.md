@@ -57,7 +57,7 @@ Behaviour worth knowing:
 
 - **`build` must return once it has stopped.** The replacement is not built until the old future
   completes, so the previous listener has released its address before the new one binds it.
-- **Everything `build` constructs is rebuilt** — pool, state, router, listener, background tasks.
+- **Everything `build` constructs is rebuilt**: pool, state, router, listener, background tasks.
   Process-global installations made before `run` (a `tracing` subscriber, a metrics recorder) are
   not, and changing the configuration that drives those still needs a restart.
 - **A failed or no-op reload changes nothing.** If the new configuration cannot be loaded, or
@@ -66,13 +66,13 @@ Behaviour worth knowing:
 - **Changes are debounced** for 500 ms by default, since one logical volume update fires several
   filesystem events. Use `reload::run_with` and `reload::Debounce` to choose another window.
 
-Change detection compares the merged figment value, not your config struct — a struct holding a
+Change detection compares the merged figment value, not your config struct: a struct holding a
 `secrecy::SecretString` cannot implement `PartialEq` at all.
 
 ## Keys only a restart applies
 
-Not every value a rebuild re-reads is one it should apply. A key read before `reload::run` — the
-`tracing` filter, the metrics endpoint — is never applied by a rebuild, and one whose change under
+Not every value a rebuild re-reads is one it should apply. A key read before `reload::run` (the
+`tracing` filter, the metrics endpoint) is never applied by a rebuild, and one whose change under
 live traffic is unsafe, such as a storage backend, should not be. A deployment that rolls its pods
 on every change never notices; one that relies on in-place reloads leaves those keys changed on
 disk and never applied.
@@ -116,7 +116,7 @@ async fn main() -> Result<(), ServiceError> {
 - **`live` is always something you wrote.** A key no `#[config(reload = "…")]` covers is published
   `restart`. On a struct the attribute covers every field and every nested type; on a field, that
   key or everything under it.
-- **`restart` wins wherever it is written** — on the field, on its struct, or on a nested type's
+- **`restart` wins wherever it is written**: on the field, on its struct, or on a nested type's
   own declaration. A key that must be `live` inside a `restart` struct is expressed by moving the
   `restart` down to the fields that need it.
 - **A restart key keeps its boot value across every rebuild.** `Terrace::reloader` captures the
@@ -127,7 +127,7 @@ async fn main() -> Result<(), ServiceError> {
 - **A restart key's new value is still checked.** A reload extracts the configuration as it is on
   disk before pinning, so a value that would fail the next boot fails this reload loudly now.
 - **The declaration and the loader agree or refuse.** `Terrace::reloader` refuses on a loader that
-  did not declare a rebuild, and `Terrace::load_watched` refuses on one that did — it would rebuild
+  did not declare a rebuild, and `Terrace::load_watched` refuses on one that did: it would rebuild
   with every key, which is not what the contract says.
 - **Reserved keys are always `restart`**, and so is every key under `ReloadSupport::none()`.
 

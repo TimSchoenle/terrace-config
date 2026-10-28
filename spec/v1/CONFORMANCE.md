@@ -16,7 +16,7 @@ reading the producer's source.
 Every document the implementation emits:
 
 - validates against [`contract.schema.json`](contract.schema.json);
-- satisfies every **MUST** in [`FORMAT.md`](FORMAT.md), including the twelve refusals — a producer
+- satisfies every **MUST** in [`FORMAT.md`](FORMAT.md), including the twelve refusals: a producer
   that emits a secret with a default is not tier 1 however well-formed the JSON is;
 - carries a `producer` block naming the implementation and the library whose environment reads its
   `text_constraint` patterns were measured against;
@@ -43,8 +43,8 @@ implementation publishes the same spellings.** That is `env`, `env_file`, `secre
 This is the tier worth aiming at, and the one that costs a decision. Deriving a variable name from
 a key path is not the hard part; agreeing about the cases where it *cannot* be derived is:
 
-- a path that does not survive the case fold — `maxAgeSecs` under a lower-casing environment layer
-  — is `env: null`, `unreachable: unnameable`, not a name that looks plausible and reaches nothing;
+- a path that does not survive the case fold, `maxAgeSecs` under a lower-casing environment layer,
+  is `env: null`, `unreachable: unnameable`, not a name that looks plausible and reaches nothing;
 - a path already carrying the nesting separator is the same case;
 - a spelling that collides with another key's indirection variable is `unreachable: indirection`,
   and a producer refuses to build.
@@ -66,7 +66,7 @@ fields are derived from both:
 |---|---|
 | `text_constraint` | the loader's environment reads, measured |
 | `text_form` | mostly the type, but `structured` is the loader's spelling of a list |
-| `constraint` | the producer's type vocabulary — an unsigned 16-bit integer has no Java spelling |
+| `constraint` | the producer's type vocabulary: an unsigned 16-bit integer has no Java spelling |
 | `ty` | the producer's language, by definition |
 | `json_schema` | `constraint`, so all of the above |
 | `schema.loader[]` | which variables the loader itself reads |
@@ -84,7 +84,7 @@ spec/v1/conformance/<case>/
   rendered/        what the shared toolchain renders from it — producer cases only
 ```
 
-Each case is a complete, real document — not a fragment and not a hand-edited one. That is
+Each case is a complete, real document, not a fragment and not a hand-edited one. That is
 deliberate: the corpus is the first thing somebody implementing this in another language reads, and
 a document with the fields sorted or the awkward parts trimmed teaches the wrong shape.
 
@@ -97,13 +97,13 @@ order, escaping and whitespace are what the producer actually emits.
 
 Documents the reference implementation emits, from types it derived them from. Each carries a
 `rendered/` directory of goldens with exactly one author: that implementation's `TERRACE_SPEC_BLESS`
-run. Everything else that renders is checked against those bytes, and never blesses them — two
+run. Everything else that renders is checked against those bytes, and never blesses them: two
 renderers that can each rewrite the expectation agree by construction and prove nothing.
 
 | Case | What it pins |
 |---|---|
 | [`minimal`](conformance/minimal/) | The smallest document that is still a contract: one key, no annotations, no external surface. |
-| [`full-surface`](conformance/full-surface/) | Every key field a producer can be asked to fill — secret, note, alias, choice, bounded number, container-of-choice, nested struct, required key, reserved loader variable, declared and ignored externals. |
+| [`full-surface`](conformance/full-surface/) | Every key field a producer can be asked to fill: secret, note, alias, choice, bounded number, container-of-choice, nested struct, required key, reserved loader variable, declared and ignored externals. |
 | [`unnameable-key`](conformance/unnameable-key/) | A key no variable can name, and the `unreachable` reason that says which kind. |
 | [`required-entries`](conformance/required-entries/) | A map's required entries supplied at build time rather than by its type: `required` inside `constraint`, a default the refinement rejects turned into a required key, and the tables above it made required in the rendered schema. |
 | [`entry-names`](conformance/entry-names/) | A map's entry names held to a pattern supplied at build time: `propertyNames` inside `constraint`, required entries the pattern admits, and the document published at the lowest `schema_version` that holds the keyword. |
@@ -114,7 +114,7 @@ renderers that can each rewrite the expectation agree by construction and prove 
 ### Consumer cases
 
 The other half, and the half a producer-only corpus cannot hold: documents a **consumer** has to
-survive. No producer in this repository can emit any of them — that is what they are for — so they
+survive. No producer in this repository can emit any of them (that is what they are for), so they
 are hand-written, carry no `rendered/`, and are held by assertions about what a reader must do
 rather than by goldens.
 
@@ -137,7 +137,7 @@ cargo test --all-features --test spec --manifest-path rust/Cargo.toml
 ```
 
 Four checks, failing for different reasons. Two validate what the crate renders *now* against the
-meta-schema — one for the whole envelope, one for the `schema` half on its own, since that half is
+meta-schema: one for the whole envelope, one for the `schema` half on its own, since that half is
 published as an artefact in its own right. One validates what was *blessed*, which is the failure a
 corpus alone cannot catch: an expectation stored while wrong. One compares the two.
 
@@ -164,11 +164,11 @@ cd java
 Three checks per case (`minimal`, `full-surface`, `unnameable-key`, `required-entries`,
 `entry-names`, `element-patterns`), for a
 different reason each:
-the rendering validates against the meta-schema (tier 1); every dialect spelling — `env`, both file
-forms, every alias list, `unreachable` — agrees with this same shared corpus (tier 2); and the
+the rendering validates against the meta-schema (tier 1); every dialect spelling (`env`, both file
+forms, every alias list, `unreachable`) agrees with this same shared corpus (tier 2); and the
 rendering is byte-identical, `producer.version` substituted, against a Java-only golden this module
 keeps for itself under `terrace-config-spec-tck/src/test/resources/conformance-java/` (tier 3
-against itself — the corpus above is Rust-authored and stays that way; a second implementation
+against itself: the corpus above is Rust-authored and stays that way; a second implementation
 comparing itself byte-for-byte against it would be comparing against another language's type names
 and JSON Schema rendering, which is exactly what tier 2 exists to *not* require). Bless a changed
 rendering the same way:
@@ -195,7 +195,7 @@ producer to read beside it.
 1. **Pick `producer.name` and `producer.loader`.** The first identifies your code, the second the
    library whose environment reads you are about to measure. Two implementations wrapping the same
    library share the second and not the first.
-2. **Measure the reads.** Not derive them — measure. Feed the binder `+5`, `007`, `1_000`, `0x1F`,
+2. **Measure the reads.** Not derive them: measure. Feed the binder `+5`, `007`, `1_000`, `0x1F`,
    `1e3`, `TRUE`, `yes`, `1`, values with leading and trailing whitespace, and a list in whatever
    spellings it might take, and write down what it accepts. Every pattern you publish must be a
    superset of what you measured; a pattern narrower than the loader stops a deployment that was
@@ -213,7 +213,7 @@ vocabulary from one data point.
 
 **How a `structured` key is spelled in one variable.** `figment` takes a TOML literal, so
 `PORTFOLIO_GITHUB__REPOS=["a","b"]` loads and `a,b` does not. Spring's relaxed binding takes
-comma-separated values, and also takes indexed names — `..._REPOS_0_`, `..._REPOS_1_` — which are
+comma-separated values, and also takes indexed names (`..._REPOS_0_`, `..._REPOS_1_`), which are
 *variables this format has no key for at all*. The second is the real problem: step 4 of
 [Reading a container](FORMAT.md#reading-a-container) rejects a variable carrying the prefix that
 matches no key, so a correct Spring deployment would fail the gate. Neither `text_form` nor
@@ -224,7 +224,7 @@ but it should be written against a real binder, not against this paragraph.
 
 `terrace-java` (the vanilla Java loader, distinct from Spring's relaxed binding above) currently
 takes neither spelling: its environment and file layers hand every value to the bind step as a bare
-string, and nothing parses a literal out of it — see [FORMAT.md's `terrace-java` table][terrace-java-reads].
+string, and nothing parses a literal out of it: see [FORMAT.md's `terrace-java` table][terrace-java-reads].
 A `structured` key is reachable through this loader's TOML document layer only. Whether to teach the
 environment layer a literal parse, and if so which one, is exactly this same open question, not yet
 answered for a second loader either.
@@ -232,8 +232,8 @@ answered for a second loader either.
 [terrace-java-reads]: FORMAT.md#terrace-java-reads
 
 **Whether `text_form` needs a value for a fixed-point or decimal type.** A 64-bit float is
-`text_form: unknown` in the reference implementation — no measured pattern describes what its parse
-accepts — and a Java implementation over `BigDecimal` may be able to say more.
+`text_form: unknown` in the reference implementation (no measured pattern describes what its parse
+accepts), and a Java implementation over `BigDecimal` may be able to say more.
 
 **Whether `producer` should carry the loader's version.** The reads are measured against a specific
 release, and a binder that relaxes its parsing in a minor version silently invalidates every pattern

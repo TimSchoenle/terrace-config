@@ -13,7 +13,7 @@ section and the version bump release-please proposes for the package the change 
 
 `spec/` is shared. A change to `spec/v1/FORMAT.md`, `spec/v1/CONFORMANCE.md` or the meta-schema
 that affects more than one implementation ships together with every corpus update it causes, in
-the same pull request — not as a follow-up. `spec/v1/CONFORMANCE.md` explains why: a re-blessed
+the same pull request, not as a follow-up. `spec/v1/CONFORMANCE.md` explains why: a re-blessed
 corpus that lands separately from the spec change it was caused by lets the two drift.
 
 ## Writing
@@ -40,6 +40,6 @@ Each implementation documents its own commands in its own README. Today:
 - `rust/README.md` is generated the same way, from [`.github/templates/README.md.hbs`](../.github/templates/README.md.hbs).
 - `java/README.md` is generated the same way, from [`.github/templates/java-README.md.hbs`](../.github/templates/java-README.md.hbs).
 - `cli/README.md` is generated the same way, from [`.github/templates/cli-README.md.hbs`](../.github/templates/cli-README.md.hbs).
-- `docs/` at the root holds repository-level documents only — this file and the migration plan
-  and progress notes. Documents about a specific implementation live under that implementation's
+- `docs/` at the root holds repository-level documents only: this file and
+  [`ARCHITECTURE.md`](ARCHITECTURE.md). Documents about a specific implementation live under that implementation's
   own `docs/` directory instead (for example `rust/docs/`).
