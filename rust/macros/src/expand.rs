@@ -4,11 +4,11 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::punctuated::Punctuated;
-use syn::{Attribute, DeriveInput, Expr, Field, Fields, Meta, Path, Token};
+use syn::{Attribute, DeriveInput, Field, Fields, Meta, Path, Token};
 
-use crate::attrs::{attr_metas, doc_comment, nested_metas, string_value};
+use crate::attrs::{ReloadClass, attr_metas, doc_comment, nested_metas, string_value};
 use crate::container::Container;
-use crate::field::{ElementKind, FieldOpts};
+use crate::field::{ElementKind, FieldOpts, optional};
 use crate::types::{
     describes_something, element_type, is_option, not_a_container, type_text, unwrap_option,
 };
@@ -169,38 +169,6 @@ pub(crate) fn within_reload(
     quote! { sink.reload(#class, |sink| { #body }); }
 }
 
-/// Whether a rebuild applies a change, as `#[config(reload = "…")]` spells it.
-#[derive(Clone, Copy)]
-pub(crate) enum ReloadClass {
-    /// `"live"`.
-    Live,
-    /// `"restart"`.
-    Restart,
-}
-
-impl ReloadClass {
-    pub(crate) fn parse(value: &Expr) -> syn::Result<Self> {
-        match string_value(value)?.as_str() {
-            "live" => Ok(Self::Live),
-            "restart" => Ok(Self::Restart),
-            other => Err(syn::Error::new_spanned(
-                value,
-                format!(
-                    "`reload = \"{other}\"` names no reload class. It is `\"live\"`, for a value \
-                     a rebuild applies, or `\"restart\"`, for one only a process start applies."
-                ),
-            )),
-        }
-    }
-
-    pub(crate) fn tokens(self, krate: &Path) -> TokenStream2 {
-        match self {
-            Self::Live => quote! { #krate::schema::Reload::Live },
-            Self::Restart => quote! { #krate::schema::Reload::Restart },
-        }
-    }
-}
-
 /// A field's keys, before any `#[config(reload = "…")]` scope is put around them.
 pub(crate) fn field_body(
     field: &Field,
@@ -299,12 +267,4 @@ pub(crate) fn field_body(
         }
     };
     Ok(quote! { sink.repeated(#leaf, #reported); })
-}
-
-/// `inner` as an `Option` expression, which is how every optional field of a `Leaf` is emitted.
-pub(crate) fn optional(inner: Option<TokenStream2>) -> TokenStream2 {
-    inner.map_or_else(
-        || quote! { ::core::option::Option::None },
-        |tokens| quote! { ::core::option::Option::Some(#tokens) },
-    )
 }

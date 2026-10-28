@@ -1,5 +1,8 @@
-//! Small readers over `syn` attributes and expressions shared by the container and field parsers.
+//! Small readers over `syn` attributes and expressions shared by the container and field parsers,
+//! and the attribute values both of them accept.
 
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, ExprLit, Lit, Meta, Path, Token, Type};
 
@@ -99,4 +102,36 @@ pub(crate) fn doc_comment(attrs: &[Attribute]) -> String {
         lines.pop();
     }
     lines.join("\n")
+}
+
+/// Whether a rebuild applies a change, as `#[config(reload = "…")]` spells it.
+#[derive(Clone, Copy)]
+pub(crate) enum ReloadClass {
+    /// `"live"`.
+    Live,
+    /// `"restart"`.
+    Restart,
+}
+
+impl ReloadClass {
+    pub(crate) fn parse(value: &Expr) -> syn::Result<Self> {
+        match string_value(value)?.as_str() {
+            "live" => Ok(Self::Live),
+            "restart" => Ok(Self::Restart),
+            other => Err(syn::Error::new_spanned(
+                value,
+                format!(
+                    "`reload = \"{other}\"` names no reload class. It is `\"live\"`, for a value \
+                     a rebuild applies, or `\"restart\"`, for one only a process start applies."
+                ),
+            )),
+        }
+    }
+
+    pub(crate) fn tokens(self, krate: &Path) -> TokenStream2 {
+        match self {
+            Self::Live => quote! { #krate::schema::Reload::Live },
+            Self::Restart => quote! { #krate::schema::Reload::Restart },
+        }
+    }
 }

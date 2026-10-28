@@ -6,9 +6,8 @@ use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{Expr, ExprLit, ExprUnary, Field, Lit, Meta, MetaList, Path, Token, Type, UnOp};
 
-use crate::attrs::{attr_metas, named_type, nested_metas, path_ident, string_value};
+use crate::attrs::{ReloadClass, attr_metas, named_type, nested_metas, path_ident, string_value};
 use crate::container::Container;
-use crate::expand::{ReloadClass, optional};
 use crate::types::type_text;
 
 /// The spellings behind `values("trace", "debug")`, checked for the two ways such a list says
@@ -694,4 +693,12 @@ impl FieldOpts {
         let name = raw.strip_prefix("r#").unwrap_or(&raw);
         Ok(container.rename_all.apply(name))
     }
+}
+
+/// `inner` as an `Option` expression, which is how every optional field of a `Leaf` is emitted.
+pub(crate) fn optional(inner: Option<TokenStream2>) -> TokenStream2 {
+    inner.map_or_else(
+        || quote! { ::core::option::Option::None },
+        |tokens| quote! { ::core::option::Option::Some(#tokens) },
+    )
 }

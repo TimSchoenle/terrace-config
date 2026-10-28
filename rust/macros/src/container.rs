@@ -3,8 +3,7 @@
 
 use syn::{DeriveInput, Expr, Meta, Path};
 
-use crate::attrs::{attr_metas, nested_metas, path_ident, string_value};
-use crate::expand::ReloadClass;
+use crate::attrs::{ReloadClass, attr_metas, nested_metas, path_ident, string_value};
 
 /// Options read from the container's own attributes.
 pub(crate) struct Container {
