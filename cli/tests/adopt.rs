@@ -2,8 +2,9 @@
 //!
 //! The planning and the writing are tested beside the code in `helm::adopt`. What only the binary
 //! can show is which code a failure leaves with, and that depends on where in the handler the
-//! failure happens. A chart tree that cannot be read, read before the handler's own error path,
-//! reaches `main` and exits 2 in every mode.
+//! failure happens. The handler reads the chart tree inside its own error path, so a tree that
+//! cannot be read exits 1 by default and with `--diff` or `--write`, and 2 only with `--check`;
+//! it never reaches `main`, which would exit 2 in every mode.
 
 #![cfg(feature = "cli")]
 

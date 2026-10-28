@@ -83,12 +83,11 @@ pub struct Contract {
     pub terrace_contract: u32,
     /// Which implementation wrote this document, and which loader it describes.
     ///
-    /// Optional here and required by `spec/v1/contract.schema.json`, and the asymmetry is
-    /// deliberate. Envelope 1 permits documents without it, so they are legal `terrace_contract: 1`
-    /// bytes that a reader as strict as the writer would refuse, and chart repositories vendor such
-    /// documents. A reader that refuses a document it should have read is the failure this module
-    /// opens by naming. `conform` and `validate` still require it, through the meta-schema, which
-    /// is where "this producer is not emitting what it must" belongs.
+    /// Envelope 1 requires it, and `spec/v1/contract.schema.json` says so. It is optional here for
+    /// reader compatibility only: chart repositories vendor documents that lack it, and a reader
+    /// that refuses a document it could have read is the failure this module opens by naming.
+    /// Such a document is not a valid envelope. `conform` and `validate` refuse it through the
+    /// meta-schema, which is where "this producer is not emitting what it must" belongs.
     ///
     /// [`None`] is not the same as absent to a consumer, either: it means the loader whose
     /// environment reads every `text_constraint` here was measured against is unknown, so the range
