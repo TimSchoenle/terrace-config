@@ -1,8 +1,8 @@
 // Applied by every module under java/ (directly, or transitively through
-// terrace-config.lombok-conventions): the Java 25 toolchain, UTF-8 encoding, the documentation
-// gate, JUnit 5 + AssertJ test dependencies, the JetBrains annotations vocabulary, Checkstyle and
-// Spotless, for every module, expressed once here instead of through cross-project
-// configuration. See java/README.md's "buildSrc" section.
+// terrace-config.lombok-conventions): the Java toolchain `javaVersion` in gradle.properties names,
+// UTF-8 encoding, the documentation gate, JUnit 5 + AssertJ test dependencies, the JetBrains
+// annotations vocabulary, Checkstyle and Spotless, expressed once here instead of through
+// cross-project configuration. See java/docs/BUILD.md.
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.plugins.quality.Checkstyle
 
@@ -14,7 +14,7 @@ plugins {
 
 // Precompiled script plugins can't use the type-safe `libs.xxx` accessors (Gradle has to assume
 // the plugin might be applied to a project with a different catalog shape), only this
-// lower-level, string-keyed lookup; see java/README.md's "buildSrc" section.
+// lower-level, string-keyed lookup; see java/docs/BUILD.md.
 val libs = extensions.getByType(VersionCatalogsExtension::class.java).named("libs")
 
 repositories {
@@ -28,9 +28,12 @@ repositories {
 // already provides is for the tool's own runtime classpath, not for this.
 val checkstyleConfig: Configuration by configurations.creating
 
+// gradle.properties is the one place the version is stated, because the README's JDK badge is
+// rendered from the same line. Read eagerly: a missing property fails here, where a lazy read
+// would leave the toolchain unset and build on whatever JVM runs Gradle.
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(25))
+        languageVersion.set(JavaLanguageVersion.of(providers.gradleProperty("javaVersion").get()))
     }
 }
 

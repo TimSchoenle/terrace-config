@@ -38,7 +38,7 @@ spec/helm/
     declaration.schema.json   validates config-contract.yaml, for editors
 ```
 
-The `@config` marker language joins this directory in a later change, under the same rules.
+This directory does not specify the `@config` marker language.
 
 ## Using the schemas
 

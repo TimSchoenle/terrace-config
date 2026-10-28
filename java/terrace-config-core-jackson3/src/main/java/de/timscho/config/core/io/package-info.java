@@ -1,6 +1,6 @@
 /**
  * The Jackson-3-based {@code json} codec for {@link de.timscho.config.core.model.Contract}; see
- * java/README.md's "Dual Jackson 2 / 3 support".
+ * java/docs/JACKSON.md.
  *
  * <p>{@code @NullMarked}: every reference type in this package is non-null unless explicitly
  * marked {@code @Nullable}. Nothing here needs {@code @Nullable}: every public method either

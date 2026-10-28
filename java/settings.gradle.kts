@@ -1,6 +1,6 @@
-// Aggregator only, with no code of its own. Building it builds every module in dependency order;
-// releasing it releases nothing, since each artefact below is versioned and released
-// independently (see release-please-config.json once the Java packages are wired in).
+// Aggregator only, with no code of its own. Building it builds every module in dependency order.
+// Every module shares the version in gradle.properties, and release-please's `java` package
+// releases them together.
 
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"

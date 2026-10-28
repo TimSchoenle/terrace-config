@@ -1,13 +1,13 @@
 <!--
-Generated from .github/templates/root-README.md.hbs — edit that file, not this one.
+Generated from .github/templates/root-README.md.hbs. Edit that file, not this one.
 
 CI renders it on every pull request and commits the result back to the branch, the same way it
-does for rust/README.md and java/README.md. A push to `main` whose README.md does not match its
-template fails the `readme` job in .github/workflows/docs.yml.
+does for the READMEs under rust/, java/ and cli/. A push to `main` whose README.md does not match
+its template fails the `readme` job in .github/workflows/docs.yml.
 
-The payload is the one rust/README.md renders from: TimSchoenle/actions/actions/common/readme-variables
-reads rust/Cargo.toml and walks rust/docs/, merged over the output of
-`bash .github/scripts/readme-variables.sh`. This template reads only `repo`.
+The repository root has no manifest, so this template reads only `repo`, from the payload
+rust/README.md renders with. The one-line description below is authored here and is the text the
+GitHub repository description should match.
 
 This is the repository's front door: what the project is, its features, one table of
 implementations, and a link into each implementation's own README plus the spec.
@@ -30,7 +30,7 @@ prove what it renders is still read.
 three conformance tiers saying how closely one implementation's reads match another's. It exists
 because a chart's CI job holds an image digest and a `config.toml` it rendered itself, with no way
 to know whether the two agree. Rename a key in the service without updating the chart, and the
-deserialiser ignores what it does not recognise — the pod starts healthy on a compiled default
+deserialiser ignores what it does not recognise, and the pod starts healthy on a compiled default
 nobody chose.
 
 ## Features
@@ -64,7 +64,7 @@ nobody chose.
 |---|---|---|---|
 | [`rust/`](rust/README.md) | Rust | `figment` | The reference implementation. Regenerating a case on the same commit reproduces byte-identical output, and the shared conformance corpus in [`spec/v1/conformance/`](spec/v1/conformance/) is authored against it. |
 | [`terrace-config-java`](java/README.md) | Java | `terrace-java` | Byte-identical output across its own runs, and the same environment variable names, aliases, and file spellings as the Rust reference for a shared configuration shape, checked against that same corpus. |
-| [`terrace-config-spring`](java/README.md#terrace-config-spring-boot) | Java (Spring Boot) | `spring-boot` | Valid, schema-checked contracts under Spring's own relaxed binding, a dialect that deliberately differs from the other two (single-underscore nesting, indexed list variables, no loader-file layers) and is documented rather than reconciled. |
+| [`terrace-config-spring`](java/README.md#spring-boot) | Java (Spring Boot) | `spring-boot` | Valid, schema-checked contracts under Spring's own relaxed binding, a dialect that deliberately differs from the other two (single-underscore nesting, indexed list variables, no loader-file layers) and is documented rather than reconciled. |
 
 ### The spec
 

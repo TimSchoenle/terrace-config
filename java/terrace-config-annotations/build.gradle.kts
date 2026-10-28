@@ -10,7 +10,7 @@ description = "@TerraceConfig and the rest of the annotation vocabulary read by 
 // types (`@interface`) can't carry Lombok annotations at all, and adding the plugin would put
 // `lombok` (a compile-time-only jar, admittedly) on this module's classpath for no reason,
 // undermining the "nothing beyond the JDK reaches a consumer" guarantee this module exists to
-// make. See java/README.md's Lombok section.
+// make. See java/docs/BUILD.md's Lombok section.
 plugins {
     id("terrace-config.java-conventions")
     id("terrace-config.publish-conventions")
