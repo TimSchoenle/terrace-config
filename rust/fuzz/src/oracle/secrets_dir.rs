@@ -88,6 +88,15 @@ const SENTINEL: &str = ".sentinel_hidden";
 /// under an ordinary key. Only the contents give it away.
 const SENTINEL_BODY: &str = "terrace-fuzz-sentinel-must-not-be-read";
 
+/// Whether a file's contents resolve to [`SENTINEL_BODY`] once read.
+///
+/// Compared after the trimming contract, since that is the value the loader produces: a directive
+/// that supplies the body with a trailing newline, through any mechanism, puts it in the
+/// configuration legitimately.
+fn carries_sentinel(content: &str) -> bool {
+    expected_value(content) == SENTINEL_BODY
+}
+
 fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve(RESERVED)
 }
@@ -159,7 +168,8 @@ struct Model {
     fatal: bool,
     /// Two spellings normalised to one key, so the winner is directory read order.
     ambiguous: bool,
-    /// A directive named the sentinel, so its assertion no longer belongs to the loader.
+    /// A directive named the sentinel or supplied its body, so its assertion no longer belongs to
+    /// the loader.
     sentinel_shadowed: bool,
 }
 
@@ -218,7 +228,7 @@ pub fn check(data: &str) {
                     }
                     // A directive that writes the sentinel's own name, or its contents under
                     // some other name, is deciding the assertion instead of the loader.
-                    if name.eq_ignore_ascii_case(SENTINEL) || content == SENTINEL_BODY {
+                    if name.eq_ignore_ascii_case(SENTINEL) || carries_sentinel(&content) {
                         model.sentinel_shadowed = true;
                     }
                     match verdict(name) {
@@ -245,6 +255,9 @@ pub fn check(data: &str) {
                     }
                     let variable = format!("{PREFIX}{suffix}_FILE");
                     jail.env(&variable, root.join(&name).display());
+                    if carries_sentinel(&content) {
+                        model.sentinel_shadowed = true;
+                    }
 
                     if is_reserved(&format!("{PREFIX}{suffix}")) {
                         model.fatal = true;
@@ -270,6 +283,9 @@ pub fn check(data: &str) {
                         continue;
                     }
                     jail.env(&name, value);
+                    if value == SENTINEL_BODY {
+                        model.sentinel_shadowed = true;
+                    }
                     model.env.insert(key_path(suffix));
                 }
             }
