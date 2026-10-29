@@ -168,12 +168,29 @@ struct Model {
     fatal: bool,
     /// Two spellings normalised to one key, so the winner is directory read order.
     ambiguous: bool,
-    /// Keys a directive legitimately gave the sentinel's body. The loaded configuration may carry
-    /// the body once per key here, and not once more: one more is the planted file, leaked.
-    sentinel_keys: BTreeSet<String>,
+    /// How many copies of the sentinel's body a directive legitimately put under each key. The
+    /// loaded configuration may carry the body this many times in total, and not once more: one
+    /// more is the planted file, leaked.
+    sentinel_counts: BTreeMap<String, usize>,
 }
 
 impl Model {
+    /// Records that `key` may legitimately carry the sentinel's body `copies` times.
+    ///
+    /// Keeps the larger count when two spellings normalise to one key, because the winner is then
+    /// read order, and the bound must hold for either.
+    fn allow_sentinel(&mut self, key: String, copies: usize) {
+        if copies > 0 {
+            let allowed = self.sentinel_counts.entry(key).or_default();
+            *allowed = (*allowed).max(copies);
+        }
+    }
+
+    /// The most copies of the sentinel's body the loaded configuration may legitimately carry.
+    fn sentinel_bound(&self) -> usize {
+        self.sentinel_counts.values().sum()
+    }
+
     /// Whether any key arrives through more than one mechanism.
     fn collides(&self) -> bool {
         let files: BTreeSet<&String> = self.files.keys().collect();
@@ -231,7 +248,7 @@ pub fn check(data: &str) {
                         Verdict::Fatal => model.fatal = true,
                         Verdict::Key(key) => {
                             if carries_sentinel(&content) {
-                                model.sentinel_keys.insert(key.clone());
+                                model.allow_sentinel(key.clone(), 1);
                             }
                             // Two names normalising to one key (`AUTH` and `auth`) leave the
                             // winner to directory read order, which is not a property.
@@ -259,7 +276,7 @@ pub fn check(data: &str) {
                         continue;
                     }
                     if carries_sentinel(&content) {
-                        model.sentinel_keys.insert(key_path(suffix));
+                        model.allow_sentinel(key_path(suffix), 1);
                     }
                     if model.indirect.insert(key_path(suffix), content).is_some() {
                         model.ambiguous = true;
@@ -281,9 +298,13 @@ pub fn check(data: &str) {
                         continue;
                     }
                     jail.env(&name, value);
-                    if value == SENTINEL_BODY {
-                        model.sentinel_keys.insert(key_path(suffix));
-                    }
+                    // Counted in the value `figment::providers::Env` produces, not in the raw
+                    // text: it unquotes `"..."` and expands `[a, b]` and `{k = v}`, so one
+                    // variable can carry the body several times, or once without matching it.
+                    let parsed = value
+                        .parse::<Value>()
+                        .unwrap_or_else(|never| match never {});
+                    model.allow_sentinel(key_path(suffix), count_value(&parsed, SENTINEL_BODY));
                     model.env.insert(key_path(suffix));
                 }
             }
@@ -315,7 +336,7 @@ pub fn check(data: &str) {
         // supplies the same body under a real key cannot hide the planted copy behind it.
         if sentinel_planted {
             assert!(
-                count_value(&loaded.value, SENTINEL_BODY) <= model.sentinel_keys.len(),
+                count_value(&loaded.value, SENTINEL_BODY) <= model.sentinel_bound(),
                 "a dot-prefixed entry was read into the configuration under a rewritten key"
             );
         }

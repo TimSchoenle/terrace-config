@@ -1,0 +1,3 @@
+f:REAL=terrace-fuzz-sentinel-must-not-be-read
+e:OTHER="terrace-fuzz-sentinel-must-not-be-read"
+e:LIST=[terrace-fuzz-sentinel-must-not-be-read, terrace-fuzz-sentinel-must-not-be-read]
