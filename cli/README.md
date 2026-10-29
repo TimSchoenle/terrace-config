@@ -54,7 +54,7 @@ the document alone, and [`tests/corpus.rs`](tests/corpus.rs) fails if the two di
 
 ```bash
 docker run --rm -v "$PWD:/work" -w /work \
-  ghcr.io/timschoenle/terrace-contract:0.12 conform --tier 2 contract.json
+  ghcr.io/timschoenle/terrace-contract:0.13 conform --tier 2 contract.json
 ```
 
 ## Table of contents
@@ -95,20 +95,20 @@ It deliberately does not:
 The image is multi-architecture and signed keylessly:
 
 ```dockerfile
-FROM ghcr.io/timschoenle/terrace-contract:0.12 AS contract
+FROM ghcr.io/timschoenle/terrace-contract:0.13 AS contract
 ```
 
 The tag is the release series. Below `1.0` a minor release may break, so the series is
 `major.minor` and takes every fix and nothing else; from `1.0` it is the major alone.
 
 Each release also attaches four binaries, named
-`terrace-contract-0.12.0-<target>.tar.gz` (`.zip` on Windows), with `SHA256SUMS`
+`terrace-contract-0.13.0-<target>.tar.gz` (`.zip` on Windows), with `SHA256SUMS`
 and its signature beside them:
 
 ```bash
-curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.12.0/terrace-contract-0.12.0-x86_64-unknown-linux-musl.tar.gz
-curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.12.0/SHA256SUMS
-curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.12.0/SHA256SUMS.sigstore.json
+curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.0/terrace-contract-0.13.0-x86_64-unknown-linux-musl.tar.gz
+curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.0/SHA256SUMS
+curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.0/SHA256SUMS.sigstore.json
 cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
   --certificate-identity 'https://github.com/TimSchoenle/terrace-config/.github/workflows/release-cli.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
@@ -167,7 +167,7 @@ In a Docker build, the contract-producing stage is the only language-specific pa
 Boot service's Dockerfile differs only in its `contract-builder` stage:
 
 ```dockerfile
-FROM ghcr.io/timschoenle/terrace-contract:0.12 AS terrace-contract
+FROM ghcr.io/timschoenle/terrace-contract:0.13 AS terrace-contract
 
 # The image is built from `scratch` and has no shell, so the binary runs in a stage that has one.
 FROM debian:trixie-slim AS contract

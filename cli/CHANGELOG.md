@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.13.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.12.0...terrace-contract-v0.13.0) (2026-10-29)
+
+
+### Features
+
+* **cli:** add gate 2b, requiredness, and envFrom to the container environment ([01ea010](https://github.com/TimSchoenle/terrace-config/commit/01ea0103f4dc5e506299de6d2fd56f14d4d1ce78))
+
+
+### Code Refactoring
+
+* **cli:** move inline tests out and split the five largest modules ([#336](https://github.com/TimSchoenle/terrace-config/issues/336)) ([0bf13a5](https://github.com/TimSchoenle/terrace-config/commit/0bf13a5642643445d1209ca2acc543198bab49ca))
+* **cli:** split the binary into a module tree ([#334](https://github.com/TimSchoenle/terrace-config/issues/334)) ([6484c7c](https://github.com/TimSchoenle/terrace-config/commit/6484c7caddddaa60754dc080881445a32c4b67e1))
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.60.0 ([#327](https://github.com/TimSchoenle/terrace-config/issues/327)) ([d9647a7](https://github.com/TimSchoenle/terrace-config/commit/d9647a7660514cac7d22f3e6d9b3a89c076cee5a))
+* **deps:** update rust crate jsonschema to v0.60.1 ([#343](https://github.com/TimSchoenle/terrace-config/issues/343)) ([3a2dc0b](https://github.com/TimSchoenle/terrace-config/commit/3a2dc0b99b72803046b14151192e5c6783eec48d))
+* **deps:** update rust crate saphyr-parser to 0.3.0 ([#347](https://github.com/TimSchoenle/terrace-config/issues/347)) ([1e821b5](https://github.com/TimSchoenle/terrace-config/commit/1e821b5ea550d51b4d7d5fe88c9e6a0dbf145470))
+
 ## [0.12.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.11.1...terrace-contract-v0.12.0) (2026-10-20)
 
 
