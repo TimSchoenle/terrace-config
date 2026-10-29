@@ -204,8 +204,8 @@ rule every consumer in every language reimplements a vocabulary of one language'
 
 **`required` is not JSON Schema's `required`.** JSON Schema's says *this document must carry the
 property*. This one says *some layer must supply the key*, and the loader takes the environment or
-a mounted file just as readily. A required **secret** is supplied by a mount, the only way to
-supply a secret, so the rendered document does not carry it at all. A consumer checks `required`
+a mounted file just as readily. A required **secret** is supplied by a mount, the recommended
+way, or by the environment, and never by the rendered document, which does not carry it at all. A consumer checks `required`
 per key across every layer it can see, and can then say "no layer supplies this" rather than "add
 it to the file", which for a credential is the wrong advice.
 

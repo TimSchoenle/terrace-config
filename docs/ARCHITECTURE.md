@@ -426,7 +426,7 @@ compatibility statement is the envelope versions it reads, `terrace_contract: 1`
 
 | Risk | Answer |
 |---|---|
-| A registry outage fails every pull request | contracts are vendored; only `pull` touches the network |
+| A registry outage fails every pull request | contracts are vendored, so the pull-request gates read the committed copies and run offline |
 | A swapped contract weakens the gate | signature-verified at refresh, fetched by digest, committed and reviewed |
 | A remote `$ref` makes CI depend on a third party | the validator refuses any `$ref` that is not `#/…` |
 | The schema is more permissive than the loader | bounded by design; gate 4 is the answer, not tighter guessing |
