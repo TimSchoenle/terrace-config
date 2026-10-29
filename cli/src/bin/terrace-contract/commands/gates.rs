@@ -108,7 +108,7 @@ pub(crate) fn shapes_command(
             println!(
                 "==> {derived} generated and {transcriptions} hand-transcribed config shape(s), all current"
             );
-        } else if !check && written == 0 {
+        } else if !check && written == 0 && !report.failed() {
             println!("==> every generated `@schema` block already matches its contract");
         }
     }
