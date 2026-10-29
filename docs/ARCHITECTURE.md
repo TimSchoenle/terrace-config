@@ -257,7 +257,9 @@ derives from them, `diff`, `migrate` and `secrets` report, `explain` answers que
 order. The per-command guides are under [`cli/docs/`](../cli/docs/).
 
 Every writer and its checker are one subcommand, with `--check`, so the two cannot disagree about
-what "already correct" means. Exit codes are `0` clean, `1` findings and `2` could not read.
+what "already correct" means. The writers and checkers exit `0` clean, `1` findings and `2` could
+not read. `diff --exit-code`, `migrate`, `explain` and `secrets` report rather than check, and
+each one's status contract is in its guide.
 
 The binary does not produce a contract, which needs the types; does not write `Chart.yaml`, because
 only a reviewer knows whether a moved key matters; does not run `helm template`, because the gates
@@ -323,9 +325,9 @@ The corpus holds consumer cases for each: `foreign-loader`, `foreign-ty`, `schem
 
 `charts/<chart>/config-contract.yaml` says which rendered objects hold configuration, which images
 read each one, which workloads mount it, and which values files are exempt from which gate, each
-with a reason. A chart with only third-party images declares `documents: []`, and `coverage` fails a
-chart that pins a first-party image and declares nothing, so the gates cannot be escaped by
-forgetting. The format, the `@config` marker language and the repository settings are specified in
+with a reason. Adoption is opt-in: `coverage` warns about a chart that pins a first-party image and
+declares no documents, and fails only a declaration that leaves one of the chart's own first-party
+images unconfigured. An empty `documents: []` is an explicit opt-out and must carry a `reason`. The format, the `@config` marker language and the repository settings are specified in
 [`spec/helm/v1/`](../spec/helm/v1/), versioned apart from `spec/v1/`, whose `$id` promises it will
 describe `terrace_contract: 1` and nothing else.
 
@@ -359,10 +361,10 @@ Gates 1 to 3 are offline, share one render with every other linter, and run on e
 
 **Gate 1, the document.** For every chart and every CI values file: select the object by kind and
 selector, parse the document, and validate it against the union with closed objects. It catches an
-unknown key, a wrong type, a value outside an enum, and a table where a scalar belongs. It does not
-check requiredness, because a JSON Schema `required` says the document must carry a property, while
-the contract's `required` says some layer must supply the key, and a secret mounted from a file is
-correct and absent from the document.
+unknown key, a wrong type, a value outside an enum, a property the schema's own `required` lists,
+and a table where a scalar belongs. It does not check the contract key's `required` flag, which says
+some layer must supply the key rather than that the document carries it: a secret supplied by a
+mounted file is correct and absent from the document.
 
 **Gate 2, the environment.** Per container, against that container's own image's contract, because a
 variable only a sibling image reads is the defect this gate exists for. Every variable is
