@@ -18,8 +18,9 @@ import java.lang.annotation.Target;
  * most one of the three.
  *
  * <p>The bound is published, not enforced: the loader binds a value outside it without complaint,
- * so a service that relies on it checks the bound itself, or validates the merged configuration
- * against the published schema.
+ * so a service that relies on it checks the bound value itself after binding. The merged layers are
+ * not a substitute to validate against the published schema: a value read from the environment or a
+ * {@code _FILE} is still text there, so a numeric bound cannot judge it.
  *
  * <p>{@link Double#NaN} marks an end as unset, since no finite double can otherwise mean that.
  *

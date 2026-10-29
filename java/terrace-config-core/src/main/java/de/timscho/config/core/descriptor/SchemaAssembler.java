@@ -288,6 +288,12 @@ public class SchemaAssembler {
         if (!values.isEmpty()) {
             return TextForm.CHOICE;
         }
+        // An `Optional` is read as its element, as the Rust derive strips `Option` before it
+        // classifies the type: an absent value is a fact about presence, not about its text.
+        final ElementDescriptor element = field.element();
+        if (field.container() == KeyDescriptor.ContainerKind.OPTIONAL && element != null) {
+            return TextForm.of(element.typeName());
+        }
         return TextForm.of(field.typeName());
     }
 
