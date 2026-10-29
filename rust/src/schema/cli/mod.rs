@@ -108,6 +108,7 @@ mod format;
 mod request;
 pub mod verify;
 
+use std::io::Write as _;
 use std::process::ExitCode;
 
 pub use format::{Format, UnknownFormat};
@@ -305,9 +306,11 @@ impl<'a> Cli<'a> {
     /// The whole program: parse this process's arguments, render, print, exit.
     ///
     /// Prints the rendering to stdout with exactly one trailing newline, since the renderings
-    /// themselves disagree about whether they end in one, and returns [`ExitCode::SUCCESS`]. On any
-    /// failure it prints the message to stderr and returns [`ExitCode::FAILURE`], and writes
-    /// nothing to stdout. A shell redirect truncates its target before this runs, so a step that
+    /// themselves disagree about whether they end in one, and returns [`ExitCode::SUCCESS`]. When
+    /// the arguments do not parse or the rendering fails, it prints the message to stderr, writes
+    /// nothing to stdout, and returns [`ExitCode::FAILURE`]. When stdout itself cannot be written,
+    /// such as a closed pipe, it returns [`ExitCode::FAILURE`] too, and part of the rendering may
+    /// already be out. A shell redirect truncates its target before this runs, so a step that
     /// regenerates a committed file should write to a temporary file and replace the target only
     /// on success.
     #[must_use]
@@ -321,11 +324,19 @@ impl<'a> Cli<'a> {
             Ok(rendered) => {
                 // Exactly one trailing newline, whatever the rendering ended with. The renderings
                 // disagree: `to_markdown*` and `to_toml_example` end in one already, the contract
-                // and the two label formats do not. Printing them all with `println!` gave the
+                // and the two label formats do not. Appending a newline to every one gave the
                 // first group a trailing blank line, which is invisible on a terminal and a diff
                 // in a committed `config.example.toml`.
-                println!("{}", rendered.trim_end_matches('\n'));
-                ExitCode::SUCCESS
+                //
+                // Written rather than `println!`ed: that macro panics when stdout is gone, and a
+                // closed pipe is an ordinary way for a caller to stop reading.
+                let mut stdout = std::io::stdout().lock();
+                match writeln!(stdout, "{}", rendered.trim_end_matches('\n'))
+                    .and_then(|()| stdout.flush())
+                {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(error) => fail(&format_args!("cannot write to stdout: {error}")),
+                }
             }
             Err(error) => fail(&error),
         }
@@ -359,7 +370,10 @@ impl<'a> Cli<'a> {
 }
 
 /// Reports and fails, in the one place both failure paths meet.
+///
+/// Written rather than `eprintln!`ed, which panics when stderr is gone. A failed write there is
+/// dropped: no channel is left to report it on, and the exit code still says the run failed.
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
-    eprintln!("{error}");
+    let _unreported = writeln!(std::io::stderr(), "{error}");
     ExitCode::FAILURE
 }
