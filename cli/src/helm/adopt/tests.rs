@@ -827,6 +827,39 @@ auth:
     assert!(!chart.helper_text().contains("queue:"));
 }
 
+#[test]
+fn another_define_unwrapping_context_does_not_vouch_for_derived_config() {
+    // The `$ctx := .ctx` line sits in a neighbouring define. Read over the whole file it would
+    // pass `derivedConfig` as wrapping context and get `$ctx.Values` written into a define that
+    // never binds `$ctx`.
+    let chart = Chart::new();
+    chart.declaration(SCOPED_DOCUMENTS);
+    chart.template(
+        "_helpers.tpl",
+        r#"{{- define "fixture.derivedConfig" -}}
+{{- $service := .service -}}
+auth:
+  {{- with .Values.auth.sessionTtl }}
+  session_ttl: {{ . }}
+  {{- end }}
+{{- end -}}
+
+{{- define "fixture.other" -}}
+{{- $ctx := .ctx -}}
+{{- end -}}
+
+{{- define "fixture.secretData" -}}
+{{- end -}}
+"#,
+    );
+    chart.contract("api", &[session_ttl()]);
+    chart.contract("worker", &[session_ttl(), integer("queue.workers", 4)]);
+    let planned = chart.write();
+
+    assert_eq!(owed_projected(&planned), ["queue.workers"]);
+    assert!(!chart.helper_text().contains("queue:"));
+}
+
 // --------------------------------------------------------------------------------------
 // The declaration
 // --------------------------------------------------------------------------------------

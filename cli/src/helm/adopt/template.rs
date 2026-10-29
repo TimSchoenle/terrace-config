@@ -25,10 +25,13 @@ pub(super) const OPENERS: [&str; 5] = ["if", "with", "range", "define", "block"]
 /// zero — the ones a second block of the same name would shadow — whether or not an
 /// `if`/`with`/`range` wraps them, since a chart's helpers never let one of those add YAML
 /// indentation of its own: every nested value reaches its indent through an explicit `nindent`.
+/// `wraps_context` is [`wraps_context`] read over the define's own lines, never the whole file, so a
+/// neighbouring define cannot vouch for this one's calling convention.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Define {
     end: usize,
     roots: BTreeSet<String>,
+    wraps_context: bool,
 }
 
 /// Find one define and the top-level keys it already writes; [`None`] when it cannot be read.
@@ -78,9 +81,10 @@ pub(super) fn read_define(text: &str, name: &str) -> Option<Define> {
                     // block, under a condition nobody wrote for them. Either way the shape is not
                     // one an append can be trusted with, and the lines are printed instead.
                     let alone = number != start && actions.len() == 1;
-                    return alone.then_some(Define {
+                    return alone.then(|| Define {
                         end: number + 1,
                         roots,
+                        wraps_context: lines[start..=number].iter().any(|line| wraps_context(line)),
                     });
                 }
             }
@@ -124,7 +128,7 @@ pub(super) fn wraps_context(text: &str) -> bool {
     template_patterns().context_assignment.is_match(text)
 }
 
-/// The template file that opens define `name`, its text, and what [`read_define`] found there.
+/// The template file that opens define `name`, and what [`read_define`] found there.
 ///
 /// Every `templates/*.tpl` is a candidate, not only `_helpers.tpl`: a chart whose services split
 /// their configuration across several partials keeps `derivedConfig` in `_config.tpl`, and reading
@@ -133,7 +137,7 @@ pub(super) fn wraps_context(text: &str) -> bool {
 pub(super) fn find_define(
     chart_dir: &Path,
     name: &str,
-) -> Result<Option<(PathBuf, String, Define)>, Error> {
+) -> Result<Option<(PathBuf, Define)>, Error> {
     let templates = chart_dir.join("templates");
     let Ok(entries) = std::fs::read_dir(&templates) else {
         return Ok(None);
@@ -151,7 +155,7 @@ pub(super) fn find_define(
     for path in candidates {
         let text = read_text(&path)?;
         if let Some(define) = read_define(&text, name) {
-            return Ok(Some((path, text, define)));
+            return Ok(Some((path, define)));
         }
     }
     Ok(None)
@@ -244,14 +248,13 @@ pub(super) fn projection_edits(
     let mut edits = Vec::new();
 
     let mut projected: Vec<Placement> = Vec::new();
-    if let Some((path, text, derived)) = find_define(chart_dir, &format!("{chart}.derivedConfig"))?
-    {
+    if let Some((path, derived)) = find_define(chart_dir, &format!("{chart}.derivedConfig"))? {
         let multi_document = all_documents.len() > 1;
         let mut values_prefix = ".Values";
         let mut scoped = BTreeMap::new();
         // A multi-document chart's define is unusable here unless it is provably shaped the one
         // way this knows how to address; refusing is the same posture as finding no define.
-        if !multi_document || wraps_context(&text) {
+        if !multi_document || derived.wraps_context {
             projected = plan
                 .projected
                 .iter()
@@ -281,7 +284,7 @@ pub(super) fn projection_edits(
         .collect();
 
     let mut owed_credentials = plan.credentials.clone();
-    if let Some((path, _, secrets)) = find_define(chart_dir, &format!("{chart}.secretData"))? {
+    if let Some((path, secrets)) = find_define(chart_dir, &format!("{chart}.secretData"))? {
         let mut delivered = Vec::new();
         owed_credentials.clear();
         for item in &plan.credentials {
