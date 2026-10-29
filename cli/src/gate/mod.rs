@@ -1,9 +1,10 @@
-//! The three gates, and the scopes that make them three rather than one.
+//! The gates, and the scopes that make them several rather than one.
 //!
 //! ```text
-//! gate 1  the rendered document   against the union of every contract that reads it
-//! gate 2  one container's env     against the one image that container runs
-//! gate 3  one container's mounts  against the one image that container runs
+//! gate 1   the rendered document     against the union of every contract that reads it
+//! gate 2   one container's env       against the one image that container runs
+//! gate 2b  one container's layers    against the keys that image requires
+//! gate 3   one container's mounts    against the one image that container runs
 //! ```
 //!
 //! **The scopes differ, and the difference is the point.** A document is a file the format lets any
@@ -21,17 +22,17 @@ pub mod container;
 pub mod document;
 
 pub use container::{ServiceLinks, check_container};
-pub use document::{DocumentFormat, DocumentSource, check_document};
+pub use document::{DocumentFormat, DocumentSource, check_document, document_keys};
 
 /// Which gates one rendered values file is exempt from.
 ///
-/// Typed rather than a set of strings, because the four names are a closed vocabulary and a caller
+/// Typed rather than a set of strings, because the gate names are a closed vocabulary and a caller
 /// that misspelled one would otherwise get a silently unrelaxed gate: the failure mode an exemption
 /// exists to avoid being ignored in.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[expect(
     clippy::struct_excessive_bools,
-    reason = "Four independent switches, one per gate an exemption may name. A bitflag set would turn `relaxed.env` — which every rule reads — into a lookup, and the vocabulary is closed: it will not grow with the number of gates."
+    reason = "Independent switches, one per gate an exemption may name. A bitflag set would turn `relaxed.env` — which every rule reads — into a lookup, and the vocabulary is closed: it changes only with the declaration schema that enumerates it."
 )]
 pub struct Relaxed {
     /// Gate 1 entirely: the rendered document is not validated.
@@ -46,11 +47,13 @@ pub struct Relaxed {
     pub env: bool,
     /// Gate 3: secret file names and `_FILE` targets are not checked.
     pub files: bool,
+    /// Gate 2b: a `required` key no layer supplies is not reported.
+    pub required: bool,
 }
 
 impl Relaxed {
     /// The gate names an exemption may carry, and what each one drops.
-    pub const GATES: [(&'static str, &'static str); 4] = [
+    pub const GATES: [(&'static str, &'static str); 5] = [
         (
             "closed",
             "only gate 1's `additionalProperties: false`: unknown keys are tolerated",
@@ -67,15 +70,20 @@ impl Relaxed {
             "files",
             "gate 3: secret file names and `_FILE` targets are not checked",
         ),
+        (
+            "required",
+            "gate 2b: a `required` key no layer supplies is not reported",
+        ),
     ];
 
-    /// Relax one gate by name, or [`None`] when the name is not one of the four.
+    /// Relax one gate by name, or [`None`] when the name is not one of [`Self::GATES`].
     pub fn relax(&mut self, gate: &str) -> Option<()> {
         match gate {
             "document" => self.document = true,
             "closed" => self.closed = true,
             "env" => self.env = true,
             "files" => self.files = true,
+            "required" => self.required = true,
             _ => return None,
         }
         Some(())
@@ -89,7 +97,7 @@ mod tests {
     use super::Relaxed;
 
     #[test]
-    fn a_gate_name_outside_the_four_is_refused_rather_than_ignored() {
+    fn a_gate_name_outside_the_vocabulary_is_refused_rather_than_ignored() {
         let mut relaxed = Relaxed::default();
         assert!(relaxed.relax("env").is_some());
         assert!(relaxed.relax("gate2").is_none());

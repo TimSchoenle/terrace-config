@@ -12,7 +12,7 @@ name: release-please
 # `terrace-contract`, in `cli/`, is a tool rather than a library, and what a consuming build wants
 # is a binary or an image: no toolchain, no compile, no platform detection. Its tags carry the
 # component (`terrace-contract-v<version>`) so the two packages cannot collide, and that tag is
-# what `release-cli.yml` is keyed on: it cross-compiles the four targets §9.2 names, signs them
+# what `release-cli.yml` is keyed on: it cross-compiles the four release targets, signs them
 # and their checksums keylessly, and builds the multi-architecture image from those same bytes.
 # Nothing goes to crates.io from either.
 #

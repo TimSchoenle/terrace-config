@@ -16,7 +16,7 @@
 //! the ones the rest of a pipeline validates, and a second renderer with its own flags is a second
 //! answer to what the chart produces.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize as _;
 use serde_json::{Map, Value as Json};
@@ -167,9 +167,48 @@ pub fn containers_of(spec: &Json) -> Vec<(&str, &Json)> {
 /// A `valueFrom` entry is a name a rule can classify and a value it cannot see until the pod runs.
 /// Both halves are returned so a caller checks the spelling and skips the value, rather than either
 /// ignoring the variable or checking an empty string against a constraint.
-pub fn environment_of(container: &Json) -> Environment {
-    let mut values: Vec<(String, String)> = Vec::new();
-    let mut opaque: BTreeSet<String> = BTreeSet::new();
+///
+/// `envFrom` is read too, and it has to be: a `secretRef` handing a container every key of a Secret
+/// is how a chart commonly supplies credentials, and a reader that skipped it would call those keys
+/// unsupplied and every variable they carry unclassified. Each source is followed back to the
+/// object `manifests` renders, and contributes one variable per key, its `prefix` prepended. The
+/// precedence is the kubelet's: a later source overrides an earlier one, and `env` overrides them
+/// all. A `ConfigMap`'s values are visible; a Secret's are not read, the same as a `valueFrom`, so a
+/// credential's bytes never reach a finding. A source naming an object the render does not hold
+/// (an existing Secret, an operator's output) contributes nothing it can enumerate, and is recorded
+/// in [`Environment::unresolved`] so a caller can say what it could not see.
+pub fn environment_of(manifests: &[Json], container: &Json) -> Environment {
+    let mut environment = Environment::default();
+
+    for source in container
+        .get("envFrom")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let prefix = source.get("prefix").and_then(Json::as_str).unwrap_or("");
+        let (kind, reference) = if let Some(reference) = source.get("configMapRef") {
+            ("ConfigMap", reference)
+        } else if let Some(reference) = source.get("secretRef") {
+            ("Secret", reference)
+        } else {
+            continue;
+        };
+        let Some(name) = reference.get("name").and_then(Json::as_str) else {
+            continue;
+        };
+        let origin = format!("envFrom {kind} {}", crate::text::quoted(name));
+        let Some(object) = rendered_object(manifests, kind, name) else {
+            environment.unresolved.push(origin);
+            continue;
+        };
+        for (key, value) in env_from_entries(object, kind) {
+            let variable = format!("{prefix}{key}");
+            environment.origins.insert(variable.clone(), origin.clone());
+            environment.set(variable, value);
+        }
+    }
+
     for entry in container
         .get("env")
         .and_then(Json::as_array)
@@ -179,28 +218,62 @@ pub fn environment_of(container: &Json) -> Environment {
         let Some(name) = entry.get("name").and_then(Json::as_str) else {
             continue;
         };
-        let value = if let Some(value) = entry.get("value") {
-            scalar(value)
-        } else {
-            opaque.insert(name.to_owned());
-            String::new()
-        };
-        match values.iter_mut().find(|(held, _)| held == name) {
-            Some(held) => held.1 = value,
-            None => values.push((name.to_owned(), value)),
+        environment.origins.remove(name);
+        environment.set(name.to_owned(), entry.get("value").map(scalar));
+    }
+    environment
+}
+
+/// The rendered object `kind` called `name`, if the render holds one.
+fn rendered_object<'a>(manifests: &'a [Json], kind: &str, name: &str) -> Option<&'a Json> {
+    manifests.iter().find(|manifest| {
+        manifest.get("kind").and_then(Json::as_str) == Some(kind)
+            && manifest
+                .get("metadata")
+                .and_then(|metadata| metadata.get("name"))
+                .and_then(Json::as_str)
+                == Some(name)
+    })
+}
+
+/// The keys one `envFrom` object hands a container, each with its value when that is readable.
+///
+/// A `ConfigMap`'s `data` is plain text. A Secret's `data` and `stringData` are both credentials,
+/// so their keys are returned and their values are not. `binaryData` is not handed to an
+/// environment at all.
+fn env_from_entries(object: &Json, kind: &str) -> Vec<(String, Option<String>)> {
+    let sections: &[&str] = if kind == "Secret" {
+        &["data", "stringData"]
+    } else {
+        &["data"]
+    };
+    let mut entries = Vec::new();
+    for section in sections {
+        for (key, value) in object
+            .get(*section)
+            .and_then(Json::as_object)
+            .into_iter()
+            .flatten()
+        {
+            let value = (kind == "ConfigMap").then(|| scalar(value));
+            entries.push((key.clone(), value));
         }
     }
-    Environment { values, opaque }
+    entries
 }
 
 /// One container's environment, as the manifest states it.
 #[derive(Debug, Clone, Default)]
 pub struct Environment {
-    /// Every variable and its value, in spec order. A variable whose value is not visible holds the
-    /// empty string.
+    /// Every variable and its value, in the order the kubelet would settle them. A variable whose
+    /// value is not visible holds the empty string.
     pub values: Vec<(String, String)>,
     /// The variables whose value is supplied at run time and cannot be read from the manifest.
     pub opaque: BTreeSet<String>,
+    /// The `envFrom` source each variable came from, for a variable `env` did not set itself.
+    pub origins: BTreeMap<String, String>,
+    /// The `envFrom` sources naming an object the render does not hold, as `envFrom Secret 'x'`.
+    pub unresolved: Vec<String>,
 }
 
 impl Environment {
@@ -221,6 +294,20 @@ impl Environment {
             .collect();
         sorted.sort_unstable();
         sorted
+    }
+
+    /// Sets one variable, replacing an earlier setting of it; [`None`] is a value not visible.
+    fn set(&mut self, name: String, value: Option<String>) {
+        if value.is_some() {
+            self.opaque.remove(&name);
+        } else {
+            self.opaque.insert(name.clone());
+        }
+        let value = value.unwrap_or_default();
+        match self.values.iter_mut().find(|(held, _)| *held == name) {
+            Some(held) => held.1 = value,
+            None => self.values.push((name, value)),
+        }
     }
 }
 
@@ -397,22 +484,50 @@ pub fn secret_file_names(manifests: &[Json], spec: &Json, volume_name: &str) -> 
     file_names(manifests, spec, volume_name, &[("secret", "Secret")])
 }
 
-/// One volume's presented file names, restricted to the source kinds the caller asked for.
-fn file_names(
-    manifests: &[Json],
-    spec: &Json,
-    volume_name: &str,
-    kinds: &[(&str, &str)],
-) -> Vec<String> {
-    let Some(volume) = spec
+/// The sources of one volume whose file names the render cannot list, as a message names them.
+///
+/// [`projected_file_names`] answers from what the render shows, and is silent about the rest: a
+/// `Secret` or `ConfigMap` source without `items` naming an object the render does not hold (an
+/// existing Secret, an operator's output), or a volume of another type altogether (a CSI driver, an
+/// `emptyDir` an init container fills). A caller that concludes "no file supplies this" from that
+/// silence would be wrong, so this says what it could not see.
+pub fn unlisted_sources(manifests: &[Json], spec: &Json, volume_name: &str) -> Vec<String> {
+    let Some((volume, sources)) = volume_sources(spec, volume_name) else {
+        return Vec::new();
+    };
+    let listable = ["projected", "secret", "configMap"];
+    if !listable.iter().any(|field| volume.get(*field).is_some()) {
+        return vec![format!("volume {}", crate::text::quoted(volume_name))];
+    }
+    let mut unlisted = Vec::new();
+    for source in &sources {
+        for (field, kind) in [("secret", "Secret"), ("configMap", "ConfigMap")] {
+            let Some(body) = source.get(field) else {
+                continue;
+            };
+            let itemised = body
+                .get("items")
+                .and_then(Json::as_array)
+                .is_some_and(|items| !items.is_empty());
+            let Some(name) = body.get("name").and_then(Json::as_str) else {
+                continue;
+            };
+            if !itemised && rendered_object(manifests, kind, name).is_none() {
+                unlisted.push(format!("{kind} {}", crate::text::quoted(name)));
+            }
+        }
+    }
+    unlisted
+}
+
+/// One volume of `spec`, and its `Secret` and `ConfigMap` sources in the projected shape.
+fn volume_sources<'a>(spec: &'a Json, volume_name: &str) -> Option<(&'a Json, Vec<Json>)> {
+    let volume = spec
         .get("volumes")
         .and_then(Json::as_array)
         .into_iter()
         .flatten()
-        .find(|volume| volume.get("name").and_then(Json::as_str) == Some(volume_name))
-    else {
-        return Vec::new();
-    };
+        .find(|volume| volume.get("name").and_then(Json::as_str) == Some(volume_name))?;
 
     let sources: Vec<Json> = if let Some(projected) = volume.get("projected") {
         projected
@@ -436,6 +551,19 @@ fn file_names(
         vec![Json::Object(source)]
     } else {
         Vec::new()
+    };
+    Some((volume, sources))
+}
+
+/// One volume's presented file names, restricted to the source kinds the caller asked for.
+fn file_names(
+    manifests: &[Json],
+    spec: &Json,
+    volume_name: &str,
+    kinds: &[(&str, &str)],
+) -> Vec<String> {
+    let Some((_, sources)) = volume_sources(spec, volume_name) else {
+        return Vec::new();
     };
 
     let mut names: BTreeSet<String> = BTreeSet::new();
@@ -495,7 +623,7 @@ mod tests {
 
     use super::{
         containers_of, digest_of, environment_of, inside_a_mount, load_manifests, mounting,
-        pod_spec, projected_file_names, select, select_source, volume_at,
+        pod_spec, projected_file_names, select, select_source, unlisted_sources, volume_at,
     };
 
     #[test]
@@ -547,10 +675,99 @@ mod tests {
             {"name": "A", "value": "1"},
             {"name": "B", "valueFrom": {"secretKeyRef": {"name": "s", "key": "k"}}},
         ]});
-        let environment = environment_of(&container);
+        let environment = environment_of(&[], &container);
         assert!(environment.visible("A"));
         assert!(!environment.visible("B"));
         assert_eq!(environment.sorted(), vec![("A", "1"), ("B", "")]);
+    }
+
+    #[test]
+    fn env_from_hands_over_every_key_of_the_rendered_object_and_env_overrides_it() {
+        let manifests = vec![
+            json!({"kind": "ConfigMap", "metadata": {"name": "settings"},
+                   "data": {"A": "from-config", "B": "1"}}),
+            json!({"kind": "Secret", "metadata": {"name": "creds"},
+                   "data": {"TOKEN": "c2VjcmV0"}, "stringData": {"OTHER": "x"}}),
+        ];
+        let container = json!({
+            "envFrom": [
+                {"configMapRef": {"name": "settings"}},
+                {"secretRef": {"name": "creds"}, "prefix": "P_"},
+            ],
+            "env": [{"name": "A", "value": "from-env"}],
+        });
+        let environment = environment_of(&manifests, &container);
+        assert_eq!(
+            environment.sorted(),
+            vec![
+                ("A", "from-env"),
+                ("B", "1"),
+                ("P_OTHER", ""),
+                ("P_TOKEN", "")
+            ]
+        );
+        // A Secret's bytes are never read; a ConfigMap's are.
+        assert!(environment.visible("B"));
+        assert!(!environment.visible("P_TOKEN"));
+        assert_eq!(environment.origins.get("A"), None);
+        assert_eq!(
+            environment.origins.get("P_TOKEN").map(String::as_str),
+            Some("envFrom Secret 'creds'")
+        );
+        assert_eq!(environment.unresolved, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_later_env_from_source_overrides_an_earlier_one() {
+        let manifests = vec![
+            json!({"kind": "ConfigMap", "metadata": {"name": "a"}, "data": {"X": "first"}}),
+            json!({"kind": "Secret", "metadata": {"name": "b"}, "data": {"X": "c2Vjb25k"}}),
+        ];
+        let container = json!({"envFrom": [
+            {"configMapRef": {"name": "a"}},
+            {"secretRef": {"name": "b"}},
+        ]});
+        let environment = environment_of(&manifests, &container);
+        assert_eq!(environment.sorted(), vec![("X", "")]);
+        assert!(!environment.visible("X"));
+        assert_eq!(
+            environment.origins.get("X").map(String::as_str),
+            Some("envFrom Secret 'b'")
+        );
+    }
+
+    #[test]
+    fn an_env_from_source_the_render_does_not_hold_is_recorded_rather_than_guessed() {
+        let container = json!({"envFrom": [{"secretRef": {"name": "external", "optional": true}}]});
+        let environment = environment_of(&[], &container);
+        assert_eq!(environment.values, Vec::new());
+        assert_eq!(environment.unresolved, vec!["envFrom Secret 'external'"]);
+    }
+
+    #[test]
+    fn a_source_the_render_cannot_list_is_named_rather_than_read_as_empty() {
+        let manifests = vec![json!({"kind": "Secret", "metadata": {"name": "rendered"}})];
+        let spec = json!({"volumes": [
+            {"name": "mixed", "projected": {"sources": [
+                {"secret": {"name": "rendered"}},
+                {"secret": {"name": "external"}},
+                {"secret": {"name": "listed", "items": [{"key": "a", "path": "a"}]}},
+                {"configMap": {"name": "settings"}},
+            ]}},
+            {"name": "csi", "csi": {"driver": "secrets-store.csi.k8s.io"}},
+        ]});
+        assert_eq!(
+            unlisted_sources(&manifests, &spec, "mixed"),
+            vec!["Secret 'external'", "ConfigMap 'settings'"]
+        );
+        assert_eq!(
+            unlisted_sources(&manifests, &spec, "csi"),
+            vec!["volume 'csi'"]
+        );
+        assert_eq!(
+            unlisted_sources(&manifests, &spec, "absent"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

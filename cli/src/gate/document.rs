@@ -17,6 +17,8 @@
 //! gets that far, because an offline gate that resolves a remote reference has silently become a
 //! networked one.
 
+use std::collections::BTreeSet;
+
 use serde_json::Value as Json;
 
 use crate::error::Error;
@@ -174,6 +176,39 @@ pub fn check_document(
     Ok(Some(findings(&validator, &instance, source, union)))
 }
 
+/// Every key path the rendered document carries, tables included, or [`None`] when it cannot be read.
+///
+/// What gate 2b asks of the document layer. [`None`] covers every case where the answer is not
+/// known: no object or several match the selector, the key is missing, or the text does not parse.
+/// Gate 1 reports each of those already, and a second finding per required key would bury it.
+pub fn document_keys(manifests: &[Json], source: &DocumentSource) -> Option<BTreeSet<String>> {
+    let matched = select_source(manifests, &source.kind, &source.selector, &source.key);
+    let [object] = matched.as_slice() else {
+        return None;
+    };
+    let text = object.get("data")?.get(&source.key)?.as_str()?;
+    let instance = source.format.read(text).ok()?;
+    let mut paths = BTreeSet::new();
+    collect_paths(&instance, "", &mut paths);
+    Some(paths)
+}
+
+/// Every dotted path inside `instance`, each table's own path included.
+fn collect_paths(instance: &Json, prefix: &str, into: &mut BTreeSet<String>) {
+    let Some(fields) = instance.as_object() else {
+        return;
+    };
+    for (name, value) in fields {
+        let full = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}.{name}")
+        };
+        collect_paths(value, &full, into);
+        into.insert(full);
+    }
+}
+
 /// Every way `instance` fails the merged schema, as findings a reader can act on.
 fn findings(
     validator: &jsonschema::Validator,
@@ -281,7 +316,7 @@ fn dotted(location: &str) -> String {
 mod tests {
     use serde_json::{Value as Json, json};
 
-    use super::{DocumentFormat, DocumentSource, Relaxed, check_document};
+    use super::{DocumentFormat, DocumentSource, Relaxed, check_document, document_keys};
     use crate::union::{Union, union_contracts};
 
     fn union(json_schema: &Json, keys: &Json) -> Union {
@@ -480,5 +515,32 @@ mod tests {
         let found = check_document(&[], &source(), &union(&json!({}), &json!([])), relaxed)
             .expect("the schema compiles");
         assert_eq!(found, Some(Vec::new()));
+    }
+
+    #[test]
+    fn every_table_and_every_leaf_of_the_document_is_a_key_path() {
+        let source = DocumentSource {
+            kind: "ConfigMap".to_owned(),
+            selector: vec![("c".to_owned(), "api".to_owned())],
+            key: "config.toml".to_owned(),
+            format: DocumentFormat::Toml,
+        };
+        let rendered = |text: &str| {
+            vec![
+                json!({"kind": "ConfigMap", "metadata": {"name": "a", "labels": {"c": "api"}},
+                        "data": {"config.toml": text}}),
+            ]
+        };
+        let found = document_keys(
+            &rendered("port = 8080\n[auth]\njwt_secret = \"x\"\n"),
+            &source,
+        )
+        .expect("the document is readable");
+        assert_eq!(
+            found.into_iter().collect::<Vec<_>>(),
+            ["auth", "auth.jwt_secret", "port"]
+        );
+        assert_eq!(document_keys(&rendered("port = "), &source), None);
+        assert_eq!(document_keys(&[], &source), None);
     }
 }

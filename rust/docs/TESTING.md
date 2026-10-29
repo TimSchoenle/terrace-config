@@ -39,13 +39,13 @@ process-wide because the environment is a global.
 
 The closure returns **this crate's own `Error`**. That is the point of the type rather than a
 detail. The obvious way to write this fixture is around `figment::Jail`, whose closure returns a
-`figment::Error` — a type large enough that clippy's `result_large_err` fires on every test file
+`figment::Error`: a type large enough that clippy's `result_large_err` fires on every test file
 that uses it, and which has no `From<std::io::Error>`, so arranging a symlink means converting an
 error by hand. Here `?` works on the arrangement and on the load being tested alike.
 
 ## What it arranges
 
-Each method sets *both* halves of a layer — the file, and the variable that makes the loader read
+Each method sets *both* halves of a layer: the file, and the variable that makes the loader read
 it:
 
 | Method | The layer it arranges |
@@ -58,7 +58,7 @@ it:
 
 Every name is derived from the loader the harness was built over, never restated. A test that
 spells `MYAPP_AUTH__JWT_SECRET_FILE` out by hand keeps passing after `Terrace::file_suffix`
-renames the mechanism — while testing a variable the loader no longer reads.
+renames the mechanism: while testing a variable the loader no longer reads.
 
 Below that sit `jail.env`, `jail.write`, `jail.create_dir` and `jail.path` for anything the named
 methods do not cover, and `jail.terrace()` for a loader with one knob changed:
@@ -80,10 +80,10 @@ jail.secrets_volume()
     .create()?;
 ```
 
-- `.plain()` — ordinary files in an ordinary directory. The default.
-- `.projected()` — the *names* a projected volume has, with the keys as regular files. Portable,
+- `.plain()`: ordinary files in an ordinary directory. The default.
+- `.projected()`: the *names* a projected volume has, with the keys as regular files. Portable,
   and what pins the skipping rules.
-- `.symlinked()` — the mount as the kubelet writes it: the keys are symlinks to `..data/<key>`,
+- `.symlinked()`: the mount as the kubelet writes it: the keys are symlinks to `..data/<key>`,
   and `..data` is a symlink to the generation directory. Unix only, so a test using it carries
   `#[cfg(unix)]`.
 
@@ -92,7 +92,7 @@ cluster booted on compiled defaults, because `DirEntry::metadata()` does not fol
 reported every real key as "not a file". Only `.symlinked()` reproduces that.
 
 `jail.config_volume()` is the same builder wired to `$MYAPP_CONFIG`, and `jail.volume(dir)` is
-one wired to nothing — a decoy, for asserting that a *renamed* variable is the only one being
+one wired to nothing: a decoy, for asserting that a *renamed* variable is the only one being
 read.
 
 ## Reloading in a test
@@ -138,5 +138,5 @@ harness().run(|jail| {
 really making: a reload that fails to load, or that resolves to the values already running, must
 leave the running service alone. `ServiceError` is the error type `reload::run` asks a service
 for, and `rebuilds.serving(…)` is a build closure that records and then serves until it is
-cancelled — returning early instead looks right and ends the supervisor, so the test would pass
+cancelled: returning early instead looks right and ends the supervisor, so the test would pass
 its first assertion and never see a reload.

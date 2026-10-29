@@ -1,10 +1,10 @@
 # The configuration contract, envelope version 1
 
-> **`terrace_contract: 1`, containing `schema_version: 2`.** Two numbers, moving independently —
+> **`terrace_contract: 1`, containing `schema_version: 2`.** Two numbers, moving independently:
 > this directory is named after the envelope's. See [Versioning](#versioning).
 
-**Status: normative.** This file defines the document. Everything else describing it — the Rust
-crate's [rustdoc], [docs/CONTRACT.md], a future Java implementation's javadoc — is a guide to
+**Status: normative.** This file defines the document. Everything else describing it (the Rust
+crate's [rustdoc], [docs/CONTRACT.md], a future Java implementation's javadoc) is a guide to
 producing or consuming it and defers to this file where the two differ.
 
 A contract is one JSON document, attached to one image digest, saying what configuration that image
@@ -15,7 +15,7 @@ service renames the key, the deserialiser ignores what it does not recognise, an
 healthy on a compiled default.
 
 Machine-checked against [`contract.schema.json`](contract.schema.json). Where this prose and that
-schema disagree about whether a document is well-formed, the schema is wrong and should be fixed —
+schema disagree about whether a document is well-formed, the schema is wrong and should be fixed,
 but a consumer may rely on the schema, so the fix is a spec change, not a reading.
 
 [rustdoc]: https://docs.rs/terrace-config
@@ -24,11 +24,11 @@ but a consumer may rely on the schema, so the fix is a spec change, not a readin
 ## Conventions
 
 **MUST**, **MUST NOT**, **SHOULD** and **MAY** are used in the RFC 2119 sense. "Producer" is
-whatever writes the document — a build-time generator reading a service's types. "Consumer" is
-whatever reads it — a chart's CI job, a deployment gate, an editor.
+whatever writes the document: a build-time generator reading a service's types. "Consumer" is
+whatever reads it: a chart's CI job, a deployment gate, an editor.
 
 Every field name in this document is `snake_case`, the envelope's own included. One document in
-two conventions — `text_constraint` on a key and `textConstraint` on the variable beside it — is a
+two conventions, `text_constraint` on a key and `textConstraint` on the variable beside it, is a
 field name a consumer gets right from memory under one convention and guesses at under two.
 
 ## The envelope
@@ -48,7 +48,7 @@ All six fields MUST be present. Inside `schema`, `reload` is the one optional me
 [Reloading](#reloading).
 
 Both schema halves are there because neither is enough on its own. `json_schema` is the only one a
-stock JSON Schema validator can act on, and it carries no environment spellings at all — so it
+stock JSON Schema validator can act on, and it carries no environment spellings at all, so it
 cannot tell a chart that the `PORTFOLIO_ISR__CACHE_DIR` it sets is no longer read, or that the file
 it mounts as `github__token` is now named something else. `schema` carries every spelling and can
 be handed to no validator. Published as two artefacts they would be two hashes and two chances to
@@ -66,14 +66,14 @@ configuration; a fact about how to read the rest of the file.
 | `loader` | The library whose environment reads every `text_constraint` here was measured against, e.g. `figment`. |
 
 `loader` is the load-bearing one. The text patterns in this document are **not** derived from a
-grammar — they are measured against the library the image actually links, and a different library
+grammar: they are measured against the library the image actually links, and a different library
 has different answers about `+5`, `007`, `TRUE`, and how a list is spelled in one variable. A
 consumer MUST NOT apply the reads in [Reading a variable](#reading-a-variable) to a document whose
 `producer.loader` it does not recognise; it MUST report the check as skipped rather than passed.
 
 It names the loader rather than restating its rules. A vocabulary rich enough to describe every way
 a binder might read a string is a language two implementations can disagree in, and this format
-carries as little of that as it can — the single trailing `*` in `external.ignore` is the whole of
+carries as little of that as it can: the single trailing `*` in `external.ignore` is the whole of
 its pattern syntax, for the same reason.
 
 ### `app`
@@ -83,7 +83,7 @@ Which build this describes: `name` (required), and optionally `version`, `revisi
 the *configuration* changed can diff everything except this.
 
 Nothing in the document names the image, deliberately. A digest is what building the image
-produces, so a field carrying it could only be written after the push — changing bytes that were
+produces, so a field carrying it could only be written after the push: changing bytes that were
 already hashed and already committed. The tie is the attachment; see
 [Publication](#publication).
 
@@ -95,7 +95,7 @@ Two version numbers, moving independently.
 against rather than read it optimistically.
 
 **`schema.schema_version`** versions the schema half. Version 2 allowed `constraint` to nest.
-Version 3 added `propertyNames`, and version 4 the conditions between a struct's fields — `oneOf`,
+Version 3 added `propertyNames`, and version 4 the conditions between a struct's fields: `oneOf`,
 `if`, `then`, `minProperties` and `maxProperties`, beside `allOf`, `anyOf`, `not` and `const`, which a
 version-4 consumer is held to as well (see [Refinements](#refinements)). A consumer gates its keyword
 allowlist on this: refuse a version you were not written against, widen, then accept it.
@@ -106,7 +106,7 @@ using nothing new reads exactly as it did, and a consumer is told to widen only 
 would otherwise under-check.
 
 The allowlist is of keywords, not of positions. A constraint is one JSON Schema, and a keyword a
-version permits anywhere in it is permitted everywhere in it — so `required` at the top of a
+version permits anywhere in it is permitted everywhere in it, so `required` at the top of a
 map-typed key's constraint (see [Refinements](#refinements)) is an addition within version 2: the
 keyword has been in version 2's vocabulary from the start, inside every element schema with a
 mandatory field.
@@ -117,7 +117,7 @@ open at every object level for that reason: it checks that what is present is we
 nothing else is. Producer typos are caught by the [conformance corpus](CONFORMANCE.md), not by the
 meta-schema.
 
-Several fields are closed enumerations with a degradation target — `text_form: unknown`,
+Several fields are closed enumerations with a degradation target: `text_form: unknown`,
 `unreachable: other`, `role: other`, `unknown: reject`, `reload.mode: none`, a key's
 `reload: restart`. Degrading is still degrading: **a consumer
 that skips a check because it did not recognise a value MUST say that it did.** A silently skipped
@@ -137,7 +137,7 @@ How a key path becomes a name in each layer.
 | `indirection_suffix` | What marks a variable as naming a file rather than holding a value, e.g. `_FILE`. |
 
 `prefix` MUST NOT be empty. A prefixless loader cannot tell its own namespace from the machine's,
-and every gate in [Reading a container](#reading-a-container) rests on that distinction — step 4
+and every gate in [Reading a container](#reading-a-container) rests on that distinction: step 4
 would fire for every variable on the container, because every name begins with the empty string.
 
 A consumer MUST NOT derive a key's spellings from the dialect itself. The dialect is published so
@@ -200,12 +200,12 @@ One entry per configuration key. `path` is unique across the array.
 appears as its alias, a domain newtype as itself. It is published so a person reading a table can
 see what the field is; a consumer checking a value MUST read `constraint`, never `ty`. Without that
 rule every consumer in every language reimplements a vocabulary of one language's type names, with
-`PathBuf` as the trap — it is a string and nothing in the name says so.
+`PathBuf` as the trap: it is a string and nothing in the name says so.
 
 **`required` is not JSON Schema's `required`.** JSON Schema's says *this document must carry the
 property*. This one says *some layer must supply the key*, and the loader takes the environment or
-a mounted file just as readily. A required **secret** is supplied by a mount — the only way to
-supply a secret — so the rendered document does not carry it at all. A consumer checks `required`
+a mounted file just as readily. A required **secret** is supplied by a mount, the recommended
+way, or by the environment, and never by the rendered document, which does not carry it at all. A consumer checks `required`
 per key across every layer it can see, and can then say "no layer supplies this" rather than "add
 it to the file", which for a credential is the wrong advice.
 
@@ -221,20 +221,20 @@ the shim that makes a rename safe into the thing that fails the gate.
 **`env: null` MUST be accompanied by `unreachable`.** The two reasons differ in whether the
 environment can reach the key at all:
 
-- `unnameable` — no variable names it. A `rename_all = "camelCase"` path never comes back through
+- `unnameable`: no variable names it. A `rename_all = "camelCase"` path never comes back through
   the case fold, and neither does one carrying the nesting separator. The document is the only
   layer left.
-- `indirection` — a name this schema gives to another key also fills this one. A producer MUST
+- `indirection`: a name this schema gives to another key also fills this one. A producer MUST
   refuse to build a contract containing this; it appears only in a schema rendered for
   documentation.
 
 A consumer meeting a bare `null` and treating it as "skip this key" is right for the first and
 wrong for the second, which is why the reason is published rather than inferred.
 
-**`default_value: null` is ambiguous on its own** — it is what both "no default" and "the default
+**`default_value: null` is ambiguous on its own**: it is what both "no default" and "the default
 is null" render to. Read `default` and `required` alongside it.
 
-Inside a default, an unset field — an optional value holding nothing — is **absent**, never `null`.
+Inside a default, an unset field (an optional value holding nothing) is **absent**, never `null`.
 No document can spell a `null` field, and what the loader sees for one is absence.
 
 **A `default_value` MUST satisfy the key's own `constraint`.** A key publishing a default says
@@ -266,13 +266,13 @@ copies are for the consumer that has a variable name and a string rather than a 
 
 **A pattern here is a superset of what the loader accepts, never a subset.** A schema that rejects
 text the loader takes stops a deployment that was correct, which is worse than one that accepts text
-the loader will reject — the second fails at boot with a real error message, the first fails at a
+the loader will reject: the second fails at boot with a real error message, the first fails at a
 gate with a false one. Every keyword a producer emits MUST be certainly true of the loader it
 describes, and a producer that cannot say anything certain MUST omit the field rather than guess.
 
 `constraint` MAY nest, from `schema_version: 2`: a container-typed key whose element type describes
 itself carries the element's shape under `items` for a sequence and `additionalProperties` for a
-map, composed as deeply as the containers are stacked. It is still one key with one row in `keys` —
+map, composed as deeply as the containers are stacked. It is still one key with one row in `keys`:
 an array index is not a key segment and no variable names one.
 
 An element schema is **open unless the element type closed it**. A deserialiser that accepts an
@@ -282,15 +282,15 @@ otherwise carries `additionalProperties: false` at that level and no other.
 ### Refinements
 
 A producer MAY publish a `constraint` **tighter than the type states**, and MUST NOT publish one
-looser. Some constraints are real without being in any type — a host that refuses to start unless a
-map holds an `imprint` entry — and a contract that cannot carry them publishes `{}` as a valid value
+looser. Some constraints are real without being in any type (a host that refuses to start unless a
+map holds an `imprint` entry), and a contract that cannot carry them publishes `{}` as a valid value
 for a map the image rejects. Tightening is safe for the reason every rule in this section is: the
 value the loader would accept and the service would then refuse is not a correct deployment, so a
 gate refusing it is right. Loosening is never safe, because the type's own constraint is what the
 loader enforces.
 
 The first tightening is **required entries of a map.** A key whose `constraint` is an object
-with no `properties` — a map, its element schema if any under `additionalProperties` — MAY carry
+with no `properties` (a map, its element schema if any under `additionalProperties`) MAY carry
 `required`, a sorted list of entry names the map must contain. It means exactly what JSON Schema's
 `required` means at that position: a document supplying the map must supply those entries. The map
 stays open; other entries are accepted as the type accepts them. It is carried inside `constraint`
@@ -302,11 +302,11 @@ Schema's keyword always have: the field says whether some layer must supply the 
 what the map must hold once supplied. They meet only through the default: a refined map whose
 observed default lacks a required entry is published `required: true` with no default, under the
 rule on `default_value` above. A refined map with no default at all keeps whatever `required` its
-type gave it — absence is the type's statement, and a refinement of the value does not reach it.
+type gave it: absence is the type's statement, and a refinement of the value does not reach it.
 
 An entry name MUST be spellable wherever the key is: nested one level under the key's `env`, and
 under its `secrets_file`, by the same derivation the key's own spellings use. A producer MUST refuse
-a refinement naming an entry some layer reaching the key could not spell — `Imprint` under a
+a refinement naming an entry some layer reaching the key could not spell: `Imprint` under a
 lower-casing environment layer, a name carrying the nesting separator or a `.`, one whose spelling
 ends in `indirection_suffix`.
 
@@ -332,7 +332,7 @@ position carries at most one, and a choice (`enum`) none of whose values the pat
 unsatisfiable and MUST be refused.
 
 A fourth tightening is defined: **a condition between a struct's fields**, from `schema_version: 4`.
-A struct position — in practice the element of a map or sequence of structs — MAY carry, as members
+A struct position (in practice the element of a map or sequence of structs) MAY carry, as members
 of its `allOf`, schemas relating its declared fields: that exactly one of several conditions holds
 (`oneOf`), that one condition implies another (`if`/`then`), built from a field being present
 (`required`), absent (`not` of `required`), empty or not (`maxProperties`/`minProperties`, or
@@ -340,15 +340,15 @@ of its `allOf`, schemas relating its declared fields: that exactly one of severa
 bound (`exclusiveMinimum`) or matching a portable pattern, through nested structs by `properties`.
 Each such member carries **`description`**, its readable form, and a consumer showing the condition
 shows that sentence rather than paraphrasing the schema. An `allOf` member without `description` is
-not a condition this format defines — a producer writes one for a required field with an alias — and
+not a condition this format defines (a producer writes one for a required field with an alias), and
 a consumer shows it as it shows any other keyword.
 
 A condition is a conjunct and can only tighten. Whether it states the runtime check *exactly* is the
-producer's to get right, and two traps are common enough to name. A check that returns early — no
-consent rule applies when the requirement is `none` — makes a rule that ignores the early return
+producer's to get right, and two traps are common enough to name. A check that returns early (no
+consent rule applies when the requirement is `none`) makes a rule that ignores the early return
 stricter than the check; state it inside the consequence of the condition that guards it. And a
-check that parses a format more liberally than any pattern says — a date parser accepting week and
-ordinal dates — has no exact pattern; publish nothing for it rather than an approximation.
+check that parses a format more liberally than any pattern says (a date parser accepting week and
+ordinal dates) has no exact pattern; publish nothing for it rather than an approximation.
 
 **Every tightening may sit inside a key**, not only at its top: at the element schema of a map
 (`additionalProperties`) or a sequence (`items`), and at a declared field of an element struct
@@ -359,9 +359,9 @@ standing for any entry name.
 
 A consumer showing tightenings names each by its **position relative to the key**: the segments
 from the key's constraint down to it, `.`-joined, with `*` for an element and a field's name for a
-field — `*.body` for the `body` field of every entry, `*.body.*` for every text in it. The key's own
+field: `*.body` for the `body` field of every entry, `*.body.*` for every text in it. The key's own
 tightenings have the empty position. A consumer reads them by walking `constraint` in this order:
-at each position, `required` (on a map only — a struct's `required` names fields), then a
+at each position, `required` (on a map only: a struct's `required` names fields), then a
 `propertyNames` holding only `pattern`, then `pattern`, then each `allOf` member carrying
 `description`; then the element, `additionalProperties`
 before `items`; then each field in the order `properties` lists them.
@@ -372,8 +372,8 @@ those goldens.
 
 ### Portable patterns
 
-A pattern a refinement publishes is read by whatever validates the contract — an ECMA-262 engine
-behind a JSON Schema validator, Rust's `regex`, Java's `java.util.regex`, Python's `re` — and those
+A pattern a refinement publishes is read by whatever validates the contract (an ECMA-262 engine
+behind a JSON Schema validator, Rust's `regex`, Java's `java.util.regex`, Python's `re`) and those
 disagree about a great deal. A producer MUST refuse a refinement whose pattern lies outside this
 subset, in which each of them reads every construct alike:
 
@@ -389,7 +389,7 @@ subset, in which each of them reads every construct alike:
   repetition is not itself repeated.
 - **Anchors.** `^` and `$`, meaning the start and the end of the whole text.
 
-Matching is JSON Schema's: unanchored, over characters. Nothing else is in the subset — in
+Matching is JSON Schema's: unanchored, over characters. Nothing else is in the subset: in
 particular `.`, whose line terminators differ by engine; `\d`, `\w`, `\s`, `\b` and their
 negations, which are ASCII in one engine and Unicode in the next (ECMA-262's `\s` holds U+FEFF, which
 Unicode's `White_Space` does not); back-references, lookaround, lazy repetition, flags, and any
@@ -405,9 +405,9 @@ two, and a negated class matches each half.
 ### `text_form`
 
 Always present, so that a null `text_constraint` has one meaning rather than two: `text` says any
-text is fine and there is nothing to parse, `unknown` says nothing could be determined — a gap
-rather than an answer. Those used to be indistinguishable, and a list-typed key is what made the
-difference cost a deployment.
+text is fine and there is nothing to parse, `unknown` says nothing could be determined: a gap
+rather than an answer. Without the field the two would be indistinguishable, and for a list-typed
+key that difference costs a deployment.
 
 | Value | The key holds |
 |---|---|
@@ -415,7 +415,7 @@ difference cost a deployment.
 | `integer` | A whole number. |
 | `boolean` | A truth value. |
 | `choice` | One of `values`. |
-| `structured` | A composite — a sequence, a map — which a single variable must spell as a literal. |
+| `structured` | A composite (a sequence, a map), which a single variable must spell as a literal. |
 | `unknown` | Nothing could be determined. |
 
 ### Reading a variable
@@ -429,7 +429,7 @@ Checking a variable is **two steps**, and both are needed.
    only step that can reach them: a pattern matches characters, so `99999` is a well-formed integer
    and only a bound catches it not fitting a `u16`.
 
-Skipping the second leaves every bound in the document decorative — a deployment that passes every
+Skipping the second leaves every bound in the document decorative: a deployment that passes every
 gate and fails at boot. Applying `constraint` to the raw text instead rejects `"0"` for an integer
 key, which is a correct deployment refused.
 
@@ -454,7 +454,7 @@ For `figment`:
 | `structured` | trim, parse as a TOML literal |
 | `text`, `unknown` | trim |
 
-Every read begins by trimming, because the environment layer trims before it parses anything — for
+Every read begins by trimming, because the environment layer trims before it parses anything: for
 a plain string and a single character as much as for an integer. A read that skipped it would refuse
 `" x "` against a `minLength` of 1, on a value that loads.
 
@@ -463,7 +463,7 @@ block scalar adds a line ending nobody meant as part of the value, whereas a tra
 real character of a real password. So `"x\n"` supplies a single-character key and `"x "` does not.
 
 This asymmetry is why a consumer holding a mounted secret checks its contents against `constraint`
-and **not** against `text_constraint` — that one permits the surrounding whitespace an environment
+and **not** against `text_constraint`: that one permits the surrounding whitespace an environment
 spelling may carry and a file keeps.
 
 <a id="terrace-java-reads"></a>
@@ -477,7 +477,7 @@ For `terrace-java`:
 
 | `text_form` | Read |
 |---|---|
-| `integer` | drop surrounding whitespace, an optional leading `+` or `-`, then parse as a base-10 integer; a **blank string coerces to `0`** rather than being refused (Jackson's own primitive-from-blank-string rule) — a producer publishing this loader accepts that a merged-but-empty variable reads as zero, not as absent |
+| `integer` | drop surrounding whitespace, an optional leading `+` or `-`, then parse as a base-10 integer; a **blank string coerces to `0`** rather than being refused (Jackson's own primitive-from-blank-string rule): a producer publishing this loader accepts that a merged-but-empty variable reads as zero, not as absent |
 | `boolean` | drop surrounding whitespace, then accept exactly `true`/`True`/`TRUE` or `false`/`False`/`FALSE`; no other spelling, `1`/`0` included |
 | `choice` | drop surrounding whitespace, then compare verbatim |
 | `text`, `unknown` | no read beyond the trim already reflected in `text_constraint` |
@@ -486,28 +486,28 @@ For `terrace-java`:
 layers hand every value to the merged configuration map as a bare string; nothing in that path
 parses a JSON or TOML literal out of it the way `figment` does. A `structured` key is therefore
 reachable **only** through the TOML document layer (where `tomlj` has already produced the list or
-table) — never through its own environment variable, secrets file, or `_FILE` target, whatever
-`text_constraint` a document happens to publish for it. This is a real, current limitation of
-`terrace-java`, not a spec choice: a future version of this loader closing it would only ever *add*
-a read this table does not yet have, never change one that is here.
+table): never through its own environment variable, secrets file, or `_FILE` target, whatever
+`text_constraint` a document happens to publish for it. This is a limitation of `terrace-java`,
+not a spec choice: closing it would only *add* a read this table lacks, never change one that is
+here.
 
 Integer coercion was measured against Jackson's default `ObjectMapper`, the one
 `terrace-config-loader` binds every layer through: `"007"` reads as `7` (no octal interpretation),
 `"1_000"` and `"0x5"` are both refused, and `"5.0"` is refused rather than truncated. Boolean
-coercion accepts only the three case spellings Jackson's own error message names — not
+coercion accepts only the three case spellings Jackson's own error message names: not
 case-insensitive matching against `true`/`false` in general, and not `"1"`/`"0"`.
 
 ### What the file layers cannot supply
 
 A key-named file in the secrets directory and a `_FILE` target both deliver their contents as
 strings with no parse. A key whose **`constraint` is not a string type** therefore **cannot be
-supplied by either, whatever the file contains** — not "must match a pattern", cannot be supplied at
-all. A chart mounting `isr__ttl_secs` as a secret file has made a mistake no file contents can fix,
-and a validator can say so from `constraint` alone.
+supplied by either, whatever the file contains**. The rule is not "must match a pattern"; such a key
+cannot be supplied at all. A chart mounting `isr__ttl_secs` as a secret file has made a mistake no
+file contents can fix, and a validator can say so from `constraint` alone.
 
 Keyed on `constraint`, not on `text_form`: that field answers what parse the *environment* needs,
 and the two differ for every type whose deserialisation parses a string. An address-typed key is
-`text_form: unknown` — no pattern here describes an address — and it is a string in the document and
+`text_form: unknown` (no pattern here describes an address), and it is a string in the document and
 mounts from a secrets file perfectly well.
 
 ## Reloading
@@ -516,7 +516,7 @@ A process picks up a changed file only if it watches the file and rebuilds from 
 changed value only if the value is consumed inside what it rebuilds. Neither is visible from
 outside the binary. A deployment that restarts its processes on every change throws the reload
 away, and one that restarts them on none leaves every value consumed at start changed on disk and
-never applied. So the document states both, and a consumer derives the third fact — how its own
+never applied. So the document states both, and a consumer derives the third fact: how its own
 deployment delivers each key.
 
 ### What the document states
@@ -524,8 +524,8 @@ deployment delivers each key.
 **`schema.reload` is a fact about the binary**, not about `producer.loader`: a service can link a
 loader with a supervisor and never run it. `mode: rebuild` says a debounced change to any of
 `layers` re-reads every layer and rebuilds the runtime. `mode: none` says nothing is applied after
-start. **Absent means undeclared** — a document written before this field existed — and a consumer
-treats it as `none` and reports it as undeclared rather than as none.
+start. **Absent means undeclared**: a consumer treats it as `none` and reports it as undeclared
+rather than as none.
 
 `layers` never contains the environment. A process's environment is fixed for its lifetime, so no
 producer could truthfully publish it.
@@ -534,7 +534,7 @@ producer could truthfully publish it.
 
 - `live`: the value is consumed inside the rebuilt runtime, so a rebuild applies it.
 - `restart`: the value is applied only at process start. Either it is consumed before the supervisor
-  runs — a process-global installation, a `reserved` key — or changing it under live traffic is
+  runs (a process-global installation, a `reserved` key) or changing it under live traffic is
   unsafe and the author wants a rollout's readiness gating and rollback instead. The format does
   not distinguish the two, because no consumer acts differently on them.
 
@@ -555,15 +555,15 @@ Every degradation is toward a needless restart, never toward a change silently n
 Normative, and ordered for the reason [Reading a container](#reading-a-container) is. For one key,
 delivered through one channel to a container running one image, first match winning:
 
-1. The channel is the environment — a plain variable, an alias, or an indirection variable itself
+1. The channel is the environment: a plain variable, an alias, or an indirection variable itself
    rather than the file it names. **Not applicable**: changing a variable changes the pod
    specification, and the orchestrator replaces the process without being asked.
-2. The container runs once per pod — an init container. **Restart.**
+2. The container runs once per pod: an init container. **Restart.**
 3. The image's contract has no `schema.reload`. **Restart**, reported as undeclared.
 4. `schema.reload.mode` is not `rebuild`. **Restart.**
 5. The key's `reload` is absent, unknown, or `restart`. **Restart.**
 6. The channel's layer is not in `schema.reload.layers`. **Restart.**
-7. The channel is a mount the orchestrator never updates in place — a Kubernetes `subPath` mount,
+7. The channel is a mount the orchestrator never updates in place: a Kubernetes `subPath` mount,
    or an object marked immutable. **The deployment is defective**: the key is neither reloaded nor
    restarted when it changes. A consumer MUST report it rather than classify it.
 8. Otherwise **live**.
@@ -572,8 +572,8 @@ A workload needs a restart when a change touches any key that is `restart` for a
 containers. A key one image reads `live` and another reads `restart`, in a document both read, is
 `restart` for every workload running the second.
 
-Content a consumer cannot attribute to a key — a verbatim fragment appended to a rendered
-document — is `restart` content.
+Content a consumer cannot attribute to a key, a verbatim fragment appended to a rendered
+document, is `restart` content.
 
 ## The `json_schema` half
 
@@ -585,7 +585,7 @@ schema catches none of them.
 It carries **no `required` list** by default, for the reason given under `required` above.
 
 Every alias is a property of its own: a closed schema listing only the canonical spelling would
-underline a line that loads. A `reserved` key is left out entirely — the loader reads it from the
+underline a line that loads. A `reserved` key is left out entirely: the loader reads it from the
 environment and a file may not supply it.
 
 ## The `external` half
@@ -617,7 +617,7 @@ MUST NOT be empty and MUST NOT contain `*` anywhere but at its end.
 A producer MUST fail rather than emit a document containing any of these. Each is a way a contract
 could quietly stop being one.
 
-1. An external variable **carrying `dialect.prefix`** — everything in that namespace is a
+1. An external variable **carrying `dialect.prefix`**: everything in that namespace is a
    configuration key, and declaring one external would leave it governed and exempt at once.
 2. An ignore pattern **reaching into that namespace**, which is the same exemption through the
    other door and worse, because a pattern exempts everything it happens to cover. That includes a
@@ -629,27 +629,27 @@ could quietly stop being one.
    namespace: the config and secrets-directory variables take arbitrary names, so `CREDENTIALS_*`
    against a `CREDENTIALS_DIR` would exempt the variable deciding where every credential is read
    from.
-5. An external variable **declared twice** — refusing to build beats picking one of two
+5. An external variable **declared twice**: refusing to build beats picking one of two
    descriptions.
 6. A **secret carrying a default**, in either order the two were declared and anywhere in the
    document.
 7. An **empty `dialect.prefix`**.
-8. A key whose environment spelling is **another key's indirection variable** — `unreachable:
+8. A key whose environment spelling is **another key's indirection variable**: `unreachable:
    indirection`. With `token` and `token_file` both present, setting `<PREFIX>TOKEN_FILE` fills
    `token` from the file it names *and* fills `token_file` with the path: one variable, two keys,
    and a validator classifying it stops at the first. Publishing a contract that cannot describe an
    effect is worse than publishing none, because every gate downstream would pass.
-9. A key whose **`default_value` fails its own `constraint`** — a default the document itself calls
+9. A key whose **`default_value` fails its own `constraint`**: a default the document itself calls
    invalid. The refusal is for a failure the producer can prove: a keyword its evaluator does not
    implement leaves the answer undecided, and an undecided default is published rather than refused
    on a guess. A refinement MUST NOT be how a producer reaches this; see
    [Refinements](#refinements).
-10. A key published **`reload: live` in an image that does not rebuild** — `schema.reload` absent or
+10. A key published **`reload: live` in an image that does not rebuild**: `schema.reload` absent or
     its `mode` not `rebuild`. The key claims a rebuild applies it, and the same document says there
     is no rebuild.
 11. A **`reserved` key published `reload: live`**. It is read before the layers exist, from an
     environment that cannot change.
-12. **`mode: rebuild` with an empty `layers`** — `none`, spelled so that it looks like support.
+12. **`mode: rebuild` with an empty `layers`**: `none`, spelled so that it looks like support.
 
 A producer MUST NOT emit a document describing a configuration surface wider than the binary in the
 image actually loads. A workspace with several aggregates has a generator that naturally reaches for
@@ -658,23 +658,23 @@ deployment supplies. Nothing downstream can check this.
 
 ## Reading a container
 
-Normative, and an **ordered** list because it has to be — two consumers running these in a different
+Normative, and an **ordered** list because it has to be: two consumers running these in a different
 order disagree about whether a deployment is valid, which is the failure the single wildcard form
 exists to prevent, reached through evaluation order instead of pattern syntax.
 
 For each environment variable on a container, first match winning:
 
-1. one of `schema.loader[].env` — a variable the loader reads to decide what the layers are. Valid.
-2. some `schema.keys[].env` **or one of that key's `env_aliases`** — that key, from the environment
+1. one of `schema.loader[].env`: a variable the loader reads to decide what the layers are. Valid.
+2. some `schema.keys[].env` **or one of that key's `env_aliases`**: that key, from the environment
    layer. Check it in the two steps under [Reading a variable](#reading-a-variable).
-3. some `schema.keys[].env_file` **or one of its `env_file_aliases`** — that key, by indirection.
+3. some `schema.keys[].env_file` **or one of its `env_file_aliases`**: that key, by indirection.
    The value is a path, so neither constraint applies; what applies is that the path is mounted.
-4. anything else beginning with `schema.dialect.prefix` — **reject.** A key spelling nothing in the
+4. anything else beginning with `schema.dialect.prefix`: **reject.** A key spelling nothing in the
    image reads. Neither `external.env` nor `external.ignore` can reach this step, because a producer
    refuses both when they carry the prefix.
-5. some `external.env[].name` — check it the same two ways.
-6. some `external.ignore` pattern — skip it.
-7. otherwise — `external.unknown`.
+5. some `external.env[].name`: check it the same two ways.
+6. some `external.ignore` pattern: skip it.
+7. otherwise: `external.unknown`.
 
 ## What the format deliberately cannot say
 
@@ -685,7 +685,7 @@ and no arrangement of these fields would.
 
 **A cluster's injected variables cannot be declared.** Kubernetes service links inject
 `<SERVICE_NAME>_SERVICE_HOST` and its relatives per Service in the namespace, and the service name
-is the release name — which an image cannot know. A release called `portfolio` produces
+is the release name, which an image cannot know. A release called `portfolio` produces
 `PORTFOLIO_SERVICE_HOST` and `PORTFOLIO_PORT` against a `PORTFOLIO_` prefix; a release called
 `staging-portfolio` produces names outside it entirely. No declaration written at build time is
 right for both.
@@ -718,7 +718,7 @@ Three constants tie a document to an image.
 The registry copy is attached to the digest under that artifact type, and is what a pipeline
 fetches: no layer pull, pinned to the digest a chart pins rather than a tag that can move, and
 signable. Asking a digest for its referrers of this type returns that digest's contract by
-construction, content-addressed by the registry. Nothing means the image does not publish one —
+construction, content-addressed by the registry. Nothing means the image does not publish one,
 which is an answer, and a different answer from "the contract could not be fetched".
 
 The embedded copy at `dev.terrace.config.contract.path` is what makes an image self-describing with
@@ -730,8 +730,8 @@ the document's own `schema.dialect.prefix`; a mismatch is a build to refuse rath
 prefer.
 
 There is deliberately **no label carrying the document's hash.** It would buy a cross-check that the
-embedded file and the attached artifact are the same document — but that is a failure of the build,
+embedded file and the attached artifact are the same document, but that is a failure of the build,
 and the build is the one place holding both copies locally and able to compare them for nothing.
-Publishing the assertion would make every consumer carry a field none of them need, and it was the
-only label that had to be dynamic. Without it all three are constants for a service, which is what
-lets them be a plain `LABEL` block with no build argument to interpolate.
+Publishing the assertion would make every consumer carry a field none of them need, and it would be
+the only label that had to be dynamic. Without it all three are constants for a service, which is
+what lets them be a plain `LABEL` block with no build argument to interpolate.

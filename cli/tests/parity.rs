@@ -53,17 +53,17 @@ const VERIFIED_REF: &str = "4fab35383cad5b70a5d510f616ba810eb2a4fa79";
 
 /// The differences that are meant to be there, and why.
 ///
-/// Every entry is a decision recorded in `docs/contract-cli-plan.md`, not a difference somebody grew
+/// Every entry is a decision recorded in `docs/ARCHITECTURE.md`, not a difference somebody grew
 /// tired of chasing. A finding matching one of these is expected on exactly one side; anything else
 /// fails the run with both texts printed, so classifying it is a person's job and not a regex's.
 const DELIBERATE: &[Deliberate] = &[Deliberate {
     side: Side::Rust,
     opening: "range not checked:",
     reason: "\
-        §7.1. The Python performed the range read unconditionally and never read `producer` at all. \
-        The reads belong to `producer.loader`, and every contract vendored in this corpus predates \
-        that field — so this build skips the read and says so, where the Python performed it with \
-        figment's rules. A warning on one side and silence on the other, by design.",
+        Value reads belong to `producer.loader` (`docs/ARCHITECTURE.md`), and every contract \
+        vendored in this corpus predates that field, so this build skips the range read and says \
+        so. The Python performed it unconditionally with figment's rules and never read \
+        `producer` at all. A warning on one side and silence on the other, by design.",
 }];
 
 /// Which implementation a deliberate difference belongs to.

@@ -2,7 +2,7 @@ use serde_json::{Value as Json, json};
 
 use super::{
     Credential, Declared, Ledger, Mount, Where, by_container, common_prefix, credentials,
-    document_paths, gate_three_reach, names_credential, scan_file,
+    gate_three_reach, names_credential, scan_file,
 };
 use crate::gate::container::ContainerView;
 use crate::gate::document::DocumentSource;
@@ -128,20 +128,6 @@ fn a_volume_the_pod_does_not_have_is_not_an_error() {
     assert_eq!(
         secret_file_names(&[], &json!({"volumes": []}), "missing"),
         Vec::<String>::new()
-    );
-}
-
-#[test]
-fn every_table_and_every_leaf_of_a_document_is_a_path() {
-    let mut found = std::collections::BTreeSet::new();
-    document_paths(
-        &json!({"auth": {"jwt_secret": "x"}, "port": 8080}),
-        "",
-        &mut found,
-    );
-    assert_eq!(
-        found.into_iter().collect::<Vec<_>>(),
-        ["auth", "auth.jwt_secret", "port"]
     );
 }
 
@@ -327,7 +313,7 @@ impl Scan {
         env: &[(&str, &str)],
     ) {
         let held = container(env);
-        let view = ContainerView::read(&held, &self.mine);
+        let view = ContainerView::read(&[], &held, &self.mine);
         let contracts = [&self.mine, &self.sibling];
         let judged = judged
             .iter()

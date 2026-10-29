@@ -162,9 +162,10 @@
           "type": "string"
         },
         "gates": {
+          "description": "The gates the values file is not held to. An earlier CLI refuses `required`, which was added after the other four. Exempting `env` or `files` also silences `required`, and exempting `document` leaves `required` judging only secret and reserved keys. See DECLARATION.md.",
           "type": "array",
           "minItems": 1,
-          "items": { "enum": ["closed", "document", "env", "files"] }
+          "items": { "enum": ["closed", "document", "env", "files", "required"] }
         },
         "reason": { "$ref": "#/$defs/text" }
       }

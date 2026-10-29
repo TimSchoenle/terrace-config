@@ -201,7 +201,7 @@ see [REPOSITORY.md](docs/REPOSITORY.md).
 | [Charts whose images reload](../cli/docs/RELOAD.md) | How a chart decides which configuration changes restart its pods, from what each image's contract says it applies without a restart. |
 | [Chart repository settings and gates](../cli/docs/REPOSITORY.md) | How a chart repository configures terrace-contract in terrace.yaml, narrows its gates to the charts a change touched, runs every step with sync, and checks that templates render what their markers… |
 
-The design and what is built are in [`docs/contract-cli-plan.md`](../docs/contract-cli-plan.md).
+How the toolchain fits beside the implementations is in [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
 
 ## Contributing
 

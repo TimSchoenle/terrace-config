@@ -1,6 +1,7 @@
 name: release-cli
 
-# Publishing `terrace-contract`: §9 of `docs/contract-cli-plan.md`, as a pipeline.
+# Publishing `terrace-contract`, through the channels `docs/ARCHITECTURE.md` describes under
+# "Distribution and versioning".
 #
 # The crate is `publish = false` and stays so. What a consuming build actually wants is a binary or
 # an image (no toolchain, no compile, no platform detection), so the artefacts are the release, and
@@ -8,8 +9,8 @@ name: release-cli
 #
 # Two channels, from one set of bytes:
 #
-#   9.2  four binaries, `SHA256SUMS` beside them, every file signed keylessly
-#   9.1  a multi-architecture image at `ghcr.io/<owner>/terrace-contract`, signed the same way
+#   - four binaries, `SHA256SUMS` beside them, every file signed keylessly
+#   - a multi-architecture image at `ghcr.io/<owner>/terrace-contract`, signed the same way
 #
 # The image is built *from the binaries this workflow already produced* rather than compiled again
 # inside it. A `cargo build` per architecture under emulation costs an hour where a `COPY` costs a
@@ -352,7 +353,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: gh release upload "$TAG" dist/* --clobber --repo "$REPOSITORY"
 
-      # §9.3's composite action lives in another repository, and a consumer of it pins a version
+      # The install action lives in another repository, and a consumer of it pins a version
       # there rather than here. What this owes it is a release whose asset names are derivable:
       # `terrace-contract-<version>-<target>.<ext>` beside one `SHA256SUMS` and its signature,
       # which is what the step above just attached, and what the summary below states so that a

@@ -16,7 +16,8 @@ import lombok.extern.jackson.Jacksonized;
  * <p>The document is the whole of what this model renders. The image labels, the Dockerfile
  * block and their read-back are renderings of the published document and belong to {@code
  * terrace-contract render --format labels|dockerfile} and {@code terrace-contract image verify},
- * so every producer's image carries the same bytes ({@code docs/contract-cli-plan.md} §5).
+ * so every producer's image carries the same bytes ({@code docs/ARCHITECTURE.md}, "Renderings
+ * are artefacts of the spec").
  */
 @SuppressWarnings("doclint:missing")
 @Value

@@ -54,11 +54,19 @@ gate without a message.
 | `source` | `{kind?, selector?, key?, format?}` | The rendered object holding the document, and the key under its `data`. `selector` is a non-empty mapping of labels, matched instead of the rendered name because a name override moves the name. When the labels match more than one object of the kind, the one holding `key` under `data` or `stringData` is the source. `format` is `toml`, `json` or `yaml`. |
 | `images` | non-empty list of `{values, contract?}` | The images that read the document. `values` is the values path the chart pins the image at; `contract` is the vendored contract, relative to the chart directory. |
 | `consumers` | list of `{workload: {kind, selector?}, containers}` | The workloads that mount the document and their containers that read it. An empty list is a written decision to check no workload. |
-| `exempt` | list of `{values?, gates, reason}` | A rendered values file (or `*` for every one) that is not held to some gates. `gates` are `closed`, `document`, `env` and `files`. |
+| `exempt` | list of `{values?, gates, reason}` | A rendered values file (or `*` for every one) that is not held to some gates. `gates` are `closed`, `document`, `env`, `files` and `required`. |
 | `restart` | list of `{keys, reason}` | Keys the chart rolls its pods for although an image applies them live. The only direction in which a chart overrides an image. |
 | `tests` | [suite block](#the-suite-block) | How this document's round-trip suite is generated. |
 
 Every field except `name` has a default or is empty when left out. See [`DEFAULTS.md`](DEFAULTS.md).
+
+The `required` gate name was added after the other four. A declaration that does not use it reads
+as before, so the change is backward compatible within `v1`, but an earlier CLI refuses `required`
+as it refuses any value it does not know, so a repository that exempts from it pins `cli` to a
+release that reads it. Exempting a values file from `env` or `files` also silences `required` for
+it, because the requiredness gate judges the layers those two gates read. Exempting it from
+`document` leaves its non-secret keys undecided, so `required` still reports a secret or reserved
+key that no layer supplies.
 
 Every `reason` is required wherever the key appears. An exemption, a write-off or a rollout without
 a reason cannot be told apart from an oversight.
