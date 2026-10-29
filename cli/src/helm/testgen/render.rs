@@ -155,7 +155,17 @@ pub(super) fn plain_scalar(text: &str) -> bool {
     held.next()
         .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
         && held.all(|character| character.is_ascii_alphanumeric() || "_./-".contains(character))
+        && !RESERVED_WORDS
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case(text))
 }
+
+/// Words a YAML reader resolves to a boolean or to null rather than to a string.
+///
+/// The YAML 1.1 set, which is what Helm's parser applies, and a superset of YAML 1.2's core schema.
+/// Matched case-insensitively, which also covers spellings neither version reads that way: quoting
+/// one of those is harmless, and leaving a reserved one bare is not.
+const RESERVED_WORDS: &[&str] = &["true", "false", "yes", "no", "on", "off", "y", "n", "null"];
 
 /// A selector path YAML reads back unchanged as a plain scalar.
 ///

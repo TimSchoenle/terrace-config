@@ -1151,6 +1151,9 @@ fn a_set_scalar_keeps_its_yaml_type() {
     assert_eq!(yaml_scalar(&json!(true)), "true");
     assert_eq!(yaml_scalar(&json!("0.5")), "'0.5'");
     assert_eq!(yaml_scalar(&json!("plain")), "plain");
+    for word in ["true", "null", "No", "off", "Y"] {
+        assert_eq!(yaml_scalar(&json!(word)), format!("'{word}'"), "{word}");
+    }
 }
 
 #[test]
