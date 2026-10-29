@@ -529,7 +529,8 @@ fn collision_gate(
 /// which does not carry one, so an operator told to "add it to the file" is told to put a
 /// credential in a `ConfigMap`. A **reserved** key is read from the environment before the layers
 /// exist, so only the environment counts for it. A file layer counts only for a key a file can
-/// supply at all, which is a `text_form` of `text`.
+/// supply at all, which is a `text_form` of `text`, and the same narrowing applies to a file source
+/// the render does not show.
 ///
 /// It runs only where every layer was read. A values file exempt from gate 2 or 3 has a layer this
 /// gate did not see, and an unreadable document (`document` is [`None`]) leaves every non-secret key
@@ -542,7 +543,7 @@ fn required_gate(
     union: &Union,
     suppliers: &Suppliers,
     document: Option<&BTreeSet<String>>,
-    unseen: &[String],
+    unseen: &Unseen,
     relaxed: Relaxed,
 ) -> Result<Vec<Finding>, Error> {
     if relaxed.required || relaxed.env || relaxed.files {
@@ -550,11 +551,20 @@ fn required_gate(
     }
     let mut findings = Vec::new();
     for key in &union.keys {
-        if !flag(key, "required") || suppliers.layers.contains_key(&key.name) {
+        if !flag(key, "required") {
             continue;
         }
         let secret = flag(key, "secret");
         let reserved = flag(key, "reserved");
+        let files_count = !reserved && key.entry().file_supplyable()?;
+        let supplied = suppliers.layers.get(&key.name).is_some_and(|layers| {
+            layers
+                .iter()
+                .any(|layer| files_count || layer == ENVIRONMENT_LAYER)
+        });
+        if supplied {
+            continue;
+        }
         let document_counts = !secret && !reserved;
         if document_counts {
             match document {
@@ -564,43 +574,60 @@ fn required_gate(
             }
         }
 
-        let ways = supply_ways(view, union, key, reserved, document_counts)?;
+        let ways = supply_ways(view, union, key, files_count, document_counts);
         let message = format!(
             "required: the key {} is required, and no layer supplies it to container {}: {}",
             quoted(&key.name),
             quoted(&view.name),
             ways
         );
-        if unseen.is_empty() {
+        let mut could = unseen.environment.clone();
+        if files_count {
+            could.extend(unseen.files.iter().cloned());
+        }
+        if could.is_empty() {
             findings.push(error(message));
         } else {
             findings.push(warning(format!(
                 "{message}; unless {} supplies it, which the render does not show",
-                unseen.join(" or ")
+                could.join(" or ")
             )));
         }
     }
     Ok(findings)
 }
 
-/// The sources that could hand this container a key without the render showing which.
-///
-/// An `envFrom` object the render does not hold, and whatever the secrets directory presents that
-/// cannot be listed: a Secret the render does not hold, a volume of another type, or a directory
-/// inside a volume rather than at its mount point.
-fn unseen_sources(manifests: &[Json], spec: &Json, view: &ContainerView<'_>) -> Vec<String> {
-    let mut unseen = view.environment.unresolved.clone();
+/// The sources that could hand this container a key without the render showing which, split by
+/// the layer they feed, because a file source cannot supply a key only the environment counts for.
+#[derive(Debug, Default)]
+struct Unseen {
+    /// `envFrom` objects the render does not hold.
+    environment: Vec<String>,
+    /// Whatever the secrets directory presents that cannot be listed: a Secret the render does not
+    /// hold, a volume of another type, or a directory inside a volume rather than at its mount
+    /// point.
+    files: Vec<String>,
+}
+
+/// Collects the [`Unseen`] sources of one container.
+fn unseen_sources(manifests: &[Json], spec: &Json, view: &ContainerView<'_>) -> Unseen {
+    let mut unseen = Unseen {
+        environment: view.environment.unresolved.clone(),
+        files: Vec::new(),
+    };
     let Some(directory) = view.secrets_dir.as_deref() else {
         return unseen;
     };
     match volume_at(view.container, directory) {
-        Some(volume) => unseen.extend(
+        Some(volume) => unseen.files.extend(
             unlisted_sources(manifests, spec, volume)
                 .into_iter()
                 .map(|source| format!("{source} in the secrets directory")),
         ),
         None if inside_a_mount(view.container, directory) => {
-            unseen.push("the volume holding the secrets directory".to_owned());
+            unseen
+                .files
+                .push("the volume holding the secrets directory".to_owned());
         }
         None => {}
     }
@@ -612,14 +639,14 @@ fn supply_ways(
     view: &ContainerView<'_>,
     union: &Union,
     key: &crate::union::Merged,
-    reserved: bool,
+    files_count: bool,
     document_counts: bool,
-) -> Result<String, Error> {
+) -> String {
     let mut ways: Vec<String> = Vec::new();
     if let Some(env) = key.text("env") {
         ways.push(format!("set {env}"));
     }
-    if !reserved && key.entry().file_supplyable()? {
+    if files_count {
         if let Some(variable) = key.text("env_file") {
             ways.push(format!("set {variable} to a file the container mounts"));
         }
@@ -646,11 +673,11 @@ fn supply_ways(
     if document_counts {
         ways.push("write it into the rendered document".to_owned());
     }
-    Ok(match ways.as_slice() {
+    match ways.as_slice() {
         [] => "the contract publishes no spelling this deployment could set".to_owned(),
         [only] => only.clone(),
         [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
-    })
+    }
 }
 
 /// The loader variable naming the secrets directory, when the contract publishes one.
@@ -1041,6 +1068,58 @@ mod tests {
                 "required: the key 'port' is required, and no layer supplies it to container \
                  'app': set P_PORT, or write it into the rendered document",
             ]
+        );
+    }
+
+    #[test]
+    fn a_file_does_not_supply_a_reserved_or_typed_key_and_an_unseen_file_source_does_not_soften_it()
+    {
+        let union = union(
+            &json!([
+                {"path": "log.level", "env": "P_LOG__LEVEL", "env_file": "P_LOG__LEVEL_FILE",
+                 "secrets_file": "log__level", "text_form": "text", "required": true,
+                 "reserved": true},
+                {"path": "port", "env": "P_PORT", "env_file": "P_PORT_FILE",
+                 "secrets_file": "port", "text_form": "integer", "required": true},
+            ]),
+            &json!([{"env": "P_SECRETS_DIR", "role": "secrets_dir"}]),
+            "figment",
+        );
+        let strict = Relaxed::default();
+        let carried: &[&str] = &[];
+
+        // Both keys arrive only by file: the `_FILE` variable for one, the secrets directory for
+        // the other. The loader reads neither, so both are still unsupplied.
+        let by_file = json!({"name": "app", "env": [
+            {"name": "P_LOG__LEVEL_FILE", "value": "/run/level"},
+            {"name": "P_SECRETS_DIR", "value": "/secrets"}
+        ], "volumeMounts": [{"name": "run", "mountPath": "/run"},
+                            {"name": "creds", "mountPath": "/secrets"}]});
+        let spec = json!({"volumes": [{"name": "creds", "secret": {"secretName": "creds",
+            "items": [{"key": "p", "path": "port"}]}}]});
+        let messages: Vec<String> = required(&[], &spec, &by_file, &union, Some(carried), strict)
+            .into_iter()
+            .map(|finding| finding.message)
+            .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "required: the key 'log.level' is required, and no layer supplies it to container \
+                 'app': set P_LOG__LEVEL",
+                "required: the key 'port' is required, and no layer supplies it to container \
+                 'app': set P_PORT, or write it into the rendered document",
+            ]
+        );
+
+        // A secrets directory the render cannot list could hold either file, which still supplies
+        // neither key, so the findings stay errors.
+        let unlisted =
+            json!({"volumes": [{"name": "creds", "secret": {"secretName": "external"}}]});
+        let findings = required(&[], &unlisted, &by_file, &union, Some(carried), strict);
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert!(
+            findings.iter().all(|finding| finding.level == Level::Error),
+            "{findings:?}"
         );
     }
 

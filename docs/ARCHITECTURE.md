@@ -387,11 +387,13 @@ not set `enableServiceLinks: false`, the message says so.
 **Gate 2b, requiredness.** Per container, against the keys that container's image marks
 `required`. Each must be supplied by some layer: an environment spelling (`env`, `valueFrom` and
 `envFrom` all count), a `_FILE` variable, a file in the secrets directory, or the rendered document.
-A secret is never supplied by the document, and a reserved key only by the environment. The finding
+A secret is never supplied by the document, a reserved key only by the environment, and a key a
+file cannot supply (one whose `text_form` is not `text`) by neither file layer. The finding
 names every layer that could supply the key, which tells an operator there is a choice where a
 `required` list would tell them to put a credential in a ConfigMap. A source the render does not
 show (an `envFrom` object or a secrets-directory Secret it does not hold, a volume of another type)
-could carry the key, so the finding is a warning naming it. The gate does not run for a values file
+could carry the key, so the finding is a warning naming it, unless the source is a file layer and
+the key one no file supplies. The gate does not run for a values file
 exempt from gate 2 or 3, and treats non-secret keys as undecided when the document cannot be read,
 because in both cases a layer it did not read may supply the key.
 

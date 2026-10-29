@@ -60,6 +60,14 @@ gate without a message.
 
 Every field except `name` has a default or is empty when left out. See [`DEFAULTS.md`](DEFAULTS.md).
 
+The `required` gate name was added after the other four. A declaration that does not use it reads
+as before, so the change is backward compatible within `v1`, but an earlier CLI refuses `required`
+as it refuses any value it does not know, so a repository that exempts from it pins `cli` to a
+release that reads it. Exempting a values file from `env` or `files` also silences `required` for
+it, because the requiredness gate judges the layers those two gates read. Exempting it from
+`document` leaves its non-secret keys undecided, so `required` still reports a secret or reserved
+key that no layer supplies.
+
 Every `reason` is required wherever the key appears. An exemption, a write-off or a rollout without
 a reason cannot be told apart from an oversight.
 
