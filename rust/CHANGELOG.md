@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.18.0](https://github.com/TimSchoenle/terrace-config/compare/v0.17.0...v0.18.0) (2026-10-29)
+
+
+### Features
+
+* **cli:** add gate 2b, requiredness, and envFrom to the container environment ([01ea010](https://github.com/TimSchoenle/terrace-config/commit/01ea0103f4dc5e506299de6d2fd56f14d4d1ce78))
+
+
+### Code Refactoring
+
+* **macros:** split the derive crate into modules ([#335](https://github.com/TimSchoenle/terrace-config/issues/335)) ([cfd289a](https://github.com/TimSchoenle/terrace-config/commit/cfd289a4c16608d2e8f05e725344f5091be78bc9))
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.60.0 ([#327](https://github.com/TimSchoenle/terrace-config/issues/327)) ([d9647a7](https://github.com/TimSchoenle/terrace-config/commit/d9647a7660514cac7d22f3e6d9b3a89c076cee5a))
+* **deps:** update rust crate jsonschema to v0.60.1 ([#343](https://github.com/TimSchoenle/terrace-config/issues/343)) ([3a2dc0b](https://github.com/TimSchoenle/terrace-config/commit/3a2dc0b99b72803046b14151192e5c6783eec48d))
+* **deps:** update rust crate tokio to v1.54.1 ([#328](https://github.com/TimSchoenle/terrace-config/issues/328)) ([5550295](https://github.com/TimSchoenle/terrace-config/commit/55502953063d239d4e6a0e01cdf3e053ade781b9))
+
 ## [0.17.0](https://github.com/TimSchoenle/terrace-config/compare/v0.16.0...v0.17.0) (2026-10-20)
 
 
