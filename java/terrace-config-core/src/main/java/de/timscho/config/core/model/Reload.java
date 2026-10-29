@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * Whether a rebuild applies a change to one key, from {@code spec/v1/contract.schema.json}'s
  * {@code key.reload}.
  *
- * <p>Absent — a {@code null} {@link Key#getReload()} — means undeclared, which a consumer reads as
+ * <p>Absent (a {@code null} {@link Key#getReload()}) means undeclared, which a consumer reads as
  * {@link #RESTART}. See {@code spec/v1/FORMAT.md}'s "Reloading".
  */
 public enum Reload {

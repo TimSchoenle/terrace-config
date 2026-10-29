@@ -4,8 +4,8 @@ import de.timscho.config.core.model.Producer;
 import lombok.experimental.UtilityClass;
 
 /**
- * What this module writes into every {@link Producer} it builds — the Java equivalent of the
- * Rust crate's {@code Producer::current}.
+ * What this module writes into every {@link Producer} it builds: the Java equivalent of the Rust
+ * crate's {@code Producer::current}.
  *
  * <p>Not settable by a caller, and deliberately: a producer that could name itself something
  * else could publish a document whose reading rules are another implementation's, which is the
@@ -18,8 +18,8 @@ public class ProducerIdentity {
     public static final String NAME = "terrace-config-java";
 
     /**
-     * This module's own version, read from the package's implementation version (set from the
-     * build's own version at packaging time). Falls back to {@code 0.0.0-dev} when run from
+     * {@return this module's own version, read from the package's implementation version (set from
+     * the build's own version at packaging time)} Falls back to {@code 0.0.0-dev} when run from
      * classes rather than a packaged jar, e.g. under a test runner, where no manifest exists to
      * read it from.
      */
@@ -29,8 +29,8 @@ public class ProducerIdentity {
     }
 
     /**
-     * A {@link Producer} identifying this module, naming {@code loader} as the library whose
-     * environment reads a document's {@code text_constraint}s were measured against.
+     * {@return a {@link Producer} identifying this module, naming {@code loader} as the library
+     * whose environment reads a document's {@code text_constraint}s were measured against}
      *
      * @param loader the name of the library assembling the contract, e.g. {@code "spring-boot"}
      */

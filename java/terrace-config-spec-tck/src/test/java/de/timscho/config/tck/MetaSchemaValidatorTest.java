@@ -13,10 +13,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Proved without any producer, exactly as {@code rust/tests/spec.rs} proves it for the Rust
- * crate: the stored corpus itself is checked against {@code spec/v1/contract.schema.json}. A case
- * that no longer validates is the one failure a corpus alone cannot catch — an expectation blessed
- * while wrong.
+ * Proved without any producer, exactly as {@code rust/tests/spec.rs} proves it for the Rust crate:
+ * the stored corpus itself is checked against {@code spec/v1/contract.schema.json}. A case that no
+ * longer validates is the one failure a corpus alone cannot catch: an expectation blessed while
+ * wrong.
  */
 class MetaSchemaValidatorTest {
 

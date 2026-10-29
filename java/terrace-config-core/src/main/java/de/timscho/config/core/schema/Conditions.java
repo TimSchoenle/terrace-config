@@ -11,8 +11,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link Condition} checked against the struct it is stated on, as the JSON Schema that says it
- * and the sentence every rendering shows — the port of the Rust crate's {@code schema::condition}.
- * Same encodings, same sentences, same refusals.
+ * and the sentence every rendering shows: the Java counterpart of the Rust crate's {@code
+ * schema::condition}. Same encodings, same sentences, same refusals.
  */
 @UtilityClass
 class Conditions {
@@ -225,7 +225,7 @@ class Conditions {
     }
 
     /**
-     * The sentence every rendering shows for {@code condition} — the Rust crate's, word for word.
+     * The sentence every rendering shows for {@code condition}: the Rust crate's, word for word.
      *
      * @param condition the condition
      */

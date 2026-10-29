@@ -3,7 +3,7 @@ package de.timscho.config.processor;
 import javax.lang.model.element.Element;
 
 /**
- * Raised when a field's shape cannot be resolved — the compile error {@code rust/docs/SCHEMA.md}
+ * Raised when a field's shape cannot be resolved: the compile error {@code rust/docs/SCHEMA.md}
  * calls "the whole point of the feature". Carries the offending {@link Element} so {@link
  * TerraceConfigProcessor} can report it at the right source position.
  */

@@ -8,10 +8,10 @@ import tools.jackson.core.util.DefaultPrettyPrinter;
  * {@link DefaultPrettyPrinter} indented with two spaces, except that an empty array or object is
  * rendered as {@code []} / {@code {}} rather than Jackson's default {@code [ ]} / {@code { }}.
  *
- * <p>Mirrors {@code terrace-config-core-jackson2}'s class of the same name, field for field,
- * built on Jackson 3's {@code tools.jackson.core} instead. See that module's copy for the full
- * rationale — the corpus under {@code spec/v1/conformance/} spells an empty array without the
- * inner space, and publication is defined as byte-stable in {@code spec/v1/FORMAT.md}.
+ * <p>Mirrors {@code terrace-config-core-jackson2}'s class of the same name, field for field, built
+ * on Jackson 3's {@code tools.jackson.core} instead. See that module's copy for the full rationale:
+ * the corpus under {@code spec/v1/conformance/} spells an empty array without the inner space, and
+ * publication is defined as byte-stable in {@code spec/v1/FORMAT.md}.
  */
 final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
 
@@ -31,7 +31,7 @@ final class CompactEmptyContainerPrettyPrinter extends DefaultPrettyPrinter {
     }
 
     /**
-     * {@code "key": value}, not {@code "key" : value} — the corpus never has a space before the
+     * {@code "key": value}, not {@code "key" : value}: the corpus never has a space before the
      * colon. Named {@code writeObjectNameValueSeparator} here (Jackson 3 renamed the method from
      * Jackson 2's {@code writeObjectFieldValueSeparator}, field -&gt; name).
      */

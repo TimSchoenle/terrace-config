@@ -16,16 +16,16 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Applies a {@link Refinement} to a {@link Schema} — the port of the Rust crate's {@code
+ * Applies a {@link Refinement} to a {@link Schema}: the Java counterpart of the Rust crate's {@code
  * Schema::refine} and {@code Schema::refine_with}, wired onto {@link Schema#refine} and {@link
  * Schema#refineWith}.
  *
  * <p>Same rules, same order of checks, same messages in substance: a refinement names a key's
- * canonical path, optionally continued into the key's constraint — {@value #ELEMENT} for the
- * element every entry or item shares, a field name for a struct's field — and applies only to a
- * position of the right shape. It names only entries every layer reaching the key can spell, holds
- * a pattern to the portable subset, refuses two refinements that contradict each other, unions with
- * what is there, and never loosens. A default the refinement rejects makes the key required with no
+ * canonical path, optionally continued into the key's constraint ({@value #ELEMENT} for the element
+ * every entry or item shares, a field name for a struct's field), and applies only to a position of
+ * the right shape. It names only entries every layer reaching the key can spell, holds a pattern to
+ * the portable subset, refuses two refinements that contradict each other, unions with what is
+ * there, and never loosens. A default the refinement rejects makes the key required with no
  * default, and {@link Defaults} applies the same rule, so the two commute.
  *
  * <p>No streams, per the project's convention.
@@ -86,7 +86,7 @@ public class Refiner {
     public record Holds(String at, String description) implements Tightening {}
 
     /**
-     * {@code schema} with the constraint at {@code path} tightened by {@code refinement}.
+     * {@return {@code schema} with the constraint at {@code path} tightened by {@code refinement}}
      *
      * @param schema     the schema to refine; not modified
      * @param path       a key's canonical dotted path, optionally continued into its constraint
@@ -138,8 +138,8 @@ public class Refiner {
     }
 
     /**
-     * {@code schema} with every refinement {@code source} publishes applied, its paths read
-     * relative to {@code at}.
+     * {@return {@code schema} with every refinement {@code source} publishes applied, its paths
+     * read relative to {@code at}}
      *
      * @param schema the schema to refine; not modified
      * @param at     where the source's configuration is mounted; empty for the root
@@ -165,9 +165,10 @@ public class Refiner {
     }
 
     /**
-     * Every tightening a key's constraint publishes, in the order a reader meets them: the key's own
-     * — entries, entry names, pattern — then its element, then its fields as the constraint lists
-     * them — what a reader of the published constraint meets, read back from the model.
+     * {@return every tightening a key's constraint publishes, in the order a reader meets them: the
+     * key's own (entries, entry names, pattern), then its element, then its fields as the
+     * constraint lists them; what a reader of the published constraint meets, read back from the
+     * model}
      *
      * <p>A struct's {@code required} names its fields rather than a map's entries and is not one;
      * neither is a {@code propertyNames} other than a lone pattern.
@@ -183,7 +184,7 @@ public class Refiner {
     }
 
     /**
-     * Whether an observed default is one the key's <em>refinements</em> reject.
+     * {@return whether an observed default is one the key's <em>refinements</em> reject}
      *
      * <p>Only a failure the refinements introduced counts: the default satisfies the constraint the
      * type stated and fails the refined one. A default failing for some other reason is a defect in
@@ -433,7 +434,7 @@ public class Refiner {
         return "string".equals(type) || (type instanceof List<?> names && names.contains("string"));
     }
 
-    /** Refuse a pattern no value of a choice matches, which no value could satisfy. */
+    /** Refuses a pattern no value of a choice matches, which no value could satisfy. */
     private static void checkSomeChoiceMatches(
             final Map<String, Object> target, final String at, final String pattern) {
         if (!(target.get("enum") instanceof List<?> choices) || choices.isEmpty()) {
@@ -506,7 +507,7 @@ public class Refiner {
                 : null;
     }
 
-    /** Drop a default the refinement just made invalid, making the key required. */
+    /** Drops a default the refinement just made invalid, making the key required. */
     private static Key forgetRejectedDefault(final Key key) {
         if (key.getDefaultValue() != null && rejectedByRefinement(key, key.getDefaultValue())) {
             return key.toBuilder()
@@ -518,7 +519,7 @@ public class Refiner {
         return key;
     }
 
-    /** Refuse a schema at {@code at} that is not a map {@code what} can be stated about. */
+    /** Refuses a schema at {@code at} that is not a map {@code what} can be stated about. */
     private static void checkMap(final Map<String, Object> schema, final String at, final String what) {
         final Object element = schema.get("additionalProperties");
         final boolean open = element == null || element instanceof Map<?, ?> || Boolean.TRUE.equals(element);
@@ -529,7 +530,7 @@ public class Refiner {
         }
     }
 
-    /** Refuse an entry name some layer reaching the map could not spell. */
+    /** Refuses an entry name some layer reaching the map could not spell. */
     private static void checkSpellable(final Reach reach, final Dialect dialect, final String entry) {
         final String at = reach.at();
         final String refused = "`" + entry + "` cannot be a required entry of `" + at + "`: ";

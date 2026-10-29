@@ -8,12 +8,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * {@code spec/v1/FORMAT.md}.
  */
 public enum ExternalUnknownPolicy {
+    /** Accepts the variable silently. */
     @JsonProperty("allow")
     ALLOW,
 
+    /** Accepts the variable and reports it. */
     @JsonProperty("warn")
     WARN,
 
+    /** Fails validation. The format's default. */
     @JsonProperty("reject")
     REJECT
 }

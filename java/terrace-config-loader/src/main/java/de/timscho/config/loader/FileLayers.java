@@ -19,14 +19,17 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 final class FileLayers {
 
-    /** The secrets-directory layer, or {@code null} if none was configured — {@link Explanation}'s own use. */
+    /**
+     * The secrets-directory layer, or {@code null} if none was configured. For {@link
+     * Explanation}'s own use.
+     */
     @Getter(AccessLevel.PACKAGE)
     private final @Nullable SecretsDir secrets;
 
     private final FileSuffixEnv files;
 
     /**
-     * Read every file-backed layer the environment points at, and apply {@code policy}.
+     * Reads every file-backed layer the environment points at, and applies {@code policy}.
      *
      * <p>{@code dir} is the secrets directory, when one is configured; {@code origin} names
      * whatever pointed at it.
@@ -68,7 +71,7 @@ final class FileLayers {
     }
 
     /**
-     * Refuse a key supplied by more than one of: the environment, the secrets directory, the
+     * Refuses a key supplied by more than one of: the environment, the secrets directory, the
      * indirection variables.
      */
     private void rejectShadowedKeys(final Dialect dialect, final Map<String, String> environment) {
@@ -99,15 +102,15 @@ final class FileLayers {
                 + "keeps the service running on the old credential.");
     }
 
-    /** The indirection layer — {@link Explanation}'s own use. */
+    /** The indirection layer. For {@link Explanation}'s own use. */
     FileSuffixEnv indirections() {
         return this.files;
     }
 
     /**
      * The paths a reload has to watch: the secrets directory, and every indirection target's
-     * parent — directories, not files, since a Kubernetes volume update renames a whole new
-     * {@code ..data} directory over the old one rather than rewriting a file in place.
+     * parent: directories, not files, since a Kubernetes volume update renames a whole new {@code
+     * ..data} directory over the old one rather than rewriting a file in place.
      */
     Set<Path> watchPaths() {
         final Set<Path> paths = new TreeSet<>();

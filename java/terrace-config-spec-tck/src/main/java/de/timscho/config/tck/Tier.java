@@ -9,9 +9,9 @@ public enum Tier {
     /**
      * Schema-valid, a {@code producer} block present, and the document byte-stable across two
      * renders of the same input. The eight refusals ({@code FORMAT.md}, <em>What a producer MUST
-     * refuse</em>) are not checked here — they are a property of the implementation raising them,
-     * which needs {@code terrace-config-core}'s exception types (PR 4) to test directly, not a
-     * property two documents can be diffed for.
+     * refuse</em>) are not checked here. They are a property of the implementation raising them,
+     * which needs {@code terrace-config-core}'s exception types to test directly, not a property
+     * two documents can be diffed for.
      */
     TIER_1,
 

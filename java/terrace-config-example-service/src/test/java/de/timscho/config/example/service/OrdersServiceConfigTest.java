@@ -15,13 +15,13 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The example's own {@link Config}, exercised through {@link TerraceLoader} exactly as {@link
- * OrdersService#main} does — the Java counterpart of {@code tests/example_service.rs}.
+ * OrdersService#main} does: the Java counterpart of {@code tests/example_service.rs}.
  *
  * <p>This module keeps {@link Config} in {@code src/main}, not behind a path trick as the Rust
  * example needs: a Gradle module's test sources already see its own main sources on the same
- * classpath, so there is nothing to share here that is not already shared. What matters is the
- * same thing that matters on the Rust side — these tests load the exact class {@link
- * OrdersService} boots with, not a redeclared copy that could quietly drift from it.
+ * classpath, so there is nothing to share here that is not already shared. What matters is the same
+ * thing that matters on the Rust side: these tests load the exact class {@link OrdersService} boots
+ * with, not a redeclared copy that could quietly drift from it.
  */
 class OrdersServiceConfigTest {
 

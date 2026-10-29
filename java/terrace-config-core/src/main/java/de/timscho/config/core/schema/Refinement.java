@@ -6,8 +6,8 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
- * One tightening of a key's constraint, beyond what its type states — the port of the Rust crate's
- * {@code schema::Refinement}.
+ * One tightening of a key's constraint, beyond what its type states: the Java counterpart of the
+ * Rust crate's {@code schema::Refinement}.
  *
  * <p>Some constraints are real without being in any type: a host refusing to start unless a map of
  * legal documents holds {@code imprint} and {@code privacy}. {@link
@@ -23,7 +23,7 @@ public sealed interface Refinement
         permits Refinement.RequiredEntries, Refinement.EntryNames, Refinement.Pattern, Refinement.Holds {
 
     /**
-     * Text holding at least one character that is not white space — the negation of Rust's {@code
+     * Text holding at least one character that is not white space: the negation of Rust's {@code
      * str::trim().is_empty()}, exactly. The class is Unicode's {@code White_Space} property. {@code
      * \S} is not a substitute: ECMA-262's {@code \s} holds U+FEFF, which is not white space, so it
      * would reject a value the runtime check accepts.
@@ -32,7 +32,7 @@ public sealed interface Refinement
             "[^\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F" + "\\u205F\\u3000]";
 
     /**
-     * {@link Pattern} from a pattern, checked when it is applied.
+     * {@return {@link Pattern} from a pattern, checked when it is applied}
      *
      * @param pattern the pattern the string must match, inside the portable subset
      */
@@ -50,7 +50,7 @@ public sealed interface Refinement
     }
 
     /**
-     * {@link RequiredEntries} from any collection of names.
+     * {@return {@link RequiredEntries} from any collection of names}
      *
      * @param entries the entry names the map must contain
      */
@@ -59,8 +59,8 @@ public sealed interface Refinement
     }
 
     /**
-     * {@link EntryNames} from a pattern. Checked when it is applied, where a refusal can name the
-     * key it was meant for.
+     * {@return {@link EntryNames} from a pattern} Checked when it is applied, where a refusal can
+     * name the key it was meant for.
      *
      * @param pattern the pattern every entry name must match, inside the portable subset
      */
@@ -95,7 +95,7 @@ public sealed interface Refinement
      *
      * <p>Published as JSON Schema's {@code required} inside the key's constraint, unioned with any
      * entries already required. The map stays open. An empty set is accepted and changes nothing,
-     * once the path and the key's shape have been checked — a library computing its entries at
+     * once the path and the key's shape have been checked. A library computing its entries at
      * runtime may compute none, and skipping the checks for an empty set would let a mistyped path
      * through exactly then.
      *
@@ -119,7 +119,7 @@ public sealed interface Refinement
      *
      * <p>Published as JSON Schema's {@code propertyNames: {"pattern": …}} inside the key's
      * constraint, which puts the document at {@code schema_version: 3}. Matched as JSON Schema
-     * matches one — unanchored — and held to the portable subset, {@link PortablePattern}. The
+     * matches one (unanchored) and held to the portable subset, {@link PortablePattern}. The
      * environment folds names to lower case, so a pattern admitting an upper-case name describes an
      * entry only a file can supply: weaker than the loader, not wrong, and published as written.
      *
@@ -130,7 +130,7 @@ public sealed interface Refinement
     /**
      * A string must match this pattern.
      *
-     * <p>Published as JSON Schema's {@code pattern} at the string's position — a string-typed key,
+     * <p>Published as JSON Schema's {@code pattern} at the string's position: a string-typed key,
      * or a string inside one's element schema. The same portable subset as {@link EntryNames}.
      *
      * @param pattern the pattern the string must match
@@ -140,9 +140,9 @@ public sealed interface Refinement
     /**
      * A condition between the fields of a struct must hold.
      *
-     * <p>Stated on a struct position — in practice the element of a map or sequence of structs — and
-     * published as one member of that position's {@code allOf}: the condition's JSON Schema, with its
-     * readable form as the member's {@code description}. A conjunct, so it only tightens.
+     * <p>Stated on a struct position (in practice the element of a map or sequence of structs) and
+     * published as one member of that position's {@code allOf}: the condition's JSON Schema, with
+     * its readable form as the member's {@code description}. A conjunct, so it only tightens.
      *
      * @param condition the condition
      */

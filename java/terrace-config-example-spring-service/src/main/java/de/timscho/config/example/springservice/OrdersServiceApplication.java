@@ -7,7 +7,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 /**
  * A small HTTP-shaped service, wired to load its configuration through Spring Boot and {@code
- * terrace-config-spring-boot}'s {@code _FILE} indirection — the Spring counterpart of {@code
+ * terrace-config-spring-boot}'s {@code _FILE} indirection: the Spring counterpart of {@code
  * terrace-config-example-service}'s {@code OrdersService} and {@code
  * rust/examples/service/main.rs}.
  *
@@ -17,10 +17,10 @@ import org.springframework.context.ConfigurableApplicationContext;
  * ORDERS_LOG_LEVEL=debug ./gradlew :terrace-config-example-spring-service:run
  * }</pre>
  *
- * <p>A real deployment never sets {@code ORDERS_DATABASE_URL} in plain environment text — it
- * mounts a {@code Secret} volume and points {@code ORDERS_DATABASE_URL_FILE} at one file.
- * {@code OrdersServiceFileIndirectionIntegrationTest} boots this exact application that way,
- * without touching the real process environment.
+ * <p>A real deployment never sets {@code ORDERS_DATABASE_URL} in plain environment text. It mounts
+ * a {@code Secret} volume and points {@code ORDERS_DATABASE_URL_FILE} at one file. {@code
+ * OrdersServiceFileIndirectionIntegrationTest} boots this exact application that way, without
+ * touching the real process environment.
  *
  * <p>{@code spring-boot-starter} only, not {@code -web}: this example is about configuration, not
  * about serving anything, so {@link SpringApplication} auto-detects a non-web application and
@@ -35,15 +35,20 @@ import org.springframework.context.ConfigurableApplicationContext;
 // Deliberately not `final`, unlike every other concrete class under java/ (see java/README.md's
 // "Static analysis" section): `@SpringBootApplication` includes `@Configuration` with
 // `proxyBeanMethods` defaulting to `true`, so Spring CGLIB-subclasses this class at startup to
-// enforce singleton semantics on its own `@Bean` methods -- a final class here fails with
+// enforce singleton semantics on its own `@Bean` methods, and a final class here fails with
 // "Cannot subclass final class" the moment the context refreshes.
-// HideUtilityClassConstructor sees only static members and no declared constructor, and asks for
-// a hand-written private one — but Spring instantiates and CGLIB-subclasses this class (see the
-// "Deliberately not final" note above), so it needs the implicit public constructor left alone.
+// HideUtilityClassConstructor sees only static members and asks for a private constructor, but
+// Spring instantiates and CGLIB-subclasses this class (see the "Deliberately not final" note
+// above), so its constructor stays public.
 @SuppressWarnings("checkstyle:HideUtilityClassConstructor")
 @SpringBootApplication
 @EnableConfigurationProperties(OrdersProperties.class)
 public class OrdersServiceApplication {
+
+    /** Creates the application class. Spring instantiates and subclasses it at startup. */
+    public OrdersServiceApplication() {
+        // Spring needs a public constructor; the class holds no state of its own.
+    }
 
     static void main(final String[] args) {
         try (ConfigurableApplicationContext context = SpringApplication.run(OrdersServiceApplication.class, args)) {
@@ -53,7 +58,7 @@ public class OrdersServiceApplication {
 
     // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
     // binary's actual terminal output for a human running it by hand (the config values it booted
-    // with) -- there is no SLF4J-worthy log event to attribute it to, and no other consumer for it
+    // with). There is no SLF4J-worthy log event to attribute it to, and no other consumer for it
     // to reach.
     @SuppressWarnings("checkstyle:BanSystemOut")
     static void report(final OrdersProperties properties) {

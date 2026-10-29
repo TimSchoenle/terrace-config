@@ -7,13 +7,13 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The same keys as a JSON Schema, for validating the document a chart renders — {@code
+ * The same keys as a JSON Schema, for validating the document a chart renders: {@code
  * spec/v1/contract.schema.json}'s {@code #/$defs/json_schema}. Deliberately open: only {@code
- * $schema} is required, and the rest is whatever the producer's renderer emitted, in the order
- * it emitted it.
+ * $schema} is required, and the rest is whatever the producer's renderer emitted, in the order it
+ * emitted it.
  *
  * <p>Held as an ordered map rather than a fixed set of fields, because this half's whole shape is
- * "the same keys as a JSON Schema" — a JSON Schema document has no closed vocabulary. Insertion
+ * "the same keys as a JSON Schema", and a JSON Schema document has no closed vocabulary. Insertion
  * order is preserved, which is what keeps a re-serialised document byte-stable.
  */
 public final class JsonSchemaDocument {
@@ -24,6 +24,13 @@ public final class JsonSchemaDocument {
         this.fields = fields;
     }
 
+    /**
+     * Wraps a parsed JSON Schema document, keeping its key order.
+     *
+     * @param fields the document's top-level keys, in document order
+     * @return the wrapped document, holding its own copy of {@code fields}
+     * @throws IllegalArgumentException if {@code $schema} is missing, empty, or not a string
+     */
     @JsonCreator
     public static JsonSchemaDocument of(final Map<String, Object> fields) {
         final Object schema = fields.get("$schema");
@@ -33,11 +40,13 @@ public final class JsonSchemaDocument {
         return new JsonSchemaDocument(new LinkedHashMap<>(fields));
     }
 
+    /** {@return the document's top-level keys, in document order} */
     @JsonValue
     public Map<String, Object> asMap() {
         return this.fields;
     }
 
+    /** {@return the document's {@code $schema} URI} */
     public String schemaDialect() {
         return (String) this.fields.get("$schema");
     }

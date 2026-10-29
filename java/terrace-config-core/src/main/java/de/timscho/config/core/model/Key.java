@@ -14,16 +14,17 @@ import lombok.extern.jackson.Jacksonized;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One configuration key, in every spelling that can supply it — {@code
+ * One configuration key, in every spelling that can supply it: {@code
  * spec/v1/contract.schema.json}'s {@code #/$defs/key}.
  *
- * <p>The fields on {@code key.required} in the meta-schema ({@link #path} through
- * {@link #reserved}, minus {@link #unreachable}) are marked {@link JsonInclude.Include#ALWAYS}
- * below so that, for example, a {@code null} {@link #ty} is still rendered rather than omitted —
- * the meta-schema's own {@code "type": ["string", "null"]} depends on the field being present.
- * {@link #constraint}, {@link #textConstraint}, {@link #unreachable} and {@link #reload} are the
- * genuinely optional fields and are omitted, not null-valued, when absent.
+ * <p>The fields on {@code key.required} in the meta-schema ({@link #path} through {@link
+ * #reserved}, minus {@link #unreachable}) are marked {@link JsonInclude.Include#ALWAYS} below so
+ * that, for example, a {@code null} {@link #ty} is still rendered rather than omitted, because the
+ * meta-schema's own {@code "type": ["string", "null"]} depends on the field being present. {@link
+ * #constraint}, {@link #textConstraint}, {@link #unreachable} and {@link #reload} are the genuinely
+ * optional fields and are omitted, not null-valued, when absent.
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder(toBuilder = true)
 @Jacksonized
@@ -136,9 +137,9 @@ public class Key {
     @Nullable String defaultText;
 
     /**
-     * The same default as {@link #defaultText}, as a value rather than as text. Null when the
-     * key has none, indistinguishable from a default that is itself null — use
-     * {@link #defaultText} and {@link #required} to tell those apart.
+     * The same default as {@link #defaultText}, as a value rather than as text. Null when the key
+     * has none, indistinguishable from a default that is itself null. Use {@link #defaultText} and
+     * {@link #required} to tell those apart.
      */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     @JsonProperty("default_value")

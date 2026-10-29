@@ -13,10 +13,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Exercised against the stored corpus rather than against a producer, which does not exist yet
- * (PR 6, PR 7): a document compared with itself must satisfy every tier, and a document mutated in
- * one recorded way must fail at exactly the tier that field belongs to. That is what proves the
- * comparator's own logic before there is a rendering to run it on for real.
+ * Exercised against the stored corpus rather than against a producer: a document compared with
+ * itself must satisfy every tier, and a document mutated in one recorded way must fail at exactly
+ * the tier that field belongs to. That proves the comparator's own logic independently of any
+ * rendering it is later run on.
  */
 class TierComparatorTest {
 

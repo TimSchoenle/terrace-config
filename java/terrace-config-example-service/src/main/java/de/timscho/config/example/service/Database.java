@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 /** The database this service persists orders to. */
+@SuppressWarnings("doclint:missing")
 @TerraceConfig
 @Getter
 @Setter

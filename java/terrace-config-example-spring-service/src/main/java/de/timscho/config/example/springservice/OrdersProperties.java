@@ -30,6 +30,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * from exactly this class through {@code SpringContractMain}, the same generated-and-CI-checked
  * {@code contract.json} story {@code terrace-config-example-service} tells for the vanilla loader.
  */
+@SuppressWarnings("doclint:missing")
 @TerraceConfig
 @Getter
 @Setter

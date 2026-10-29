@@ -23,7 +23,7 @@ import lombok.experimental.Accessors;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The layered loader — the Java equivalent of the Rust crate's {@code Terrace}.
+ * The layered loader: the Java equivalent of the Rust crate's {@code Terrace}.
  *
  * <p>Layers, lowest precedence first: struct/record defaults (Jackson leaves an absent key at
  * whatever the target's own default is), TOML at {@code $<PREFIX>CONFIG} (a file, or every
@@ -42,6 +42,7 @@ import org.jspecify.annotations.Nullable;
  * Config config = TerraceLoader.of("MYAPP_").reserve("MYAPP_PROFILE").load(Config.class);
  * }</pre>
  */
+@SuppressWarnings("doclint:missing")
 @Setter
 @Accessors(fluent = true, chain = true)
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
@@ -51,16 +52,18 @@ public final class TerraceLoader {
 
     private final String prefix;
 
-    /** Override the variable naming the TOML layer. Defaults to {@code <PREFIX>CONFIG}. */
+    /** Overrides the variable naming the TOML layer. Defaults to {@code <PREFIX>CONFIG}. */
     private @Nullable String configVar;
 
-    /** Override the variable naming the secrets directory. Defaults to {@code <PREFIX>SECRETS_DIR}. */
+    /**
+     * Overrides the variable naming the secrets directory. Defaults to {@code <PREFIX>SECRETS_DIR}.
+     */
     private @Nullable String secretsDirVar;
 
     /** Where the TOML layer looks when the configuration variable is unset. Defaults to {@code config.toml}. */
     private Path defaultConfigPath = Path.of(DEFAULT_CONFIG_PATH);
 
-    /** Override the indirection suffix. Defaults to {@code _FILE}. */
+    /** Overrides the indirection suffix. Defaults to {@code _FILE}. */
     private String fileSuffix = "_FILE";
 
     @Setter(AccessLevel.NONE)
@@ -84,7 +87,7 @@ public final class TerraceLoader {
         return new TerraceLoader(prefix);
     }
 
-    /** Override the nesting separator. Defaults to {@code __}.
+    /** Overrides the nesting separator. Defaults to {@code __}.
      *
      * @param newSeparator what separates nesting levels in an environment key
      */
@@ -94,9 +97,9 @@ public final class TerraceLoader {
     }
 
     /**
-     * Reserve a key, in its <b>full environment spelling</b>, e.g. {@code MYAPP_PROFILE}. A
-     * reserved key is read from the environment before the layers exist, so a file may not
-     * supply it.
+     * Reserves a key, in its <b>full environment spelling</b>, e.g. {@code MYAPP_PROFILE}. A
+     * reserved key is read from the environment before the layers exist, so a file may not supply
+     * it.
      *
      * @param key the full environment spelling of the key to reserve
      */
@@ -132,9 +135,9 @@ public final class TerraceLoader {
      * Every key {@code descriptor} describes, in every spelling this loader accepts.
      *
      * <p>Reads nothing: the answer is a property of the described type and of this loader's own
-     * dialect, not of the environment the process happens to be running in — usable from a
-     * documentation job, where none of the variables it describes are set. {@code descriptor}
-     * is usually a generated {@code <Type>Descriptor.DESCRIPTOR} from {@code
+     * dialect, not of the environment the process happens to be running in, so it is usable from a
+     * documentation job, where none of the variables it describes are set. {@code descriptor} is
+     * usually a generated {@code <Type>Descriptor.DESCRIPTOR} from {@code
      * terrace-config-processor}.
      *
      * @param descriptor the configuration type's own field-level descriptor
@@ -144,8 +147,8 @@ public final class TerraceLoader {
     }
 
     /**
-     * Every key {@code descriptor} describes, as spelled when it sits at {@code root} in a
-     * larger configuration — {@code schemaAt(CspDescriptor.DESCRIPTOR, "csp")} produces {@code
+     * Every key {@code descriptor} describes, as spelled when it sits at {@code root} in a larger
+     * configuration: {@code schemaAt(CspDescriptor.DESCRIPTOR, "csp")} produces {@code
      * csp.cloudflare.turnstile}, where {@link #schema} alone would produce {@code
      * cloudflare.turnstile}, a path that appears in no configuration file anywhere.
      *
@@ -188,7 +191,7 @@ public final class TerraceLoader {
         return schema.toBuilder().loader(loaderVars).build();
     }
 
-    /** Load a typed config, reading {@code System.getenv()} and the configured paths.
+    /** Loads a typed config, reading {@code System.getenv()} and the configured paths.
      *
      * @param <T>  the configuration type
      * @param type the configuration type's own class, to bind the merged layers against
@@ -198,9 +201,9 @@ public final class TerraceLoader {
     }
 
     /**
-     * Load a typed config against an explicit environment map, rather than {@code
-     * System.getenv()} — the seam a test uses to run this loader without touching the real
-     * process environment.
+     * Loads a typed config against an explicit environment map, rather than {@code
+     * System.getenv()}: the seam a test uses to run this loader without touching the real process
+     * environment.
      *
      * @param <T>         the configuration type
      * @param type        the configuration type's own class, to bind the merged layers against
@@ -212,7 +215,7 @@ public final class TerraceLoader {
     }
 
     /**
-     * Load a typed config and everything a reload needs to load it again later, reading {@code
+     * Loads a typed config and everything a reload needs to load it again later, reading {@code
      * System.getenv()} and the configured paths.
      *
      * @param <T>  the configuration type
@@ -223,8 +226,8 @@ public final class TerraceLoader {
     }
 
     /**
-     * As {@link #loadWatched(Class)}, against an explicit environment map — the seam a test uses
-     * to exercise a reload without touching the real process environment.
+     * As {@link #loadWatched(Class)}, against an explicit environment map: the seam a test uses to
+     * exercise a reload without touching the real process environment.
      *
      * <p>The merged map, before binding, is kept whole as the fingerprint: the typed value may
      * hold a secret in a type with no useful {@code equals} of its own, so comparing the merged
@@ -257,9 +260,23 @@ public final class TerraceLoader {
      * Where every value this loader can see would come from, reading {@code System.getenv()} and
      * the configured paths.
      *
-     * <p>Reports the same layers {@link #load} would bind, without binding them to any type —
-     * useful even when {@link #load} itself would refuse (a shadowed key, say), since the report
-     * needs no target type to succeed.
+     * <p>Reports the same layers {@link #load} would bind, without binding them to any type, so it
+     * still succeeds where binding would fail (a value the target type cannot hold, say). It finds
+     * the layers exactly as {@link #load} does, so a configuration directory that cannot be listed,
+     * a secrets layer that cannot be read, an indirection variable (the configured suffix, {@code
+     * _FILE} by default) that names a missing or unreadable file or targets a reserved name, or,
+     * under {@link ShadowPolicy#REJECT}, a key supplied by more than one of the environment, the
+     * secrets directory and the indirection variables makes it throw too. An environment value over a TOML value is a normal override and
+     * is reported, not refused. A TOML fragment that does not parse is the exception: {@link #load}
+     * throws for it, while this reports it as {@link Fragment.Unreadable}, since each fragment is
+     * parsed on its own only for the report.
+     *
+     * @return the report
+     * @throws LoaderException if the configuration directory cannot be listed, the secrets layer
+     *     cannot be read, an indirection variable (the configured suffix, {@code _FILE} by default)
+     *     names a missing or unreadable file or targets a reserved name, or, under {@link
+     *     ShadowPolicy#REJECT}, a key is supplied by more than one of the environment, the secrets
+     *     directory and the indirection variables
      */
     public Explanation explain() {
         return this.explain(System.getenv());
@@ -273,7 +290,7 @@ public final class TerraceLoader {
         return Explanation.of(this.buildLayers(environment), environment);
     }
 
-    /** The merged configuration, before binding to any type — the assembled nested map. */
+    /** The merged configuration, before binding to any type: the assembled nested map. */
     Map<String, Object> assemble(final Map<String, String> environment) {
         final Layers layers = this.buildLayers(environment);
 
@@ -288,8 +305,8 @@ public final class TerraceLoader {
 
     /**
      * Reads every layer's own source (the TOML files/directory, the file-backed layers) without
-     * merging them into one map — the step {@link #assemble} and {@link #explain} share, so
-     * neither can disagree with the other about what was actually read.
+     * merging them into one map: the step {@link #assemble} and {@link #explain} share, so neither
+     * can disagree with the other about what was actually read.
      */
     private Layers buildLayers(final Map<String, String> environment) {
         final Dialect dialect = this.dialect();
@@ -312,10 +329,9 @@ public final class TerraceLoader {
     }
 
     /**
-     * Every layer's own source, read but not yet merged — the Java equivalent of the Rust
-     * crate's {@code Terrace::assemble} intermediate {@code Layers} struct, shared between
-     * {@link #assemble} (which merges it) and {@link Explanation#of} (which reports on it
-     * instead).
+     * Every layer's own source, read but not yet merged: the Java equivalent of the Rust crate's
+     * {@code Terrace::assemble} intermediate {@code Layers} struct, shared between {@link
+     * #assemble} (which merges it) and {@link Explanation#of} (which reports on it instead).
      */
     record Layers(
             Dialect dialect,
@@ -332,7 +348,7 @@ public final class TerraceLoader {
      *
      * <p>Every variable under the prefix is one set too many: anything {@link #reserve reserved}
      * (the configuration and secrets-directory variables among them) and every {@code
-     * <PREFIX><KEY>_FILE} are this loader's own mechanism rather than configuration — {@link
+     * <PREFIX><KEY>_FILE} are this loader's own mechanism rather than configuration; {@link
      * FileLayers} has already read and merged the latter as the key it names.
      */
     private Map<String, Object> environmentLayer(final Dialect dialect, final Map<String, String> environment) {

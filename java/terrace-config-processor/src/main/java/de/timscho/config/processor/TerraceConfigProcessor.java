@@ -24,12 +24,12 @@ import javax.tools.JavaFileObject;
 
 /**
  * Generates, for each type annotated {@link TerraceConfig}, a sibling {@code <Type>Descriptor}
- * class exposing a {@code public static final TypeDescriptor DESCRIPTOR}. The Java answer to
- * {@code #[derive(Describe)]} — see {@code rust/docs/SCHEMA.md}.
+ * class exposing a {@code public static final TypeDescriptor DESCRIPTOR}. The Java answer to {@code
+ * #[derive(Describe)]}; see {@code rust/docs/SCHEMA.md}.
  *
  * <p>A struct's fields become {@code KEYS}; an enum's constants become {@code VALUES}. Descriptors
- * are dialect-agnostic — no environment spelling, no {@code text_form} — a loader or Spring
- * producer combines one with its own dialect to build the actual {@code Key} model.
+ * are dialect-agnostic (no environment spelling, no {@code text_form}): a loader or Spring producer
+ * combines one with its own dialect to build the actual {@code Key} model.
  */
 @SupportedAnnotationTypes("de.timscho.config.annotations.TerraceConfig")
 @SupportedSourceVersion(SourceVersion.RELEASE_25)
@@ -39,6 +39,13 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
     private Filer filer;
     private Elements elements;
     private FieldResolver fieldResolver;
+
+    /**
+     * Creates the processor. The compiler instantiates it through {@link java.util.ServiceLoader}.
+     */
+    public TerraceConfigProcessor() {
+        // State is set up in init, once the compiler hands over its processing environment.
+    }
 
     @Override
     public synchronized void init(final javax.annotation.processing.ProcessingEnvironment env) {
@@ -149,6 +156,7 @@ public final class TerraceConfigProcessor extends AbstractProcessor {
                 .append("}. Do not edit. */\n");
         out.append("public final class ").append(simpleName).append(" {\n\n");
         out.append("    private ").append(simpleName).append("() {\n    }\n\n");
+        out.append("    /** What the processor read off the annotated type. */\n");
         out.append("    public static final de.timscho.config.core.descriptor.TypeDescriptor DESCRIPTOR =\n");
         out.append("        new de.timscho.config.core.descriptor.TypeDescriptor(\n");
         out.append("            ")

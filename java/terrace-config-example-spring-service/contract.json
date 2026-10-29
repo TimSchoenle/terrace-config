@@ -52,10 +52,6 @@
         "constraint": {
           "type": "integer"
         },
-        "text_constraint": {
-          "pattern": "^\\s*[-+]?[0-9]+\\s*$",
-          "type": "string"
-        },
         "text_form": "integer",
         "aliases": [],
         "env_aliases": [],
@@ -102,10 +98,6 @@
         "constraint": {
           "type": "integer"
         },
-        "text_constraint": {
-          "pattern": "^\\s*[-+]?[0-9]+\\s*$",
-          "type": "string"
-        },
         "text_form": "integer",
         "aliases": [],
         "env_aliases": [],
@@ -139,10 +131,6 @@
             "INFO",
             "WARN"
           ],
-          "type": "string"
-        },
-        "text_constraint": {
-          "pattern": "^\\s*(TRACE|DEBUG|INFO|WARN)\\s*$",
           "type": "string"
         },
         "text_form": "choice",

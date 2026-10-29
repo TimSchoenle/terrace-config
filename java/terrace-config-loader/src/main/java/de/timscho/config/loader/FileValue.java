@@ -14,6 +14,7 @@ import lombok.experimental.Accessors;
  * anything ambient, and a naive {@code toString} that dumps a credential into the first log
  * statement that touches it would give that back.
  */
+@SuppressWarnings("doclint:missing")
 @Getter
 @Accessors(fluent = true)
 @AllArgsConstructor(access = AccessLevel.PACKAGE)

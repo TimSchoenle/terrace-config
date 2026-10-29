@@ -18,8 +18,8 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link
- * Schema} — the Java equivalent of the Rust crate's {@code Schema::describe_at}. {@code
+ * Combines a dialect-agnostic {@link TypeDescriptor} with a {@link Dialect} into a {@link Schema}:
+ * the Java equivalent of the Rust crate's {@code Schema::describe_at}. {@code
  * terrace-config-loader}'s {@code schema()}/{@code schema_at()} and a future Spring producer's
  * {@code Contract} both build on this, since neither has to re-derive how a key path becomes an
  * environment or secrets-file spelling.
@@ -28,19 +28,19 @@ import org.jspecify.annotations.Nullable;
  * Rust crate's own {@code SCHEMA_VERSION}.
  *
  * <p>{@link de.timscho.config.core.model.Key#isRequired()} is {@code false} whenever the field is
- * {@code Optional}-wrapped or {@link KeyDescriptor#hasDefault()} — the Java equivalent of the
- * Rust derive macro's own {@code !(opts.has_serde_default || container.field_default ||
- * is_option(ty))}, computed the same way: syntactically, from the field's own declaration, not
- * from a live instance. Filling in what that default actually *is* still needs one — see {@link
+ * {@code Optional}-wrapped or {@link KeyDescriptor#hasDefault()}. This is the Java equivalent of
+ * the Rust derive macro's own {@code !(opts.has_serde_default || container.field_default ||
+ * is_option(ty))}, computed the same way: syntactically, from the field's own declaration, not from
+ * a live instance. Filling in what that default actually *is* still needs one; see {@link
  * de.timscho.config.core.model.Schema#withDefaultsFromValue}, the Java port of {@code
  * Schema::with_defaults_from_value}, which a caller runs against a default-constructed instance
  * converted to a nested map.
  *
  * <p>A container key's {@link Key#getConstraint()} carries the shape of one element, as the Rust
  * crate's {@code rust_type::interpret_with} does: {@code items} for a {@code List}/{@code Set},
- * {@code additionalProperties} for a {@code Map}. A scalar element is its type's own constraint;
- * an {@code @Element} struct is its keys as nested {@code properties} with {@code required}, plus
- * {@code additionalProperties: false} wherever the type is closed — see {@link
+ * {@code additionalProperties} for a {@code Map}. A scalar element is its type's own constraint; an
+ * {@code @Element} struct is its keys as nested {@code properties} with {@code required}, plus
+ * {@code additionalProperties: false} wherever the type is closed; see {@link
  * JsonSchemaRenderer#elementObject}.
  */
 @UtilityClass
@@ -49,7 +49,7 @@ public class SchemaAssembler {
     /** The version of this document's shape. Matches the Rust crate's {@code SCHEMA_VERSION}. */
     public static final int SCHEMA_VERSION = 2;
 
-    /** The keys of {@code descriptor}, spelled according to {@code dialect}.
+    /** {@return the keys of {@code descriptor}, spelled according to {@code dialect}}
      *
      * @param descriptor       the configuration type's own field-level descriptor
      * @param dialect          the nesting-separator and indirection-suffix conventions to spell keys with
@@ -63,8 +63,8 @@ public class SchemaAssembler {
     }
 
     /**
-     * The keys of {@code descriptor}, as they are spelled when it sits at {@code root} in a
-     * larger configuration — {@code schemaAt("csp")} on a type describing {@code
+     * {@return the keys of {@code descriptor}, as they are spelled when it sits at {@code root} in
+     * a larger configuration} {@code schemaAt("csp")} on a type describing {@code
      * cloudflare.turnstile} produces {@code csp.cloudflare.turnstile}. An empty {@code root} is
      * {@link #assemble(TypeDescriptor, Dialect, Set)}.
      *
@@ -106,7 +106,7 @@ public class SchemaAssembler {
             final String path = prefix.isEmpty() ? field.name() : prefix + "." + field.name();
             if (isNestedStruct(field)) {
                 // `#[config(nested)]`: the field opens a level rather than becoming a key of its
-                // own, bare or behind an `Optional` — neither carries a key of its own in Rust
+                // own, bare or behind an `Optional`. Neither carries a key of its own in Rust
                 // either, since a struct field has no scalar value to bind directly.
                 walk(field.nestedKeys(), path, out, dialect, reservedUpper);
             } else {
@@ -123,7 +123,7 @@ public class SchemaAssembler {
                         || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
     }
 
-    /** One field as a leaf {@link Key} — the whole of a container field, structured or not. */
+    /** One field as a leaf {@link Key}: the whole of a container field, structured or not. */
     private static Key leaf(
             final KeyDescriptor field,
             final String prefix,
@@ -155,7 +155,7 @@ public class SchemaAssembler {
                 .secretsFileAliases(aliasSet.secretsFile())
                 .secret(field.secret())
                 .note(field.note())
-                // Syntactic, matching the Rust derive macro exactly — see the class-level note.
+                // Syntactic, matching the Rust derive macro exactly; see the class-level note.
                 .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
 
         if (textConstraint != null) {
@@ -167,7 +167,8 @@ public class SchemaAssembler {
     }
 
     /** {@code field}'s own aliases, spelled as an env var / env-indirection-file / secrets-file
-     * name wherever the dialect can express them — {@code null} exactly where {@link Spellings#envSpelling}
+     * name wherever the dialect can express them; {@code null} exactly where {@link
+     * Spellings#envSpelling}
      * and friends already say a plain alias has no such spelling. */
     private static AliasSet resolveAliases(final KeyDescriptor field, final String prefix, final Dialect dialect) {
         final List<String> aliases = new ArrayList<>();
@@ -197,7 +198,7 @@ public class SchemaAssembler {
     private record AliasSet(List<String> paths, List<String> env, List<String> envFile, List<String> secretsFile) {}
 
     /** Sets {@code builder}'s {@code env}/{@code reserved}/{@code envFile}/{@code secretsFile}/
-     * {@code unreachable} from {@code path}'s own env spelling — reserved names are read straight
+     * {@code unreachable} from {@code path}'s own env spelling. Reserved names are read straight
      * from the environment, so neither file mechanism can supply them. */
     private static void applyEnvSpelling(
             final Key.KeyBuilder builder, final Dialect dialect, final String path, final Set<String> reservedUpper) {
@@ -287,6 +288,12 @@ public class SchemaAssembler {
         if (!values.isEmpty()) {
             return TextForm.CHOICE;
         }
+        // An `Optional` is read as its element, as the Rust derive strips `Option` before it
+        // classifies the type: an absent value is a fact about presence, not about its text.
+        final ElementDescriptor element = field.element();
+        if (field.container() == KeyDescriptor.ContainerKind.OPTIONAL && element != null) {
+            return TextForm.of(element.typeName());
+        }
         return TextForm.of(field.typeName());
     }
 
@@ -298,7 +305,12 @@ public class SchemaAssembler {
             final List<String> values,
             final Dialect dialect) {
         if (!container) {
-            return leafConstraint(textForm, values, field.range());
+            // An `Optional` is resolved as a container, so its `@Range` sits on the element, the
+            // same way its `@ElementValues` does; read from there the bound would otherwise drop.
+            final RangeConstraint range = field.range() != null
+                    ? field.range()
+                    : field.element() != null ? field.element().range() : null;
+            return leafConstraint(textForm, values, range);
         }
         final Map<String, Object> schema = new TreeMap<>();
         final Map<String, Object> element = elementSchema(field, dialect);
@@ -319,7 +331,7 @@ public class SchemaAssembler {
     }
 
     /**
-     * One element of the container {@code field}, as JSON Schema — the position the Rust crate's
+     * One element of the container {@code field}, as JSON Schema: the position the Rust crate's
      * {@code rust_type::interpret_with} fills. {@code null} where nothing certain is known: no
      * {@link ElementDescriptor} at all, or a scalar type {@link TextForm#of} does not recognise.
      *
@@ -353,7 +365,7 @@ public class SchemaAssembler {
     }
 
     /** Adds to {@code out} the path of every {@code @Nested} level under {@code prefix} whose type
-     * refuses an undeclared key — the levels an element schema closes on the type's own word. */
+     * refuses an undeclared key: the levels an element schema closes on the type's own word. */
     private static void closedLevels(final List<KeyDescriptor> fields, final String prefix, final Set<String> out) {
         for (final KeyDescriptor field : fields) {
             if (!isNestedStruct(field)) {
@@ -422,7 +434,7 @@ public class SchemaAssembler {
 
     /** The leaf shapes {@link Key#getTextForm()} distinguishes, plus a {@code NUMBER} form this
      * assembler uses internally for a floating-point range before folding it into the model's
-     * {@link de.timscho.config.core.model.TextForm#UNKNOWN} — a float's own value is still
+     * {@link de.timscho.config.core.model.TextForm#UNKNOWN}. A float's own value is still
      * {@code Unknown} in the published document, matching the Rust crate. */
     // VisibilityModifier: `model` carries no access modifier in source and relies on
     // java/lombok.config's project-wide `lombok.fieldDefaults.defaultPrivate = true`, a transform
@@ -451,7 +463,7 @@ public class SchemaAssembler {
                 case "boolean", "Boolean" -> BOOLEAN;
                 case "byte", "short", "int", "long", "Byte", "Short", "Integer", "Long", "BigInteger" -> INTEGER;
                 case "float", "double", "Float", "Double", "BigDecimal" ->
-                    // A float is not certain enough to check — matches the Rust crate's own
+                    // A float is not certain enough to check, matching the Rust crate's own
                     // `TextForm::Unknown` for this case.
                     NUMBER;
                 default -> UNKNOWN;

@@ -7,6 +7,11 @@ package de.timscho.config.core.refusal;
  */
 public final class LiveWithoutRebuildException extends ContractRefusalException {
 
+    /**
+     * Creates the refusal for one key.
+     *
+     * @param path the key published {@code live}
+     */
     public LiveWithoutRebuildException(final String path) {
         super("`" + path + "` is published `live`, and schema.reload says the image does not rebuild");
     }

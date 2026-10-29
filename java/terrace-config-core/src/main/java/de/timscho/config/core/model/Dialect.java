@@ -7,11 +7,11 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
 /**
- * How a key path becomes a name in each layer — {@code spec/v1/contract.schema.json}'s
- * {@code #/$defs/dialect}. All three fields are non-empty strings; an empty {@link #prefix} is
- * one of the eight build-time refusals (see
- * {@link de.timscho.config.core.refusal.EmptyPrefixException}).
+ * How a key path becomes a name in each layer: {@code spec/v1/contract.schema.json}'s {@code
+ * #/$defs/dialect}. All three fields are non-empty strings; an empty {@link #prefix} is one of the
+ * eight build-time refusals (see {@link de.timscho.config.core.refusal.EmptyPrefixException}).
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder(toBuilder = true)
 @Jacksonized

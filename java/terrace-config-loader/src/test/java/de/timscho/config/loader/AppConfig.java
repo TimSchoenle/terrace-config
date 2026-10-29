@@ -34,7 +34,7 @@ class AppConfig {
 
     // `@JsonProperty` is what `TerraceLoader.load`'s own Jackson binding already keys off for a
     // renamed field, and the processor reads the same annotation (`FieldResolver.resolve`) so the
-    // generated descriptor's key path agrees with what the loader actually reads — unlike
+    // generated descriptor's key path agrees with what the loader actually reads. Unlike
     // `retryCount` above, `TEST_MAX_RETRIES` genuinely reaches this field.
     @JsonProperty("max_retries")
     int retryLimit;

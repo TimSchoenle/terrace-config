@@ -26,7 +26,7 @@ final class FileSuffixEnv {
     private final Map<String, String> origins;
 
     /**
-     * Read every indirection variable {@code dialect} recognises out of {@code environment}.
+     * Reads every indirection variable {@code dialect} recognises out of {@code environment}.
      * Scanned over the whole environment rather than looked up by name, because the keys are
      * open-ended: there is no list of them to consult.
      */
@@ -78,9 +78,9 @@ final class FileSuffixEnv {
     /**
      * The directories a reload has to watch: the parent of every named path.
      *
-     * <p>Parent directories rather than the files themselves — a Kubernetes volume update
-     * replaces the file by renaming a new {@code ..data} directory over the old one, so a watch
-     * registered against the old inode never fires again.
+     * <p>Parent directories rather than the files themselves: a Kubernetes volume update replaces
+     * the file by renaming a new {@code ..data} directory over the old one, so a watch registered
+     * against the old inode never fires again.
      */
     List<Path> watchPaths() {
         final List<Path> paths = new ArrayList<>();

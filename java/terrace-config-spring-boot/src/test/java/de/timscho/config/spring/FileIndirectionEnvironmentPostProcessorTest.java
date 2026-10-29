@@ -54,7 +54,7 @@ class FileIndirectionEnvironmentPostProcessorTest {
 
         postProcessor.postProcessEnvironment(environment, application);
 
-        // No file indirection here, so nothing is added — the raw variable is untouched, still
+        // No file indirection here, so nothing is added: the raw variable is untouched, still
         // only reachable under its own exact name (relaxed binding is the `Binder`'s job, not
         // this post-processor's, and the test's own `MapPropertySource` stand-in for the real
         // `SystemEnvironmentPropertySource` does not apply it either).

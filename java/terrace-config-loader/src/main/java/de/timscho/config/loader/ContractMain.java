@@ -35,7 +35,7 @@ import java.util.Set;
  * emitted document, so the emission stays a pure function of the types.
  *
  * <p>Exits {@code 0} when the document was written, {@code 1} when it was refused, {@code 2} on a
- * usage or classpath error — see {@link ProducerCommandLine}.
+ * usage or classpath error; see {@link ProducerCommandLine}.
  */
 public final class ContractMain {
 

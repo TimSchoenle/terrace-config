@@ -9,6 +9,13 @@ package de.timscho.config.core.refusal;
  */
 public final class IndirectionCollisionException extends ContractRefusalException {
 
+    /**
+     * Creates the refusal for one pair of keys.
+     *
+     * @param key the key whose spelling collides
+     * @param otherKey the key whose indirection variable it is
+     * @param env the shared variable name
+     */
     public IndirectionCollisionException(final String key, final String otherKey, final String env) {
         super("`" + key + "`'s env `" + env + "` is `" + otherKey + "`'s indirection variable");
     }

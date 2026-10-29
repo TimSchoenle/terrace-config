@@ -8,10 +8,11 @@ import lombok.extern.jackson.Jacksonized;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A variable the loader reads to decide what the layers are, rather than to fill a key —
- * {@code spec/v1/contract.schema.json}'s {@code #/$defs/loader_var}. Step 1 of the ordered read
- * in {@code spec/v1/FORMAT.md}.
+ * A variable the loader reads to decide what the layers are, rather than to fill a key: {@code
+ * spec/v1/contract.schema.json}'s {@code #/$defs/loader_var}. Step 1 of the ordered read in {@code
+ * spec/v1/FORMAT.md}.
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder
 @Jacksonized

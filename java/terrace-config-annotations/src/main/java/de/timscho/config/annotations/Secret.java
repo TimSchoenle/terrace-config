@@ -6,7 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Render the observed default as {@code <redacted>} and mark the key as {@code secret} — a
+ * Renders the observed default as {@code <redacted>} and marks the key as {@code secret}. A
  * producer refuses to publish a secret key that also carries a default (see {@code
  * spec/v1/FORMAT.md}, "What a producer MUST refuse").
  *

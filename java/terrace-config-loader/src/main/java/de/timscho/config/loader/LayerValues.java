@@ -53,9 +53,9 @@ class LayerValues {
     }
 
     /**
-     * Insert {@code value} at a dot-separated {@code key} path, creating intermediate maps. A
-     * non-map found where a nested map is expected is replaced, matching what the environment
-     * layer does when two keys disagree about whether a segment is a leaf.
+     * Inserts {@code value} at a dot-separated {@code key} path, creating intermediate maps. A
+     * non-map found where a nested map is expected is replaced, matching what the environment layer
+     * does when two keys disagree about whether a segment is a leaf.
      */
     @SuppressWarnings("unchecked")
     static void insertNested(final Map<String, Object> dict, final String key, final Object value) {

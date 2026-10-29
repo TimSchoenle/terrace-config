@@ -4,9 +4,9 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 
 /**
- * The Java leaf spellings this processor reads without any annotation — the primitives, their
- * boxed forms, {@code String}, and the two arbitrary-precision number types. Mirrors the leaf set
- * {@code rust/docs/SCHEMA.md} reads off the built-in numeric and string types.
+ * The Java leaf spellings this processor reads without any annotation: the primitives, their boxed
+ * forms, {@code String}, and the two arbitrary-precision number types. Mirrors the leaf set {@code
+ * rust/docs/SCHEMA.md} reads off the built-in numeric and string types.
  */
 final class LeafTypes {
 
@@ -36,7 +36,10 @@ final class LeafTypes {
         };
     }
 
-    /** Whether a type is one {@code @Range} can bound — every leaf except {@code String}/{@code Character}/booleans. */
+    /**
+     * Whether a type is one {@code @Range} can bound: every leaf except {@code String}/{@code
+     * Character}/booleans.
+     */
     static boolean isNumeric(final TypeMirror type) {
         if (!isLeaf(type)) {
             return false;

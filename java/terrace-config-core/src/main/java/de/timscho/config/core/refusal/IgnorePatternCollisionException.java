@@ -2,11 +2,17 @@ package de.timscho.config.core.refusal;
 
 /**
  * Refusal 4: an ignore pattern covers a spelling the loader reads. The prefix is not the whole
- * namespace — the config and secrets-directory variables take arbitrary names — so a pattern
+ * namespace: the config and secrets-directory variables take arbitrary names, so a pattern
  * exempting one of those disables a gate outside the prefix too.
  */
 public final class IgnorePatternCollisionException extends ContractRefusalException {
 
+    /**
+     * Creates the refusal for one pattern.
+     *
+     * @param pattern the ignore pattern
+     * @param env the loader variable it covers
+     */
     public IgnorePatternCollisionException(final String pattern, final String env) {
         super("ignore pattern `" + pattern + "` covers `" + env + "`, which the loader reads");
     }

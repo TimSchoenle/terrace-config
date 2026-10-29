@@ -9,8 +9,9 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * How a key path becomes a name in each layer, and whether it can become one at all — the port of
- * the Rust crate's {@code env_spelling}, {@code env_layer_key} and {@code secrets_file_name}.
+ * How a key path becomes a name in each layer, and whether it can become one at all: the Java
+ * counterpart of the Rust crate's {@code env_spelling}, {@code env_layer_key} and {@code
+ * secrets_file_name}.
  *
  * <p>One place for the derivation, with two callers: {@link
  * de.timscho.config.core.descriptor.SchemaAssembler}, spelling every key it assembles, and {@link
@@ -22,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 public class Spellings {
 
     /**
-     * The environment spelling of {@code path}, when the environment can actually name it.
+     * {@return the environment spelling of {@code path}, when the environment can actually name it}
      *
      * @param dialect the prefix, separator and suffix to spell with
      * @param path    the dotted key path
@@ -43,8 +44,8 @@ public class Spellings {
     }
 
     /**
-     * {@code path} upper-cased under the prefix, with the separator for every {@code .} — the name
-     * whether or not it comes back as the same key.
+     * {@return {@code path} upper-cased under the prefix, with the separator for every {@code .}:
+     * the name whether or not it comes back as the same key}
      *
      * @param dialect the prefix and separator to spell with
      * @param path    the dotted key path
@@ -54,8 +55,8 @@ public class Spellings {
     }
 
     /**
-     * The key a case-folding, separator-splitting environment reader makes of {@code name}, or
-     * {@code null} when it drops the name.
+     * {@return the key a case-folding, separator-splitting environment reader makes of {@code
+     * name}, or {@code null} when it drops the name}
      *
      * @param dialect the prefix and separator the reader applies
      * @param name    a full environment variable name
@@ -76,7 +77,7 @@ public class Spellings {
     }
 
     /**
-     * The key an indirection variable names, if {@code name} is one, or {@code null}.
+     * {@return the key an indirection variable names, if {@code name} is one, or {@code null}}
      *
      * @param dialect the prefix and indirection suffix
      * @param name    a full environment variable name
@@ -95,8 +96,8 @@ public class Spellings {
     }
 
     /**
-     * The indirection variable for the key at {@code path} whose plain spelling is {@code env}, when
-     * setting it reaches that key.
+     * {@return the indirection variable for the key at {@code path} whose plain spelling is {@code
+     * env}, when setting it reaches that key}
      *
      * <p>A usable {@code env} does not make its indirection variable usable: the environment layer
      * splits on the separator before folding case, while the indirection layer folds first. A
@@ -117,7 +118,7 @@ public class Spellings {
     }
 
     /**
-     * The secrets-directory file name for {@code path}, when one can name it.
+     * {@return the secrets-directory file name for {@code path}, when one can name it}
      *
      * @param dialect the separator a file name nests with
      * @param path    the dotted key path
@@ -132,7 +133,7 @@ public class Spellings {
 
     /**
      * The key the file layers make of {@code name}: folded to lower case, then split on the
-     * lower-cased separator — the loader's {@code Dialect.keyPath}.
+     * lower-cased separator, as the loader's {@code Dialect.keyPath}.
      *
      * @param dialect the separator to split on
      * @param name    an environment suffix or a secrets-directory file name
@@ -153,6 +154,7 @@ public class Spellings {
 
     /** An environment spelling, or why there is none. Exactly one of the two is set. */
     @Value
+    @SuppressWarnings("doclint:missing")
     public static class Spelling {
         /** The variable naming the key, or {@code null} when none does. */
         @Nullable String env;

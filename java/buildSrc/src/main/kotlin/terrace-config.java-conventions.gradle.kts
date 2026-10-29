@@ -34,12 +34,37 @@ java {
     }
 }
 
+// The documentation gate, in both halves: `javac` and the `javadoc` tool run doclint separately
+// and catch different files. `/protected` is the surface a consumer can reach, and `-Werror` is
+// what turns a printed complaint into a failed build. See TimSchoenle/actions
+// docs/doc-comments/JAVA.md.
+//
+// The gate covers main sources only. Test sources are never published, and the test fixtures'
+// docs render into the conformance corpus, where they are data rather than API documentation.
+// A Lombok class carries `@SuppressWarnings("doclint:missing")`: the getters and builders Lombok
+// generates have no comment of their own, and the class's fields document them instead.
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
 }
 
+tasks.named<JavaCompile>("compileJava") {
+    options.compilerArgs.addAll(listOf("-Xdoclint:all/protected", "-Werror"))
+}
+
 tasks.withType<Javadoc> {
-    options.encoding = "UTF-8"
+    (options as StandardJavadocDocletOptions).apply {
+        encoding = "UTF-8"
+        // The `javadoc` tool rejects doclint's `/protected` suffix and takes the level from here.
+        memberLevel = JavadocMemberLevel.PROTECTED
+        addStringOption("Xdoclint:all", "-quiet")
+        addBooleanOption("Werror", true)
+        // The standard doclet knows these three only inside the JDK's own build.
+        tags(
+            "apiNote:a:API Note:",
+            "implSpec:a:Implementation Requirements:",
+            "implNote:a:Implementation Note:",
+        )
+    }
 }
 
 // Every module gets JUnit 5 and AssertJ in test scope; nothing here reaches main.

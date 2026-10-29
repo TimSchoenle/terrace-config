@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
+import de.timscho.config.core.model.TextForm;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -65,13 +66,17 @@ class SchemaAssemblerTest {
     }
 
     private static Map<String, Object> constraintOf(final KeyDescriptor field) {
+        return keyOf(field).getConstraint();
+    }
+
+    private static Key keyOf(final KeyDescriptor field) {
         final List<Key> keys = SchemaAssembler.assemble(
                         new TypeDescriptor("test.Config", TypeDescriptor.Kind.STRUCT, List.of(field), List.of(), false),
                         dialect(),
                         Set.of())
                 .getKeys();
         assertThat(keys).hasSize(1);
-        return keys.getFirst().getConstraint();
+        return keys.getFirst();
     }
 
     @Test
@@ -103,6 +108,61 @@ class SchemaAssemblerTest {
                         true,
                         List.of())))
                 .isEqualTo(Map.of("type", "object", "additionalProperties", Map.of("type", "integer", "minimum", 1.0)));
+    }
+
+    /**
+     * An {@code Optional} is read as its element, as the Rust derive strips {@code Option}: its
+     * {@code @Range}, resolved onto the element, still bounds the key, and its text form is the
+     * element's, so an environment or {@code _FILE} value is converted before the bound checks it.
+     */
+    @Test
+    void anOptionalIsReadAsItsElement() {
+        final ElementDescriptor bounded =
+                new ElementDescriptor("Integer", List.of(), new RangeConstraint(null, 10.0, null, null), List.of());
+
+        final Key key = keyOf(field(
+                "retries", "Optional<Integer>", ContainerKind.OPTIONAL, bounded, List.of(), false, false, List.of()));
+
+        assertThat(key.getTextForm()).isEqualTo(TextForm.INTEGER);
+        assertThat(key.getConstraint()).isEqualTo(Map.of("type", "integer", "maximum", 10.0));
+        assertThat(key.isRequired()).isFalse();
+    }
+
+    /**
+     * An {@code Optional} with no element descriptor, from a generator that predates them, keeps
+     * its own type's text form and publishes no bound.
+     */
+    @Test
+    void anOptionalWithNoElementDescriptorKeepsItsOwnType() {
+        final Key key = keyOf(field(
+                "retries", "Optional<Integer>", ContainerKind.OPTIONAL, null, List.of(), false, false, List.of()));
+
+        assertThat(key.getTextForm()).isEqualTo(TextForm.UNKNOWN);
+        assertThat(key.getConstraint()).isNull();
+    }
+
+    /** A bound recorded on the field itself takes precedence over one on its element. */
+    @Test
+    void aFieldBoundTakesPrecedenceOverItsElementBound() {
+        final ElementDescriptor element =
+                new ElementDescriptor("Integer", List.of(), new RangeConstraint(null, 10.0, null, null), List.of());
+        final KeyDescriptor field = new KeyDescriptor(
+                "retries",
+                "retries docs.",
+                "retries docs.",
+                "Optional<Integer>",
+                ContainerKind.OPTIONAL,
+                false,
+                null,
+                List.of(),
+                new RangeConstraint(null, 3.0, null, null),
+                List.of(),
+                element,
+                false,
+                false,
+                List.of());
+
+        assertThat(constraintOf(field)).isEqualTo(Map.of("type", "integer", "maximum", 3.0));
     }
 
     /** A descriptor generated before plain-leaf elements were reported publishes what it always did. */
@@ -145,7 +205,7 @@ class SchemaAssemblerTest {
 
     /**
      * Closed exactly where the type says so: the element's own level from the container field's
-     * {@code closed}, a {@code @Nested} level inside it from that field's — and the open level
+     * {@code closed}, a {@code @Nested} level inside it from that field's, and the open level
      * between them stays open.
      */
     @Test

@@ -23,34 +23,45 @@ import org.springframework.core.env.StandardEnvironment;
 
 /**
  * The one layer Spring's own binder does not already give it: {@code <NAME>_FILE=/path} naming a
- * file whose contents supply the key {@code <NAME>} would otherwise have named directly —
- * exactly the convention a mounted Kubernetes {@code Secret} or a Docker Swarm secret is
- * addressed by, and exactly what {@code terrace-config-loader}'s own {@code FileSuffixEnv} layer
- * does for the vanilla loader.
+ * file whose contents supply the key {@code <NAME>} would otherwise have named directly: exactly
+ * the convention a mounted Kubernetes {@code Secret} or a Docker Swarm secret is addressed by, and
+ * exactly what {@code terrace-config-loader}'s own {@code FileSuffixEnv} layer does for the vanilla
+ * loader.
  *
- * <p>Runs once, early — {@link EnvironmentPostProcessor}s run before any bean, including the
- * application's own, is created — over whatever the system environment's own property source
+ * <p>Runs once, early ({@link EnvironmentPostProcessor}s run before any bean, including the
+ * application's own, is created), over whatever the system environment's own property source
  * ({@link StandardEnvironment#SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME}) enumerates. Every {@code
  * _FILE} variable found becomes one entry in a new {@link MapPropertySource}, keyed by {@link
- * SpringDialect#propertyName(String)} and added at the front of the environment's property
- * sources — the same "file layers win" precedence {@code terrace-config-loader}'s own {@code
+ * SpringDialect#propertyName(String)} and added at the front of the environment's property sources.
+ * This is the same "file layers win" precedence {@code terrace-config-loader}'s own {@code
  * FileLayers} documents, since a mounted secret is assumed more specific than whatever a plain
  * environment variable or configuration file already said.
  *
  * <p>Registered the way every {@link EnvironmentPostProcessor} still is in Spring Boot 3, via
- * {@code META-INF/spring.factories} — this class runs before the {@code
- * AutoConfiguration.imports} mechanism a starter's own auto-configuration would use even exists.
+ * {@code META-INF/spring.factories}: this class runs before the {@code AutoConfiguration.imports}
+ * mechanism a starter's own auto-configuration would use even exists.
  */
+// `org.springframework.boot.env.EnvironmentPostProcessor` is deprecated for removal in Spring
+// Boot 4 in favour of `org.springframework.boot.EnvironmentPostProcessor`, which Boot 3 does not
+// have. This module supports both, so it implements the one interface both still load.
+@SuppressWarnings("removal")
 public final class FileIndirectionEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
     /**
      * One position after {@link ConfigDataEnvironmentPostProcessor}, so {@code application.yml},
-     * profile-specific files and every other config-data source are already loaded — and so
-     * {@code addFirst} below outranks all of them, not just the ones registered earlier.
+     * profile-specific files and every other config-data source are already loaded, and so {@code
+     * addFirst} below outranks all of them, not just the ones registered earlier.
      */
     public static final int ORDER = ConfigDataEnvironmentPostProcessor.ORDER + 1;
 
     private static final String PROPERTY_SOURCE_NAME = "terraceFileIndirection";
+
+    /**
+     * Creates the post-processor. Spring instantiates it from {@code META-INF/spring.factories}.
+     */
+    public FileIndirectionEnvironmentPostProcessor() {
+        // Stateless: everything it reads comes from the environment passed to each call.
+    }
 
     @Override
     public int getOrder() {
@@ -87,9 +98,8 @@ public final class FileIndirectionEnvironmentPostProcessor implements Environmen
     }
 
     /**
-     * The contents of one value file, minus trailing line terminators — only {@code \r}/{@code
-     * \n}, never spaces or tabs, since a trailing space can be a real character of a real
-     * credential.
+     * The contents of one value file, minus trailing line terminators: only {@code \r}/{@code \n},
+     * never spaces or tabs, since a trailing space can be a real character of a real credential.
      */
     @Blocking
     private static String readValue(final String envName, final Path path) {

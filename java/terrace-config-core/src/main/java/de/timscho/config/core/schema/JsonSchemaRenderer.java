@@ -12,13 +12,13 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The JSON Schema rendering: what an editor or a Helm chart validates a rendered document
- * against — ported from the Rust crate's {@code schema::json_schema} module.
+ * The JSON Schema rendering: what an editor or a Helm chart validates a rendered document against.
+ * Mirrors the Rust crate's {@code schema::json_schema} module.
  *
- * <p>Every map returned is a {@link TreeMap}, so its own iteration order is already alphabetical
- * — the same order {@code serde_json}'s default (non-{@code preserve_order}) map produces in the
- * Rust crate's own output, which is what every stored {@code contract.json}'s {@code json_schema}
- * half is written in.
+ * <p>Every map returned is a {@link TreeMap}, so its own iteration order is already alphabetical:
+ * the same order {@code serde_json}'s default (non-{@code preserve_order}) map produces in the Rust
+ * crate's own output, which is what every stored {@code contract.json}'s {@code json_schema} half
+ * is written in.
  *
  * <p>See {@code rust/src/schema/json_schema.rs} for the full rationale behind each keyword this
  * emits; this port carries the same restraint: a keyword is only emitted where it is certainly
@@ -35,7 +35,9 @@ public class JsonSchemaRenderer {
     private static final JsonSchemaOptions ELEMENT =
             JsonSchemaOptions.standard().withClosed(false).withDefaults(false);
 
-    /** The schema as a JSON Schema document, nested {@code properties} object per path level.
+    /**
+     * {@return the schema as a JSON Schema document, nested {@code properties} object per path
+     * level}
      *
      * @param schema  the schema to render
      * @param options which dialect, title, and strictness to render with
@@ -62,7 +64,7 @@ public class JsonSchemaRenderer {
     }
 
     /**
-     * One element of a container-typed key, as a JSON Schema object — the Rust crate's {@code
+     * One element of a container-typed key, as a JSON Schema object: the Rust crate's {@code
      * json_schema::element_object}. The rendering {@link #document} gives a level of the document,
      * over the keys an element type's own descriptor reports; a {@code @Nested} struct inside the
      * element arrives as dotted paths and comes back as nested {@code properties}, exactly as it
@@ -101,13 +103,13 @@ public class JsonSchemaRenderer {
             final Node node, final String path, final JsonSchemaOptions options, final Set<String> closed) {
         final Map<String, Object> properties = new TreeMap<>();
         final List<Object> required = new ArrayList<>();
-        // A required key with aliases is a *choice* of properties, one of which must be present —
+        // A required key with aliases is a *choice* of properties, one of which must be present.
         // `required` cannot say that, so those collect here under one `allOf` instead.
         final List<Object> either = new ArrayList<>();
 
         addKeyProperties(node, options, properties, required, either);
-        // After the leaves, so the one shape neither format can carry — a key and a table of the
-        // same name in one parent — resolves to the table.
+        // After the leaves, so the one shape neither format can carry (a key and a table of the
+        // same name in one parent) resolves to the table.
         addChildProperties(node, path, options, closed, properties, required);
 
         final Map<String, Object> objectSchema = new TreeMap<>();
@@ -125,7 +127,7 @@ public class JsonSchemaRenderer {
         return objectSchema;
     }
 
-    /** This level's own keys, each as a {@code properties} entry — plus its aliases (each their
+    /** This level's own keys, each as a {@code properties} entry, plus its aliases (each their
      * own entry, cross-referencing the same schema) and, for a required key, either a plain
      * {@code required} name or an {@code anyOf} of every spelling. */
     private static void addKeyProperties(
@@ -206,7 +208,7 @@ public class JsonSchemaRenderer {
         }
 
         if (key.isSecret()) {
-            // As close as JSON Schema comes to saying "credential" — a value written but never
+            // As close as JSON Schema comes to saying "credential": a value written but never
             // read back.
             schema.put("writeOnly", true);
         }
@@ -249,10 +251,10 @@ public class JsonSchemaRenderer {
     }
 
     /**
-     * Close every object inside a rendered constraint, the way {@link #object} closes the
-     * document's own levels — only where a schema declares {@code properties} and says nothing
-     * yet about the rest, and recursing into {@code items}/{@code additionalProperties} rather
-     * than overwriting either, since those are schemas of their own.
+     * Closes every object inside a rendered constraint, the way {@link #object} closes the
+     * document's own levels: only where a schema declares {@code properties} and says nothing yet
+     * about the rest, and recursing into {@code items}/{@code additionalProperties} rather than
+     * overwriting either, since those are schemas of their own.
      */
     @SuppressWarnings("unchecked")
     private static void close(final Map<String, Object> schema) {

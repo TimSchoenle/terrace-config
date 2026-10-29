@@ -6,6 +6,11 @@ package de.timscho.config.core.refusal;
  */
 public final class SecretWithDefaultException extends ContractRefusalException {
 
+    /**
+     * Creates the refusal for one key.
+     *
+     * @param path the secret key carrying a default
+     */
     public SecretWithDefaultException(final String path) {
         super("`" + path + "` is a secret and must not carry a default");
     }

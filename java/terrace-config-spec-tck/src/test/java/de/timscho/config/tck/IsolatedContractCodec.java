@@ -16,12 +16,12 @@ import java.util.Arrays;
  * resolved runtime classpath.
  *
  * <p>{@code terrace-config-core-jackson2} and {@code terrace-config-core-jackson3} deliberately
- * publish a class of that exact same name — so that a consumer never has to know which one it
- * linked against — which also means the two can never sit on one classloader's classpath at once
- * without one shadowing the other. Isolating each into its own loader, parented at the platform
- * loader rather than this test's own context loader, is what lets {@link JacksonParityTest} ask
- * both the same question in one JVM without either seeing the other, or seeing this module's own
- * classes at all.
+ * publish a class of that exact same name, so that a consumer never has to know which one it linked
+ * against, which also means the two can never sit on one classloader's classpath at once without
+ * one shadowing the other. Isolating each into its own loader, parented at the platform loader
+ * rather than this test's own context loader, is what lets {@link JacksonParityTest} ask both the
+ * same question in one JVM without either seeing the other, or seeing this module's own classes at
+ * all.
  */
 final class IsolatedContractCodec implements AutoCloseable {
 

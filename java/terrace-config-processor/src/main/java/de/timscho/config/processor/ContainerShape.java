@@ -8,10 +8,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The result of asking whether a field's declared type is one of the containers this processor
- * looks through — {@code Optional}, {@code List}, {@code Set} or {@code Map} — and, if so, what
- * its element type is. A map's *key* type is not reported: a TOML table's keys are strings
- * whatever the map is keyed by, mirroring {@code rust/docs/SCHEMA.md}, "A key that holds many of
- * something".
+ * looks through ({@code Optional}, {@code List}, {@code Set} or {@code Map}) and, if so, what its
+ * element type is. A map's *key* type is not reported: a TOML table's keys are strings whatever the
+ * map is keyed by, mirroring {@code rust/docs/SCHEMA.md}, "A key that holds many of something".
  */
 final class ContainerShape {
 
@@ -52,7 +51,7 @@ final class ContainerShape {
             case "java.util.Set", "java.util.HashSet", "java.util.SortedSet" ->
                 args.size() == 1 ? new ContainerShape(ContainerKind.SET, args.get(0)) : NONE;
             case "java.util.Map", "java.util.HashMap", "java.util.SortedMap" ->
-                // The value, not the key — see class Javadoc.
+                // The value, not the key; see the class documentation.
                 args.size() == 2 ? new ContainerShape(ContainerKind.MAP, args.get(1)) : NONE;
             default -> NONE;
         };

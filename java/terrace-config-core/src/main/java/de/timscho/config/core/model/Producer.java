@@ -6,14 +6,15 @@ import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
 /**
- * Which implementation wrote the document — {@code spec/v1/contract.schema.json}'s
- * {@code #/$defs/producer}.
+ * Which implementation wrote the document: {@code spec/v1/contract.schema.json}'s {@code
+ * #/$defs/producer}.
  *
  * <p>Not a fact about the configuration. {@link #loader} is what makes every
  * {@code text_constraint} in the document safe to apply: those patterns were measured against a
  * named library's environment reads, and another library has different answers. A consumer that
  * does not recognise {@link #loader} must not apply the reads in {@code spec/v1/FORMAT.md}.
  */
+@SuppressWarnings("doclint:missing")
 @Value
 @Builder
 @Jacksonized

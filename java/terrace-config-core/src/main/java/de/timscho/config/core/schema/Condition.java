@@ -5,7 +5,8 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One condition on the fields of a struct — the port of the Rust crate's {@code schema::Condition}.
+ * One condition on the fields of a struct: the Java counterpart of the Rust crate's {@code
+ * schema::Condition}.
  *
  * <p>A field is named by its path relative to the struct the condition is stated on, dotted through
  * nested structs: {@code url}, or {@code consent.requirement}. "Set" means present in the document.

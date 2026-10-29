@@ -18,9 +18,9 @@ import lombok.experimental.UtilityClass;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Combines a built {@link Schema} with an {@link App} and a {@link Producer} into a full
- * {@link Contract} — the Java equivalent of the Rust crate's {@code Schema::into_contract}
- * followed by {@code ContractBuilder::build}.
+ * Combines a built {@link Schema} with an {@link App} and a {@link Producer} into a full {@link
+ * Contract}: the Java equivalent of the Rust crate's {@code Schema::into_contract} followed by
+ * {@code ContractBuilder::build}.
  *
  * <p>Belongs in {@code -core} rather than in either loader, on {@link ContractValidator}'s own
  * reasoning: both {@code terrace-config-loader} and {@code terrace-config-spring-boot} publish
@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
 @UtilityClass
 public class ContractAssembler {
 
-    /** {@link #assemble(Schema, App, Producer, External)} with nothing declared external.
+    /** {@return {@link #assemble(Schema, App, Producer, External)} with nothing declared external}
      *
      * @param schema   the assembled schema this contract publishes
      * @param app      this contract's {@code app} metadata
@@ -44,17 +44,18 @@ public class ContractAssembler {
      * Assembles and validates a {@link Contract}.
      *
      * <p>{@link ExternalVar#getConstraint()} is derived from {@link ExternalVar#getTy()}/{@link
-     * ExternalVar#getValues()} wherever a caller left it {@code null} — the escape hatch for a
+     * ExternalVar#getValues()} wherever a caller left it {@code null}. The escape hatch for a
      * domain type this module cannot interpret is stating the constraint outright, which this
      * method then leaves alone, exactly as the Rust crate's {@code ContractBuilder::build} does.
      * {@link ExternalVar#getTextForm()}/{@link ExternalVar#getTextConstraint()} are not derived:
-     * unlike the Rust crate, {@link ExternalVar} has no default for {@code text_form}, so a
-     * caller always states one explicitly.
+     * unlike the Rust crate, {@link ExternalVar} has no default for {@code text_form}, so a caller
+     * always states one explicitly.
      *
      * @param schema   the assembled schema this contract publishes
      * @param app      this contract's {@code app} metadata
      * @param producer identifies the loader that assembled this contract
      * @param external the service's declared external variable surface
+     * @return the validated contract
      * @throws de.timscho.config.core.refusal.ContractRefusalException the first of
      *                                                                  {@code spec/v1/FORMAT.md}'s
      *                                                                  eight refusals this
@@ -79,7 +80,9 @@ public class ContractAssembler {
         return contract;
     }
 
-    /** Nothing declared, nothing ignored, unknown variables refused — the strictest default. */
+    /**
+     * {@return nothing declared, nothing ignored, unknown variables refused: the strictest default}
+     */
     public static External noExternalSurface() {
         return External.builder().unknown(ExternalUnknownPolicy.REJECT).build();
     }
@@ -101,10 +104,10 @@ public class ContractAssembler {
     }
 
     /**
-     * What a value of {@code ty} must be, as JSON Schema keywords — the same mapping {@link
+     * What a value of {@code ty} must be, as JSON Schema keywords: the same mapping {@link
      * de.timscho.config.core.descriptor.SchemaAssembler} uses for a described key's own type,
-     * applied here to a hand-declared {@link ExternalVar}. {@code null} means unconstrained: a
-     * type this module does not recognise, published as an unchecked existence-only declaration.
+     * applied here to a hand-declared {@link ExternalVar}. {@code null} means unconstrained: a type
+     * this module does not recognise, published as an unchecked existence-only declaration.
      */
     // Fully qualified to avoid colliding with this file's own `Contract` (the model type) import.
     @org.jetbrains.annotations.Contract(pure = true)

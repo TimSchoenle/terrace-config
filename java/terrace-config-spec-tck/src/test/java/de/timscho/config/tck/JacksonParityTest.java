@@ -23,7 +23,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * normal test dependency on both modules: they publish a class of the identical name {@code
  * de.timscho.config.core.io.ContractCodec}, so this test's own classpath can carry at most one of
  * them at a time. {@code build.gradle.kts}'s {@code jackson2Runtime}/{@code jackson3Runtime}
- * configurations resolve each backend's own runtime classpath — jar and transitive dependencies —
+ * configurations resolve each backend's own runtime classpath (jar and transitive dependencies)
  * into the {@code terrace.tck.jackson2Classpath}/{@code terrace.tck.jackson3Classpath} system
  * properties this test reads.
  */

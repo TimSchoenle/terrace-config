@@ -14,11 +14,11 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Proves {@code Schema.toJsonSchemaWith} against the stored corpus: every {@code contract.json}
- * already carries the exact document the Rust producer rendered for its {@code schema} half, in
- * its own {@code json_schema} field, so re-rendering from the deserialised {@link
- * de.timscho.config.core.model.Schema} and comparing structurally — not byte for byte, since
- * {@code java.util.Map} carries no key order of its own — is the strongest check available
- * without a Java producer of its own.
+ * already carries the exact document the Rust producer rendered for its {@code schema} half, in its
+ * own {@code json_schema} field, so re-rendering from the deserialised {@link
+ * de.timscho.config.core.model.Schema} and comparing structurally (not byte for byte, since {@code
+ * java.util.Map} carries no key order of its own) is the strongest check available without a Java
+ * producer of its own.
  */
 class JsonSchemaRendererCorpusTest {
 

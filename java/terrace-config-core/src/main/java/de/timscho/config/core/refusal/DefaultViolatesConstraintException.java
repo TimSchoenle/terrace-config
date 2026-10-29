@@ -9,6 +9,13 @@ public final class DefaultViolatesConstraintException extends ContractRefusalExc
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Creates the refusal for one key.
+     *
+     * @param path the offending key's dotted path
+     * @param defaultValue the default as the document renders it
+     * @param reason why the default fails the constraint
+     */
     public DefaultViolatesConstraintException(final String path, final String defaultValue, final String reason) {
         super("`" + path + "` publishes the default " + defaultValue + ", which fails its own constraint: "
                 + (reason.startsWith("`") ? reason : "it " + reason)

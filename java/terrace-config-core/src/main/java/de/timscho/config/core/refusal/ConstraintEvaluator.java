@@ -11,12 +11,12 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Whether a value satisfies a published constraint, as far as this module can prove it — the port
- * of the Rust crate's {@code schema::check}, and what refusal 9 rests on.
+ * Whether a value satisfies a published constraint, as far as this module can prove it. The Java
+ * counterpart of the Rust crate's {@code schema::check}, and what refusal 9 rests on.
  *
  * <p>{@code -core} links no JSON Schema engine, so this is a small one over exactly the vocabulary
  * a producer here emits into a constraint, written to the rule the constraint itself is: a refusal
- * must be certain. A keyword outside the vocabulary leaves the answer undecided, never satisfied —
+ * must be certain. A keyword outside the vocabulary leaves the answer undecided, never satisfied,
  * which matters under {@code not}, where an undecided subschema must not count as one that holds.
  *
  * <p>Values are what a producer holds a default as: {@link Map}, {@link List}, {@link String},
@@ -51,7 +51,7 @@ public final class ConstraintEvaluator {
     private ConstraintEvaluator() {}
 
     /**
-     * {@code value} against {@code constraint}.
+     * {@return {@code value} against {@code constraint}}
      *
      * @param constraint a key's published constraint
      * @param value      the value to hold to it
@@ -285,7 +285,7 @@ public final class ConstraintEvaluator {
     }
 
     /**
-     * {@code pattern}, for a pattern inside the portable subset — the only patterns this module can
+     * {@code pattern}, for a pattern inside the portable subset, the only patterns this module can
      * promise every other engine reads as it does. Any other is undecided.
      */
     private static Verdict pattern(@Nullable final Object argument, @Nullable final Object value, final String at) {
@@ -585,7 +585,7 @@ public final class ConstraintEvaluator {
     }
 
     /**
-     * A value as a message shows it: strings quoted, everything else as written.
+     * {@return a value as a message shows it: strings quoted, everything else as written}
      *
      * @param value the value to show
      */

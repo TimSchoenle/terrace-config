@@ -3,8 +3,8 @@ package de.timscho.config.example.service;
 import de.timscho.config.loader.TerraceLoader;
 
 /**
- * A small HTTP-shaped service, wired to load its configuration through {@link TerraceLoader} —
- * the Java mirror of {@code rust/examples/service/main.rs}.
+ * A small HTTP-shaped service, wired to load its configuration through {@link TerraceLoader}: the
+ * Java mirror of {@code rust/examples/service/main.rs}.
  *
  * <pre>{@code
  * ./gradlew :terrace-config-example-service:run
@@ -12,9 +12,9 @@ import de.timscho.config.loader.TerraceLoader;
  * ORDERS_LOG_LEVEL=debug ./gradlew :terrace-config-example-service:run
  * }</pre>
  *
- * <p>A real deployment never sets {@code ORDERS_DATABASE__URL} in plain environment text — it
- * mounts a {@code Secret} volume and sets {@code ORDERS_SECRETS_DIR} at that path, or points
- * {@code ORDERS_DATABASE__URL_FILE} at one file. {@code OrdersServiceConfigTest} boots this exact
+ * <p>A real deployment never sets {@code ORDERS_DATABASE__URL} in plain environment text. It mounts
+ * a {@code Secret} volume and sets {@code ORDERS_SECRETS_DIR} at that path, or points {@code
+ * ORDERS_DATABASE__URL_FILE} at one file. {@code OrdersServiceConfigTest} boots this exact
  * configuration every way {@link TerraceLoader} supports.
  *
  * <p>The contract is the build's, not this binary's: the {@code de.timscho.terrace-config} plugin
@@ -28,8 +28,13 @@ public final class OrdersService {
 
     // BanSystemOut assumes System.out is always a substitute for a logger; here it is this demo
     // binary's actual terminal output for a human running `./gradlew ... :run` by hand (the config
-    // values it booted with) -- there is no SLF4J-worthy log event to attribute it to, and no other
+    // values it booted with). There is no SLF4J-worthy log event to attribute it to, and no other
     // consumer for it to reach.
+    /**
+     * Loads the configuration from the environment and prints what the service booted with.
+     *
+     * @param args ignored
+     */
     @SuppressWarnings("checkstyle:BanSystemOut")
     public static void main(final String[] args) {
         final Config config =

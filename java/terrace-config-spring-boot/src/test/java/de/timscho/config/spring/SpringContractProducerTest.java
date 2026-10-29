@@ -10,11 +10,10 @@ import de.timscho.config.core.refusal.EmptyPrefixException;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link SpringContractProducer#produce} against a real generated descriptor
- * ({@link ServiceConfig}/{@code ServiceConfigDescriptor}), proving the whole path from an
- * annotated type to a validated {@link Contract} — {@code SpringDialect}'s single-underscore
- * nesting, an empty {@code schema.loader}, and the eight refusals still firing through
- * {@code ContractValidator}.
+ * {@link SpringContractProducer#produce} against a real generated descriptor ({@link
+ * ServiceConfig}/{@code ServiceConfigDescriptor}), proving the whole path from an annotated type to
+ * a validated {@link Contract}: {@code SpringDialect}'s single-underscore nesting, an empty {@code
+ * schema.loader}, and the eight refusals still firing through {@code ContractValidator}.
  */
 class SpringContractProducerTest {
 
@@ -42,6 +41,20 @@ class SpringContractProducerTest {
         assertThat(token.getEnv()).isEqualTo("PORTFOLIO_GITHUB_TOKEN");
 
         assertThat(contract.getJsonSchema().schemaDialect()).isEqualTo("http://json-schema.org/draft-07/schema#");
+    }
+
+    @Test
+    void publishesNoTextConstraintSpringsBinderWasNotMeasuredAgainst() {
+        Contract contract = SpringContractProducer.produce(ServiceConfigDescriptor.DESCRIPTOR, "PORTFOLIO_", APP);
+
+        Key port = contract.getSchema().getKeys().stream()
+                .filter(key -> key.getPath().equals("port"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(port.getConstraint()).containsEntry("type", "integer");
+        assertThat(contract.getSchema().getKeys())
+                .extracting(Key::getTextConstraint)
+                .containsOnlyNulls();
     }
 
     @Test

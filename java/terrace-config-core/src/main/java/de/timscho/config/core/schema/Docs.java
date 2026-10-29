@@ -4,11 +4,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * How much of a key's documentation comment a rendering carries into a JSON Schema {@code
- * description} — ported from the Rust crate's {@code Docs}.
+ * description}. Mirrors the Rust crate's {@code Docs}.
  */
 public enum Docs {
 
-    /** Leave the comment out. */
+    /** Leaves the comment out. */
     NONE,
 
     /** The summary alone: the first paragraph, soft wraps flattened to spaces. */
@@ -17,7 +17,9 @@ public enum Docs {
     /** The whole comment, its paragraphs and line breaks intact. */
     FULL;
 
-    /** The text this setting takes from {@code docs}, or {@code null} when there is nothing to take.
+    /**
+     * {@return the text this setting takes from {@code docs}, or {@code null} when there is nothing
+     * to take}
      *
      * @param docs the raw doc comment to extract from
      */

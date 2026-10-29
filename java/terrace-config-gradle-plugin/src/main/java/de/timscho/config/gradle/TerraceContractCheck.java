@@ -23,30 +23,39 @@ import org.gradle.work.DisableCachingByDefault;
  * today: the {@code terraceContractCheck} task, which {@code check} depends on.
  *
  * <p>Compared with the unstamped emission, not the stamped one, so the committed copy carries no
- * version, commit or timestamp and changes only when the configuration surface does — which is
+ * version, commit or timestamp and changes only when the configuration surface does, which is
  * exactly when a reviewer should see it change.
  */
 @DisableCachingByDefault(because = "Comparing two small files is cheaper than a cache lookup")
 public abstract class TerraceContractCheck extends DefaultTask {
 
-    /** The unstamped document the types emit today. */
+    /** Creates the task. */
+    public TerraceContractCheck() {
+        // Gradle generates the subclass that implements the abstract properties.
+    }
+
+    /** {@return the unstamped document the types emit today} */
     @InputFile
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getEmitted();
 
     /**
-     * The committed copy. {@code @InputFiles} rather than {@code @InputFile}, so a missing file
-     * reaches this task's own message instead of failing input validation.
+     * {@return the committed copy} {@code @InputFiles} rather than {@code @InputFile}, so a missing
+     * file reaches this task's own message instead of failing input validation.
      */
     @InputFiles
     @PathSensitive(PathSensitivity.NONE)
     public abstract RegularFileProperty getCommitted();
 
-    /** The task path that rewrites the committed copy, for the message. */
+    /** {@return the task path that rewrites the committed copy, for the message} */
     @Internal
     public abstract Property<String> getUpdateTaskPath();
 
-    /** Compares the two documents. */
+    /**
+     * Compares the two documents.
+     *
+     * @throws IOException if either document cannot be read
+     */
     @TaskAction
     public void compare() throws IOException {
         final File committed = this.getCommitted().get().getAsFile();
