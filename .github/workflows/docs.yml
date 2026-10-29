@@ -89,7 +89,7 @@ jobs:
 
       - name: Render the README
         id: readme
-        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
@@ -97,7 +97,7 @@ jobs:
 
       - name: Render the Java README
         id: java_readme
-        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
@@ -108,7 +108,7 @@ jobs:
       # only matter to the crate render — this one only reads `repo`.
       - name: Render the root README
         id: root_readme
-        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
@@ -242,7 +242,7 @@ jobs:
 
       # Writes nothing; fails with the first differing line when README.md is stale.
       - name: Verify rust/README.md is current
-        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
@@ -250,7 +250,7 @@ jobs:
           check: true
 
       - name: Verify java/README.md is current
-        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
@@ -258,7 +258,7 @@ jobs:
           check: true
 
       - name: Verify README.md is current
-        uses: TimSchoenle/actions/actions/common/render-template@8da2713994ba2b5f542e7e3334db287b1e22854a # tag=actions-common-render-template-v1.2.9
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
