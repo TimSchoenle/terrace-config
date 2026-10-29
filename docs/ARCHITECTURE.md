@@ -371,7 +371,9 @@ mounted file is correct and absent from the document.
 variable only a sibling image reads is the defect this gate exists for. Every variable is
 classified by an ordered list, first match wins, and the step rejecting an unaccounted prefixed
 variable sits above both external lists. A value the manifest carries is checked against
-`text_constraint`, then parsed as `text_form` says and checked against `constraint`. A `valueFrom`
+`text_constraint`. When the build has a measured read table for `producer.loader`, the value is then
+parsed as `text_form` says and checked against `constraint`; for any other loader that step is
+reported as skipped, never as passed. A `valueFrom`
 entry is classified by its name, but its value exists only when the pod runs, so it is not
 checked. The gate also finds a key supplied by two
 layers at once, aliases included, which the loader refuses at boot, and names both spellings. When
@@ -382,10 +384,12 @@ an unaccounted variable looks like a service link and the pod does not set
 its environment spellings, or a mounted file named for it. Naming all three layers tells an operator
 there is a choice, where a `required` list would tell them to put a credential in a ConfigMap.
 
-**Gate 3, file spellings.** Per container. Every file mounted at the secrets directory must be some
-key's `secrets_file` or one of its aliases, every `*_FILE` variable must be some key's `env_file`
-and point inside a mounted volume, every published `secrets_file` must be a legal Secret key, and
-the key it names must have a string `constraint`.
+**Gate 3, file spellings.** Per container. Every file mounted at the secrets directory must spell
+some key's `secrets_file` or one of its aliases, or address an element of a dynamic map. A file
+mounted elsewhere that spells a key must be named by a `_FILE` variable, or nothing reads it. A
+variable gate 2 classified as a key's `env_file` must point inside a mounted volume; any other
+`*_FILE` variable is gate 2's to account for. The key a file supplies must have `text_form: text`,
+because a file's contents reach the loader as a string with no parse.
 
 **Gate 4, the real loader.** The service binary loads the rendered configuration with its real
 types, defaults and shadow policy, and exits non-zero with the loader's own message. It needs an
