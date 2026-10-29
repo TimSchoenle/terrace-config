@@ -170,9 +170,9 @@ use super::markers::{MARKER, Marker, read as read_markers};
 use super::patch::{Row, unified};
 use super::regions::{Region, regions, split_lines};
 use super::scaffold::{
-    Destination, Key, Placement, Plan, Tree, branch_prefix, branches, default_for, derived_for,
-    invented, plan_keys, render_tree, secret_data_for, secrets_file_name, service_key_for, tree_at,
-    values_scalar, write_off_groups, write_off_lines,
+    Destination, Key, Placement, Plan, Tree, branch_prefix, branches, credential_entries_for,
+    default_for, derived_for, invented, plan_keys, render_tree, secrets_file_name, service_key_for,
+    tree_at, values_scalar, write_off_groups, write_off_lines,
 };
 
 /// The fields of a contract key that decide what its chart value looks like.
@@ -271,7 +271,7 @@ pub struct Adoption {
     /// The projections that could not be appended, printed for a person to place.
     pub owed_projected: Vec<Placement>,
     /// The credentials whose `secretData` line could not be appended, printed likewise.
-    pub owed_secrets: Vec<Placement>,
+    pub owed_credentials: Vec<Placement>,
 }
 
 impl Adoption {
@@ -286,7 +286,7 @@ impl Adoption {
             blocked: Vec::new(),
             by_hand: false,
             owed_projected: Vec::new(),
-            owed_secrets: Vec::new(),
+            owed_credentials: Vec::new(),
         }
     }
 
@@ -317,7 +317,7 @@ impl Adoption {
             .map(|item| item.path.as_str())
             .collect();
         self.plan
-            .secrets
+            .credentials
             .iter()
             .filter(|item| refused.contains(item.path()))
             .cloned()
@@ -345,7 +345,7 @@ impl Adoption {
         };
         Plan {
             projected: keep(&self.plan.projected),
-            secrets: keep(&self.plan.secrets),
+            credentials: keep(&self.plan.credentials),
             written_off: self.plan.written_off.clone(),
         }
     }
@@ -476,7 +476,7 @@ pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adopt
         projection_edits(chart_dir, &chart, &placed, &all_documents, &service_key_of)?;
     adoption.edits.extend(projections.edits);
     adoption.owed_projected = projections.owed_projected;
-    adoption.owed_secrets = projections.owed_secrets;
+    adoption.owed_credentials = projections.owed_credentials;
     Ok(Some(adoption))
 }
 
@@ -984,7 +984,7 @@ fn before_documents(regions: &HashMap<String, Region>, path: &Path) -> Result<us
 
 /// A `credentials` row per credential this adoption surfaced and the chart has not described.
 fn credential_rows(declaration: &Declaration, plan: &Plan) -> Vec<String> {
-    plan.secrets
+    plan.credentials
         .iter()
         .filter(|item| !declaration.credentials.contains_key(item.path()))
         .flat_map(|item| {
@@ -1249,7 +1249,7 @@ fn root_of(placement: &Placement) -> &str {
 struct Projections {
     edits: Vec<FileEdit>,
     owed_projected: Vec<Placement>,
-    owed_secrets: Vec<Placement>,
+    owed_credentials: Vec<Placement>,
 }
 
 /// The `derivedConfig` and `secretData` lines to append, and the ones that must be printed.
@@ -1309,13 +1309,13 @@ fn projection_edits(
         .cloned()
         .collect();
 
-    let mut owed_secrets = plan.secrets.clone();
+    let mut owed_credentials = plan.credentials.clone();
     if let Some((path, _, secrets)) = find_define(chart_dir, &format!("{chart}.secretData"))? {
         let mut delivered = Vec::new();
-        owed_secrets.clear();
-        for item in &plan.secrets {
+        owed_credentials.clear();
+        for item in &plan.credentials {
             if secrets.roots.contains(&secrets_file_name(item)?) {
-                owed_secrets.push(item.clone());
+                owed_credentials.push(item.clone());
             } else {
                 delivered.push(item.clone());
             }
@@ -1324,7 +1324,7 @@ fn projection_edits(
             edits.push(FileEdit {
                 path,
                 after: secrets.end - 1,
-                lines: secret_data_for(&delivered)?,
+                lines: credential_entries_for(&delivered)?,
                 what: "secretData".to_owned(),
             });
         }
@@ -1333,7 +1333,7 @@ fn projection_edits(
     Ok(Projections {
         edits,
         owed_projected,
-        owed_secrets,
+        owed_credentials,
     })
 }
 
@@ -1616,12 +1616,12 @@ fn still_owed(out: &mut String, adoption: &Adoption, written: bool) -> Result<()
         );
     }
 
-    if !adoption.owed_secrets.is_empty() {
+    if !adoption.owed_credentials.is_empty() {
         let _ = writeln!(
             out,
             "\n  still owed — {chart}/templates/_helpers.tpl, in `secretData`:\n"
         );
-        for line in secret_data_for(&adoption.owed_secrets)? {
+        for line in credential_entries_for(&adoption.owed_credentials)? {
             let _ = writeln!(out, "    {line}");
         }
     }
@@ -1680,7 +1680,7 @@ pub fn closing(adoptions: &[Adoption], written: bool, rows: &[String]) -> String
         .iter()
         .map(|item| {
             let placed = item.placed();
-            placed.projected.len() + placed.secrets.len()
+            placed.projected.len() + placed.credentials.len()
         })
         .sum();
     let charts: Vec<&str> = adoptions
@@ -2278,7 +2278,7 @@ auth:
         assert!(chart.text().contains("`database__url`"));
         let secrets: Vec<&str> = planned
             .plan
-            .secrets
+            .credentials
             .iter()
             .map(super::Placement::path)
             .collect();
@@ -3306,7 +3306,7 @@ auth:
         let planned = chart.write();
 
         let owed: Vec<&str> = planned
-            .owed_secrets
+            .owed_credentials
             .iter()
             .map(super::Placement::path)
             .collect();

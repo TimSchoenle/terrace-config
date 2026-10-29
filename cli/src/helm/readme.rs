@@ -58,7 +58,7 @@ use crate::union::union_contracts;
 use super::bindings::has_path;
 use super::declaration::Selection;
 use super::declaration::{Declaration, Document, vendored_for};
-use super::secrets::{Credential, credentials, declared_secrets};
+use super::secrets::{Credential, credentials, declared_credentials};
 
 /// The two comments the generated block sits between.
 ///
@@ -102,7 +102,7 @@ fn one_chart(
     written: &mut Written,
 ) -> Result<(), Error> {
     let template = chart_dir.join(TEMPLATE);
-    let rows = credentials(&declared_secrets(chart_dir, declaration)?);
+    let rows = credentials(&declared_credentials(chart_dir, declaration)?);
 
     if !template.is_file() {
         if !rows.is_empty() {

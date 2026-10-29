@@ -55,8 +55,8 @@ use super::super::declaration::{
 use super::super::shapes::quoted;
 use super::super::testgen::VALUES_ROOT;
 use super::{
-    Key, Placement, Plan, WIDTH, branch_placeholder, branches, derived_for, plan_keys, render_tree,
-    secret_data_for, secrets_file_name, tree_at, values_scalar, wrap, write_off_groups,
+    Key, Placement, Plan, WIDTH, branch_placeholder, branches, credential_entries_for, derived_for,
+    plan_keys, render_tree, secrets_file_name, tree_at, values_scalar, wrap, write_off_groups,
     write_off_lines,
 };
 
@@ -115,7 +115,7 @@ pub enum Surface {
 /// The plan of a surface that has none.
 const EMPTY: &Plan = &Plan {
     projected: Vec::new(),
-    secrets: Vec::new(),
+    credentials: Vec::new(),
     written_off: Vec::new(),
 };
 
@@ -447,7 +447,7 @@ fn with_chassis(lines: &[String], chassis: &str) -> String {
 
 /// A real secrets-file name from this contract, for the `existingSecret` documentation.
 fn example_secret_file(plan: &Plan) -> String {
-    plan.secrets
+    plan.credentials
         .iter()
         .find_map(|placement| {
             placement
@@ -557,7 +557,7 @@ pub fn render_helpers(chart: &str, surface: &Surface) -> Result<String, Error> {
         ])
     ));
 
-    let secret_lines = secret_data_for(&plan.secrets)?;
+    let secret_lines = credential_entries_for(&plan.credentials)?;
     parts.push(format!(
         "{}{{{{- define \"{chart}.secretData\" -}}}}\n{}{{{{- end -}}}}\n",
         comment(&[&format!(
@@ -594,7 +594,7 @@ fn joined(lines: &[String]) -> String {
 
 /// The credentials a render cannot do without.
 fn required_secrets(plan: &Plan) -> Vec<&Placement> {
-    plan.secrets
+    plan.credentials
         .iter()
         .filter(|item| !item.optional())
         .collect()
@@ -694,7 +694,7 @@ pub fn render_declaration(
     .map(str::to_owned)
     .into();
 
-    if !plan.written_off.is_empty() || !plan.secrets.is_empty() {
+    if !plan.written_off.is_empty() || !plan.credentials.is_empty() {
         lines.extend(
             [
                 "",
@@ -1862,7 +1862,7 @@ resources: {}
             &json!({"secret": true, "required": true,
                     "constraint": {"type": "string", "pattern": "^tok_"}}),
         )]);
-        assert!(probe_credential(&held.plan().secrets[0]).is_err());
+        assert!(probe_credential(&held.plan().credentials[0]).is_err());
         assert!(render_declaration("app", "app", "config.toml", held.plan()).is_err());
         assert!(render_ci_values("app", &held).is_err());
     }

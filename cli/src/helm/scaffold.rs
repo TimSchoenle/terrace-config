@@ -224,7 +224,7 @@ pub struct Plan {
     /// Keys that become a chart value projected into the document.
     pub projected: Vec<Placement>,
     /// Credentials that become a chart value delivered as a file.
-    pub secrets: Vec<Placement>,
+    pub credentials: Vec<Placement>,
     /// Keys no chart value surfaces, each with its reason.
     pub written_off: Vec<Placement>,
 }
@@ -232,7 +232,7 @@ pub struct Plan {
 impl Plan {
     /// The keys that get a chart value, projected first and credentials after, each in path order.
     pub fn surfaced(&self) -> impl Iterator<Item = &Placement> {
-        self.projected.iter().chain(&self.secrets)
+        self.projected.iter().chain(&self.credentials)
     }
 }
 
@@ -269,7 +269,7 @@ pub fn plan_keys(keys: impl IntoIterator<Item = Key>) -> Result<Plan, Error> {
             ));
         } else if truthy(entry.fields.get("secret")) {
             if entry.entry().file_supplyable()? {
-                plan.secrets.push(placement(
+                plan.credentials.push(placement(
                     Destination::SecretFile,
                     values_path,
                     String::new(),
@@ -943,7 +943,7 @@ fn guarded(body: Vec<String>, service_keys: &[String], indent: &str) -> Vec<Stri
 ///
 /// # Errors
 /// As [`secrets_file_name`].
-pub fn secret_data_for(placements: &[Placement]) -> Result<Vec<String>, Error> {
+pub fn credential_entries_for(placements: &[Placement]) -> Result<Vec<String>, Error> {
     placements
         .iter()
         .map(|item| {
@@ -1006,7 +1006,7 @@ pub fn write_off_groups(plan: &Plan) -> Result<Vec<(Vec<String>, String)>, Error
             None => groups.push((reason, vec![path.to_owned()])),
         };
 
-    for item in &plan.secrets {
+    for item in &plan.credentials {
         add(
             format!(
                 "Delivered as a file in the secrets directory — from the Secret this chart \
@@ -1058,9 +1058,9 @@ mod tests {
     use serde_json::{Map, Value as Json, json};
 
     use super::{
-        Destination, Key, Node, Placement, Plan, check_chart_name, default_for, derived_for,
-        env_prefix, invented, plan_keys, schema_lines, secret_data_for, service_key_for, tree_at,
-        value_block, values_path_for, write_off_groups,
+        Destination, Key, Node, Placement, Plan, check_chart_name, credential_entries_for,
+        default_for, derived_for, env_prefix, invented, plan_keys, schema_lines, service_key_for,
+        tree_at, value_block, values_path_for, write_off_groups,
     };
     use crate::helm::declaration::read_yaml;
     use crate::union::Merged;
@@ -1180,9 +1180,9 @@ mod tests {
     #[test]
     fn a_file_supplyable_credential_becomes_a_secret_file() {
         let plan = plan_of(vec![key("a.token", &json!({"secret": true}))]);
-        assert_eq!(paths(&plan.secrets), ["a.token"]);
+        assert_eq!(paths(&plan.credentials), ["a.token"]);
         assert_eq!(plan.projected, [] as [Placement; 0]);
-        assert_eq!(plan.secrets[0].destination, Destination::SecretFile);
+        assert_eq!(plan.credentials[0].destination, Destination::SecretFile);
     }
 
     #[test]
@@ -1192,7 +1192,7 @@ mod tests {
             &json!({"secret": true, "text_form": "integer", "constraint": {"type": "integer"}}),
         )]);
         assert_eq!(paths(&plan.written_off), ["a.port"]);
-        assert_eq!(plan.secrets, [] as [Placement; 0]);
+        assert_eq!(plan.credentials, [] as [Placement; 0]);
         assert!(
             plan.written_off[0]
                 .reason
@@ -1566,7 +1566,7 @@ mod tests {
     fn every_credential_reaches_the_secret_under_its_published_file_name() {
         let plan = plan_of(vec![key("a.token", &json!({"secret": true}))]);
         assert_eq!(
-            secret_data_for(&plan.secrets).expect("lines"),
+            credential_entries_for(&plan.credentials).expect("lines"),
             ["a__token: {{ .Values.a.token | quote }}"]
         );
     }
@@ -1577,7 +1577,7 @@ mod tests {
             "a.token",
             &json!({"secret": true, "secrets_file": ""}),
         )]);
-        let error = secret_data_for(&plan.secrets).expect_err("there is no name to use");
+        let error = credential_entries_for(&plan.credentials).expect_err("there is no name to use");
         assert!(error.to_string().contains("declares no `secrets_file`"));
     }
 
@@ -1589,7 +1589,11 @@ mod tests {
             key("c.token", &json!({"secret": true, "required": true})),
         ]);
         let mut text = derived_for(&plan.projected, "", None, ".Values").join("\n");
-        text.push_str(&secret_data_for(&plan.secrets).expect("lines").join("\n"));
+        text.push_str(
+            &credential_entries_for(&plan.credentials)
+                .expect("lines")
+                .join("\n"),
+        );
         assert_eq!(
             text.matches("{{").count(),
             text.matches("}}").count(),
