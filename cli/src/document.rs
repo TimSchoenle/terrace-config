@@ -86,8 +86,10 @@ pub struct Contract {
     /// Envelope 1 requires it, and `spec/v1/contract.schema.json` says so. It is optional here for
     /// reader compatibility only: chart repositories vendor documents that lack it, and a reader
     /// that refuses a document it could have read is the failure this module opens by naming.
-    /// Such a document is not a valid envelope. `conform` and `validate` refuse it through the
-    /// meta-schema, which is where "this producer is not emitting what it must" belongs.
+    /// Such a document is not a valid envelope. `validate`, and `conform` without `--no-schema`,
+    /// refuse it through the meta-schema, which is where "this producer is not emitting what it
+    /// must" belongs. `conform --no-schema` and [`crate::conform::conform`] skip that check, so they
+    /// accept it.
     ///
     /// [`None`] is not the same as absent to a consumer, either: it means the loader whose
     /// environment reads every `text_constraint` here was measured against is unknown, so the range
