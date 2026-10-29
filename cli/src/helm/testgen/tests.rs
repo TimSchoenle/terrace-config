@@ -384,6 +384,14 @@ fn a_label_no_string_literal_can_carry_is_refused_rather_than_escaped() {
     }
 }
 
+#[test]
+fn a_control_character_in_an_identity_label_name_refuses_the_suite() {
+    // `target()` has no discriminator, so the name reaches only the identity assertion's path.
+    let mut target = target();
+    target.selector = vec![label("line\nbreak", "portfolio")];
+    assert!(render_suite(&target, &simple(&keys()), &[], None, &[], None, &[]).is_err());
+}
+
 // -- planning ----------------------------------------------------------------------------
 
 #[test]
