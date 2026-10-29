@@ -363,16 +363,24 @@ fn several_labels_become_one_filter() {
 
 #[test]
 fn a_label_no_string_literal_can_carry_is_refused_rather_than_escaped() {
-    // A guess at another engine's lexer produces a selector that silently matches nothing.
-    for offender in ["quo\"te", "back\\slash"] {
+    // A guess at another engine's lexer produces a selector that silently matches nothing, and a
+    // line break would be folded into a space by the single-quoted YAML scalar it is written into.
+    for offender in [
+        "quo\"te",
+        "back\\slash",
+        "line\nbreak",
+        "carriage\rreturn",
+        "t\tab",
+    ] {
         assert!(
             selector_path(
                 "config.toml",
                 &[label("app.kubernetes.io/component", offender)]
             )
             .is_err(),
-            "{offender}"
+            "{offender:?}"
         );
+        assert!(selector_path(offender, &[]).is_err(), "{offender:?}");
     }
 }
 

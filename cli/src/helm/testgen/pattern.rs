@@ -99,17 +99,21 @@ pub fn document_pattern(path: &str, text: &str) -> Result<String, Error> {
 ///
 /// Double quotes rather than single ones so the whole expression survives the single-quoted YAML
 /// scalar it is written into without every quote in it being doubled. A label or a key carrying a
-/// double quote or a backslash is refused instead of escaped: the selector engine's lexer is not
-/// this build's to reason about, and a guess here would produce a selector that silently matches
-/// nothing.
+/// double quote, a backslash or a control character is refused instead of escaped: the selector
+/// engine's lexer is not this build's to reason about, and a guess here would produce a selector that
+/// silently matches nothing. A line break in particular would not survive the single-quoted YAML
+/// scalar either, which folds it into a space.
 ///
 /// # Errors
 /// [`Error::Invalid`] naming the text that cannot be written into one.
 pub fn jsonpath_string(text: &str) -> Result<String, Error> {
-    if text.contains('"') || text.contains('\\') {
+    if text
+        .chars()
+        .any(|character| matches!(character, '"' | '\\') || character.is_control())
+    {
         return Err(Error::Invalid(format!(
             "{} cannot be written into a document selector: a JSONPath string literal here \
-             carries neither a double quote nor a backslash",
+             carries no double quote, backslash or control character",
             crate::gate::quoted(text)
         )));
     }
