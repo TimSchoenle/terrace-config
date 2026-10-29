@@ -92,8 +92,9 @@ builds no `ObjectMapper`; see [JACKSON.md](JACKSON.md) for the codecs.
 - **`Schema.withDefaultsFromValue(Map<String, Object>)`** fills in each non-required key's
   `defaultText` and `defaultValue` from an already-nested map, such as
   `objectMapper.convertValue(instance, Map.class)` in a caller that has Jackson. A `Key.secret` key
-  is redacted to `<redacted>` after rendering, so an unset secret is not hidden. A required key is
-  left untouched.
+  is redacted to `<redacted>` after rendering, so an unset secret is not hidden. The marker does not
+  make the contract emittable: `ContractValidator` refuses a secret key with any default, so a
+  secret field must not have one. A required key is left untouched.
 - **Every other rendering is `terrace-contract render`'s.** The Markdown tables, the commented
   `config.toml`, the standalone JSON Schema, the image labels and the Dockerfile marker block are
   read off the emitted document by `terrace-contract render`, and `terrace-contract image verify`
@@ -213,8 +214,10 @@ the product.
   `--config-var`, `--secrets-dir-var`, `--default-config-path`), fills in defaults from a
   default-constructed instance converted through Jackson, and writes the contract to `--out` or
   standard output. Build identity (`app.version`, `revision`, `created`, `source`) is not an
-  option: it is `terrace-contract stamp`'s, so the emission is a pure function of the types and can
-  be compared with a committed copy. The Gradle plugin runs it; by hand:
+  option: it is `terrace-contract stamp`'s, so the emission depends only on the types and the
+  defaults their initializers and constructors produce. It can be compared with a committed copy
+  as long as those defaults are deterministic: one read from the clock or the environment changes
+  the contract between builds. The Gradle plugin runs it; by hand:
 
   ```bash
   java -cp <runtime classpath> de.timscho.config.loader.ContractMain \

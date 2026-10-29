@@ -50,8 +50,9 @@ classes expose. `java/lombok.config` lists `org.jspecify.annotations.Nullable` u
 
 Only a value that can be absent:
 
-- a model field the meta-schema marks optional, such as `Key.env`, `ExternalVar.owner` or
-  `App.version`;
+- a model field the meta-schema lets be absent: an optional property, such as `ExternalVar.owner`
+  or `App.version`, or a required one whose value may be `null`, such as `Key.env`, which the
+  rendering writes as `null` rather than omits;
 - a private helper's `null` sentinel return, such as `SchemaAssembler`'s constraint builders,
   `Origin.fromSources` or `TomlLayers.fragmentKeys`;
 - the parameter of an `Object.equals(Object)` override, as in `JsonSchemaDocument`;
