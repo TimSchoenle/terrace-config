@@ -121,9 +121,24 @@ public final class SpringContractProducer {
                 .indirectionSuffix(springDialect.indirectionSuffix())
                 .build();
 
-        final Schema schema =
-                SchemaAssembler.assemble(descriptor, dialect, Set.of()).withDefaultsFromValue(defaults);
+        final Schema schema = withoutTextConstraints(
+                SchemaAssembler.assemble(descriptor, dialect, Set.of()).withDefaultsFromValue(defaults));
         final Producer producer = ProducerIdentity.forLoader("spring-boot");
         return ContractAssembler.assemble(schema, app, producer, external);
+    }
+
+    /**
+     * {@code schema} with no key's {@code text_constraint}. The shared patterns describe the
+     * strict reads of {@code FORMAT.md}, and Spring's {@code Binder} accepts more: {@code on} and
+     * {@code yes} as booleans, hexadecimal integers, enum constants in any case, comma-separated
+     * lists. Nothing has measured those reads, and {@code spec/v1/PRODUCER.md} says to omit the
+     * pattern rather than publish one stricter than the loader.
+     */
+    private static Schema withoutTextConstraints(final Schema schema) {
+        return schema.toBuilder()
+                .keys(schema.getKeys().stream()
+                        .map(key -> key.toBuilder().textConstraint(null).build())
+                        .toList())
+                .build();
     }
 }

@@ -44,6 +44,20 @@ class SpringContractProducerTest {
     }
 
     @Test
+    void publishesNoTextConstraintSpringsBinderWasNotMeasuredAgainst() {
+        Contract contract = SpringContractProducer.produce(ServiceConfigDescriptor.DESCRIPTOR, "PORTFOLIO_", APP);
+
+        Key port = contract.getSchema().getKeys().stream()
+                .filter(key -> key.getPath().equals("port"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(port.getConstraint()).containsEntry("type", "integer");
+        assertThat(contract.getSchema().getKeys())
+                .extracting(Key::getTextConstraint)
+                .containsOnlyNulls();
+    }
+
+    @Test
     void refusesAnEmptyPrefix() {
         assertThatThrownBy(() -> SpringContractProducer.produce(ServiceConfigDescriptor.DESCRIPTOR, "", APP))
                 .isInstanceOf(EmptyPrefixException.class);
