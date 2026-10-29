@@ -362,10 +362,6 @@ impl<'a> Cli<'a> {
     }
 }
 
-/// Reports and fails, in the one place both failure paths meet.
-///
-/// Written rather than `eprintln!`ed, which panics when stderr is gone. A failed write there is
-/// dropped: no channel is left to report it on, and the exit code still says the run failed.
 /// Writes `rendered` to `out` with exactly one trailing newline, and flushes it.
 ///
 /// Exactly one, whatever the rendering ended with. The renderings disagree: `to_markdown*` and
@@ -375,11 +371,19 @@ impl<'a> Cli<'a> {
 ///
 /// Written rather than `println!`ed: that macro panics when stdout is gone, and a closed pipe is an
 /// ordinary way for a caller to stop reading.
+///
+/// # Errors
+///
+/// The first error `out` reports, from the write or from the flush.
 fn emit(out: &mut impl std::io::Write, rendered: &str) -> std::io::Result<()> {
     writeln!(out, "{}", rendered.trim_end_matches('\n'))?;
     out.flush()
 }
 
+/// Reports and fails, in the one place both failure paths meet.
+///
+/// Written rather than `eprintln!`ed, which panics when stderr is gone. A failed write there is
+/// dropped: no channel is left to report it on, and the exit code still says the run failed.
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
     let _unreported = writeln!(std::io::stderr(), "{error}");
     ExitCode::FAILURE
