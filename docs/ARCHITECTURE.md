@@ -326,10 +326,11 @@ The corpus holds consumer cases for each: `foreign-loader`, `foreign-ty`, `schem
 `charts/<chart>/config-contract.yaml` says which rendered objects hold configuration, which images
 read each one, which workloads mount it, and which values files are exempt from which gate, each
 with a reason. Adoption is opt-in: `coverage` warns about a chart that pins a first-party image and
-declares no documents, and fails only a declaration that leaves one of the chart's own first-party
-images unconfigured. An empty `documents: []` is an explicit opt-out and must carry a `reason`. The format, the `@config` marker language and the repository settings are specified in
-[`spec/helm/v1/`](../spec/helm/v1/), versioned apart from `spec/v1/`, whose `$id` promises it will
-describe `terrace_contract: 1` and nothing else.
+declares no documents, fails a declaration that leaves one of the chart's own first-party images
+unconfigured, and stops with an error on a declaration it cannot read. An empty `documents: []` is
+an explicit opt-out and must carry a `reason`. The format, the `@config` marker language and the
+repository settings are specified in [`spec/helm/v1/`](../spec/helm/v1/), versioned apart from
+`spec/v1/`, whose `$id` promises it will describe `terrace_contract: 1` and nothing else.
 
 ### Vendored contracts
 
@@ -348,7 +349,7 @@ others read, so the gates validate against the union of every reading image's `j
 |---|---|
 | a path in one schema only | kept |
 | a path in several, identical | kept once |
-| `additionalProperties` | `false` at every level: after the union, an unknown key is unknown to all |
+| `additionalProperties` | `false` at every level whose properties are enumerated: after the union, an unknown key is unknown to all. A map keeps its element schema |
 | `title`, `description` | the first is kept: prose differs by construction |
 | any other keyword with different values | a hard error: two binaries disagree about one key |
 
@@ -443,6 +444,6 @@ compatibility statement is the envelope versions it reads, `terrace_contract: 1`
 | The schema is stricter than the loader | the rule throughout: a schema that rejects what the loader accepts is worse than one that accepts what it rejects |
 | An escape hatch cannot be validated | exempted per values file and gate, with a reason |
 | A chart and an image release out of order | everything keys off the pinned digest, so the failure lands on the bump |
-| A new chart quietly opts out | `coverage` fails a first-party image with no declaration |
+| A new chart quietly opts out | `coverage` warns about a first-party image with no declaration; opting out takes `documents: []` and a `reason` |
 | A rule quietly assumes one loader again | the loader registry returns `Option`, so a skip cannot be forgotten |
 | `cli/` grows a dependency on an implementation | a `cargo tree` assertion in CI |
