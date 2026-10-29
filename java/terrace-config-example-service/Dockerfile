@@ -10,7 +10,7 @@
 
 FROM ghcr.io/timschoenle/terrace-contract:0.12 AS terrace-contract
 
-FROM eclipse-temurin:25.0.4.1_1-jdk-noble AS build
+FROM eclipse-temurin:25.0.4.1_1-jdk-noble@sha256:a9c5ddd386f629518bd500ecfabf7d1e5d32d7ffed735d5c3b1604ae92c830f4 AS build
 COPY --from=terrace-contract /terrace-contract /usr/local/bin/terrace-contract
 ENV TERRACE_CONTRACT_BIN=/usr/local/bin/terrace-contract
 # Read by `terraceContract` as app.revision and app.created; unset leaves them out.
@@ -20,7 +20,7 @@ WORKDIR /src
 COPY . .
 RUN ./gradlew --no-daemon --console=plain :terrace-config-example-service:installDist :terrace-config-example-service:terraceContract
 
-FROM eclipse-temurin:25.0.4.1_1-jre-noble
+FROM eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f
 COPY --from=build /src/terrace-config-example-service/build/install/terrace-config-example-service /app
 COPY --from=build /src/terrace-config-example-service/build/terrace/contract.json /config/contract.json
 # terrace-config:labels:begin
