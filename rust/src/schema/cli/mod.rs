@@ -108,6 +108,9 @@ mod format;
 mod request;
 pub mod verify;
 
+#[cfg(test)]
+mod tests;
+
 use std::io::Write as _;
 use std::process::ExitCode;
 
@@ -324,23 +327,10 @@ impl<'a> Cli<'a> {
         };
 
         match self.render(&request, schema) {
-            Ok(rendered) => {
-                // Exactly one trailing newline, whatever the rendering ended with. The renderings
-                // disagree: `to_markdown*` and `to_toml_example` end in one already, the contract
-                // and the two label formats do not. Appending a newline to every one gave the
-                // first group a trailing blank line, which is invisible on a terminal and a diff
-                // in a committed `config.example.toml`.
-                //
-                // Written rather than `println!`ed: that macro panics when stdout is gone, and a
-                // closed pipe is an ordinary way for a caller to stop reading.
-                let mut stdout = std::io::stdout().lock();
-                match writeln!(stdout, "{}", rendered.trim_end_matches('\n'))
-                    .and_then(|()| stdout.flush())
-                {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(error) => fail(&format_args!("cannot write to stdout: {error}")),
-                }
-            }
+            Ok(rendered) => match emit(&mut std::io::stdout().lock(), &rendered) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => fail(&format_args!("cannot write to stdout: {error}")),
+            },
             Err(error) => fail(&error),
         }
     }
@@ -376,6 +366,20 @@ impl<'a> Cli<'a> {
 ///
 /// Written rather than `eprintln!`ed, which panics when stderr is gone. A failed write there is
 /// dropped: no channel is left to report it on, and the exit code still says the run failed.
+/// Writes `rendered` to `out` with exactly one trailing newline, and flushes it.
+///
+/// Exactly one, whatever the rendering ended with. The renderings disagree: `to_markdown*` and
+/// `to_toml_example` end in one already, the contract and the two label formats do not. Appending
+/// a newline to every one gave the first group a trailing blank line, which is invisible on a
+/// terminal and a diff in a committed `config.example.toml`.
+///
+/// Written rather than `println!`ed: that macro panics when stdout is gone, and a closed pipe is an
+/// ordinary way for a caller to stop reading.
+fn emit(out: &mut impl std::io::Write, rendered: &str) -> std::io::Result<()> {
+    writeln!(out, "{}", rendered.trim_end_matches('\n'))?;
+    out.flush()
+}
+
 fn fail(error: &dyn std::fmt::Display) -> ExitCode {
     let _unreported = writeln!(std::io::stderr(), "{error}");
     ExitCode::FAILURE
