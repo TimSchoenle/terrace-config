@@ -263,19 +263,20 @@ public final class TerraceLoader {
      * <p>Reports the same layers {@link #load} would bind, without binding them to any type, so it
      * still succeeds where binding would fail (a value the target type cannot hold, say). It finds
      * the layers exactly as {@link #load} does, so a configuration directory that cannot be listed,
-     * a secrets layer that cannot be read, a {@code _FILE} variable that names a missing or
-     * unreadable file or targets a reserved name, or, under {@link ShadowPolicy#REJECT}, a key
-     * supplied by more than one of the environment, the secrets directory and the {@code _FILE}
-     * indirection variables makes it throw too. An environment value over a TOML value is a normal override and
+     * a secrets layer that cannot be read, an indirection variable (the configured suffix, {@code
+     * _FILE} by default) that names a missing or unreadable file or targets a reserved name, or,
+     * under {@link ShadowPolicy#REJECT}, a key supplied by more than one of the environment, the
+     * secrets directory and the indirection variables makes it throw too. An environment value over a TOML value is a normal override and
      * is reported, not refused. A TOML fragment that does not parse is the exception: {@link #load}
      * throws for it, while this reports it as {@link Fragment.Unreadable}, since each fragment is
      * parsed on its own only for the report.
      *
      * @return the report
      * @throws LoaderException if the configuration directory cannot be listed, the secrets layer
-     *     cannot be read, a {@code _FILE} variable names a missing or unreadable file or targets a
-     *     reserved name, or, under {@link ShadowPolicy#REJECT}, a key is supplied by more than one
-     *     of the environment, the secrets directory and the {@code _FILE} indirection variables
+     *     cannot be read, an indirection variable (the configured suffix, {@code _FILE} by default)
+     *     names a missing or unreadable file or targets a reserved name, or, under {@link
+     *     ShadowPolicy#REJECT}, a key is supplied by more than one of the environment, the secrets
+     *     directory and the indirection variables
      */
     public Explanation explain() {
         return this.explain(System.getenv());
