@@ -159,9 +159,9 @@ refusing text the loader accepts stops a correct deployment. `text_form` names t
 applies before the range check, and it separates "any text is fine" (`text`) from "nothing could be
 determined" (`unknown`).
 
-A key whose `constraint` is not a string type cannot be supplied by a secrets file or a `_FILE`
-target at all, because those layers deliver strings and the loader does not coerce them. The file
-gate decides this from `constraint` alone.
+A key whose `text_form` is not `text` cannot be supplied by a secrets file or a `_FILE` target at
+all, because those layers deliver strings and the loader does not coerce them. Gate 3 decides this
+from `text_form` alone.
 
 ### What the document cannot say
 
@@ -217,7 +217,7 @@ cli/src/
   diff/         findings between two documents, and their impact
   oci/          the registry, by delegation to `oras` and `cosign`
   k8s.rs        manifests, workloads, containers, mounts
-  gate/         the document, container and requiredness gates
+  gate/         the document and container gates
   helm/         the chart repository's conventions
   bin/          argument parsing, dispatch and exit codes
 ```
@@ -380,15 +380,14 @@ layers at once, aliases included, which the loader refuses at boot, and names bo
 an unaccounted variable looks like a service link and the pod does not set
 `enableServiceLinks: false`, the message says so.
 
-**Gate 2b, requiredness.** Every `required` key must be supplied by the rendered document, one of
-its environment spellings, or a mounted file named for it. Naming all three layers tells an operator
-there is a choice, where a `required` list would tell them to put a credential in a ConfigMap.
-
-**Gate 3, file spellings.** Per container. Every file mounted at the secrets directory must spell
-some key's `secrets_file` or one of its aliases, or address an element of a dynamic map. A file
-mounted elsewhere that spells a key must be named by a `_FILE` variable, or nothing reads it. A
-variable gate 2 classified as a key's `env_file` must point inside a mounted volume; any other
-`*_FILE` variable is gate 2's to account for. The key a file supplies must have `text_form: text`,
+**Gate 3, file spellings.** Per container. File names are read from the `Secret` and `ConfigMap`
+sources of each mounted volume, as far as the render shows them; other volume types present nothing
+the gate can enumerate. Every such file at the secrets directory must spell some key's
+`secrets_file` or one of its aliases, or address an element of a dynamic map. One mounted elsewhere
+that spells a key must be named by a `_FILE` variable, or nothing reads it. A variable gate 2
+classified as a key's `env_file` must, when the manifest carries its value, point inside a mounted
+volume; a `valueFrom` path exists only at run time and is not checked. Any other `*_FILE` variable
+is gate 2's to account for. The key a file supplies must have `text_form: text`,
 because a file's contents reach the loader as a string with no parse.
 
 **Gate 4, the real loader.** The service binary loads the rendered configuration with its real
@@ -432,6 +431,12 @@ compatibility statement is the envelope versions it reads, `terrace_contract: 1`
   the document differs.
 - **The image's own `ENV` block.** A Dockerfile `ENV` supplies a key on every run, which the
   contract's `default` cannot know; reading it is one `crane config` away.
+- **Requiredness.** Every `required` key supplied by some layer: a non-secret by the rendered
+  document, one of its environment spellings or a mounted file named for it; a secret by an
+  environment spelling or a mounted file only, since the rendered document never carries one. Naming
+  every permitted layer tells an operator there is a choice, where a `required` list would tell them
+  to put a credential in a ConfigMap. `conform::required_keys` is the consumer's starting point; no
+  gate calls it yet.
 - **Secret values, not only names.** A rendered Secret carries its values, so gate 3 could hold them
   to `constraint` with the file layers' one read rule.
 - **A drift report.** The same union across every published chart version and image digest answers
