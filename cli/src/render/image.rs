@@ -27,8 +27,8 @@ pub fn labels(contract: &Contract, path: &str) -> String {
 ///
 /// A `LABEL` key cannot be interpolated from anything, so the choice is between a Dockerfile that
 /// spells these by hand and a build that passes `--label` from a host-side run of a generator.
-/// Multi-stage builds make the second awkward — the document is produced *inside* a builder stage,
-/// where the host's `docker build` command line cannot reach it — so the honest answer is to make
+/// Multi-stage builds make the second awkward (the document is produced *inside* a builder stage,
+/// where the host's `docker build` command line cannot reach it), so the honest answer is to make
 /// hand-writing a copy-paste and then check the result, which is what [`check_labels`] is for.
 ///
 /// Ends with a newline. No trailing backslash, so a following instruction needs no separator.
@@ -112,12 +112,12 @@ pub fn committed_blocks(dockerfile: &str) -> Result<Vec<Region<'_>>, Error> {
 /// The markers stay exactly as written, and so does everything outside them, so the only diff a
 /// rewrite ever produces is inside a region. An empty region is filled, which is how a block is
 /// placed in the first place: the author writes the two markers where the labels belong, once, and
-/// this writes what goes between them. The file's line ending is kept — a Dockerfile checked out
-/// with CRLF gets a CRLF block — judged from its first line.
+/// this writes what goes between them. The file's line ending is kept (a Dockerfile checked out
+/// with CRLF gets a CRLF block), judged from its first line.
 ///
 /// # Errors
 /// As [`committed_blocks`]: a file with no region is refused rather than given one, because where
-/// the labels belong is the author's decision — which stage, above or below which instruction.
+/// the labels belong is the author's decision: which stage, above or below which instruction.
 pub fn rewrite_blocks(dockerfile: &str, contract: &Contract, path: &str) -> Result<String, Error> {
     let newline = if dockerfile
         .split_inclusive('\n')
@@ -209,16 +209,16 @@ fn spans(dockerfile: &str) -> Result<Vec<Span>, Error> {
 /// Accepts three shapes, because three tools spell the same thing differently and reading the
 /// wrong one is the classic way to make this check pass without comparing anything:
 ///
-/// - the labels object itself — `docker inspect --format '{{json .Config.Labels}}'`;
+/// - the labels object itself: `docker inspect --format '{{json .Config.Labels}}'`;
 /// - a `docker inspect` config object, under `Config.Labels`;
 /// - a `crane config` object, under `config.Labels`.
 ///
 /// # Errors
-/// [`Error::Invalid`] rather than an empty map for the two inputs that otherwise look like
-/// success, because a comparison against nothing passes: `null`, which is what reading the wrong
-/// JSON path yields, and a value that is not an object of strings. An empty object is *accepted*
-/// and fails in the comparison instead, naming the labels that are missing — which is the more
-/// useful message, and the correct place for the judgement.
+/// [`Error::Invalid`] rather than an empty map for the two inputs that otherwise look like success,
+/// because a comparison against nothing passes: `null`, which is what reading the wrong JSON path
+/// yields, and a value that is not an object of strings. An empty object is *accepted* and fails in
+/// the comparison instead, naming the labels that are missing, which is the more useful message,
+/// and the correct place for the judgement.
 pub fn labels_from_json(json: &str) -> Result<BTreeMap<String, String>, Error> {
     let value: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| Error::Invalid(format!("the labels are not JSON: {e}")))?;
@@ -257,7 +257,7 @@ pub fn labels_from_json(json: &str) -> Result<BTreeMap<String, String>, Error> {
 
 /// Every label this contract expects that a built image gets wrong, in declaration order.
 ///
-/// Empty means the image carries them all. Extra labels are ignored — an image carries
+/// Empty means the image carries them all. Extra labels are ignored: an image carries
 /// `org.opencontainers.image.*` and whatever its base contributed, and none of that is this
 /// document's business.
 ///

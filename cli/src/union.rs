@@ -16,9 +16,9 @@
 //! | **any other field or keyword, differing** | **refused** |
 //!
 //! Naming `type` and `enum` and leaving the rest to last-one-wins is a rule nobody wrote down: two
-//! images disagreeing about a key's `maximum` is the same defect as disagreeing about its `type` —
-//! one contract accepts a value the other refuses — and enumerating the fields that matter means
-//! the next field a producer adds falls through the gap in silence.
+//! images disagreeing about a key's `maximum` is the same defect as disagreeing about its `type`:
+//! one contract accepts a value the other refuses. Enumerating the fields that matter means the
+//! next field a producer adds falls through the gap in silence.
 //!
 //! That is also why an entry is held as raw JSON rather than as [`Key`](crate::Key). A struct drops
 //! what it has not learned, and a dropped field is one two contracts can disagree about without
@@ -29,9 +29,9 @@
 //!
 //! Every document declared in the corpus this was ported against binds a single image, so the union
 //! merges nothing. What it earns is the shape a second reader can be added to without a rule
-//! changing — and the distinction from the per-container scope, which is a different question
-//! rather than a stricter version of the same one. Gate 1 asks what a *file* may contain; gates 2
-//! and 3 ask what one *process* may be handed.
+//! changing, and the distinction from the per-container scope, which is a different question rather
+//! than a stricter version of the same one. Gate 1 asks what a *file* may contain; gates 2 and 3
+//! ask what one *process* may be handed.
 
 use std::collections::HashMap;
 
@@ -79,8 +79,8 @@ impl Merged {
 
 /// Entries by name, in the order the contracts declared them.
 ///
-/// Declaration order is load-bearing in two places — the first key whose `env` matches a variable
-/// wins, and so does the first `structured` key a name extends — so a sorted map would quietly
+/// Declaration order is load-bearing in two places (the first key whose `env` matches a variable
+/// wins, and so does the first `structured` key a name extends), so a sorted map would quietly
 /// change which key a message names. The index is what keeps the lookups from being a scan.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Ordered {
@@ -151,7 +151,7 @@ pub struct Union {
     /// The merged JSON Schema, closed at every enumerated level.
     pub json_schema: Json,
     /// The `producer.loader` every merged contract named, or the empty string when they do not
-    /// agree on one — which includes a document that names none at all.
+    /// agree on one, which includes a document that names none at all.
     ///
     /// Held on the union rather than looked up per key, because the range check is a question about
     /// the *document* and asking it once is what keeps one answer from being reported per value.
@@ -177,10 +177,10 @@ impl Union {
 
     /// What separates one path segment from the next.
     ///
-    /// Read by exactly one rule here — [`Self::container_of`], which is a tier 2 assumption and
-    /// says so. Everything else reads the spellings the document published rather than re-deriving
-    /// one, because a producer that hands naming to a binder with its own relaxed-binding rules
-    /// does not reach tier 2 and should not be assumed to.
+    /// Read by exactly one rule here: [`Self::container_of`], which is a tier 2 assumption and says
+    /// so. Everything else reads the spellings the document published rather than re-deriving one,
+    /// because a producer that hands naming to a binder with its own relaxed-binding rules does not
+    /// reach tier 2 and should not be assumed to.
     pub fn nesting_separator(&self) -> &str {
         self.dialect
             .get("nesting_separator")
@@ -212,9 +212,9 @@ impl Union {
     ///
     /// **This is the one rule here that assumes tier 2**, and the assumption is the separator. It
     /// is true of a loader that derives its spellings the way the dialect describes, and false of
-    /// one that hands naming to a binder with its own rules — so the answer is a *legitimising*
-    /// one: it can only turn a finding into silence, never silence into a finding. A loader that
-    /// does not compose names this way simply has no such keys, and nothing here fires.
+    /// one that hands naming to a binder with its own rules, so the answer is a *legitimising* one:
+    /// it can only turn a finding into silence, never silence into a finding. A loader that does
+    /// not compose names this way simply has no such keys, and nothing here fires.
     ///
     /// Only `structured` keys qualify. A name extending a scalar key's spelling is still a mistake.
     pub fn container_of(&self, spelling: &str, name: &str) -> Option<&Merged> {
@@ -232,7 +232,7 @@ impl Union {
     }
 }
 
-/// Merge the contracts of every image that reads one document.
+/// Merges the contracts of every image that reads one document.
 ///
 /// `items` is `(label, contract)` pairs; the label names the vendored file in every message.
 ///
@@ -275,7 +275,7 @@ pub fn union_contracts(items: &[(String, Json)]) -> Result<Union, Error> {
         // A document naming no loader, or two naming different ones, both mean the same thing to
         // the range check: nothing here knows how this text becomes a value. Emptied rather than
         // resolved, because picking one of two would apply one loader's reads to the other's
-        // document — the failure the registry exists to prevent.
+        // document: the failure the registry exists to prevent.
         let loader = string(contract, &["producer", "loader"]).unwrap_or_default();
         if loader != merged.loader_name {
             merged.loader_name = String::new();
@@ -336,9 +336,9 @@ fn strictness(policy: &str) -> usize {
         .unwrap_or(UNKNOWN_POLICIES.len())
 }
 
-/// Merge one key, loader or external entry into the accumulator, keyed by name.
+/// Merges one key, loader or external entry into the accumulator, keyed by name.
 ///
-/// `required` unions — a key any reader requires must be present. Every other field must agree,
+/// `required` unions: a key any reader requires must be present. Every other field must agree,
 /// including `docs`, `default` and `note`. That is stricter than it looks and it is deliberate: two
 /// binaries that document one key differently have either drifted or are describing two different
 /// things, and neither is something a merged document should paper over by picking whichever
@@ -410,7 +410,7 @@ fn truthy(value: Option<&Json>) -> bool {
 /// one read by several, or a producer that left a level open would leave the gate open there too.
 ///
 /// `close` is false below an *element* schema, and only there. The document's own levels are closed
-/// because an unknown key at one of them is a typo nobody can act on — but an element is a type the
+/// because an unknown key at one of them is a typo nobody can act on, but an element is a type the
 /// producer owns, whose deserialiser accepts a field nobody declared unless the type says
 /// otherwise. So the producer decides an element's openness and publishes the answer, and closing
 /// it here would reject a document the image accepts, which is the one direction to never be wrong
@@ -454,7 +454,7 @@ fn merge_schema(
                 merged.insert(keyword.clone(), Json::Object(subtree));
             }
             // The open/closed flag. Forced to false below regardless, so an explicit `true` from
-            // either side is not a disagreement worth failing on — it is simply overruled.
+            // either side is not a disagreement worth failing on; it is simply overruled.
             "additionalProperties" if !value.is_object() => {}
             "additionalProperties" | "items" => {
                 // An element schema, and a different field wearing the same name in the first case.
@@ -496,7 +496,7 @@ fn merge_schema(
     Ok(merged)
 }
 
-/// Merge a mapping of named subschemas — `properties`, `definitions`, `$defs` — one name at a time.
+/// Merges a mapping of named subschemas (`properties`, `definitions`, `$defs`) one name at a time.
 ///
 /// The two call sites differ only in how a position inside them is spelled, so they share this
 /// rather than each carrying the same eight lines: a fix to one that missed the other would be a
@@ -535,7 +535,7 @@ fn merge_named(
 ///
 /// Only where the properties are enumerated. A map's `additionalProperties` is an element schema
 /// rather than the flag, and overwriting it with `false` would turn "every value is one of these"
-/// into "no key is allowed at all" — a schema refusing every document the image accepts.
+/// into "no key is allowed at all": a schema refusing every document the image accepts.
 fn close_object(schema: &mut Map<String, Json>) {
     let is_element_schema = schema
         .get("additionalProperties")
@@ -579,7 +579,7 @@ pub fn local_refs_only(schema: &Json) -> Vec<String> {
 /// `(did you mean ...?)`, or the empty string when nothing is close enough.
 ///
 /// The union already holds every key path and every variable spelling, so this costs nothing and
-/// turns a rename from a puzzle into a one-line answer — which is the whole point on the pull
+/// turns a rename from a puzzle into a one-line answer, which is the whole point on the pull
 /// request that bumps a digest.
 pub fn suggest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> String {
     let lowered = name.to_lowercase();

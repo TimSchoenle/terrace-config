@@ -13,9 +13,9 @@
 //! failing the lower.
 //!
 //! **Agreement with the meta-schema on the rules they share.** `contract.schema.json` encodes some
-//! refusals structurally — a secret carrying a default is one — and where both have an opinion they
-//! must not contradict each other. A document the schema accepts and the rules call malformed for
-//! a reason the schema also encodes means one of the two has drifted.
+//! refusals structurally (a secret carrying a default is one), and where both have an opinion they
+//! must not contradict each other. A document the schema accepts and the rules call malformed for a
+//! reason the schema also encodes means one of the two has drifted.
 
 use terrace_contract::conform::{self, Tier};
 use terrace_contract::document::{Reload, ReloadMode};
@@ -23,16 +23,16 @@ use terrace_contract::{Contract, validate};
 
 use crate::mutate;
 
-/// Run the oracle over one mutated document.
+/// Runs the oracle over one mutated document.
 ///
 /// # Panics
 /// On any finding.
 pub fn check(data: &str) {
     let document = mutate::render(&mutate::document(data));
 
-    // `validate` takes bytes, and takes them before anything is parsed — so it has to survive
-    // every shape the reader would refuse, including the ones the mutator reaches by emptying a
-    // required field.
+    // `validate` takes bytes, and takes them before anything is parsed, so it has to survive every
+    // shape the reader would refuse, including the ones the mutator reaches by emptying a required
+    // field.
     let schema_errors = validate::validate(&document).expect("the embedded meta-schema compiles");
 
     let Ok(contract) = Contract::from_json(&document) else {
@@ -60,7 +60,7 @@ pub fn check(data: &str) {
     );
 
     // Every violation must name where it is. A finding with an empty location is one a producer's
-    // author cannot act on, which makes it worse than silence — they will go looking and find
+    // author cannot act on, which makes it worse than silence: they will go looking and find
     // nothing.
     for violation in &tier2 {
         assert!(

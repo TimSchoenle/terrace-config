@@ -2,17 +2,17 @@
 //!
 //! Both are normative rather than convenient. Two consumers running the classification steps in
 //! different orders disagree about whether a deployment is valid, and a consumer that runs only one
-//! of the two value checks either leaves every bound in the document decorative or refuses a correct
-//! deployment. Neither failure is visible from the outside — the gate goes green either way — so
-//! these are the tests that say the implementation is the specified one.
+//! of the two value checks either leaves every bound in the document decorative or refuses a
+//! correct deployment. Neither failure is visible from the outside (the gate goes green either
+//! way), so these are the tests that say the implementation is the specified one.
 //!
-//! # Where the split moved
+//! # Where the split falls
 //!
-//! The implementation this was ported from ran a grammar check inside step 1: "is this text an
-//! integer" sat beside "does this text match the published pattern". Only the second is portable.
-//! Whether text *reads* as a value is the loader's question — figment wants a TOML literal where a
-//! relaxed binder splits on commas — so it moved into step 2, behind the registry, and step 1 is
-//! now exactly what the producer published about its own reads and nothing else.
+//! A grammar check inside step 1 would put "is this text an integer" beside "does this text match
+//! the published pattern". Only the second is portable. Whether text *reads* as a value is the
+//! loader's question (figment wants a TOML literal where a relaxed binder splits on commas), so it
+//! sits in step 2, behind the registry, and step 1 is exactly what the producer published about its
+//! own reads and nothing else.
 
 #![cfg(feature = "helm")]
 
@@ -52,8 +52,8 @@ fn key<'a>(merged: &'a Union, path: &str) -> &'a Merged {
 
 /// Both steps, in the order a gate runs them: the form, and the range only if the form passed.
 ///
-/// One value produces one line, which is why the range step is not reached when the form failed —
-/// it would be reporting on a read that never happened.
+/// One value produces one line, which is why the range step is not reached when the form failed: it
+/// would be reporting on a read that never happened.
 fn check(entry: &Merged, text: &str) -> Option<String> {
     if let Some(failure) = form(entry.entry(), text).expect("the form is known") {
         return Some(failure);
@@ -133,7 +133,7 @@ fn step_7_everything_else() {
 fn step_4_outranks_both_external_lists() {
     // The load-bearing part. A producer refuses to build a contract whose `external.env` or whose
     // `ignore` reaches into the loader's own namespace; this is the consumer-side half of the same
-    // guarantee — even if one arrived, step 4 rejects the variable before either list is consulted.
+    // guarantee: even if one arrived, step 4 rejects the variable before either list is consulted.
     let mut document = fixture("api");
     document["external"]["env"] = json!([{"name": "FIXTURE_AUTH__NOPE", "text_form": "text"}]);
     document["external"]["ignore"] = json!(["FIXTURE_*"]);
@@ -256,7 +256,7 @@ fn text_is_unconstrained_and_has_no_range_step() {
 
 #[test]
 fn unknown_skips_both_steps_rather_than_guessing() {
-    // A gap, not an answer, and deliberately distinct from `text` — which means "any text is
+    // A gap, not an answer, and deliberately distinct from `text`, which means "any text is
     // correct" rather than "nothing could be determined".
     let merged = union(&["api", "worker"]);
     assert_eq!(check(key(&merged, "tuning.ratio"), "whatever"), None);
@@ -287,11 +287,10 @@ fn a_structured_value_with_brackets_reads() {
 
 #[test]
 fn a_structured_value_is_held_to_its_constraint_once_it_has_been_read() {
-    // Wider than the implementation this was ported from, which never reached this: its read
-    // returned the text unparsed, so `constraint` was unreachable for every container-typed key.
-    // `FORMAT.md` step 2 exempts nothing — "read the text according to `text_form`, then check the
-    // result against `constraint`" — and `github.repos` is a sequence, so an inline table is a
-    // value the loader will refuse at boot.
+    // A read that returned the text unparsed would leave `constraint` unreachable for every
+    // container-typed key. `FORMAT.md` step 2 exempts nothing ("read the text according to
+    // `text_form`, then check the result against `constraint`"), and `github.repos` is a sequence,
+    // so an inline table is a value the loader will refuse at boot.
     let merged = union(&["api", "worker"]);
     let failure =
         check(key(&merged, "github.repos"), "{ a = 1 }").expect("an inline table is not a list");

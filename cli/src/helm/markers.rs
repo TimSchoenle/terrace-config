@@ -21,18 +21,18 @@
 //! | the line scan | the comments | every marker and every `@schema` block, and their lines |
 //!
 //! The second pass is line-keyed and no crate can replace it: nothing in Rust preserves YAML
-//! comments, and the marker *is* a comment. The first pass is what a line reader cannot do. The
-//! implementation this was ported from tracked indentation by hand and carried two exceptions for
-//! the regions that breaks in — sequence items, and block scalars, where a `port: 1` inside a
-//! literal block looks exactly like a mapping key. To an event parser it is one scalar. Both
-//! exceptions are gone, and so is the class of defect they existed to prevent.
+//! comments, and the marker *is* a comment. The first pass is what a line reader cannot do. A
+//! reader tracking indentation by hand needs two exceptions for the regions that breaks in:
+//! sequence items, and block scalars, where a `port: 1` inside a literal block looks exactly like a
+//! mapping key. To an event parser it is one scalar, so neither exception exists here, and neither
+//! does the class of defect they would prevent.
 //!
 //! # Where a marker may sit, which was measured rather than chosen
 //!
 //! **The first line inside the value's `@schema` block, written as a YAML comment.** Two other
 //! generators read the comments above a chart value and both rewrite a committed file, so a
 //! placement is a claim about them rather than a matter of taste. Every other placement was
-//! measured and every other placement damages one of the two — a marker on its own comment line
+//! measured and every other placement damages one of the two: a marker on its own comment line
 //! above the description puts a leading newline into the generated schema, one below it appends the
 //! marker to the value's row in the generated README, and a blank line anywhere in the run loses
 //! every description in the chart. So each wrong placement is refused *by name*, with what it would
@@ -114,7 +114,7 @@ impl Class {
 pub struct Marker {
     /// The chart the values file belongs to.
     pub chart: String,
-    /// The dotted path of the value this binds — taken from the document's own structure, so it
+    /// The dotted path of the value this binds, taken from the document's own structure, so it
     /// cannot disagree with the file.
     pub values_path: String,
     /// The marker's own line, because that is the line a reader has to edit.
@@ -176,8 +176,8 @@ pub fn read(text: &str, chart: &str) -> Result<(Vec<Marker>, Vec<Block>), Error>
     Scan::new(chart, &index).run(text)
 }
 
-// ------------------------------------------------------------------------------------------
-// Pass 1 — the structure
+// ------------------------------------------------------------------------------------------ Pass
+// 1: the structure
 // ------------------------------------------------------------------------------------------
 
 /// Where every mapping key is, and which lines are inside a scalar rather than being one.
@@ -207,7 +207,7 @@ impl Index {
     /// Whether this line is a multi-line scalar's own text rather than structure.
     ///
     /// Half-open: the span's end is the line *after* the scalar's last, and its start is the
-    /// scalar's first content line — the mapping key that introduced it sits on the line above and
+    /// scalar's first content line. The mapping key that introduced it sits on the line above and
     /// is a key like any other.
     fn buried(&self, line: usize) -> bool {
         self.inside_a_scalar
@@ -235,8 +235,8 @@ struct Walk {
 impl Walk {
     /// The dotted path of whatever the walk is currently inside.
     ///
-    /// Sequence indices are left out: a marker cannot bind to a sequence item — the value it
-    /// describes is a mapping value — so a path through one is a path no rule can use.
+    /// Sequence indices are left out: a marker cannot bind to a sequence item (the value it
+    /// describes is a mapping value), so a path through one is a path no rule can use.
     fn dotted(&self) -> Option<String> {
         let mut parts: Vec<&str> = Vec::new();
         for level in &self.levels {
@@ -299,8 +299,8 @@ impl<'a> SpannedEventReceiver<'a> for Walk {
     }
 }
 
-// ------------------------------------------------------------------------------------------
-// Pass 2 — the comments
+// ------------------------------------------------------------------------------------------ Pass
+// 2: the comments
 // ------------------------------------------------------------------------------------------
 
 /// The line scan, and the state machine that binds a block to the value below it.
@@ -567,13 +567,13 @@ impl<'a> Scan<'a> {
     }
 }
 
-/// Split one line into its YAML and its trailing comment, respecting quotes.
+/// Splits one line into its YAML and its trailing comment, respecting quotes.
 ///
 /// A `#` inside a quoted scalar is not a comment, and splitting on the first one would truncate the
 /// value and then fail to find the mapping key it was reading.
 ///
 /// A backslash inside a double-quoted scalar escapes the character after it, so `"a\" # b"` is one
-/// scalar and no comment. A single-quoted scalar has no escapes — `''` is a closing quote and an
+/// scalar and no comment. A single-quoted scalar has no escapes: `''` is a closing quote and an
 /// opening one, which the toggle below already reads correctly.
 ///
 /// Shared with [`super::regions`], which reads the same lines for a writer: two splitters would be
@@ -663,7 +663,7 @@ fn is_values_path(name: &str) -> bool {
             .is_some_and(|held| held.is_ascii_alphanumeric() || held == '_')
 }
 
-/// Read one marker's body — everything after `@config` — into its parts.
+/// Reads one marker's body, everything after `@config`, into its parts.
 fn parse_marker(text: &str) -> Result<Parsed, String> {
     let mut tokens = text.split_whitespace();
     let Some(spelling) = tokens.next() else {

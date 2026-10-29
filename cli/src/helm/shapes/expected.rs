@@ -48,7 +48,7 @@ pub fn describes_element(constraint: Option<&Json>) -> bool {
 /// constraint names an `enum` emits its members alone, with `null` joining them where the value is
 /// optional. Measured again for `schema_version: 2`: the refusal applies to the *top level only*. A
 /// nested subschema carrying both passes through, and that is what makes a generated element schema
-/// possible at all — every enum inside a struct is an `enum` beside a `type`.
+/// possible at all: every enum inside a struct is an `enum` beside a `type`.
 ///
 /// **A `structured` key whose element is undescribed is opened rather than described.** Such a
 /// constraint says the value is a table and nothing about what is in it, so the block accepts any
@@ -92,7 +92,7 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
     {
         types = vec!["object".to_owned()];
         // The producer's own fields, where it published any. A table key is normally split into one
-        // contract key per field, so this is the hand-written case rather than the derive's — and
+        // contract key per field, so this is the hand-written case rather than the derive's, and
         // dropping the fields there would describe a documented struct as an open table. A map's
         // entry-name pattern travels with them, for the reason its required entries do.
         for keyword in ["required", "properties", "propertyNames"] {
@@ -103,8 +103,9 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
         // `additionalProperties: true` is the open flag, and an element schema replaces it: a map
         // whose values are all one shape is not open, it is uniform. Written even beside enumerated
         // properties, because a generator injects `additionalProperties: false` into a top-level
-        // block that enumerates them and says nothing — and the contract's silence here means open,
-        // not closed: a deserialiser accepts a field nobody declared unless the type says otherwise.
+        // block that enumerates them and says nothing, and the contract's silence here means open,
+        // not closed: a deserialiser accepts a field nobody declared unless the type says
+        // otherwise.
         schema.insert(
             "additionalProperties".to_owned(),
             element.map_or(Json::Bool(true), copy),
@@ -121,7 +122,7 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
     }
 
     if types.is_empty() {
-        // The constraint names no type. Rather than guess one, accept every JSON type — the
+        // The constraint names no type. Rather than guess one, it accepts every JSON type: the
         // contract is still the authority on the value, and the document gate holds the rendered
         // configuration against it either way.
         types = ["string", "integer", "boolean", "array", "object", "null"]
@@ -129,8 +130,8 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
             .map(str::to_owned)
             .collect();
     }
-    // An optional value is one the chart may legitimately leave unset, and a derived helper omits it
-    // rather than writing it empty — so `null` has to be a value the schema accepts.
+    // An optional value is one the chart may legitimately leave unset, and a derived helper omits
+    // it rather than writing it empty, so `null` has to be a value the schema accepts.
     if optional && !types.iter().any(|name| name == "null") {
         types.push("null".to_owned());
     }
@@ -160,7 +161,7 @@ pub(super) fn scalar_name(value: &Json) -> String {
 /// One subschema, with every annotation dropped at every level.
 ///
 /// `format` is kept: it is the one annotation a validator acts on. Everything else is copied rather
-/// than translated — a constraint is JSON Schema and so is an `@schema` block, so a `minimum` means
+/// than translated: a constraint is JSON Schema and so is an `@schema` block, so a `minimum` means
 /// the same thing on both sides.
 pub(super) fn copy(value: &Json) -> Json {
     match value {
@@ -179,8 +180,8 @@ pub(super) fn copy(value: &Json) -> Json {
 /// One keyword's value, copied as the thing that keyword holds.
 ///
 /// `properties` is the only container keyword whose value is a mapping of *names* to schemas;
-/// `items` and `additionalProperties` each hold a schema outright. So it is the one place a key must
-/// not be read as a keyword, and the one place [`copy`] may not strip by name — a struct with a
+/// `items` and `additionalProperties` each hold a schema outright. So it is the one place a key
+/// must not be read as a keyword, and the one place [`copy`] may not strip by name: a struct with a
 /// field called `description` is an ordinary struct.
 pub(super) fn copy_keyword(keyword: &str, value: &Json) -> Json {
     if keyword == "properties"

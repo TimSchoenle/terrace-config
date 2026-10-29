@@ -2,17 +2,16 @@
 //!
 //! The scaffold writes a chart nobody has edited, where every rule is about the *output*. This
 //! writes into a file somebody else wrote, so half of what can go wrong is about the file rather
-//! than about the contract, and none of it is visible from a run over a complete repository —
-//! every enrolled chart there binds every key, which is exactly why a key going unbound is worth
-//! a command in the first place.
+//! than about the contract, and none of it is visible from a run over a complete repository: every
+//! enrolled chart there binds every key, which is exactly why a key going unbound is worth a
+//! command in the first place.
 //!
-//! Four of the cases are rules a plausible implementation gets wrong: a value that already
-//! exists is refused rather than guessed at; a new block lands after the last bound sibling
-//! rather than at the end of the file; a key several documents declare becomes one value; and a
-//! credential carries no marker. The round trip ties the rest together: what comes out is handed
-//! to the bindings gate and the shapes gate — the two that decide whether the chart is complete
-//! — rather than compared against bytes written out by hand, which would only prove the
-//! generator agrees with itself.
+//! Four of the cases are rules a plausible implementation gets wrong: a value that already exists
+//! is refused rather than guessed at; a new block lands after the last bound sibling rather than at
+//! the end of the file; a key several documents declare becomes one value; and a credential carries
+//! no marker. The round trip ties the rest together: what comes out is handed to the bindings gate
+//! and the shapes gate, the two that decide whether the chart is complete, rather than compared
+//! against bytes written out by hand, which would only prove the generator agrees with itself.
 //!
 //! Ported case for case from the suite of the script this module replaces, plus the cases for
 //! what the port changed: the tie at one line, the diff, and the line endings.
@@ -27,8 +26,8 @@ use crate::helm::declaration::{Selection, load_declaration, read_yaml};
 use crate::helm::{bindings, shapes};
 use crate::report::Level;
 
-/// The contract envelope every reader walks — the dialect, the loader variables, `external`,
-/// `json_schema` — as the format publishes it, so a case changes only the keys.
+/// The contract envelope every reader walks (the dialect, the loader variables, `external`,
+/// `json_schema`) as the format publishes it, so a case changes only the keys.
 const ENVELOPE: &str = include_str!("../../../tests/fixtures/api.json");
 
 /// One contract key, with the fields every consumer of one reads, and `overrides` over them.
@@ -115,10 +114,10 @@ fn two_documents() -> String {
     )
 }
 
-/// Two documents whose `images[].values` follow the `services.<name>.image` convention — the
-/// one a generated root's `$service` guard is read from. [`two_documents`] deliberately does
-/// not: its flat `image` path is the ordinary shape, and is what proves a scope that cannot be
-/// resolved is printed rather than guessed.
+/// Two documents whose `images[].values` follow the `services.<name>.image` convention: the one a
+/// generated root's `$service` guard is read from. [`two_documents`] deliberately does not: its
+/// flat `image` path is the ordinary shape, and is what proves a scope that cannot be resolved is
+/// printed rather than guessed.
 const SCOPED_DOCUMENTS: &str = "\
 bindings: true
 documents:
@@ -153,8 +152,8 @@ auth:
 {{- end -}}
 "#;
 
-/// One bound value under a grouping block, then a block with no marker at all — the shape of
-/// every chart: the configuration surface first, the chassis after it.
+/// One bound value under a grouping block, then a block with no marker at all: the shape of every
+/// chart: the configuration surface first, the chassis after it.
 const VALUES: &str = "\
 # @schema
 # additionalProperties: true
@@ -729,10 +728,10 @@ fn a_key_only_one_document_declares_is_guarded_by_service() {
 #[test]
 fn a_new_key_under_a_root_already_guarded_by_service_is_printed_instead() {
     // A root already written, but from inside `{{- if eq $service ... }}` around a
-    // `{{- with include ... }}`, not at the define's own depth. A root detector keyed to that
-    // depth alone cannot see it, so a new key under the same root looks like a brand-new root
-    // and is appended as a second, colliding block — which `fromYaml` resolves by keeping only
-    // the second and dropping the first in silence.
+    // `{{- with include ... }}`, not at the define's own depth. A root detector keyed to that depth
+    // alone cannot see it, so a new key under the same root looks like a brand-new root and is
+    // appended as a second, colliding block, which `fromYaml` resolves by keeping only the second
+    // and dropping the first in silence.
     let chart = Chart::new();
     chart.declaration(SCOPED_DOCUMENTS);
     chart.template(
@@ -800,9 +799,9 @@ fn a_scoped_key_with_no_resolvable_service_is_printed_not_guessed() {
 #[test]
 fn a_define_that_does_not_wrap_context_is_never_guessed_at() {
     // Included as `(dict "ctx" $ctx "service" $service)`, `.Values` inside the define is a nil
-    // pointer. A multi-document chart whose define is not provably shaped that way — no
-    // `$ctx := .ctx` line — gets nothing written: bare `.Values` would be as much of a guess
-    // as `$ctx.Values` would be wrong.
+    // pointer. A multi-document chart whose define is not provably shaped that way (no
+    // `$ctx := .ctx` line) gets nothing written: bare `.Values` would be as much of a guess as
+    // `$ctx.Values` would be wrong.
     let chart = Chart::new();
     chart.declaration(SCOPED_DOCUMENTS);
     chart.template(
@@ -917,9 +916,9 @@ fn a_reserved_key_is_written_off_with_the_loader_reason() {
 #[test]
 fn a_credential_the_chart_already_has_a_value_for_is_still_written_off() {
     // The state a run leaves behind if it wrote the value before the declaration. The refusal
-    // stands — nothing claims that value feeds this key — but the write-off does not depend on
-    // who wrote the value, so its reason drops the clause naming it and the gate is satisfied.
-    // Without this, running the command twice leaves a chart it could not finish.
+    // stands (nothing claims that value feeds this key), but the write-off does not depend on who
+    // wrote the value, so its reason drops the clause naming it and the gate is satisfied. Without
+    // this, running the command twice leaves a chart it could not finish.
     let chart = Chart::new();
     chart.values(&format!("{VALUES}database:\n  url: \"\"\n"));
     chart.contract(

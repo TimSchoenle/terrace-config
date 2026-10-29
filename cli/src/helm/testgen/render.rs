@@ -51,13 +51,13 @@ pub struct Target {
 /// The complete suite for one document, as the text to write.
 ///
 /// Deterministic in every part: cases sorted by contract key path, skips with them, selector labels
-/// sorted, and nothing that churns on its own — a digest, a timestamp, an application version —
+/// sorted, and nothing that churns on its own (a digest, a timestamp, an application version)
 /// written into the file at all. That is what lets the staleness gate be a comparison of bytes, and
 /// it is what keeps a digest bump that changes no key from producing a diff here.
 ///
-/// `reason` is the enrolment's explanation for whatever it made non-default about this document — a
-/// baseline, a probe root, or both — and is rendered once beside them. The prerequisites carry their
-/// own, because they are a different field explaining a different thing.
+/// `reason` is the enrolment's explanation for whatever it made non-default about this document (a
+/// baseline, a probe root, or both), and is rendered once beside them. The prerequisites carry
+/// their own, because they are a different field explaining a different thing.
 ///
 /// # Errors
 /// [`Error::Invalid`] when the document's key or a selector label cannot be written into a selector.
@@ -147,8 +147,8 @@ pub(super) fn yaml_scalar(value: &Json) -> String {
 
 /// YAML scalars safe to emit bare.
 ///
-/// Deliberately narrow: anything outside it — a leading digit, a colon, a word YAML would read as a
-/// boolean — is single-quoted instead, which is always correct and never changes the type the test
+/// Deliberately narrow: anything outside it (a leading digit, a colon, a word YAML would read as a
+/// boolean) is single-quoted instead, which is always correct and never changes the type the test
 /// framework sees.
 pub(super) fn plain_scalar(text: &str) -> bool {
     let mut held = text.chars();
@@ -182,10 +182,10 @@ pub(super) fn plain_selector(text: &str) -> bool {
 /// One value on the right of a `set` entry, whatever its shape, on a single line.
 ///
 /// A render prerequisite may be a whole subtree, and a JSON conversion produces a YAML flow
-/// collection as readily as a JSON one — so the conversion that already spells a TOML scalar spells a
-/// structure here too. Kept to one line and sorted, for the two reasons everything here is: a `set`
-/// block that stays a flat list of paths is one a reader scans, and a gate comparing bytes cannot
-/// survive a mapping whose order is whatever a hash table happened to produce.
+/// collection as readily as a JSON one, so the conversion that already spells a TOML scalar spells
+/// a structure here too. Kept to one line and sorted, for the two reasons everything here is: a
+/// `set` block that stays a flat list of paths is one a reader scans, and a gate comparing bytes
+/// cannot survive a mapping whose order is whatever a hash table happened to produce.
 pub(super) fn yaml_value(value: &Json) -> String {
     match value {
         Json::Object(_) | Json::Array(_) => json_text(value),
@@ -402,7 +402,7 @@ pub(super) fn root_note(root: &str) -> String {
 ///
 /// One block carrying one reason rather than a note per field: the document entry states a single
 /// reason for its baseline and its probe root alike, and a reader who sees the same paragraph twice
-/// stops reading it. The render prerequisites are not here — they are a separate field with a
+/// stops reading it. The render prerequisites are not here: they are a separate field with a
 /// separate reason, and their note sits above `tests:` because the identity case carries them too.
 pub(super) fn case_notes(
     target: &Target,
@@ -482,7 +482,7 @@ pub(super) fn probe_case(case: &Case, target: &Target) -> Result<Vec<String>, Er
 /// The keys whose probe the enrolment moved back into the raw tree, and the reason given.
 ///
 /// Written into the suite rather than left in the enrolment file, because the difference is visible
-/// in every affected case — `delivers x into config.toml` where its neighbours say `from y` — and a
+/// in every affected case (`delivers x into config.toml` where its neighbours say `from y`), and a
 /// reader who notices that deserves the answer in the same file.
 pub(super) fn unrouted_note(
     unrouted: &[(String, String)],
@@ -534,10 +534,10 @@ pub(super) fn skipped_note(skipped: &[Skipped]) -> Vec<String> {
 /// Hand-rolled because these reasons quote JSON and constraint spellings that a general wrapper
 /// would break on punctuation this keeps together.
 ///
-/// Deliberately not shared with [`crate::helm::scaffold::wrap`] or [`crate::helm::explain::wrap`]. The three
-/// look alike and are pinned to three different generators byte for byte — this one floors the
-/// width and always emits a line, the scaffold's carries a prefix and emits none for empty text,
-/// and the explainer's must not collapse the run of spaces inside `PathBuf  (read as text)`.
+/// Deliberately not shared with [`crate::helm::scaffold::wrap`] or [`crate::helm::explain::wrap`].
+/// The three look alike and are pinned to three different generators byte for byte: this one floors
+/// the width and always emits a line, the scaffold's carries a prefix and emits none for empty
+/// text, and the explainer's must not collapse the run of spaces inside `PathBuf (read as text)`.
 /// Merging them would silently rewrite a committed file to prove a point about tidiness.
 pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
     let limit = width.max(32);

@@ -27,7 +27,7 @@ pub(crate) fn config_command(command: ConfigCommand, repo: &Repo) -> Result<Exit
     }
 }
 
-/// Print every setting with its value and the layer it came from.
+/// Prints every setting with its value and the layer it came from.
 pub(crate) fn config_show_command(settings: &Settings, json: bool) -> Result<ExitCode, Error> {
     let file = settings
         .file
@@ -95,7 +95,7 @@ pub(crate) fn config_show_command(settings: &Settings, json: bool) -> Result<Exi
     Ok(ExitCode::SUCCESS)
 }
 
-/// Print one chart's declaration with every default written out.
+/// Prints one chart's declaration with every default written out.
 pub(crate) fn config_show_chart_command(
     charts: &Path,
     chart: &str,
@@ -124,7 +124,7 @@ pub(crate) fn config_show_chart_command(
     Ok(ExitCode::SUCCESS)
 }
 
-/// Write a terrace.yaml, carrying over an existing first-party list.
+/// Writes a terrace.yaml, carrying over an existing first-party list.
 pub(crate) fn config_init_command(named: Option<&Path>, force: bool) -> Result<ExitCode, Error> {
     let target = if let Some(path) = named {
         path.to_path_buf()
@@ -171,7 +171,7 @@ pub(crate) fn config_init_command(named: Option<&Path>, force: bool) -> Result<E
     Ok(ExitCode::SUCCESS)
 }
 
-/// Check the repository's settings and this machine's tools, one line each.
+/// Checks the repository's settings and this machine's tools, one line each.
 pub(crate) fn doctor_command(repo: &Repo) -> Result<ExitCode, Error> {
     let mut failures = 0_usize;
     let mut say = |level: &str, line: String| {

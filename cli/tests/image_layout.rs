@@ -2,9 +2,9 @@
 //! image layout written here.
 //!
 //! The registry seam is unit-tested against recorded shapes; what only a real client can show is
-//! that the arguments this passes are the ones `oras` reads — `--oci-layout` in particular — and that
-//! a document attached by `image attach` is the one `image verify` then finds. A layout needs no
-//! registry and no daemon, so this runs anywhere `oras` does.
+//! that the arguments this passes are the ones `oras` reads (`--oci-layout` in particular), and
+//! that a document attached by `image attach` is the one `image verify` then finds. A layout needs
+//! no registry and no daemon, so this runs anywhere `oras` does.
 //!
 //! Skipped when `oras` is not installed, except in CI, where a skipped test would be a passing one.
 
@@ -59,7 +59,7 @@ fn fixture() -> Vec<u8> {
         .expect("the fixture")
 }
 
-/// Write one blob into the layout, and return its descriptor.
+/// Writes one blob into the layout, and returns its descriptor.
 fn blob(layout: &Path, media_type: &str, body: &[u8]) -> serde_json::Value {
     let hex = hex_sha256(body);
     std::fs::write(layout.join("blobs/sha256").join(&hex), body).expect("a blob");
@@ -152,8 +152,8 @@ fn labels() -> BTreeMap<&'static str, String> {
     contract.labels(DEFAULT_PATH).into_iter().collect()
 }
 
-/// The binary, run from `at` so the layout and the document are named relative to it — as a build
-/// names them — with `oras` supplied explicitly.
+/// The binary, run from `at` so the layout and the document are named relative to it, as a build
+/// names them, with `oras` supplied explicitly.
 fn run(oras: &Path, at: &Path, args: &[&str], document: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_terrace-contract"))
         .current_dir(at)
@@ -196,8 +196,8 @@ fn an_image_with_no_carrier_fails_until_the_document_is_attached() {
     let Some(oras) = oras() else { return };
     let at = Scratch::new("layout-attach");
     layout(&at.0, &labels(), None, false);
-    // The document in a directory of its own, so `attach` — which hands `oras` the file from its
-    // own directory — has to resolve the layout's path against where it was run, not against that.
+    // The document in a directory of its own, so `attach` (which hands `oras` the file from its own
+    // directory) has to resolve the layout's path against where it was run, not against that.
     std::fs::create_dir_all(at.0.join("out")).expect("the output directory");
     let document = Path::new("out/contract.json");
     std::fs::write(at.0.join(document), fixture()).expect("the document");

@@ -4,7 +4,7 @@
 //! annotation over the configuration it mounts. Hashing *all* of it rolls the pods on every change
 //! and throws away an image's in-place reload; hashing *none* of it leaves every value the process
 //! reads only at start changed on disk and never applied. The contract says which keys are which
-//! (see [`crate::reload`]), so the chart hashes exactly the keys that need a restart — and this
+//! (see [`crate::reload`]), so the chart hashes exactly the keys that need a restart, and this
 //! module writes the list it hashes, from the contracts it vendors.
 //!
 //! # Generated rather than read at render time
@@ -18,7 +18,7 @@
 //! # One set per document
 //!
 //! Which image a container runs is resolved by digest from a *render*, and this runs without one.
-//! So a key is in a document's set when any image that reads the document calls it `restart` —
+//! So a key is in a document's set when any image that reads the document calls it `restart`:
 //! conservative for a document several images read, exact for one image's. An image that declares
 //! no rebuild at all, or does not watch the layer, puts the whole of that layer in the set.
 //!
@@ -40,9 +40,9 @@
 //! ```
 //!
 //! `document.paths` are key paths as segment lists, aliases included, to dig out of the document
-//! the chart builds before serialising it; `secrets.files` are the names in the chart's own
-//! Secret. `all: true` means hash that half entirely. Content a chart cannot attribute to a key — a
-//! verbatim fragment appended to the document — belongs in the digest whatever this says.
+//! the chart builds before serialising it; `secrets.files` are the names in the chart's own Secret.
+//! `all: true` means hash that half entirely. Content a chart cannot attribute to a key (a verbatim
+//! fragment appended to the document) belongs in the digest whatever this says.
 //!
 //! `_FILE` indirection targets are not attributed: the file a variable names can live in any
 //! object, and a chart delivering configuration that way hashes that object in full.
@@ -191,9 +191,9 @@ pub fn typed_contracts(
 /// One document's restart set, from the contracts of the images that read it.
 ///
 /// # Errors
-/// Every `restart:` override in the declaration that names a key none of the contracts declares —
-/// an entry that has outlived the key it described, and would otherwise sit in the file promising
-/// a rollout for a setting nothing reads.
+/// Every `restart:` override in the declaration that names a key none of the contracts declares: an
+/// entry that has outlived the key it described, and would otherwise sit in the file promising a
+/// rollout for a setting nothing reads.
 pub fn restart_set(
     document: &Document,
     contracts: &[(String, Contract)],

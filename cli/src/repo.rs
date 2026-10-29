@@ -73,7 +73,7 @@ pub struct CliPin {
 }
 
 impl CliPin {
-    /// Read a pin as written in the file.
+    /// Reads a pin as written in the file.
     ///
     /// # Errors
     /// [`Error::Invalid`] when it is not two or three dot-separated numbers.
@@ -150,7 +150,7 @@ pub fn discover(start: &Path) -> Option<PathBuf> {
     candidate.is_file().then_some(candidate)
 }
 
-/// Read and check a `terrace.yaml`.
+/// Reads and checks a `terrace.yaml`.
 ///
 /// # Errors
 /// [`Error::Io`] when the file cannot be read. [`Error::Invalid`] when it is not YAML, declares no

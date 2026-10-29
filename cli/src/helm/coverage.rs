@@ -3,7 +3,7 @@
 //! **Adopting a contract is opt-in.** A chart is covered when it carries a declaration, and a chart
 //! without one is simply not covered: this reports it and does not fail. Images adopt the format on
 //! their own release schedules, and a gate that failed every chart whose image had not caught up
-//! would be red for reasons nobody in the consuming repository can fix — so it would end up
+//! would be red for reasons nobody in the consuming repository can fix, so it would end up
 //! disabled, which is worse than absent.
 //!
 //! Two things are still hard errors, because both are a chart contradicting *itself* rather than
@@ -11,7 +11,7 @@
 //!
 //! - a chart that declares documents and leaves one of its own first-party images unaccounted for.
 //!   A new service added to a multi-image chart would otherwise be validated by nothing while the
-//!   chart still looked covered — the failure this exists to prevent, and the one case where the
+//!   chart still looked covered: the failure this exists to prevent, and the one case where the
 //!   chart's author has everything they need to fix it.
 //! - a declaration that cannot be read as one.
 //!
@@ -49,7 +49,7 @@ pub struct Coverage {
     pub uncovered: Vec<String>,
 }
 
-/// Report which charts are covered by a contract, failing only on a chart that contradicts itself.
+/// Reports which charts are covered by a contract, failing only on a chart that contradicts itself.
 ///
 /// # Errors
 /// [`Error::Io`] when the tree cannot be read, [`Error::Invalid`] when a declaration cannot be read

@@ -1,11 +1,11 @@
 //! The Python this half was ported from, against this crate, over a real chart tree.
 //!
 //! The single most valuable check available while the port is happening, and the reason is
-//! arithmetic: ~15,000 lines of rules came across with ~8,000 lines of tests, and one corpus of nine
-//! charts and fifteen contracts. The tests say the rules do what somebody thought they did. The
-//! corpus is what finds what nobody thought about — a `CronJob` nested one template deeper than
-//! expected, a projected volume with no `items`, a container whose image is overridden in one values
-//! file out of fourteen.
+//! arithmetic: ~15,000 lines of rules came across with ~8,000 lines of tests, and one corpus of
+//! nine charts and fifteen contracts. The tests say the rules do what somebody thought they did.
+//! The corpus is what finds what nobody thought about: a `CronJob` nested one template deeper than
+//! expected, a projected volume with no `items`, a container whose image is overridden in one
+//! values file out of fourteen.
 //!
 //! # It skips rather than fails when the tree is not there
 //!
@@ -24,8 +24,8 @@
 //! # A clean tree is a weak oracle
 //!
 //! Both implementations finding nothing over a correct corpus proves that neither crashed. So the
-//! harness also renders a *mutant* of the tree — one that breaks gate 1, gate 2 and the service-link
-//! precondition at once — and compares over that. Mutating structurally and writing the result once,
+//! harness also renders a *mutant* of the tree, one that breaks gate 1, gate 2 and the service-link
+//! precondition at once, and compares over that. Mutating structurally and writing the result once,
 //! rather than mutating each side's input separately, keeps the comparison about the rules: both
 //! implementations read the same bytes, including the ones that are wrong.
 //!
@@ -492,7 +492,7 @@ fn python_bindings(root: &Path) -> Option<(Vec<Enrolment>, Vec<Finding>)> {
     Some((enrolled, sorted_findings(&parsed)))
 }
 
-/// Run the oracle under whichever interpreter works, and read its JSON back.
+/// Runs the oracle under whichever interpreter works, and reads its JSON back.
 ///
 /// Panics rather than returning a failure: every caller has already established that the entry
 /// point is there, so an interpreter that cannot run it is a broken harness rather than a gone
@@ -625,10 +625,10 @@ found only by this crate:
 
 #[test]
 fn the_binding_rules_agree_about_markers_that_are_wrong() {
-    // The same reasoning as the mutant tree: seven charts whose markers are all correct proves
-    // that neither implementation fell over. This renames the first marker target in every chart,
-    // which puts rule 1 and rule 5 both in play — the marker now names a key no contract carries,
-    // and the key it used to name is bound by nothing.
+    // The same reasoning as the mutant tree: seven charts whose markers are all correct proves that
+    // neither implementation fell over. This renames the first marker target in every chart, which
+    // puts rule 1 and rule 5 both in play: the marker now names a key no contract carries, and the
+    // key it named before is bound by nothing.
     let Some(root) = tree() else {
         eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
         return;
@@ -704,9 +704,9 @@ found only by the oracle ({}):
 #[test]
 fn the_derived_schema_blocks_are_the_ones_the_tree_already_carries() {
     // The strongest single check the renderer has, and it needs no oracle: run the writer over a
-    // copy of a tree whose blocks are correct, and every byte must come back unchanged. That
-    // covers the derivation, the ordering, the quoting, the indentation and the line endings at
-    // once — a renderer that got any of them wrong would rewrite something.
+    // copy of a tree whose blocks are correct, and every byte must come back unchanged. That covers
+    // the derivation, the ordering, the quoting, the indentation and the line endings at once: a
+    // renderer that got any of them wrong would rewrite something.
     //
     // It also outlives the Python, which is the point of putting it here rather than in a
     // comparison: an idempotent writer over a real corpus is a property, not an agreement.
@@ -767,7 +767,7 @@ fn the_credential_reference_is_the_one_the_tree_already_carries() {
     // The strongest check the writer has, and it needs no oracle: empty every generated block in a
     // copy of a tree whose references are current, write them back, and every byte must return. A
     // plain rerun would prove only that the writer left a file alone; emptying first is what makes
-    // it prove the *generation* — the columns, their order, the notes, the indentation and the line
+    // it prove the *generation*: the columns, their order, the notes, the indentation and the line
     // endings at once.
     let Some(root) = tree() else {
         eprintln!("skipped: TERRACE_PARITY_CHARTS is not set");
@@ -889,7 +889,7 @@ fn the_generated_suites_are_the_ones_the_tree_already_carries() {
     );
 }
 
-/// Remove every generated round-trip suite in a tree, returning how many there were.
+/// Removes every generated round-trip suite in a tree, returning how many there were.
 fn delete_generated_suites(charts: &Path) -> usize {
     let mut deleted = 0;
     for chart_dir in
@@ -1289,8 +1289,8 @@ fn named_files(finding: &Finding) -> (&str, &str, String, Vec<&str>) {
 /// image's does and the container's own does not.
 ///
 /// Two mutations, because either alone is absorbed. A name is added to what every Secret-sourced
-/// volume *presents* — through `items` where a source enumerates them and through the Secret's own
-/// keys where one does not — so a name exists that no contract can spell. And every volume is
+/// volume *presents* (through `items` where a source enumerates them and through the Secret's own
+/// keys where one does not), so a name exists that no contract can spell. And every volume is
 /// mounted a second time at a path nothing resolved, so the file also arrives outside the reach of
 /// the gate that would otherwise have judged it and left this report silent.
 const UNCLAIMED: &str = "parity__unclaimed__name";
@@ -1355,7 +1355,7 @@ fn mutate_secrets(value: &mut serde_json::Value) {
     });
 }
 
-/// Add the undeclared name to whatever one volume presents, when it enumerates what that is.
+/// Adds the undeclared name to whatever one volume presents, when it enumerates what that is.
 ///
 /// Only where the source enumerates them: a source without `items` presents every key of the object
 /// it names, and the key added to the Secret itself is already among those.
@@ -1550,7 +1550,7 @@ fn split_target(line: &str) -> Option<(&str, &str)> {
     Some((&line[..start], target))
 }
 
-/// Copy a directory tree, which `std` has no single call for.
+/// Copies a directory tree, which `std` has no single call for.
 fn copy_tree(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("a directory is created");
     for entry in std::fs::read_dir(from).expect("the source is readable") {

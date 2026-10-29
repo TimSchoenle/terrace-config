@@ -30,7 +30,7 @@ pub(super) fn contract_of(document: Option<&Json>) -> Map<String, Json> {
 ///
 /// The fetch timestamp is not compared: whatever refreshes a contract refuses to rewrite a file
 /// whose only difference is that timestamp, so one that moved is always accompanied by something
-/// that matters. The hash is not compared either — it is over the published bytes, so it is true
+/// that matters. The hash is not compared either: it is over the published bytes, so it is true
 /// exactly when something below is, and it names nothing.
 pub(super) fn diff_source(old: Option<&Json>, new: Option<&Json>) -> Vec<Change> {
     let mut changes = Vec::new();
@@ -75,7 +75,7 @@ pub(super) fn diff_source(old: Option<&Json>, new: Option<&Json>) -> Vec<Change>
 ///
 /// A rise to a version this build implements is additive by the producer's own statement: nothing
 /// was removed and nothing changed meaning, so every key a chart already writes is spelt and
-/// checked exactly as before and what arrives is a constraint that says more. Worth a line — a
+/// checked exactly as before and what arrives is a constraint that says more. Worth a line: a
 /// container key that gains an element schema is the signal to stop transcribing it by hand.
 ///
 /// Everything else is major. A version *above* what this build implements is one whose keywords it
@@ -181,7 +181,7 @@ pub(super) fn diff_dialect(
     let mut changes = Vec::new();
     // The single most severe thing this can find. The prefix, the nesting separator and the
     // indirection suffix are what every environment variable name and every secret file name the
-    // chart writes is built from, so one character moving here renames all of them at once — and
+    // chart writes is built from, so one character moving here renames all of them at once, and
     // every one of the old names lands on step 4 of the classification, which a `reject` policy
     // turns into a pod that does not start. Nothing in the rendered manifests looks different.
     let old_dialect = nested(old_schema, "dialect");
@@ -215,8 +215,8 @@ pub(super) fn diff_policy(old: &Map<String, Json>, new: &Map<String, Json>) -> V
     let old_external = nested(old, "external");
     let new_external = nested(new, "external");
     if old_external.get("unknown") != new_external.get("unknown") {
-        // Tightening is what breaks a running deployment: a variable the image used to tolerate now
-        // stops it from booting. Relaxing can only turn a rejection into acceptance.
+        // Tightening is what breaks a running deployment: a variable the image tolerated under the
+        // old document stops it from booting. Relaxing can only turn a rejection into acceptance.
         let tightened = new_external.get("unknown").and_then(Json::as_str) == Some("reject");
         changes.push(Change {
             severity: if tightened {
@@ -256,7 +256,7 @@ pub(super) fn diff_policy(old: &Map<String, Json>, new: &Map<String, Json>) -> V
 /// The variables that tell the loader where its layers are.
 ///
 /// These are the variables the chart sets to point the image at its rendered document and its
-/// mounted secrets. A renamed or removed one is not a validation failure anywhere — the chart keeps
+/// mounted secrets. A renamed or removed one is not a validation failure anywhere: the chart keeps
 /// setting the old name, the pod keeps starting, and the application silently loads none of the
 /// configuration the chart mounted. That is why a removal here is graded with a dialect change
 /// rather than with a key change.
@@ -339,10 +339,10 @@ pub(super) fn diff_loader(old: &Map<String, Json>, new: &Map<String, Json>) -> V
 /// undeclared to `restart` is the same restart it always was, and an image declaring `none` where
 /// it declared nothing before rolls the same pods. Neither is a finding.
 ///
-/// What is a finding is a key whose class a consumer derives differently — a chart's generated
-/// restart set has to follow it, and the gates fail until it does — and a change to the image's
-/// own declaration, which can move every key at once. Both are minor: the chart's values still
-/// load either way, and what changes is which edits roll its pods.
+/// What is a finding is a key whose class a consumer derives differently (a chart's generated
+/// restart set has to follow it, and the gates fail until it does), and a change to the image's own
+/// declaration, which can move every key at once. Both are minor: the chart's values still load
+/// either way, and what changes is which edits roll its pods.
 pub(super) fn diff_reload(old: &Map<String, Json>, new: &Map<String, Json>) -> Vec<Change> {
     let old_schema = nested(old, "schema");
     let new_schema = nested(new, "schema");
@@ -427,8 +427,8 @@ pub(super) fn rebuilds(declared: Option<&Json>) -> bool {
     })
 }
 
-/// Whether a raw key is published `live`. Anything else — absent, `restart`, a class this build
-/// does not know — is a restart.
+/// Whether a raw key is published `live`. Anything else (absent, `restart`, a class this build does
+/// not know) is a restart.
 pub(super) fn live(entry: &Json) -> bool {
     entry.get("reload").and_then(Json::as_str) == Some("live")
 }

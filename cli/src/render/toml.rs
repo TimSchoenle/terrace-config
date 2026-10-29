@@ -1,9 +1,9 @@
 //! The `config.example.toml` rendering: the file an operator edits, generated rather than kept.
 //!
-//! The artefact this replaces is the one that drifts fastest. A reference table drifts and reads
-//! wrong; an example file drifts and is *copied* — into a deployment, as the config the service
-//! actually loads — so a key added six months after the example was written is a key nobody in
-//! that deployment knows exists.
+//! An example file is the artefact that drifts fastest. A reference table drifts and reads wrong;
+//! an example file drifts and is *copied* into a deployment, as the config the service actually
+//! loads, so a key added six months after the example was written is a key nobody in that
+//! deployment knows exists.
 //!
 //! Two things separate this from the Markdown renderings, and both come from the output being a
 //! file rather than a page:
@@ -21,15 +21,15 @@
 //!
 //! # The one place this renderer improves on the producer it was ported from
 //!
-//! A key with no default gets a placeholder of the right *shape* — `0` for a number, `[]` for a
+//! A key with no default gets a placeholder of the right *shape*: `0` for a number, `[]` for a
 //! list. The Rust implementation picks that shape by interpreting `Key::ty`, because inside a
 //! producer the type name is a fact about a type it can see. Here it would be a fact about a
 //! language: `ty` is token text in the producer's own vocabulary, and a `match` arm spelling
 //! `Vec<T>` produces `"<value>"` for the `java.util.List` that means exactly the same thing.
 //!
-//! So the shape is read from [`Key::constraint`](crate::Key::constraint) instead, which is the
-//! same answer arrived at by the producer that *did* have the type — and it is right for every
-//! producer rather than for one.
+//! So the shape is read from [`Key::constraint`](crate::Key::constraint) instead, which is the same
+//! answer arrived at by the producer that *did* have the type, and it is right for every producer
+//! rather than for one.
 
 use std::fmt::Write as _;
 
@@ -157,7 +157,7 @@ fn preamble(schema: &Schema) -> String {
     out
 }
 
-/// Push this level's block, then every level below it.
+/// Pushes this level's block, then every level below it.
 ///
 /// Depth first and leaves first, which is what TOML requires rather than a preference: a bare
 /// assignment belongs to the table header above it, so a key written after `[github]` would land
@@ -252,7 +252,7 @@ fn key_block(key: &Key, parent: &Node<'_>, options: &TomlExample) -> String {
     } else if !key.required && key.default_value.is_none() {
         // Without this the line below reads as a default. `repos = []` is the *shape* of the value
         // and not what the key is when nothing sets it, which for an optional key is nothing at
-        // all — the distinction an optional container spelling exists to make.
+        // all: the distinction an optional container spelling exists to make.
         comment(
             &mut out,
             "Unset by default: the value below is only the shape.",
@@ -333,7 +333,7 @@ fn literal(key: &Key, options: &TomlExample) -> String {
 ///
 /// The shape comes from the published `constraint`, not from the type name. See this module's own
 /// note: a producer knows its types, and a consumer of a document knows only what the document
-/// says — which for this purpose is strictly more portable and exactly as accurate, since the
+/// says, which for this purpose is strictly more portable and exactly as accurate, since the
 /// producer derived `constraint` from the type it was reading.
 fn placeholder(key: &Key, text: &str) -> String {
     let shape = key
@@ -367,7 +367,7 @@ fn toml_literal(value: &Json, depth: usize) -> Option<String> {
         Json::Array(items) => {
             let mut rendered = Vec::with_capacity(items.len());
             for item in items {
-                // An array element cannot be left out the way a table entry can — dropping one
+                // An array element cannot be left out the way a table entry can, since dropping one
                 // would write a shorter array than the default actually is.
                 rendered.push(toml_literal(item, depth + 1)?);
             }
@@ -449,8 +449,8 @@ fn toml_string(text: &str) -> String {
 
 /// A key name as TOML spells it: bare where it can be, quoted where it cannot.
 ///
-/// A rename accepts any string at all, and a bare key accepts none of the interesting ones.
-/// Quoting is not cosmetic here — an unquoted `a.b` is two levels of nesting.
+/// A rename accepts any string at all, and a bare key accepts none of the interesting ones. Quoting
+/// is not cosmetic here: an unquoted `a.b` is two levels of nesting.
 fn toml_key(name: &str) -> String {
     let bare = !name.is_empty()
         && name.chars().all(|character| {
@@ -467,8 +467,8 @@ fn toml_key(name: &str) -> String {
 ///
 /// A comment is the one part of this file that carries text nobody chose: a doc comment, a key
 /// name, an alias. TOML permits no control character but tab in a comment, so what cannot be
-/// written raw is written as an escape — the same escape a quoted key two lines below would use,
-/// so the two spellings of one name read as the same name.
+/// written raw is written as an escape, the same escape a quoted key two lines below would use, so
+/// the two spellings of one name read as the same name.
 fn comment(out: &mut String, text: &str) {
     if text.is_empty() {
         out.push_str("#\n");

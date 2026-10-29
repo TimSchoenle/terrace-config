@@ -2,8 +2,8 @@
 //!
 //! Ported from the suite that held the implementation this was taken from, and kept in its shape
 //! because the shape was already right: each gate is a function of manifests and a contract
-//! returning findings, so a test constructs the container it wants and reads the list back — no
-//! chart, no render, no cluster.
+//! returning findings, so a test constructs the container it wants and reads the list back, with no
+//! chart, no render and no cluster.
 //!
 //! What this proves is that **the rule that fires is the one that should**, and that a rule which
 //! should stay quiet does. That the gates fire against a real tree at all is
@@ -72,7 +72,7 @@ fn messages(findings: &[Finding]) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Gate 2 — the environment
+// Gate 2: the environment
 // ---------------------------------------------------------------------------------------------
 
 #[test]
@@ -137,7 +137,7 @@ fn a_structured_key_without_brackets_is_reported() {
 }
 
 /// The `required-entries` corpus case, whose `legal.documents` map must hold `imprint` and
-/// `privacy` — a constraint its producer supplied at build time rather than read off a type.
+/// `privacy`: a constraint its producer supplied at build time rather than read off a type.
 fn refined() -> Union {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
@@ -252,7 +252,7 @@ fn the_union_would_hide_what_one_images_contract_catches() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Gate 3 — the files
+// Gate 3: the files
 // ---------------------------------------------------------------------------------------------
 
 /// One projected secret volume presenting the named files.
@@ -437,9 +437,9 @@ fn a_source_without_items_is_followed_back_to_the_rendered_secret() {
 
 #[test]
 fn one_key_from_two_layers_is_reported() {
-    // The pair a loader refuses at boot, which nothing else in a chart repository can see —
-    // because seeing it requires knowing that `FIXTURE_DATABASE__URL` and the file `database__url`
-    // are the same key.
+    // The pair a loader refuses at boot, which nothing else in a chart repository can see, because
+    // seeing it requires knowing that `FIXTURE_DATABASE__URL` and the file `database__url` are the
+    // same key.
     let findings = run_files(
         &[
             ("FIXTURE_SECRETS_DIR", "/secrets"),

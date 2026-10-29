@@ -30,8 +30,9 @@ pub fn prose(text: &str, indent: &str) -> Vec<String> {
 
 /// Greedy wrap on whitespace, never breaking a word and never re-spacing one that fits.
 ///
-/// A spelling, a pattern or an image reference is a single token, and a token split across two lines
-/// is one nobody can copy — so a value wider than the width overflows rather than being broken.
+/// A spelling, a pattern or an image reference is a single token, and a token split across two
+/// lines is one nobody can copy, so a value wider than the width overflows rather than being
+/// broken.
 ///
 /// Internal whitespace is carried rather than collapsed: `PathBuf  (read as text)` puts two spaces
 /// between the type and its gloss on purpose, and a wrapper that normalised them would quietly

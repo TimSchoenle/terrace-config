@@ -37,7 +37,7 @@ pub struct Planned {
     pub text: String,
 }
 
-/// Write every planned file, all of them or none.
+/// Writes every planned file, all of them or none.
 ///
 /// A file that exists keeps its permissions. A file that does not is created with the process's
 /// defaults, and the directories it needs are created first.
@@ -89,7 +89,7 @@ struct Staged {
     original: Option<Vec<u8>>,
 }
 
-/// Remove the temporaries not yet renamed.
+/// Removes the temporaries not yet renamed.
 fn discard(staged: &[Staged]) {
     for held in staged {
         let _ = std::fs::remove_file(&held.temporary);
@@ -174,7 +174,7 @@ pub fn inside(chart: &Path, path: &Path) -> Result<PathBuf, Error> {
     Ok(target)
 }
 
-/// Write one file's new text to a temporary beside it, with the target's permissions if it has
+/// Writes one file's new text to a temporary beside it, with the target's permissions if it has
 /// any, and keep what the target holds now.
 ///
 /// The temporary is created exclusively: a file or a symbolic link already at its path is refused

@@ -2,7 +2,7 @@
 //!
 //! Two jobs, and they are the same job at two removes: reading what a chart declares, and turning
 //! that into the contracts a document is actually validated against. The second is where the
-//! staleness interlock sits, because refusing to validate is a decision about the *declaration* —
+//! staleness interlock sits, because refusing to validate is a decision about the *declaration*:
 //! the chart pins a digest, the vendored file is for a digest, and if the two differ nothing
 //! downstream has anything trustworthy to say.
 //!
@@ -10,7 +10,7 @@
 //!
 //! [`crate::document`] reads tolerantly: a producer emitting a field this build has not learned is
 //! ahead rather than wrong. This file is the other case. It is written by hand, in this repository,
-//! and its whole job is to be exhaustive — so a key nobody reads is a typo, and ignoring it in
+//! and its whole job is to be exhaustive, so a key nobody reads is a typo, and ignoring it in
 //! silence is the worst available failure mode.
 //!
 //! # A key left out means its default, and the default is part of the layer version
@@ -203,12 +203,12 @@ pub struct CredentialNote {
 
 /// Contract keys a chart rolls its pods for although an image applies them without a restart.
 ///
-/// The one direction a chart may override an image in. Promoting a key to `restart` is always
-/// safe — the worst it costs is a rollout nobody needed — and it is what a chart wants for a key
-/// whose change should be canaried through readiness gating and a rollback rather than land on
-/// every replica in one kubelet sync. The inverse does not exist: a chart cannot know better than
-/// the image what the image re-reads, and a key demoted to `live` that the process only reads at
-/// start is a change reported as applied and never made.
+/// The one direction a chart may override an image in. Promoting a key to `restart` is always safe
+/// (the worst it costs is a rollout nobody needed), and it is what a chart wants for a key whose
+/// change should be canaried through readiness gating and a rollback rather than land on every
+/// replica in one kubelet sync. The inverse does not exist: a chart cannot know better than the
+/// image what the image re-reads, and a key demoted to `live` that the process only reads at start
+/// is a change reported as applied and never made.
 #[derive(Debug, Clone)]
 pub struct Restarted {
     /// The keys, written out one by one. There is no pattern form, for [`Unbound::keys`]' reason.
@@ -259,8 +259,8 @@ impl Document {
     /// The gates exempted for one rendered values file.
     ///
     /// `values: "*"` covers every one of them. That is for a gap in the *contract* rather than in
-    /// one fixture — a key the chart renders and the image's document does not describe — which is
-    /// a property of the pair and not of any particular values file.
+    /// one fixture (a key the chart renders and the image's document does not describe), which is a
+    /// property of the pair and not of any particular values file.
     pub fn relaxed(&self, values_file: &str) -> Relaxed {
         let mut relaxed = Relaxed::default();
         let wanted = file_name(values_file);
@@ -332,14 +332,14 @@ pub struct Declaration {
     /// Why the chart declares none, when it declares none.
     pub reason: Option<String>,
     /// Values paths at which this chart pins an image that reads no contract-described
-    /// configuration. **Values paths, not repository names** — a repository name is ambiguous where
+    /// configuration. **Values paths, not repository names**: a repository name is ambiguous where
     /// a values path is not, since a chart pinning one repository twice could not say which it
     /// meant.
     pub unconfigured: Vec<String>,
     /// Whether the chart is enrolled in the marker check.
     ///
-    /// A declared fact rather than an inferred one. Enrolment used to be "the chart carries at
-    /// least one marker", which reads well until a chart *stops* carrying them: a botched edit, a
+    /// A declared fact rather than an inferred one. Inferring enrolment from "the chart carries at
+    /// least one marker" reads well until a chart *stops* carrying them: a botched edit, a
     /// rewritten values file, a marker spelt in a way the parser does not recognise, and the chart
     /// drops out of the report without a word.
     pub bindings: bool,
@@ -354,7 +354,7 @@ pub struct Declaration {
     pub tests: bool,
 }
 
-/// Read one chart's declaration; [`None`] when it has none.
+/// Reads one chart's declaration; [`None`] when it has none.
 ///
 /// # Errors
 /// [`Error::Invalid`] when the file exists and is not a declaration, naming the key that is wrong.
@@ -367,7 +367,7 @@ pub fn load_declaration(chart_dir: &Path) -> Result<Option<Declaration>, Error> 
     parse_declaration(&text, chart_dir).map(Some)
 }
 
-/// Read one chart's declaration from its text, as if it were the chart's own file.
+/// Reads one chart's declaration from its text, as if it were the chart's own file.
 ///
 /// The half of [`load_declaration`] that does not touch a disk, for a caller holding a declaration
 /// it has not written yet: a scaffold that hands a contributor a file no reader accepts has failed
@@ -1110,7 +1110,7 @@ fn optional_text(
     }
 }
 
-/// Refuse a key nobody reads, which for a file whose job is to be exhaustive is a typo.
+/// Refuses a key nobody reads, which for a file whose job is to be exhaustive is a typo.
 pub(super) fn reject_unknown(
     at: &str,
     where_: &str,
@@ -1215,7 +1215,7 @@ pub fn read_yaml(text: &str, path: &Path) -> Result<Json, Error> {
 
 /// Every chart directory under `charts`, sorted.
 ///
-/// "Is this a chart" is `Chart.yaml` and nothing else — not a name list, not an exclusion set — so a
+/// "Is this a chart" is `Chart.yaml` and nothing else, with no name list and no exclusion set, so a
 /// chart added to the tree is picked up by every rule at once with nothing to update. Sorted, so
 /// every report and every generated file is ordered by the tree rather than by whatever order the
 /// filesystem happened to return.
@@ -1373,10 +1373,10 @@ pub struct PinnedImage {
     pub digest: Option<String>,
 }
 
-/// Build the image reference a chart renders for one values path.
+/// Builds the image reference a chart renders for one values path.
 ///
 /// An empty `registry` means Docker Hub, `tag` falls back to the chart's `appVersion`, and the tag
-/// may pin a digest inline — which is what actually pins the pull, and what a contract is tied to.
+/// may pin a digest inline, which is what actually pins the pull, and what a contract is tied to.
 ///
 /// # Errors
 /// [`Error::Invalid`] when the path does not resolve to an image block.
@@ -1455,11 +1455,11 @@ pub fn normalized_image(registry: &str, repository: &str) -> String {
 
 /// One `charts/<chart>/contracts/<name>.json`: a published contract and its provenance.
 ///
-/// The published document deliberately carries no image digest — a digest is what building the
-/// image *produces*, so a field holding it would have to be written after the push, changing the
-/// bytes it was computed over. The tie is the attachment instead: whatever comes back from asking a
-/// digest for its referrers belongs to that digest. The chart repository records which digest that
-/// was on the way in, and that record is what the staleness interlock reads.
+/// The published document deliberately carries no image digest: a digest is what building the image
+/// *produces*, so a field holding it would have to be written after the push, changing the bytes it
+/// was computed over. The tie is the attachment instead: whatever comes back from asking a digest
+/// for its referrers belongs to that digest. The chart repository records which digest that was on
+/// the way in, and that record is what the staleness interlock reads.
 #[derive(Debug, Clone)]
 pub struct Vendored {
     /// Where the file is.
@@ -1490,7 +1490,7 @@ impl Vendored {
     }
 }
 
-/// Read and shape-check one vendored contract.
+/// Reads and shape-checks one vendored contract.
 ///
 /// `source.sha256` is over the document *as published*, so it is verifiable only against the image
 /// label, which needs a registry. Offline it is provenance: it records which bytes were verified, so
@@ -1564,15 +1564,15 @@ pub struct Loaded {
     pub vendored: Vendored,
 }
 
-/// Load every contract one document binds. **Applies no staleness interlock.**
+/// Loads every contract one document binds. **Applies no staleness interlock.**
 ///
 /// The bold part is the whole reason this exists rather than each caller writing its own three
 /// lines. Whether the vendored file is for the digest the chart *currently* pins is a separate
 /// question from what the file says, and callers legitimately answer it differently: a gate wants
 /// the interlock, because a pass it cannot justify is worse than a failure, and a generator does
 /// not, because withholding the document during a digest bump removes it at the moment it is being
-/// read. Each of those is a considered decision, and each was previously expressed as *the absence*
-/// of code — a four-line loop that looked like a helper and was in fact a deliberate bypass.
+/// read. Each of those is a considered decision, and expressing one as *the absence* of code
+/// produces a four-line loop that looks like a helper and is in fact a deliberate bypass.
 ///
 /// # Errors
 /// [`Error::Invalid`] on a file that cannot be read or is not shaped like a contract. That is a
@@ -1603,7 +1603,7 @@ pub fn vendored_for(chart_dir: &Path, document: &Document) -> Result<Vec<Loaded>
 ///
 /// `releases` is carried beside `unions` because the merge drops it: a union is what every reader
 /// of one document agrees the keys *are*, and which release each reader was built at is not part of
-/// that. It is still the answer to a question one rule has to ask — a chart whose services are
+/// that. It is still the answer to a question one rule has to ask: a chart whose services are
 /// separate images moves them one at a time, so "has the thing I transcribed moved?" is per image
 /// and not per chart.
 #[derive(Debug, Clone)]
@@ -1621,7 +1621,7 @@ pub struct Bound {
 }
 
 impl Bound {
-    /// Resolve one chart's declaration to the contracts it names.
+    /// Resolves one chart's declaration to the contracts it names.
     ///
     /// # Errors
     /// [`Error::Invalid`] when a vendored contract cannot be read, or two cannot be reconciled.
@@ -1671,16 +1671,16 @@ impl Bound {
 /// The contracts one document is validated against, in the two scopes the gates need.
 ///
 /// `union` is every image that reads the document, for gate 1. `by_digest` is one image each, for
-/// gates 2 and 3 — held as single-contract unions so both scopes are the same type to a rule.
+/// gates 2 and 3, held as single-contract unions so both scopes are the same type to a rule.
 #[derive(Debug, Clone)]
 pub struct Binding {
     /// Every image that reads the document, merged.
     pub union: Union,
     /// One image each, by the digest a container pins.
     pub by_digest: BTreeMap<String, Union>,
-    /// The same images as typed documents, by digest, for the rules a union does not carry —
-    /// whether the image applies a change without restarting is one. An image whose document this
-    /// build cannot type is absent, which every reader of this treats as declaring nothing.
+    /// The same images as typed documents, by digest, for the rules a union does not carry, whether
+    /// the image applies a change without restarting is one. An image whose document this build
+    /// cannot type is absent, which every reader of this treats as declaring nothing.
     pub contracts: BTreeMap<String, crate::document::Contract>,
 }
 
@@ -1693,7 +1693,7 @@ pub struct Binding {
 /// failure rather than a skip.
 ///
 /// # Errors
-/// [`Error::Invalid`] when a contract cannot be read or two cannot be reconciled — as distinct from
+/// [`Error::Invalid`] when a contract cannot be read or two cannot be reconciled, as distinct from
 /// the problems returned beside the binding, which are about this chart's own pins.
 pub fn bind(
     chart_dir: &Path,
@@ -1730,9 +1730,8 @@ pub fn bind(
         if item.vendored.digest != digest {
             problems.push(format!(
                 // Leads with the instruction that always works. Advice that assumes a refresh job
-                // is coming reads, on exactly the runs where it is not, as "wait" — and waiting is
-                // what produced a pull request re-run three times against a job that failed
-                // identically each time.
+                // is coming reads, on exactly the runs where it is not, as "wait", and waiting
+                // re-runs a pull request against a job that fails identically each time.
                 "{} is for {}, but the chart pins {digest}. Refresh the vendored contracts and \
                  commit the result.",
                 item.label, item.vendored.digest

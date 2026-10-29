@@ -1,31 +1,31 @@
 //! Refreshing every vendored contract from the image its chart pins.
 //!
-//! The one chart command that talks to a container registry. Everything downstream reads the committed
-//! file, so a registry outage cannot fail a pull request that changes no image, a re-run on a
-//! six-month-old commit validates against what was true then, and the contract diff lands in the
-//! *same* pull request as the digest bump — which is the whole point. A person reviewing a digest
-//! bump sees the removed key next to the chart's failing gate.
+//! The one chart command that talks to a container registry. Everything downstream reads the
+//! committed file, so a registry outage cannot fail a pull request that changes no image, a re-run
+//! on a six-month-old commit validates against what was true then, and the contract diff lands in
+//! the *same* pull request as the digest bump, which is the whole point. A person reviewing a
+//! digest bump sees the removed key next to the chart's failing gate.
 //!
 //! Per chart, per image a declaration names:
 //!
 //! 1. resolve the values path to `registry/repository:tag@digest`, normalising a registry-less
-//!    Docker Hub name — a registry client reads a bare first segment as a hostname;
+//!    Docker Hub name, since a registry client reads a bare first segment as a hostname;
 //! 2. verify the *image*'s signature against the expected signer identity;
 //! 3. read the image config's labels, through the index when the pinned digest is one and requiring
 //!    every platform to agree: the version label must name an envelope this build reads, and the
 //!    prefix label is kept for step 5;
-//! 4. read the document from **both carriers**, whichever are present — the OCI referrer attached
-//!    to the digest, whose blob is checked against the digest its descriptor claims, and the file
+//! 4. read the document from **both carriers**, whichever are present: the OCI referrer attached to
+//!    the digest, whose blob is checked against the digest its descriptor claims, and the file
 //!    inside the image at the path the label names, read by walking the layer blobs. At least one
 //!    must be there; if both are, they must be byte-identical;
 //! 5. assert the image's prefix label equals the fetched document's dialect prefix: the label is
 //!    what a consumer discovers the image by, and a label naming one namespace over a document
 //!    describing another is an image whose two halves came from different builds;
-//! 6. write the vendored file — the published bytes inside a `source` envelope recording which
+//! 6. write the vendored file: the published bytes inside a `source` envelope recording which
 //!    digest they were fetched for.
 //!
 //! There is deliberately no path to "fetch it unverified". A contract that cannot be proven to
-//! belong to the pinned digest is worse than none, because every gate downstream would trust it —
+//! belong to the pinned digest is worse than none, because every gate downstream would trust it,
 //! and the document is untrusted input until step 6 finishes: it is a JSON blob from a registry.
 //!
 //! The tie between a contract and an image is the *attachment*, not a field. The published document
@@ -52,11 +52,11 @@ use super::{DECLARATION, dig};
 
 /// The vendored file for one fetched document: the published bytes inside a `source` envelope.
 ///
-/// `source.sha256` is over the document as published — the same value the registry addressed the
+/// `source.sha256` is over the document as published: the same value the registry addressed the
 /// blob by, minus the prefix. It is deliberately *not* recomputable from this file: the published
 /// bytes do not survive being re-serialised into the wrapper. That is a provenance record for a
 /// later networked run to check, not an offline integrity check, and the offline trust anchor is
-/// that this file was reviewed in the pull request that introduced it — which is the pull request
+/// that this file was reviewed in the pull request that introduced it, which is the pull request
 /// that also carries the digest bump, by design.
 ///
 /// # Errors
@@ -89,7 +89,7 @@ pub fn vendored_text(
     ))
 }
 
-/// Write the wrapper [`vendored_text`] renders, and report whether the file changed.
+/// Writes the wrapper [`vendored_text`] renders, and reports whether the file changed.
 ///
 /// The file is replaced by a rename (see [`super::files`]), so no reader sees half a wrapper, and
 /// `path` must resolve inside its own parent directory. [`refresh_chart`] confines it to the chart
@@ -144,7 +144,7 @@ fn write_vendored_in(
 /// Whether two wrappers differ in anything but when they were fetched.
 ///
 /// `fetched` moves on every run by construction. Rewriting the file for it alone would put a commit
-/// on every scheduled run — noise in exactly the place a real contract change is supposed to stand
+/// on every scheduled run: noise in exactly the place a real contract change is supposed to stand
 /// out.
 pub fn same_contract(previous: &str, rendered: &str) -> bool {
     let held = |text: &str| -> Option<Json> {
@@ -191,7 +191,7 @@ pub fn reference_for(
 /// One image's contract, fetched and proven to belong to the digest it was asked for.
 ///
 /// The unit [`refresh_chart`] writes per declared image, held in memory: a caller that has to show
-/// what it would write before writing it — a scaffold's `--diff` — needs the wrapper's text without
+/// what it would write before writing it (a scaffold's `--diff`) needs the wrapper's text without
 /// the file, and must never have a way to come by one that skipped the proofs. So the fields are
 /// private to this crate and [`fetch_pinned`] is the only way to hold one: a value of this type
 /// *is* the statement that the signature, the labels and the carriers were checked.
@@ -222,7 +222,7 @@ impl Fetched {
     ///
     /// # Errors
     /// [`Error::Invalid`] when the payload is not JSON, which [`fetch_contract`] has already
-    /// refused — so in practice never.
+    /// refused, so in practice never.
     pub fn contract(&self) -> Result<Json, Error> {
         serde_json::from_slice(&self.payload).map_err(|failure| {
             Error::Invalid(format!(
@@ -248,13 +248,13 @@ impl Fetched {
     }
 }
 
-/// Fetch the contract one image block pins, through every proof [`fetch_contract`] makes.
+/// Fetches the contract one image block pins, through every proof [`fetch_contract`] makes.
 ///
-/// `image` is the block as a values file spells it — `registry`, `repository`, `tag` — with
+/// `image` is the block as a values file spells it (`registry`, `repository`, `tag`), with
 /// `app_version` standing in for an empty tag, as a chart's own `appVersion` does. Every refresh
 /// goes through here, so a contract fetched for a chart that does not exist yet is the one a later
-/// refresh of the same pin would write. A tag with no digest is resolved to one
-/// first; the proofs are then made against the digest, never against the tag.
+/// refresh of the same pin would write. A tag with no digest is resolved to one first; the proofs
+/// are then made against the digest, never against the tag.
 ///
 /// # Errors
 /// As [`reference_for`], [`Registry::resolve`] and [`fetch_contract`].
@@ -465,14 +465,14 @@ fn civil(seconds: u64) -> String {
 /// would make the answer true by construction; writing into a copy leaves the working tree exactly
 /// as it was, whatever the answer turns out to be.
 ///
-/// Only the files a refresh reads are copied — the declaration, the values, the chart metadata and
-/// the vendored contracts — because that is what keeps a check over ten charts from copying ten
+/// Only the files a refresh reads are copied (the declaration, the values, the chart metadata and
+/// the vendored contracts), because that is what keeps a check over ten charts from copying ten
 /// template trees to compare fifteen JSON files.
 #[derive(Debug)]
 pub struct Scratch(PathBuf);
 
 impl Scratch {
-    /// Take a copy.
+    /// Takes a copy.
     ///
     /// # Errors
     /// [`Error::Io`] when the tree cannot be read, or the copy cannot be written.

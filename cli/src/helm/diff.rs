@@ -1,7 +1,7 @@
 //! How a chart's vendored contracts changed against another revision, and what it costs.
 //!
 //! A refresh runs inside the pull request that repins the digest, so the new document and the bump
-//! arrive together — which is the design's whole point, and also why the reviewer is looking at a
+//! arrive together, which is the design's whole point, and also why the reviewer is looking at a
 //! large reordered JSON diff instead of a sentence. This is the sentence: what the image gained,
 //! what it dropped, what moved out from under the chart, and the smallest chart version bump that
 //! set of findings justifies.
@@ -69,7 +69,7 @@ impl ChartDiff {
         worst(self.contracts.iter().map(ContractDiff::impact))
     }
 
-    /// The findings that set the impact — the "because" the suggestion is shown with.
+    /// The findings that set the impact: the "because" the suggestion is shown with.
     pub fn drivers(&self) -> Vec<&crate::diff::Change> {
         let level = self.impact();
         if level == Severity::None {
@@ -84,7 +84,7 @@ impl ChartDiff {
 
     /// Whether the bump already in the branch is at least as large as the suggested one.
     ///
-    /// [`None`] when it cannot be decided — a version this cannot read, or a chart whose file did
+    /// [`None`] when it cannot be decided: a version this cannot read, or a chart whose file did
     /// not exist at the comparison revision.
     pub fn satisfied(&self) -> Option<bool> {
         if self.impact() == Severity::None {
@@ -146,7 +146,8 @@ impl Diffed {
 ///
 /// Contracts are found by walking the *files* rather than by reading a declaration. The unit being
 /// compared is the vendored document, and a document whose declaration was deleted is one of the
-/// cases most worth reporting — reading the declaration to find the files would hide exactly that.
+/// cases most worth reporting, and reading the declaration to find the files would hide exactly
+/// that.
 ///
 /// # Errors
 /// [`Error::Io`] when the chart tree cannot be walked.
@@ -277,11 +278,12 @@ fn vendored_paths(charts: &Path) -> Result<BTreeSet<String>, Error> {
     Ok(found)
 }
 
-/// A repository-relative, forward-slashed path — the only spelling version control accepts.
+/// A repository-relative, forward-slashed path, the only spelling version control accepts.
 ///
 /// Both paths are [`anchored`] first, so a tree named `.` or `..` is spelled by its real name: the
-/// parent of `.` is the empty path, and stripping that left `./x/contracts/a.json`, which matched
-/// no path at the revision — every contract read as absent there, and nothing was reported.
+/// parent of `.` is the empty path, and stripping that would leave `./x/contracts/a.json`, which
+/// matches no path at the revision, so every contract would read as absent there and nothing would
+/// be reported.
 pub(crate) fn spec_of(path: &Path, charts: &Path) -> String {
     let root = repository_root(charts);
     let path = anchored(path);
@@ -299,9 +301,9 @@ fn repository_root(charts: &Path) -> std::path::PathBuf {
 
 /// A path made absolute against the working directory, with `.` and `..` resolved lexically.
 ///
-/// Lexically rather than through the filesystem, so a path that does not exist yet — a contract a
-/// refresh removed — is spelled the same way as one that does. [`std::path::absolute`] alone keeps
-/// a `..` component, and the parent of `/repo/charts/..` would then be `/repo/charts`.
+/// Lexically rather than through the filesystem, so a path that does not exist yet (a contract a
+/// refresh removed) is spelled the same way as one that does. [`std::path::absolute`] alone keeps a
+/// `..` component, and the parent of `/repo/charts/..` would then be `/repo/charts`.
 fn anchored(path: &Path) -> std::path::PathBuf {
     use std::path::Component;
 
@@ -346,7 +348,7 @@ pub struct Committed {
 }
 
 impl Committed {
-    /// Resolve one reference against the working directory.
+    /// Resolves one reference against the working directory.
     ///
     /// # Errors
     /// [`Error::Invalid`] when there is no such revision, or when this is not a repository.
@@ -354,7 +356,7 @@ impl Committed {
         Self::resolve_in(Path::new("."), reference)
     }
 
-    /// Resolve one reference against a named checkout.
+    /// Resolves one reference against a named checkout.
     ///
     /// Separate from [`Self::resolve`] because a comparison harness legitimately points at a
     /// repository that is not the one it is running in, and threading a directory through is a
@@ -383,7 +385,7 @@ impl Committed {
         })
     }
 
-    /// Resolve one reference for comparing the chart tree at `charts`.
+    /// Resolves one reference for comparing the chart tree at `charts`.
     ///
     /// The tree need not sit at the root of its repository: a chart repository nested in a larger
     /// one, or a `terrace.yaml` naming `deploy/charts`, reads the same files at the revision as in

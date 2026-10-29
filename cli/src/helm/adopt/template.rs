@@ -22,7 +22,7 @@ pub(super) const OPENERS: [&str; 5] = ["if", "with", "range", "define", "block"]
 ///
 /// `end` is the line of the define's own closing action, so a new top-level entry is inserted after
 /// `end - 1` and lands inside the define. `roots` are the mapping keys already written at column
-/// zero — the ones a second block of the same name would shadow — whether or not an
+/// zero (the ones a second block of the same name would shadow), whether or not an
 /// `if`/`with`/`range` wraps them, since a chart's helpers never let one of those add YAML
 /// indentation of its own: every nested value reaches its indent through an explicit `nindent`.
 /// `wraps_context` is [`wraps_context`] read over the define's own lines, never the whole file, so a
@@ -34,19 +34,19 @@ pub(super) struct Define {
     wraps_context: bool,
 }
 
-/// Find one define and the top-level keys it already writes; [`None`] when it cannot be read.
+/// Finds one define and the top-level keys it already writes; [`None`] when it cannot be read.
 ///
 /// A helper is hand-written Go template, and this reads exactly as much of it as an append needs:
 /// where the define ends, and which keys already occupy its rendered top level. Depth is tracked
-/// only to find the closing `end` — a projection is always appended at the define's own depth,
+/// only to find the closing `end`: a projection is always appended at the define's own depth,
 /// outside every `if`/`with`/`range`, so it is never silently written under somebody else's
 /// condition.
 ///
 /// An occupied root, however, is detected by column alone, at any depth: a key written from two or
-/// three actions deep — a `scheduler:` guarded by `{{- if eq $service ... }}` around a
-/// `{{- with include ... }}` — still lands at column zero in the rendered document. Gating this on
-/// depth 1 once missed exactly that, and a new key under the root was appended as a second,
-/// colliding block that `fromYaml` resolved by dropping the first in silence.
+/// three actions deep (a `scheduler:` guarded by `{{- if eq $service ... }}` around a
+/// `{{- with include ... }}`) still lands at column zero in the rendered document. Gating this on
+/// depth 1 would miss exactly that, and append a new key under the root as a second, colliding
+/// block that `fromYaml` resolves by dropping the first in silence.
 ///
 /// [`None`] when the define is absent, or when its actions do not balance: a template shape this
 /// cannot read is one it must not edit, and the caller prints the lines instead.
@@ -118,12 +118,12 @@ pub(super) fn template_patterns() -> &'static TemplatePatterns {
 /// rather than to the root context.
 ///
 /// A multi-document chart's `derivedConfig` needs to know which service is rendering, and the shape
-/// this knows wraps the root context and the service together, unwrapping it again with the define's
-/// own `{{- $ctx := .ctx -}}`. Every reference written has to agree with that: `.Values` inside such
-/// a define is a nil pointer. Read from the text rather than assumed from the document count — a
-/// multi-document chart shaped some other way would make `$ctx.Values` exactly as wrong a guess as
-/// `.Values` is, and there is no third convention to fall back on, so such a chart is treated the
-/// same as one with no define at all.
+/// this knows wraps the root context and the service together, unwrapping it again with the
+/// define's own `{{- $ctx := .ctx -}}`. Every reference written has to agree with that: `.Values`
+/// inside such a define is a nil pointer. Read from the text rather than assumed from the document
+/// count: a multi-document chart shaped some other way would make `$ctx.Values` exactly as wrong a
+/// guess as `.Values` is, and there is no third convention to fall back on, so such a chart is
+/// treated the same as one with no define at all.
 pub(super) fn wraps_context(text: &str) -> bool {
     template_patterns().context_assignment.is_match(text)
 }
@@ -169,9 +169,10 @@ pub(super) fn find_define(
 /// same way for all of them, and a root only some declare needs the matching guard.
 ///
 /// That guard is written only when it cannot be wrong. Every key under the root has to agree which
-/// documents declare it — a root with keys split across scopes is two settings sharing a table
-/// name — and every one of those documents has to resolve to a real `$service` value. Either failure
-/// sends the whole root to the printed-for-a-person pile, the same one an occupied root lands in.
+/// documents declare it (a root with keys split across scopes is two settings sharing a table
+/// name), and every one of those documents has to resolve to a real `$service` value. Either
+/// failure sends the whole root to the printed-for-a-person pile, the same one an occupied root
+/// lands in.
 pub(super) fn scope_new_roots(
     candidates: Vec<Placement>,
     all_documents: &BTreeSet<String>,
@@ -237,7 +238,7 @@ pub(super) struct Projections {
 /// root is already in the define is printed for a person to place, and only a new root is written.
 ///
 /// On a multi-document chart, [`scope_new_roots`] draws a second such line, and anything it leaves
-/// uncertain joins the same printed pile — never a guess.
+/// uncertain joins the same printed pile, never a guess.
 pub(super) fn projection_edits(
     chart_dir: &Path,
     chart: &str,

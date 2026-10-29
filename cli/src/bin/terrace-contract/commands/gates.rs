@@ -38,11 +38,11 @@ pub(crate) fn bindings_command(
     ))
 }
 
-/// Write or check every generated `@schema` block.
+/// Writes or checks every generated `@schema` block.
 ///
 /// One walk, two endings. The writer replaces a block that does not match; the checker reports it
-/// and adds the one assertion the writer deliberately does not make — that a hand transcription is
-/// still current — because a writer that refused over it would turn the job that repairs the tree
+/// and adds the one assertion the writer deliberately does not make (that a hand transcription is
+/// still current), because a writer that refused over it would turn the job that repairs the tree
 /// into a gate over the one thing in it no repair reaches.
 pub(crate) fn shapes_command(
     charts: &Path,

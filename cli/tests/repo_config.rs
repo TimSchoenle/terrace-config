@@ -53,7 +53,7 @@ impl Repository {
         self.0.join(relative)
     }
 
-    /// Run the binary in `directory` (relative to the root), with no setting inherited from the
+    /// Runs the binary in `directory` (relative to the root), with no setting inherited from the
     /// environment the tests run in.
     fn run(&self, directory: &str, args: &[&str], env: &[(&str, &str)]) -> Output {
         let mut command = Command::new(env!("CARGO_BIN_EXE_terrace-contract"));

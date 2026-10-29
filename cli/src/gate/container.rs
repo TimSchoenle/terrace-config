@@ -1,4 +1,4 @@
-//! Gates 2 and 3 — one container's environment and file mounts, against its own image's contract.
+//! Gates 2 and 3: one container's environment and file mounts, against its own image's contract.
 //!
 //! **Never the union.** A container runs exactly one image, so a variable set on it that only a
 //! sibling image reads is precisely the defect gate 2 exists to catch, and checking it against the
@@ -13,12 +13,12 @@
 //!
 //! # The range step is asked for, not assumed
 //!
-//! [`crate::value::range`] returns [`Range::NotChecked`] for a document whose `producer.loader` this
-//! build has no measured read table for, and this gate drops that answer rather than turning it into
-//! a finding. Not because it does not matter — it is reported, at warning severity, by
-//! [`crate::helm::check()`] once per document. It belongs there because it is a fact about the
-//! *document* and not about any one value: reporting it per value would say the same sentence two
-//! hundred times about one missing field.
+//! [`crate::value::range`] returns [`Range::NotChecked`] for a document whose `producer.loader`
+//! this build has no measured read table for, and this gate drops that answer rather than turning
+//! it into a finding. It still matters, and [`crate::helm::check()`] reports it at warning
+//! severity, once per document. It belongs there because it is a fact about the *document* and not
+//! about any one value: reporting it per value would say the same sentence two hundred times about
+//! one missing field.
 
 use std::collections::BTreeMap;
 
@@ -47,7 +47,7 @@ pub struct ContainerView<'a> {
     pub container: &'a Json,
     /// Its environment.
     pub environment: Environment,
-    /// The path `<PREFIX>_SECRETS_DIR` — whatever the document calls it — points at.
+    /// The path `<PREFIX>_SECRETS_DIR`, whatever the document calls it, points at.
     pub secrets_dir: Option<String>,
     /// Paths named by a `_FILE` variable, so gate 3 can tell a credential read by indirection from
     /// one merely lying in a volume nothing will open.
@@ -55,7 +55,7 @@ pub struct ContainerView<'a> {
 }
 
 impl<'a> ContainerView<'a> {
-    /// Read one container against the contract of the image it runs.
+    /// Reads one container against the contract of the image it runs.
     pub fn read(container: &'a Json, union: &Union) -> Self {
         let environment = environment_of(container);
         let mut view = Self {
@@ -110,18 +110,18 @@ impl Suppliers {
 
 /// `enableServiceLinks: false` is a precondition of these gates, not a preference.
 ///
-/// Kubernetes injects `<SERVICE_NAME>_SERVICE_HOST`, `<SERVICE_NAME>_PORT` and five more per Service
-/// in the namespace, and the service name is the *release* name — so for a release named after the
-/// chart they land inside the loader's own prefix, and one of them can *supply* a key from the
-/// environment layer, outranking the mounted file. That is a live misconfiguration, not merely a
-/// validation nuisance.
+/// Kubernetes injects `<SERVICE_NAME>_SERVICE_HOST`, `<SERVICE_NAME>_PORT` and five more per
+/// Service in the namespace, and the service name is the *release* name, so for a release named
+/// after the chart they land inside the loader's own prefix, and one of them can *supply* a key
+/// from the environment layer, outranking the mounted file. That is a live misconfiguration, not
+/// merely a validation nuisance.
 ///
 /// It has to be checked directly rather than falling out of the classification, because the kubelet
 /// injects these at pod admission and a template render does not: a rendered manifest never carries
 /// one, so no amount of classification would find it. This can only require the switch that stops
 /// them existing.
 ///
-/// An image cannot declare them away either — it cannot know the release names it will be deployed
+/// An image cannot declare them away either: it cannot know the release names it will be deployed
 /// under, so no declaration written at build time is right for every case. It belongs to whatever
 /// renders the deployment, which does know.
 pub struct ServiceLinks;
@@ -144,7 +144,7 @@ impl ServiceLinks {
     }
 }
 
-/// Run gates 2 and 3 over one container, against the contract of the image it runs.
+/// Runs gates 2 and 3 over one container, against the contract of the image it runs.
 ///
 /// # Errors
 /// [`Error::Invalid`] when the contract carries a `text_form` or a constraint keyword this build
@@ -173,7 +173,7 @@ pub fn check_container(
     Ok(findings)
 }
 
-/// Gate 2 — every variable on one container, classified and checked.
+/// Gate 2: every variable on one container, classified and checked.
 ///
 /// The classification order is normative and first match wins. Every variable that names a key is
 /// then checked twice: its text against `text_constraint`, then the value that text reads as against
@@ -204,8 +204,8 @@ fn environment_gate(
             Kind::Prefixed if !relaxed.env => {
                 // A variable can address a leaf of a dynamic map the same way a file can, and for
                 // the same reason the contract cannot name it. Checked here rather than inside the
-                // classification, whose step order is normative — this is an implementation
-                // necessity found against a real chart, not a new step.
+                // classification, whose step order is normative. This is an implementation
+                // necessity a real chart needs, not a new step.
                 if let Some(container) = union.container_of("env", variable) {
                     suppliers.add(&container.name, ENVIRONMENT_LAYER.to_owned());
                 } else {
@@ -272,14 +272,14 @@ fn check_value(
     })
 }
 
-/// Gate 3 — the file spellings, over every volume rather than only the secrets directory.
+/// Gate 3: the file spellings, over every volume rather than only the secrets directory.
 ///
 /// Keying this off the secrets-directory variable alone leaves the worse half of the defect
-/// invisible: a chart that mounts key-named credential files and never sets the variable has produced
-/// a pod where the files exist, the loader never looks at them, and every credential falls back to a
-/// default. Nothing renders wrong and nothing fails to start. So every mount is inspected, and a file
-/// whose name spells a key is a finding wherever it turns up — unless a `_FILE` variable names it,
-/// which is the other legitimate way for a file to be read.
+/// invisible: a chart that mounts key-named credential files and never sets the variable has
+/// produced a pod where the files exist, the loader never looks at them, and every credential falls
+/// back to a default. Nothing renders wrong and nothing fails to start. So every mount is
+/// inspected, and a file whose name spells a key is a finding wherever it turns up, unless a
+/// `_FILE` variable names it, which is the other legitimate way for a file to be read.
 fn file_gate(
     manifests: &[Json],
     spec: &Json,

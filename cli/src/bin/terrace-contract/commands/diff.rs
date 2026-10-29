@@ -9,7 +9,7 @@ use terrace_contract::{Error, helm};
 use crate::args::Command;
 use crate::settings::Repo;
 
-/// Compare every vendored contract against another revision.
+/// Compares every vendored contract against another revision.
 pub(crate) fn diff_command(
     charts: &Path,
     since: &str,
@@ -57,9 +57,9 @@ pub(crate) fn diff_command(
 
 /// Name every chart line that still uses something a contract removed since `since`.
 ///
-/// Returns its exit code rather than an error, because an error reaching `main` exits 2 — which is
-/// this command's "a chart still references something removed". Every way of failing to answer is
-/// 1 instead, so the three outcomes stay distinguishable to a caller.
+/// Returns its exit code rather than an error, because an error reaching `main` exits 2, which is
+/// this command's "a chart still references something removed". Every way of failing to answer is 1
+/// instead, so the three outcomes stay distinguishable to a caller.
 ///
 /// A vendored contract that cannot be read on either side is a failure to answer, and nothing is
 /// reported past it: the comparison would read the unreadable side as absent and name every key of

@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use terrace_contract::report::Report;
 use terrace_contract::{Error, helm};
 
-/// Read a chart's vendored contracts back out.
+/// Reads a chart's vendored contracts back out.
 pub(crate) fn explain_command(
     charts: &Path,
     chart: Option<&str>,

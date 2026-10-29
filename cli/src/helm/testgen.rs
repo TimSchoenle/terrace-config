@@ -3,8 +3,8 @@
 //! The document gate validates the configuration a chart *renders*. What no gate can see is the
 //! round trip: that a setting an operator writes into the chart's values arrives in the
 //! application's document, at the path the image reads it from, carrying the value that was asked
-//! for. A typo in a template helper produces a document that satisfies the contract perfectly —
-//! every key it does contain is legal — and the setting is simply absent. The pod starts, reports
+//! for. A typo in a template helper produces a document that satisfies the contract perfectly:
+//! every key it does contain is legal, and the setting is simply absent. The pod starts, reports
 //! healthy, and runs on a compiled default nobody chose, which is the same failure the contract
 //! pipeline exists to remove, one layer further up.
 //!
@@ -18,8 +18,8 @@
 //!
 //! **A probe must differ from the key's default.** A case that sets a key to the value it already
 //! has passes whether or not the chart delivers anything, which is worse than no case at all: it
-//! reports a proof it has not earned. Where no value other than the default is admissible — a
-//! `const`, a single-entry `values` list — the key is skipped and says so.
+//! reports a proof it has not earned. Where no value other than the default is admissible (a
+//! `const`, a single-entry `values` list), the key is skipped and says so.
 //!
 //! **Three forms carry no probe, and the reason differs in each.** `secret: true` is refused because
 //! the probe is committed to a repository, and a plausible-looking credential in a test file is a
@@ -30,22 +30,22 @@
 //! generated file names which one applies, so a reader is never left to guess whether a missing case
 //! is a decision or an oversight.
 //!
-//! **The assertion is scoped to the table the key belongs to, not merely to its leaf name.** In TOML
-//! a key belongs to the most recent `[table]` header, so a pattern matching `ttl_secs = 4242`
-//! anywhere in the document would accept a chart that wrote the value under the wrong table — which
+//! **The assertion is scoped to the table the key belongs to, not merely to its leaf name.** In
+//! TOML a key belongs to the most recent `[table]` header, so a pattern matching `ttl_secs = 4242`
+//! anywhere in the document would accept a chart that wrote the value under the wrong table, which
 //! is precisely the defect a round-trip test exists to catch. The generated pattern anchors on the
 //! header, walks only lines that do not open a new table, and then matches the leaf; RE2 has no
 //! lookahead, so "a line that is not a header" is spelled as an alternation.
 //!
 //! **Regex metacharacters are escaped against the intersection of two engines.** The patterns are
-//! written here and evaluated by Go, and a general escaper escapes punctuation — `-`, `&`, `~`, `#`,
-//! the space — that Go's parser is not obliged to accept behind a backslash. So only the characters
-//! that are metacharacters in both are escaped, and everything else is passed through as the literal
-//! it already is.
+//! written here and evaluated by Go, and a general escaper escapes punctuation (`-`, `&`, `~`, `#`,
+//! the space) that Go's parser is not obliged to accept behind a backslash. So only the characters
+//! that are metacharacters in both are escaped, and everything else is passed through as the
+//! literal it already is.
 //!
 //! **A document is selected by the key it carries, and by its labels only where the key is not
 //! enough.** The document gate reads a document out of the key its declaration names, so selecting
-//! on that same fact is what ties the two to one object — where a label selector on its own matches
+//! on that same fact is what ties the two to one object, where a label selector on its own matches
 //! the Deployment and the Service as well. A chart that renders the same key into several documents
 //! breaks that, and there the labels the declaration already selects on are added to the key. The
 //! two facts go into one `JSONPath` filter rather than into two matchers, because the test
@@ -60,26 +60,26 @@
 //! baseline from supplying the very value a case is probing is a comparison of two paths as strings.
 //!
 //! **A render prerequisite may never be written into the tree the probes are written to.** A chart
-//! that refuses its own default render needs values supplied before any of its cases renders at all,
-//! the case that only checks the document's identity included. Those are the chart's own first-class
-//! values, and a prerequisite is therefore carried by every case without exception rather than
-//! dropped on a collision the way a baseline is. That is exactly why the collision has to be made
-//! unreachable instead: a prerequisite writing under the probe root would sit in the same tree every
-//! case probes, free to supply the very value a case exists to prove the chart delivered. The rule
-//! lives here, in the model, and not only in the loader that reads the enrolment — a caller reaching
-//! past the loader would otherwise reach past the rule with it.
+//! that refuses its own default render needs values supplied before any of its cases renders at
+//! all, the case that only checks the document's identity included. Those are the chart's own
+//! first-class values, and a prerequisite is therefore carried by every case without exception
+//! rather than dropped on a collision the way a baseline is. That is exactly why the collision has
+//! to be made unreachable instead: a prerequisite writing under the probe root would sit in the
+//! same tree every case probes, free to supply the very value a case exists to prove the chart
+//! delivered. The rule lives here, in the model, and not only in the loader that reads the
+//! enrolment: a caller reaching past the loader would otherwise reach past the rule with it.
 //!
 //! **A map the contract requires to hold entries is supplied by the enrolment, or nothing is
-//! generated.** A `structured` key still carries no probe. But a map a producer refined — `required:
-//! true`, with the entries its image refuses to start without inside its `constraint` — is not a key
-//! a suite may leave out: every case renders the chart, and a render lacking those entries is a
-//! document the image rejects, so each case would be proving a round trip through a configuration
-//! that cannot boot. Generation therefore fails, naming the path and the entries, unless the chart's
-//! own values or the enrolment's `baseline` supply every one of them under the probe root. A
-//! placeholder was the alternative and is refused on purpose: written into a file nobody may edit,
-//! it would either fail the document gate on every case or, shaped to pass it, be a fabricated value
-//! presented as a fixture. The baseline already carries a mandatory reason, which is where an
-//! operator states what those entries hold and why.
+//! generated.** A `structured` key still carries no probe. But a map a producer refined
+//! (`required: true`, with the entries its image refuses to start without inside its `constraint`)
+//! is not a key a suite may leave out: every case renders the chart, and a render lacking those
+//! entries is a document the image rejects, so each case would be proving a round trip through a
+//! configuration that cannot boot. Generation therefore fails, naming the path and the entries,
+//! unless the chart's own values or the enrolment's `baseline` supply every one of them under the
+//! probe root. A placeholder was the alternative and is refused on purpose: written into a file
+//! nobody may edit, it would either fail the document gate on every case or, shaped to pass it, be
+//! a fabricated value presented as a fixture. The baseline already carries a mandatory reason,
+//! which is where an operator states what those entries hold and why.
 //!
 //! # Two limits, stated rather than papered over
 //!
@@ -93,7 +93,7 @@
 //! Refusing the probe root makes a prerequisite unable to reach a probed key *directly*; a
 //! first-class chart value the chart derives a probed key from is a longer path to the same place,
 //! and no mapping from one to the other exists in the contract to consult. What closes it is what
-//! the probe root is chosen to be — the layer that wins — so the probe outranks whatever a
+//! the probe root is chosen to be (the layer that wins), so the probe outranks whatever a
 //! prerequisite set. That is a property of the chart rather than of the generator, and the
 //! enrolment's mandatory reason is where a chart says so.
 
@@ -172,7 +172,7 @@ pub struct Case {
 ///
 /// Written from the `projection` marker the value carries, which is the single statement in a chart
 /// repository of which key a chart value feeds. Without one a probe goes into the raw configuration
-/// tree every chart exposes, and what it proves is that the tree is merged into the document — true,
+/// tree every chart exposes, and what it proves is that the tree is merged into the document: true,
 /// worth asserting once, and silent about the chart's own mapping. A typo in the helper that spells
 /// one name from the other passes every case in the suite.
 #[derive(Debug, Clone, PartialEq)]
@@ -190,7 +190,7 @@ pub struct Route {
 /// The one chart value a template writes into a contract key unchanged.
 ///
 /// Written from a `projection` or `structured` marker. Both hand the value to the key as it is, so
-/// whatever a render holds at this path — a prerequisite, or the chart's own default — is what the
+/// whatever a render holds at this path (a prerequisite, or the chart's own default) is what the
 /// key holds in the document. A `composed` marker is not a carrier: the template builds the key's
 /// value from several inputs, and no one of them is the value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -310,7 +310,7 @@ impl From<Option<&Json>> for Rendered {
     }
 }
 
-/// Refuse a suite in which a map the contract requires to hold entries is supplied by nothing.
+/// Refuses a suite in which a map the contract requires to hold entries is supplied by nothing.
 ///
 /// An entry is supplied in either of two places, each of which every case renders:
 ///
@@ -391,7 +391,7 @@ pub fn unsupplied_entries(
     }
 }
 
-/// Turn a union's keys into the cases and the skips of one suite.
+/// Turns a union's keys into the cases and the skips of one suite.
 ///
 /// `baseline` is carried by every case except the one probing the key it sets. A chart may refuse to
 /// render a values combination the contract considers perfectly legal, and a probe that walked into
@@ -400,9 +400,10 @@ pub fn unsupplied_entries(
 /// case is meant to prove the chart delivered.
 ///
 /// `prerequisites` is carried by every case with no exception at all, because it is what makes the
-/// chart render in the first place. So the collision the baseline is protected from by being dropped
-/// is instead made unreachable — a prerequisite path inside the probes' own tree is refused here
-/// rather than accommodated. The two fields are different things and this is the line between them.
+/// chart render in the first place. So the collision the baseline is protected from by being
+/// dropped is instead made unreachable: a prerequisite path inside the probes' own tree is refused
+/// here rather than accommodated. The two fields are different things and this is the line between
+/// them.
 ///
 /// `routes` moves a probe off the raw tree and onto the chart's own value for the key. The baseline
 /// is still dropped by the key's escape-hatch path rather than by the route's, and deliberately: a
@@ -437,7 +438,7 @@ pub fn plan(
         let mut route = routes.get(&path);
 
         // A render prerequisite and a routed probe on one values path is one `set` mapping with the
-        // same key twice, which the framework refuses outright — and the prerequisite is the one
+        // same key twice, which the framework refuses outright, and the prerequisite is the one
         // that cannot move, since without it the chart does not render at all. The probe goes into
         // the raw tree instead, where it still outranks what the chart derives.
         if route.is_some_and(|route| occupied(&route.values_path, prerequisites)) {

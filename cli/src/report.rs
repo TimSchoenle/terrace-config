@@ -1,10 +1,9 @@
 //! Findings, and how a run of them is rendered.
 //!
 //! Separated from the rules themselves so that a rule is a pure function of what it was handed: it
-//! returns findings and decides nothing about where they are printed, whether the run fails, or
-//! how a step summary is laid out. That is what lets every rule be tested by calling it and reading
-//! the list back — no process, no cluster, no render — which is the shape the ~8,000 lines of tests
-//! this half was ported from were already written in.
+//! returns findings and decides nothing about where they are printed, whether the run fails, or how
+//! a step summary is laid out. That is what lets every rule be tested by calling it and reading the
+//! list back, with no process, no cluster and no render.
 //!
 //! # Two levels, and the distinction is not severity
 //!
@@ -63,14 +62,14 @@ pub fn warning(message: impl Into<String>) -> Finding {
 /// One finding, tagged with what produced it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
-    /// The chart or rendered file, then the document — so one line names the chart, the values
-    /// file and the key without a reader opening anything.
+    /// The chart or rendered file, then the document, so one line names the chart, the values file
+    /// and the key without a reader opening anything.
     pub at: String,
     /// What was found.
     pub finding: Finding,
 }
 
-/// Every finding of one run, in the order it was found.
+/// Every finding of one run, in the order it is found.
 #[derive(Debug, Clone, Default)]
 pub struct Report {
     entries: Vec<Entry>,
@@ -84,7 +83,7 @@ impl Report {
         }
     }
 
-    /// Record one finding.
+    /// Records one finding.
     pub fn add(&mut self, at: impl Into<String>, finding: Finding) {
         self.entries.push(Entry {
             at: at.into(),
@@ -92,19 +91,19 @@ impl Report {
         });
     }
 
-    /// Record several findings under one location.
+    /// Records several findings under one location.
     pub fn extend(&mut self, at: &str, findings: impl IntoIterator<Item = Finding>) {
         for finding in findings {
             self.add(at, finding);
         }
     }
 
-    /// Record one error.
+    /// Records one error.
     pub fn fail(&mut self, at: impl Into<String>, message: impl Into<String>) {
         self.add(at, error(message));
     }
 
-    /// Every finding, in the order it was found.
+    /// Every finding, in the order it is found.
     pub fn entries(&self) -> &[Entry] {
         &self.entries
     }

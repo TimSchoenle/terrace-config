@@ -250,9 +250,9 @@ impl Drop for Chart {
 
 #[test]
 fn a_longer_spelling_that_contains_the_shorter_one_does_not_name_it() {
-    // `internal__tokens__api` contains `internal__token`, so a substring search calls the
-    // retired tier-wide key deliverable on the strength of an unrelated one — and downgrades
-    // the only finding that mattered.
+    // `internal__tokens__api` contains `internal__token`, so a substring search calls the retired
+    // tier-wide key deliverable on the strength of an unrelated one, and downgrades the only
+    // finding that mattered.
     let chart = Chart::of(&[(
         "templates/_secrets.tpl",
         "key: {{ printf \"internal__tokens__%s\" . }}\n{{ .Values.internal.tokens }}\n",
@@ -443,7 +443,7 @@ fn a_file_gate_three_already_judged_produces_no_second_line() {
 #[test]
 fn gate_three_needs_both_halves_before_it_owns_the_verdict() {
     // The declaration lists the container, but the file is outside the secrets directory gate 3
-    // resolves — so gate 3 never inspected it and this report must still speak.
+    // resolves, so gate 3 never inspected it and this report must still speak.
     let mut scan = Scan::new();
     scan.scan(
         "nothing__spells_this",
@@ -475,7 +475,7 @@ fn a_non_secret_text_key_delivered_as_a_secret_is_recorded_as_policy() {
 #[test]
 fn a_non_secret_key_no_file_can_supply_is_left_to_gate_three() {
     // `worker.concurrency` is an integer, and the mount of it is gate 3's error rather than a
-    // policy choice — which it already says at length.
+    // policy choice, which it already says at length.
     let mut scan = Scan::new();
     scan.scan(
         "worker__concurrency",

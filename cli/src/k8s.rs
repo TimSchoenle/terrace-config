@@ -1,10 +1,10 @@
 //! Navigating rendered Kubernetes manifests.
 //!
 //! **Nothing here knows what a configuration contract is, and nothing here knows what a chart is.**
-//! It answers the questions the gates ask of a rendered tree — which object does this selector name,
-//! which containers does that workload run, what does this container mount, and what file names will
-//! appear there — and it answers them the same way for every tree, so a rule never grows a special
-//! case for one.
+//! It answers the questions the gates ask of a rendered tree (which object does this selector name,
+//! which containers does that workload run, what does this container mount, and what file names
+//! will appear there), and it answers them the same way for every tree, so a rule never grows a
+//! special case for one.
 //!
 //! That is also the mechanical claim the feature stack makes: `helm` sits above this, so a Helm
 //! concept cannot reach a rule here without failing to compile in the feature set that leaves `helm`
@@ -137,7 +137,7 @@ pub fn pod_spec(workload: &Json) -> &Json {
     template.get("spec").unwrap_or(spec)
 }
 
-/// Every container by name, init containers included — they read the same configuration.
+/// Every container by name, init containers included, since they read the same configuration.
 ///
 /// In the order the spec lists them, init containers first, so a report is ordered by the manifest
 /// rather than by whatever a hash map returned.
@@ -227,7 +227,7 @@ impl Environment {
 /// A manifest scalar as the text a container would receive.
 ///
 /// A rendered `value:` is a string in every well-formed manifest, but a chart that wrote a bare
-/// number produces one here — and rendering it as `123` rather than refusing it is what lets the
+/// number produces one here, and rendering it as `123` rather than refusing it is what lets the
 /// value be checked at all.
 fn scalar(value: &Json) -> String {
     match value {
@@ -376,7 +376,7 @@ fn presents(volume: &Json, kind: &str, name: &str) -> bool {
 ///
 /// A projected volume of secret sources with explicit `items` names them right there. A source
 /// *without* `items` presents every key of the object it names, which is why the rendered Secret is
-/// looked up rather than assumed empty — a chart pointing at an existing Secret is the case that
+/// looked up rather than assumed empty: a chart pointing at an existing Secret is the case that
 /// would otherwise go unchecked.
 pub fn projected_file_names(manifests: &[Json], spec: &Json, volume_name: &str) -> Vec<String> {
     file_names(

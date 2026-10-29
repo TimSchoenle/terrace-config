@@ -2,9 +2,9 @@
 //!
 //! A chart that mounts credentials as files has to tell an operator three things: which credentials
 //! the image needs, what to name the keys of the Secret that carries them, and which environment
-//! spelling addresses the same value. All three are published by the image — `secrets_file`, `env`
-//! and `env_file` per key, with `required` and the producer's own summary beside them — and all
-//! three used to be transcribed into every README by hand.
+//! spelling addresses the same value. All three are published by the image (`secrets_file`, `env`
+//! and `env_file` per key, with `required` and the producer's own summary beside them), and all
+//! three would otherwise be transcribed into every README by hand.
 //!
 //! The transcription drifts, and it drifts silently, because nothing downstream reads a README. The
 //! measured case listed seven credentials against the sixteen its nine contracts declare, spelt one
@@ -12,10 +12,10 @@
 //! requires. Every one of those was true when it was written.
 //!
 //! So the rows come from the contract. What stays hand-written is the one column no contract can
-//! fill: *when this chart needs the credential*. That is chart knowledge — a service being enabled,
-//! a storage backend being chosen, "first install only" — and it lives in the declaration beside the
-//! keys it describes, where a note for a credential the image stopped declaring is refused rather
-//! than left standing.
+//! fill: *when this chart needs the credential*. That is chart knowledge (a service being enabled,
+//! a storage backend being chosen, "first install only"), and it lives in the declaration beside
+//! the keys it describes, where a note for a credential the image stopped declaring is refused
+//! rather than left standing.
 //!
 //! # Where the block goes
 //!
@@ -35,7 +35,7 @@
 //!
 //! The chart chooses *where* the block sits; this module owns only what is between the markers. A
 //! chart whose contracts declare a credential and which carries no block is a failure rather than a
-//! skip — the whole point is that the reference cannot be forgotten — and a block in a chart with no
+//! skip (the whole point is that the reference cannot be forgotten), and a block in a chart with no
 //! credential is a failure for the mirror reason.
 //!
 //! # What is deliberately not generated
@@ -279,7 +279,7 @@ fn required_cell(row: &Credential) -> String {
     format!("{required}; must contain {}", entries.join(", "))
 }
 
-/// Refuse a hand-written note that has outlived what it described.
+/// Refuses a hand-written note that has outlived what it described.
 ///
 /// Both halves are the same failure seen from two sides: a reference telling an operator about a
 /// credential the image stopped declaring, or telling them to set a chart value that no longer
@@ -335,7 +335,7 @@ fn still_describes_something(
 ///
 /// Taken from the contract's own dialect rather than guessed from the longest common prefix of the
 /// spellings. The guess reads as the whole variable, presented as the prefix, on a chart with
-/// exactly one credential — which is precisely the chart whose operator has the least context for
+/// exactly one credential, which is precisely the chart whose operator has the least context for
 /// spotting that the sentence is nonsense.
 #[must_use]
 pub fn env_prefix(chart_dir: &Path, declaration: &Declaration) -> Option<String> {

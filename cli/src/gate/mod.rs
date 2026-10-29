@@ -9,8 +9,8 @@
 //! **The scopes differ, and the difference is the point.** A document is a file the format lets any
 //! number of images read, so validating it against one of their contracts with
 //! `additionalProperties: false` would call every other image's keys unknown and reject a correct
-//! deployment. A container runs exactly one image, so a variable set on it that only a sibling image
-//! reads is precisely the defect gate 2 exists to catch — and checking that against the merged
+//! deployment. A container runs exactly one image, so a variable set on it that only a sibling
+//! image reads is precisely the defect gate 2 exists to catch, and checking that against the merged
 //! contract reintroduces what splitting the scopes removed.
 //!
 //! Every gate is a function of what it was handed and returns findings. It decides nothing about
@@ -26,8 +26,8 @@ pub use document::{DocumentFormat, DocumentSource, check_document};
 /// Which gates one rendered values file is exempt from.
 ///
 /// Typed rather than a set of strings, because the four names are a closed vocabulary and a caller
-/// that misspelled one would otherwise get a silently unrelaxed gate — the failure mode an
-/// exemption exists to avoid being ignored in.
+/// that misspelled one would otherwise get a silently unrelaxed gate: the failure mode an exemption
+/// exists to avoid being ignored in.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[expect(
     clippy::struct_excessive_bools,
@@ -39,7 +39,7 @@ pub struct Relaxed {
     /// Only gate 1's `additionalProperties: false`: unknown keys are tolerated.
     ///
     /// The one case that needs it is a chart whose values append verbatim text to the rendered
-    /// document, which the chart never parses — so keys it introduces are invisible to the renderer
+    /// document, which the chart never parses, so keys it introduces are invisible to the renderer
     /// that would otherwise have to declare them.
     pub closed: bool,
     /// Gate 2: the container environment is not classified or checked.

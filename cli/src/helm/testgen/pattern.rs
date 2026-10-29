@@ -22,7 +22,7 @@ pub(super) fn non_alphanumeric() -> &'static Regex {
     HELD.get_or_init(|| Regex::new("[^A-Za-z0-9]+").expect("a literal pattern compiles"))
 }
 
-/// Escape only what is a metacharacter to both this engine and Go's RE2.
+/// Escapes only what is a metacharacter to both this engine and Go's RE2.
 #[must_use]
 pub fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

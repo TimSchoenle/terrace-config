@@ -14,7 +14,7 @@ use super::{Publisher, Resolved, Shape, derives, ordinal};
 /// The one binding a derived block can come from, or [`None`] with the refusal reported.
 ///
 /// A value feeding several keys has no single constraint to be derived from, and a value feeding
-/// none has nothing to derive from at all — so both are refusals rather than a choice.
+/// none has nothing to derive from at all, so both are refusals rather than a choice.
 pub(super) fn one_binding<'a>(
     shape: &Shape,
     markers: &'a [Marker],
@@ -52,7 +52,7 @@ pub(super) fn one_binding<'a>(
 
 /// The contract key one value feeds, resolved against every document that carries it.
 ///
-/// `Ok(None)` when the value cannot be resolved and the caller asked not to be told — a hand
+/// `Ok(None)` when the value cannot be resolved and the caller asked not to be told: a hand
 /// transcription in a chart with no contract at all is the ordinary state of one, not a defect.
 pub fn resolve(
     bound: Option<&Bound>,
@@ -189,9 +189,9 @@ pub fn superseded(resolved: &Resolved) -> bool {
 
 /// Every generated shape a chart has, from its markers and its blocks.
 ///
-/// Which is every bound value that keeps no transcription marker. Enrolment used to be per value
-/// and opt-in, and the default is now the other way round, so a key an image retypes moves the chart
-/// on the next run whether or not anybody remembered to enrol the value.
+/// Which is every bound value that keeps no transcription marker. Generation is the default rather
+/// than a per-value opt-in, so a key an image retypes moves the chart on the next run whether or
+/// not anybody remembered to enrol the value.
 pub fn generated(
     chart: &str,
     markers: &BTreeMap<String, Vec<Marker>>,

@@ -1,10 +1,10 @@
 //! Turning a byte string into a document worth checking.
 //!
-//! A fuzzer handed raw bytes and asked for a contract produces JSON that fails to parse
-//! essentially every time, and an oracle that only ever exercises the error path proves the reader
-//! rejects garbage — which was never in doubt. The interesting inputs are documents that are
-//! *almost* right: a real one with a prefix emptied, a secret given a default, an ignore pattern
-//! widened by one character.
+//! A fuzzer handed raw bytes and asked for a contract produces JSON that fails to parse essentially
+//! every time, and an oracle that only ever exercises the error path proves the reader rejects
+//! garbage, which is never in doubt. The interesting inputs are documents that are *almost* right:
+//! a real one with a prefix emptied, a secret given a default, an ignore pattern widened by one
+//! character.
 //!
 //! So the input is read as a small directive language applied to one of the stored conformance
 //! cases. The fuzzer mutates directives; the directives mutate a document that was valid to begin
@@ -52,7 +52,7 @@ fn base(name: &str) -> Json {
     serde_json::from_str(text).expect("a stored conformance case is valid JSON")
 }
 
-/// Apply an input's directives to a stored case.
+/// Applies an input's directives to a stored case.
 ///
 /// The first line names the case; every line after it is one directive. See the module docs for
 /// why nothing here refuses.
@@ -134,7 +134,7 @@ fn apply(value: &mut Json, line: &str) {
     }
 }
 
-/// `R=<mode>` — the image's reload mode, or `R=` to drop the declaration entirely.
+/// `R=<mode>`: the image's reload mode, or `R=` to drop the declaration entirely.
 ///
 /// Creates the declaration where the case had none, over all three layers, so a mode can be
 /// reached from every stored case and not only from the one that already declares.
@@ -180,7 +180,7 @@ fn key(path: &str) -> Json {
     })
 }
 
-/// `k=<index>:<field>=<value>` — one field of one key.
+/// `k=<index>:<field>=<value>`: one field of one key.
 fn mutate_key(value: &mut Json, rest: &str) {
     let Some((index, assignment)) = rest.split_once(':') else {
         return;
@@ -219,8 +219,8 @@ fn mutate_key(value: &mut Json, rest: &str) {
                 json!(raw)
             }
         }
-        // Read as JSON so a fuzzer can reach a number, an array or an object here — the three
-        // shapes the TOML literal writer treats differently.
+        // Read as JSON so a fuzzer can reach a number, an array or an object here: the three shapes
+        // the TOML literal writer treats differently.
         "default_value" | "constraint" | "text_constraint" => {
             serde_json::from_str(raw).unwrap_or(Json::Null)
         }
@@ -230,7 +230,7 @@ fn mutate_key(value: &mut Json, rest: &str) {
     target.insert(field.to_owned(), parsed);
 }
 
-/// Set a value at a path of object keys, creating nothing.
+/// Sets a value at a path of object keys, creating nothing.
 fn set(value: &mut Json, path: &[&str], new: Json) {
     let Some((last, parents)) = path.split_last() else {
         return;
@@ -275,7 +275,7 @@ pub fn case_names() -> impl Iterator<Item = &'static str> {
     CASES.iter().map(|(name, _)| *name)
 }
 
-/// A stored case, unmutated — the fixed point every oracle checks against.
+/// A stored case, unmutated: the fixed point every oracle checks against.
 ///
 /// # Panics
 /// If a stored conformance case is not a JSON object, which the corpus tests would have caught

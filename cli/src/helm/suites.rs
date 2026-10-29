@@ -1,7 +1,7 @@
 //! Generating the round-trip test suites a chart's contracts imply, and keeping them in step.
 //!
-//! The walk over the charts, the file IO and what it means for a suite to be stale. The model —
-//! choosing a probe, refusing to invent one, and spelling the assertion — lives in
+//! The walk over the charts, the file IO and what it means for a suite to be stale. The model (
+//! choosing a probe, refusing to invent one, and spelling the assertion) lives in
 //! [`super::testgen`], so every rule in it is testable by calling it.
 //!
 //! # Enrolment is a declared switch, not a list
@@ -9,8 +9,8 @@
 //! A chart is generated for when its declaration says `tests: true`, exactly as `bindings: true`
 //! enrols it in the marker gate. That is what makes a phased rollout a property of the tree rather
 //! than of a constant somebody has to remember to edit. Each document's `tests` block is where a
-//! chart says which values every generated case has to carry before it will render at all, and —
-//! where the operator-facing configuration tree is not the layer that wins — which values path a
+//! chart says which values every generated case has to carry before it will render at all, and,
+//! where the operator-facing configuration tree is not the layer that wins, which values path a
 //! probe is to be written to.
 //!
 //! The older form, a separate `contract-tests.yaml` whose presence is the enrolment, is still read
@@ -19,14 +19,14 @@
 //! # A baseline and a render prerequisite are two different fields because they are two different
 //! things
 //!
-//! A `baseline` states configuration — flat dotted paths under the document's probe root — and is
+//! A `baseline` states configuration (flat dotted paths under the document's probe root) and is
 //! dropped from the one case probing the key it sets, because a baseline supplying the probed value
 //! would make that case pass whether or not the chart delivered anything. A `prerequisites` block
-//! states the chart's own first-class values, the ones a render guard refuses to render without, and
-//! is carried by every case including the identity one, because a case that does not render proves
-//! nothing either. Being undroppable is exactly why it may not name a path inside that same probe
-//! root: that is refused here with the file's name on it, and refused again by [`super::testgen`],
-//! so the guarantee does not depend on this loader having been the caller.
+//! states the chart's own first-class values, the ones a render guard refuses to render without,
+//! and is carried by every case including the identity one, because a case that does not render
+//! proves nothing either. Being undroppable is exactly why it may not name a path inside that same
+//! probe root: that is refused here with the file's name on it, and refused again by
+//! [`super::testgen`], so the guarantee does not depend on this loader having been the caller.
 //!
 //! # How a document is told from its siblings is derived, not declared
 //!
@@ -40,7 +40,7 @@
 //! The binding exists to refuse validating a document against a contract for some other digest, and
 //! it is right for a gate. It is wrong here: a suite is a function of the contract's *keys* and of
 //! nothing else, so tying generation to the digest interlock would block a regeneration during the
-//! window between a digest bump and the contract refresh — and would report the same staleness the
+//! window between a digest bump and the contract refresh, and would report the same staleness the
 //! document gate already reports, with a worse message.
 //!
 //! # Line endings are the platform's, deliberately
@@ -74,7 +74,7 @@ pub const ENROLMENT: &str = "contract-tests.yaml";
 
 /// The keys the enrolment may carry at each level.
 ///
-/// Anything else is a typo that would otherwise be ignored in silence — the same rule the
+/// Anything else is a typo that would otherwise be ignored in silence: the same rule the
 /// declaration is read under, and for the same reason.
 const ENROLMENT_KEYS: [&str; 1] = ["documents"];
 const DOCUMENT_KEYS: [&str; 6] = [
@@ -125,10 +125,10 @@ pub struct Baseline {
 
 /// Chart values every case for one document carries before the chart will render, and why.
 ///
-/// A chart that refuses its own default render fails its template before a document exists to assert
-/// anything about. What unblocks it is the chart's own first-class values, which is a different kind
-/// of thing from a [`Baseline`] — that one writes into the configuration document the cases assert
-/// against, and this one writes into the chart's values.
+/// A chart that refuses its own default render fails its template before a document exists to
+/// assert anything about. What unblocks it is the chart's own first-class values, which is a
+/// different kind of thing from a [`Baseline`]: that one writes into the configuration document the
+/// cases assert against, and this one writes into the chart's values.
 ///
 /// Held as flat dotted paths with whatever shape the leaf has. A `set` mapping *is* flat dotted
 /// paths, so what the enrolment states is what the generated file carries and there is no
@@ -150,14 +150,14 @@ pub struct Prerequisites {
 /// operator-facing configuration tree. It exists because that tree is not always the layer that
 /// wins, and it is declared rather than derived: nothing in a declaration spells a chart's
 /// per-service values key from a document's name. It sits here rather than on the baseline because
-/// it governs all three fields at once — the probes are written under it, the baseline is read under
+/// it governs all three fields at once: the probes are written under it, the baseline is read under
 /// it, and the prerequisites are refused from it.
 ///
 /// `unrouted` is the one field that takes something away. A probe is written into the chart's own
 /// value for the key wherever a `projection` marker names one, because that is what proves the
-/// chart's mapping rather than only its escape hatch — and a chart may have a guard that a
-/// synthesised value cannot satisfy at that position. Such a key is named here, with the reason, and
-/// its probe goes into the raw tree instead: the case still proves the merge, and the file says
+/// chart's mapping rather than only its escape hatch, and a chart may have a guard that a
+/// synthesised value cannot satisfy at that position. Such a key is named here, with the reason,
+/// and its probe goes into the raw tree instead: the case still proves the merge, and the file says
 /// which proof it is making.
 #[derive(Debug, Clone)]
 pub struct Enrolment {
@@ -195,7 +195,7 @@ pub struct Enrolments {
     pub documents: BTreeMap<String, Enrolment>,
 }
 
-/// Read one chart's enrolment; [`None`] when the chart is not enrolled.
+/// Reads one chart's enrolment; [`None`] when the chart is not enrolled.
 ///
 /// # Errors
 /// [`Error::Invalid`] naming whichever entry is not one, or when both the declaration and
@@ -241,7 +241,7 @@ pub fn load_enrolment(
     }))
 }
 
-/// Read one chart's `contract-tests.yaml` from its text.
+/// Reads one chart's `contract-tests.yaml` from its text.
 ///
 /// # Errors
 /// As [`load_enrolment`].
@@ -342,8 +342,8 @@ fn load_probe(at: &str, name: &str, probe: Option<&Json>) -> Result<String, Erro
 
 /// A values path a probe may be written under: dotted, and nothing else.
 ///
-/// The path is used twice — as a `set` prefix in the generated suite and as a walk into the chart's
-/// values — and the two agree on dotted segments and on nothing beyond them.
+/// The path is used twice (as a `set` prefix in the generated suite and as a walk into the chart's
+/// values), and the two agree on dotted segments and on nothing beyond them.
 fn is_values_path(path: &str) -> bool {
     !path.is_empty()
         && path.split('.').all(|segment| {
@@ -565,14 +565,14 @@ fn load_unrouted(
 // Building one chart's suites
 // ------------------------------------------------------------------------------------------------
 
-/// Refuse a document whose probe path is not a configuration tree in the chart's values.
+/// Refuses a document whose probe path is not a configuration tree in the chart's values.
 ///
 /// Every contract key is reachable as `<probe>.<path>` only because a chart exposes an
 /// operator-supplied tree that some layer of its render merges. A chart without one can still be
-/// probed — through whichever value happens to spell each key — but not by a generator that knows
+/// probed (through whichever value happens to spell each key), but not by a generator that knows
 /// nothing about it, and guessing would produce a suite that silently asserts nothing. The same
-/// check catches the likelier mistake by far: an enrolment naming a `probe` path this chart does not
-/// have, which would otherwise generate a whole suite of cases setting values nothing reads.
+/// check catches the likelier mistake by far: an enrolment naming a `probe` path this chart does
+/// not have, which would otherwise generate a whole suite of cases setting values nothing reads.
 fn probe_tree(chart_dir: &Path, values: &Json, name: &str, probe: &str) -> Result<(), Error> {
     if dig(values, probe).is_none_or(|held| !held.is_object()) {
         return Err(Error::Invalid(format!(
@@ -663,7 +663,7 @@ fn suite_path(chart_dir: &Path, document: &Document) -> PathBuf {
 /// One path as it is spelled from the repository root, whatever the charts directory was given as.
 ///
 /// The generated header names the files it was generated from, and a path built from the filesystem
-/// would be absolute whenever the caller passed an absolute charts directory — which would put the
+/// would be absolute whenever the caller passed an absolute charts directory, which would put the
 /// checkout directory into a committed file and make the staleness gate fail on any machine but the
 /// one that last ran the generator.
 fn repository_path(chart_dir: &Path, tail: &str) -> String {
@@ -991,7 +991,7 @@ pub fn build(
     Ok(suites)
 }
 
-/// Generated suites left behind by a document — or a whole chart — that no longer declares one.
+/// Generated suites left behind by a document, or a whole chart, that no longer declares one.
 ///
 /// Owned rather than reported: a suite for a removed document keeps asserting keys nothing reads any
 /// more, and leaving it in place while claiming the tree is generated would be the drift this whole
@@ -1032,7 +1032,7 @@ pub struct Generated {
     pub unenrolled: Vec<String>,
 }
 
-/// Walk the chart tree and build every enrolled chart's suites.
+/// Walks the chart tree and builds every enrolled chart's suites.
 ///
 /// # Errors
 /// [`Error::Invalid`] when a chart's enrolment or declaration cannot be reconciled, [`Error::Io`]
@@ -1082,7 +1082,7 @@ pub struct Outcome {
     pub drift: Vec<String>,
 }
 
-/// Write what changed and remove what is orphaned.
+/// Writes what changed and removes what is orphaned.
 ///
 /// # Errors
 /// [`Error::Io`] when a suite cannot be written or an orphan removed.
@@ -1110,7 +1110,7 @@ pub fn sync(generated: &Generated) -> Result<Outcome, Error> {
     Ok(outcome)
 }
 
-/// Report every suite that has drifted, writing nothing.
+/// Reports every suite that has drifted, writing nothing.
 #[must_use]
 pub fn check(generated: &Generated) -> Outcome {
     let mut outcome = Outcome::default();

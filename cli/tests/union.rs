@@ -4,11 +4,11 @@
 //! the keys its own binary consumes, so validating that document against one of them with
 //! `additionalProperties: false` would reject a perfectly correct deployment.
 //!
-//! No chart in the corpus this was ported against declares one — every document there binds exactly
-//! one image — so the merge is the identity in production and these fixtures are the only place its
-//! rules run at all. That is a reason to keep them rather than a reason to drop them: a document
-//! that gained a second reader lands straight on those rules, and this is the one place where
-//! getting them wrong turns a correct chart red.
+//! No chart in the parity corpus declares one (every document there binds exactly one image), so
+//! the merge is the identity in production and these fixtures are the only place its rules run at
+//! all. That is a reason to keep them rather than a reason to drop them: a document that gained a
+//! second reader lands straight on those rules, and this is the one place where getting them wrong
+//! turns a correct chart red.
 //!
 //! The fixtures are two contracts that share a key (`api`, `worker`), one that describes a shared
 //! key differently (`conflicting`), and one whose constraints nest (`deep`). A foreign dialect is
@@ -73,7 +73,7 @@ fn key<'a>(document: &'a mut Json, path: &str) -> &'a mut Json {
         .unwrap_or_else(|| panic!("the fixture declares {path}"))
 }
 
-/// Strip a fixture's keys so a `json_schema` conflict is what the union reports first.
+/// Strips a fixture's keys so a `json_schema` conflict is what the union reports first.
 fn schema_only(mut document: Json) -> Json {
     document["schema"]["keys"] = json!([]);
     document
@@ -348,7 +348,7 @@ fn an_element_schema_survives_the_merge_rather_than_being_dropped() {
 #[test]
 fn a_remote_reference_is_reported() {
     // Constructed rather than stored. An offline gate that resolves a remote reference has silently
-    // become a networked one, and the fixture for that is two lines — a file would be a file whose
+    // become a networked one, and the fixture for that is two lines; a file would be a file whose
     // whole content is one keyword.
     let offenders = local_refs_only(&json!({
         "properties": {"thing": {"$ref": "https://example.invalid/schema.json"}}

@@ -1,10 +1,10 @@
 //! Writing the configuration half of a new chart: the files its image's contract decides.
 //!
-//! A chart in a repository of this shape is two things stacked. Underneath is a chassis — a values
-//! block per concern, a handful of templates, a pod spec wired to a library chart — which is the same
-//! in every chart of that repository and belongs to it: the repository keeps it as a template and
-//! copies it. On top is the part that is about *this* image: the settings it reads, what each one
-//! accepts, which of them are credentials, and how a chart value reaches each one. That half is
+//! A chart in a repository of this shape is two things stacked. Underneath is a chassis (a values
+//! block per concern, a handful of templates, a pod spec wired to a library chart), which is the
+//! same in every chart of that repository and belongs to it: the repository keeps it as a template
+//! and copies it. On top is the part that is about *this* image: the settings it reads, what each
+//! one accepts, which of them are credentials, and how a chart value reaches each one. That half is
 //! written by reading a contract, and reading a 400 KB contract by hand is how a key gets missed.
 //!
 //! This writes the second half, into a chart directory the repository's own template copy may
@@ -20,18 +20,18 @@
 //! | `tests/configmap_test.yaml` | a first suite, for a person to extend |
 //!
 //! For an image that publishes no contract (`--no-contract`) the same files are written in their
-//! plain form, and `config-contract.yaml` only when the image is first-party — see
-//! [`owes_a_declaration`].
+//! plain form, and `config-contract.yaml` only when the image is first-party, as
+//! [`owes_a_declaration`] decides.
 //!
 //! # The placeholders a contract decides
 //!
 //! A repository's workload template has to name things only the contract knows: the environment
-//! prefix the loader owns, the separator in a secrets-file name, the `ConfigMap` key the document is
-//! rendered under. The template spells them as `%%PREFIX%%`, `%%ENV_PREFIX%%`, `%%SEPARATOR%%` and
-//! `%%DOCUMENT_KEY%%` — a form Helm never reads, so the Go template braces around them survive — and
-//! this fills them in every file of the chart, from the dialect the fetched contract declares. Every
-//! other `%%NAME%%` is the repository's to substitute when it copies its template, and one still
-//! present when this runs is refused: a placeholder nobody replaced would reach the chart as
+//! prefix the loader owns, the separator in a secrets-file name, the `ConfigMap` key the document
+//! is rendered under. The template spells them as `%%PREFIX%%`, `%%ENV_PREFIX%%`, `%%SEPARATOR%%`
+//! and `%%DOCUMENT_KEY%%`, a form Helm never reads, so the Go template braces around them survive,
+//! and this fills them in every file of the chart, from the dialect the fetched contract declares.
+//! Every other `%%NAME%%` is the repository's to substitute when it copies its template, and one
+//! still present when this runs is refused: a placeholder nobody replaced would reach the chart as
 //! literal text and render as itself.
 //!
 //! That split is the seam between the two halves. The repository's copy needs only the chart's name
@@ -49,10 +49,11 @@
 //! # It replaces nothing
 //!
 //! Every file is planned in memory before one is written, and a file that is already there and says
-//! something else is refused rather than overwritten — a chart that has a declaration is a chart
-//! somebody configured, and [`super::adopt`] is what writes into one. A file already holding exactly
-//! what would be written is left alone, so a run over a chart this has just written owes nothing;
-//! the vendored contract counts as unchanged when only its fetch time moved, as a refresh counts it.
+//! something else is refused rather than overwritten: a chart that has a declaration is a chart
+//! somebody configured, and [`super::adopt`] is what writes into one. A file already holding
+//! exactly what would be written is left alone, so a run over a chart this has just written owes
+//! nothing; the vendored contract counts as unchanged when only its fetch time moved, as a refresh
+//! counts it.
 //!
 //! # What is left for a person
 //!
@@ -97,11 +98,11 @@ pub struct Pin {
 }
 
 impl Pin {
-    /// Read `REPOSITORY:TAG[@DIGEST]`.
+    /// Reads `REPOSITORY:TAG[@DIGEST]`.
     ///
-    /// The tag is required. A digest is not, because the refresh resolves a tag — but a chart pinned
-    /// by tag alone carries a mutable reference, and the document gate refuses to validate against a
-    /// contract that cannot be tied to a digest, so the digest is what should be given.
+    /// The tag is required. A digest is not, because the refresh resolves a tag, but a chart pinned
+    /// by tag alone carries a mutable reference, and the document gate refuses to validate against
+    /// a contract that cannot be tied to a digest, so the digest is what should be given.
     ///
     /// # Errors
     /// [`Error::Invalid`] for a reference with no repository or no tag.
@@ -141,7 +142,7 @@ impl Pin {
 /// Whether the coverage gate will demand a declaration from a chart pinning `repository`.
 ///
 /// The gate's own question, asked with the same pattern matcher: a chart pinning a first-party
-/// image owes a declaration — a real one, or an explicit opt-out with a reason — and a chart pinning
+/// image owes a declaration (a real one, or an explicit opt-out with a reason), and a chart pinning
 /// a third-party image owes nothing, because nobody publishes a contract for it and a file that
 /// could only say "no" is a file nobody should be asked to write. An empty list makes nothing
 /// first-party.
@@ -394,9 +395,9 @@ fn read_if_present(path: &Path) -> Result<Option<String>, Error> {
 
 /// The value each filled placeholder takes.
 ///
-/// From the contract's dialect for a contracted chart. A plain chart's image declares no dialect, so
-/// the chart name stands in — `netcup-offer-bot` as `NETCUP_OFFER_BOT_` — which is a guess, and only
-/// ever reaches the prose of a template that has no loader to describe.
+/// From the contract's dialect for a contracted chart. A plain chart's image declares no dialect,
+/// so the chart name stands in (`netcup-offer-bot` as `NETCUP_OFFER_BOT_`), which is a guess, and
+/// only ever reaches the prose of a template that has no loader to describe.
 fn placeholders(chart: &str, surface: &Surface, document_key: &str) -> Vec<(&'static str, String)> {
     let (prefix, separator) = match surface {
         Surface::Contracted { dialect, .. } => {
@@ -574,7 +575,7 @@ impl Init {
             .collect()
     }
 
-    /// Write every file that changes, creating the directories it needs, all of them or none.
+    /// Writes every file that changes, creating the directories it needs, all of them or none.
     ///
     /// # Errors
     /// [`Error::Io`] when a directory or a file cannot be written, and [`Error::Invalid`] when one
@@ -603,8 +604,8 @@ impl Init {
 
     /// The ordered list of what a person still has to do, once the files are written.
     ///
-    /// Only the steps the contract decides. What the repository's own half leaves — its chart
-    /// description, its README prose, the recipes that generate its schema and its README — is the
+    /// Only the steps the contract decides. What the repository's own half leaves (its chart
+    /// description, its README prose, the recipes that generate its schema and its README) is the
     /// repository's to say, after this.
     pub fn closing(&self) -> String {
         let shown = posix(&self.chart_dir);

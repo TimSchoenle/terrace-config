@@ -308,7 +308,7 @@ fn a_field_only_one_image_publishes_is_still_carried() {
 #[test]
 fn the_representative_carries_every_field_any_image_published() {
     // Including one only the second image says anything about, and in the document model's own
-    // order — which is the order this build's producer writes a contract in, so the JSON diffs
+    // order, which is the order this build's producer writes a contract in, so the JSON diffs
     // cleanly against the file it came from.
     let merged = setting(
         "log.level",
@@ -673,9 +673,9 @@ fn every_spelling_the_loader_accepts_is_shown() {
 
 #[test]
 fn a_key_no_file_can_supply_says_so_beside_the_spellings() {
-    // The file spellings exist for every key, and for anything but a text key neither works —
-    // a file delivers a string and a loader will not coerce one. Printing the spelling without
-    // printing that is how an operator ends up mounting a Secret that is silently never read.
+    // The file spellings exist for every key, and for anything but a text key neither works: a file
+    // delivers a string and a loader will not coerce one. Printing the spelling without printing
+    // that is how an operator ends up mounting a Secret that is silently never read.
     let text = rendered("auth.session_ttl", 1);
     assert!(text.contains("FIXTURE_AUTH__SESSION_TTL_FILE"), "{text}");
     assert!(text.contains("from a file   no"), "{text}");

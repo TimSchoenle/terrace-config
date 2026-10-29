@@ -1,19 +1,19 @@
-//! Gate 1 — the rendered document, against the union of every contract that reads it.
+//! Gate 1: the rendered document, against the union of every contract that reads it.
 //!
 //! Select the object by kind and label selector, take `data[key]`, parse it, and validate the
 //! result against the merged `json_schema` with `additionalProperties: false`. That catches an
 //! unknown key, a wrong type, a missing required key, a value outside an enum, and a table where a
-//! scalar belongs — the whole class of defect that renders cleanly, passes every schema a chart has
+//! scalar belongs: the whole class of defect that renders cleanly, passes every schema a chart has
 //! for its own values, passes a Kubernetes validator, and then boots on a compiled default nobody
 //! chose.
 //!
 //! # The engine is linked rather than shelled out to
 //!
 //! The implementation this was ported from delegated to a pinned Go binary, to keep a chart
-//! repository's scripts on its standard library. A build that already links a JSON Schema engine for
-//! `validate` has no such constraint, and one fewer pinned binary is one fewer thing a recipe can
-//! fail to find. Its default features are off, so the engine cannot fetch a remote `$ref` even if
-//! one reached it — and [`local_refs_only`](crate::union::local_refs_only) refuses one before it
+//! repository's scripts on its standard library. A build that already links a JSON Schema engine
+//! for `validate` has no such constraint, and one fewer pinned binary is one fewer thing a recipe
+//! can fail to find. Its default features are off, so the engine cannot fetch a remote `$ref` even
+//! if one reached it, and [`local_refs_only`](crate::union::local_refs_only) refuses one before it
 //! gets that far, because an offline gate that resolves a remote reference has silently become a
 //! networked one.
 
@@ -58,10 +58,10 @@ impl DocumentFormat {
         }
     }
 
-    /// Read one rendered document.
+    /// Reads one rendered document.
     ///
     /// # Errors
-    /// [`Error::Invalid`] when the text is not this format, carrying the parser's own message —
+    /// [`Error::Invalid`] when the text is not this format, carrying the parser's own message,
     /// which names the line, and is the half of the answer a reader actually needs.
     pub fn read(self, text: &str) -> Result<Json, Error> {
         let failed = |failure: &dyn std::fmt::Display| Error::Invalid(failure.to_string());
@@ -90,7 +90,7 @@ pub struct DocumentSource {
     pub format: DocumentFormat,
 }
 
-/// Validate one rendered configuration document against the union of its contracts.
+/// Validates one rendered configuration document against the union of its contracts.
 ///
 /// [`None`] means the selector matched nothing at all, which is distinct from "no findings": a chart
 /// can switch a whole component off in one values file and on in another, and the two need different
@@ -196,9 +196,9 @@ fn findings(
                     None => missing.push((path, vec![name])),
                 }
             }
-            // An unknown key is the rename case, and the union already holds every key path — so
-            // the answer to "what was it called instead" costs an edit-distance pass and turns the
-            // most common failure here from a puzzle into a one-line answer.
+            // An unknown key is the rename case, and the union already holds every key path, so the
+            // answer to "what was it called instead" costs an edit-distance pass and turns the most
+            // common failure here from a puzzle into a one-line answer.
             jsonschema::error::ValidationErrorKind::AdditionalProperties { unexpected } => {
                 for name in unexpected {
                     let full = if path.is_empty() {
@@ -236,7 +236,7 @@ fn findings(
     findings
 }
 
-/// Drop every `additionalProperties: false` the union added, for a `closed` exemption.
+/// Drops every `additionalProperties: false` the union added, for a `closed` exemption.
 fn open_schema(schema: &mut Json) {
     match schema {
         Json::Object(fields) => {

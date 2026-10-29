@@ -51,17 +51,17 @@ pub struct Probe {
 
 /// The probe for one contract key, or the reason it carries none.
 ///
-/// Exactly one of the two is ever set, and the reason is written into the generated file verbatim —
+/// Exactly one of the two is ever set, and the reason is written into the generated file verbatim:
 /// an unexplained absence is indistinguishable from an oversight, which for a file whose whole job
 /// is to be exhaustive is the worst possible failure mode.
 ///
-/// `also` is a second schema the candidate has to satisfy, and it is what makes a probe written into
-/// the chart's *own* value safe. Such a value carries a `@schema` block, so the templating engine
-/// validates what is set there — and that block may be stricter than the contract, deliberately: a
-/// chart that types a port `minimum: 1` where the producer's `u16` allows 0 would refuse a probe the
-/// contract accepts, and the failure would read as a broken chart rather than as a probe nothing can
-/// satisfy. Passing the chart's own block here makes the two agree by construction; the caller falls
-/// back to the untyped escape hatch when nothing satisfies both.
+/// `also` is a second schema the candidate has to satisfy, and it is what makes a probe written
+/// into the chart's *own* value safe. Such a value carries a `@schema` block, so the templating
+/// engine validates what is set there, and that block may be stricter than the contract,
+/// deliberately: a chart that types a port `minimum: 1` where the producer's `u16` allows 0 would
+/// refuse a probe the contract accepts, and the failure would read as a broken chart rather than as
+/// a probe nothing can satisfy. Passing the chart's own block here makes the two agree by
+/// construction; the caller falls back to the untyped escape hatch when nothing satisfies both.
 ///
 /// # Errors
 /// [`Error::Invalid`] when a key has no `path` at all, which is a contract this build cannot read
@@ -148,11 +148,11 @@ pub fn probe_for(key: &Merged, also: Option<&Json>) -> Result<Result<Probe, Stri
 /// Any value one key's `constraint` accepts, or [`None`] when nothing here can synthesise one.
 ///
 /// The candidate walk without [`probe_for`]'s two extra demands. A probe has to *differ* from the
-/// published default — otherwise the case proves the chart delivered a value it would have got
-/// anyway — and it has to survive the environment spelling as well. Neither applies to a caller that
-/// simply needs a legal value: scaffolding writes one into a new chart's values for a required key
-/// whose image publishes no default, where "differs from the default" is vacuous and the environment
-/// layer is not involved at all.
+/// published default (otherwise the case proves the chart delivered a value it would have got
+/// anyway), and it has to survive the environment spelling as well. Neither applies to a caller
+/// that simply needs a legal value: scaffolding writes one into a new chart's values for a required
+/// key whose image publishes no default, where "differs from the default" is vacuous and the
+/// environment layer is not involved at all.
 ///
 /// Public rather than left to a caller reaching for the candidate walk: the walk knows about
 /// `multipleOf`, exclusive bounds and the choice vocabulary, and a second implementation of it would
@@ -269,9 +269,9 @@ pub(super) fn environment_text(value: &Json) -> String {
 /// The shared validator rather than a second implementation of the vocabulary. It differs from a
 /// generator-specific one in a single place: a numeric bound on a value that is not a number is
 /// *skipped* rather than counted as a failure, because `type` is what says a value is the wrong
-/// shape and reporting the same defect twice makes the first line harder to find. That difference is
-/// unreachable from here — every candidate is of the key's own `text_form`, and the one cross-shape
-/// check is a string against a `text_constraint`, which describes text.
+/// shape and reporting the same defect twice makes the first line harder to find. That difference
+/// is unreachable from here: every candidate is of the key's own `text_form`, and the one
+/// cross-shape check is a string against a `text_constraint`, which describes text.
 pub(super) fn satisfies(constraint: &Json, candidate: &Json) -> bool {
     matches!(assert_value(constraint, candidate, ""), Ok(None))
 }
@@ -299,10 +299,10 @@ pub(super) fn is_empty_schema(schema: &Json) -> bool {
 
 /// One value as JSON, spaced the way the generated files are already written.
 ///
-/// `{"a": 1, "b": 2}` rather than `{"a":1,"b":2}`. A cosmetic difference everywhere except here: the
-/// suites are committed, and a staleness gate is a comparison of bytes, so the spacing is part of
-/// the format rather than a preference. Keys come out sorted because the document model holds an
-/// ordered map — which is the same property that makes a published contract a byte-for-byte round
+/// `{"a": 1, "b": 2}` rather than `{"a":1,"b":2}`. A cosmetic difference everywhere except here:
+/// the suites are committed, and a staleness gate is a comparison of bytes, so the spacing is part
+/// of the format rather than a preference. Keys come out sorted because the document model holds an
+/// ordered map, which is the same property that makes a published contract a byte-for-byte round
 /// trip, applied to a file a person reads.
 pub(super) fn json_text(value: &Json) -> String {
     match value {

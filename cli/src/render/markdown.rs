@@ -6,8 +6,8 @@
 //! cell shows the *summary* of a doc comment rather than the whole of it.
 //!
 //! Nothing here interprets a value. [`Key::default`](crate::Key::default) already arrived as the
-//! string a table should show — the producer rendered it, in its own language, from a value this
-//! crate never sees — so `12` prints as `12` and `public` prints as `public`, quotes and all left
+//! string a table should show (the producer rendered it, in its own language, from a value this
+//! crate never sees), so `12` prints as `12` and `public` prints as `public`, quotes and all left
 //! off. That is the whole reason a renderer can be shared across producers: by the time a document
 //! exists, every language-shaped decision has already been made.
 
@@ -34,7 +34,7 @@ pub fn markdown(schema: &Schema, columns: &[Column]) -> String {
 
 /// The loader-variable table alone.
 ///
-/// Empty when the schema has no loader variables — a header with no rows under it would be a table
+/// Empty when the schema has no loader variables: a header with no rows under it would be a table
 /// promising variables that do not exist.
 pub fn markdown_loader(schema: &Schema) -> String {
     let mut out = String::new();
@@ -61,7 +61,7 @@ pub fn markdown_loader(schema: &Schema) -> String {
 /// The configuration-key table alone.
 ///
 /// A schema with no keys still renders its header, unlike the loader table. An empty configuration
-/// section is a real shape — a subsystem that reads nothing yet — and the header is what says the
+/// section is a real shape (a subsystem that reads nothing yet), and the header is what says the
 /// section was generated rather than forgotten.
 pub fn markdown_keys(schema: &Schema, columns: &[Column]) -> String {
     let mut out = String::new();
@@ -85,7 +85,7 @@ pub fn markdown_keys(schema: &Schema, columns: &[Column]) -> String {
 pub enum Column {
     /// The TOML key path.
     Path,
-    /// What kind of value the key takes — its type, or the choices it accepts.
+    /// What kind of value the key takes: its type, or the choices it accepts.
     Type,
     /// Other key paths that supply the same key.
     Aliases,
@@ -183,8 +183,8 @@ impl Column {
     fn render(self, key: &Key) -> String {
         match self {
             // Escaped like every other cell. A key path is not prose, but it is not the table
-            // author's to choose either — a rename can put a cell separator in it, and an
-            // unescaped one adds a column to the row.
+            // author's to choose either: a rename can put a cell separator in it, and an unescaped
+            // one adds a column to the row.
             Self::Path => format!("`{}`", escape(&key.path)),
             // The choices when there are any, because a type name tells an operator nothing they
             // can act on and `trace | debug | info` tells them exactly what to type. The type name
@@ -361,8 +361,8 @@ fn summary_cell(text: &str) -> String {
 ///
 /// The whole comment would put every paragraph of a field's documentation into one cell and make a
 /// table out of an essay. This is the producer's own convention rather than a new annotation to
-/// keep in step, and it is stated in `FORMAT.md` rather than being this renderer's invention —
-/// which matters, because a Java producer's Javadoc has to reach the same cell.
+/// keep in step, and it is stated in `FORMAT.md` rather than being this renderer's invention, which
+/// matters, because a Java producer's Javadoc has to reach the same cell.
 pub fn summary(docs: &str) -> String {
     docs.lines()
         .take_while(|line| !line.trim().is_empty())

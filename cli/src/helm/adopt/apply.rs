@@ -84,7 +84,7 @@ impl Splice {
     /// The change as a unified diff with three lines of context, against the file's own path.
     ///
     /// Built from the insertions rather than by comparing two texts: every edit here is an
-    /// insertion, so the alignment is known exactly, and a general diff could only rediscover it —
+    /// insertion, so the alignment is known exactly, and a general diff could only rediscover it,
     /// or, where a new blank line matches an old one, choose a different but equally valid one.
     pub fn diff(&self) -> String {
         let (lines, ending, terminated) = self.lines();
@@ -124,10 +124,10 @@ pub fn splices(adoption: &Adoption) -> Result<Vec<Splice>, Error> {
         // Two blocks can meet at one line: a new leaf at the end of a block, and a new sibling of
         // that block after it. The deeper one belongs *inside* the block that ends there, so it is
         // written first; the other way round, the leaf would land under the new sibling and become
-        // its child — or, when the sibling is a scalar, turn the file into YAML that does not
-        // parse. Blocks of one depth never meet at one line (one ancestor is one block), so the
-        // last key only keeps the order total, laying such ties out the way the script this
-        // replaces did: the later planned above the earlier.
+        // its child, or, when the sibling is a scalar, turn the file into YAML that does not parse.
+        // Blocks of one depth never meet at one line (one ancestor is one block), so the last key
+        // only keeps the order total, laying such ties out the way the script this replaces did:
+        // the later planned above the earlier.
         let mut ordered: Vec<(usize, &Insertion)> =
             adoption.insertions.iter().enumerate().collect();
         ordered.sort_by_key(|(index, insertion)| {
@@ -172,7 +172,7 @@ pub fn splices(adoption: &Adoption) -> Result<Vec<Splice>, Error> {
     Ok(found)
 }
 
-/// Apply one chart's edits: the values, the declaration and the template lines they oblige.
+/// Applies one chart's edits: the values, the declaration and the template lines they oblige.
 ///
 /// All three, because that set is what a green chart needs: values with no write-off fail the
 /// bindings gate, and values with no projection fail the round trip the same run regenerates. A
@@ -184,7 +184,7 @@ pub fn write(adoption: &Adoption) -> Result<(), Error> {
     write_all(std::slice::from_ref(adoption))
 }
 
-/// Apply every chart's edits, all of them or none.
+/// Applies every chart's edits, all of them or none.
 ///
 /// Every splice of every chart is planned first, reading each file once, and the whole set is
 /// handed to [`files::write_all`], which refuses a file that resolves outside its chart and

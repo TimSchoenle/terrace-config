@@ -50,9 +50,9 @@ pub(super) const CONSTRAINT_FOLDED: [&str; 13] = [
 
 /// A JSON Schema constraint object, as a phrase.
 ///
-/// Bounds are folded into one range because that is how they are read — `0 to 65535`, not `integer,
-/// minimum 0, maximum 65535` — and an unrecognised keyword is printed rather than dropped, so a
-/// vocabulary this renderer does not know still reaches the reader.
+/// Bounds are folded into one range because that is how they are read (`0 to 65535`, not
+/// `integer, minimum 0, maximum 65535`), and an unrecognised keyword is printed rather than
+/// dropped, so a vocabulary this renderer does not know still reaches the reader.
 ///
 /// Recurses, as of `schema_version: 2`. A container-typed key carries what one element holds under
 /// `items` or `additionalProperties`, and printing that as raw JSON turns the one line an operator
@@ -156,7 +156,7 @@ pub fn describe_constraint(constraint: Option<&Json>) -> String {
 
 /// What a producer's refinements added to a constraint, each in the words a reader acts on.
 pub(super) fn said_refinements(schema: &Map<String, Json>, parts: &mut Vec<String>) {
-    // A map's required entries — `required` beside no `properties`, which a producer's refinement
+    // A map's required entries: `required` beside no `properties`, which a producer's refinement
     // puts there. A struct's `required` stays folded into its fields line, which marks each one.
     let entries = crate::document::required_entries_of(schema);
     if !entries.is_empty() {

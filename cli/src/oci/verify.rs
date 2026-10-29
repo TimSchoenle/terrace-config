@@ -82,7 +82,7 @@ impl fmt::Display for ImageFault {
 ///
 /// # Errors
 /// [`Error::Invalid`] when the registry cannot be read, when the platforms of one index disagree
-/// about their labels or the file they embed, or when an attached carrier is malformed — more than
+/// about their labels or the file they embed, or when an attached carrier is malformed: more than
 /// one referrer, a manifest that is not one layer, or a blob that does not hash to its descriptor.
 /// Each of those leaves the question unanswerable rather than answered no.
 pub fn verify_image(
@@ -139,10 +139,10 @@ pub struct Reference {
 }
 
 impl Reference {
-    /// Split a reference, `REPOSITORY[:TAG][@DIGEST]`.
+    /// Splits a reference, `REPOSITORY[:TAG][@DIGEST]`.
     ///
-    /// A registry reference must be fully qualified — `docker.io/library/redis:7`, not `redis:7`.
-    /// A registry client reads a bare first segment as a host name, so `redis:7` would be looked up
+    /// A registry reference must be fully qualified: `docker.io/library/redis:7`, not `redis:7`. A
+    /// registry client reads a bare first segment as a host name, so `redis:7` would be looked up
     /// as the host `redis`; refusing it here says so instead of reporting an unreachable host. An
     /// OCI image layout's path is taken as written.
     ///

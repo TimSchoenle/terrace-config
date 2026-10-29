@@ -6,7 +6,7 @@ use terrace_contract::report::Report;
 
 use crate::args::Output;
 
-/// Write a report the way the caller asked for, and decide the exit code.
+/// Writes a report the way the caller asked for, and decides the exit code.
 ///
 /// The rules returned findings and decided none of this. Which is the whole split: a build script, a
 /// test or a plugin calls the same code and never goes through a process.
@@ -57,7 +57,7 @@ pub(crate) fn write_report(
     ExitCode::FAILURE
 }
 
-/// Print a list of findings, or say nothing and succeed.
+/// Prints a list of findings, or says nothing and succeeds.
 pub(crate) fn report_lines(findings: &[String], headline: &str) -> ExitCode {
     if findings.is_empty() {
         return ExitCode::SUCCESS;
