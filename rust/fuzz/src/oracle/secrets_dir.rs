@@ -168,27 +168,54 @@ struct Model {
     fatal: bool,
     /// Two spellings normalised to one key, so the winner is directory read order.
     ambiguous: bool,
-    /// How many copies of the sentinel's body a directive legitimately put under each key. The
-    /// loaded configuration may carry the body this many times in total, and not once more: one
-    /// more is the planted file, leaked.
+    /// How many copies of the sentinel's body a file directive legitimately put under each key.
     sentinel_counts: BTreeMap<String, usize>,
+    /// The plain environment as the loader sees it: each variable's last value, by name.
+    env_values: BTreeMap<String, String>,
 }
 
 impl Model {
-    /// Records that `key` may legitimately carry the sentinel's body `copies` times.
+    /// Records that a file directive put the sentinel's body under `key`.
     ///
-    /// Keeps the larger count when two spellings normalise to one key, because the winner is then
-    /// read order, and the bound must hold for either.
-    fn allow_sentinel(&mut self, key: String, copies: usize) {
-        if copies > 0 {
-            let allowed = self.sentinel_counts.entry(key).or_default();
-            *allowed = (*allowed).max(copies);
-        }
+    /// A file value is one string, so a key holds at most one copy, whichever of two spellings
+    /// normalising to it wins the read order.
+    fn allow_sentinel(&mut self, key: String) {
+        self.sentinel_counts.insert(key, 1);
+    }
+
+    /// Records a plain environment variable, replacing an earlier value of the same variable.
+    ///
+    /// Keyed by the name the platform compares: Windows names are case-insensitive, so `TEST_a`
+    /// there replaces `TEST_A`, while on Linux both reach the loader. See `is_reserved`.
+    fn set_env(&mut self, name: &str, value: &str) {
+        let name = if cfg!(windows) {
+            name.to_ascii_uppercase()
+        } else {
+            name.to_owned()
+        };
+        self.env_values.insert(name, value.to_owned());
     }
 
     /// The most copies of the sentinel's body the loaded configuration may legitimately carry.
+    ///
+    /// Environment copies are counted in each surviving variable's value as
+    /// `figment::providers::Env` parses it: it unquotes `"..."` and expands `[a, b]` and
+    /// `{k = v}`, so one variable can carry the body several times. Summing over every variable
+    /// that reaches the loader covers two spellings of one key whose tables merge. Where two such
+    /// values replace rather than merge, the sum allows a copy that is gone, so the bound is an
+    /// upper bound there and exact everywhere else.
     fn sentinel_bound(&self) -> usize {
-        self.sentinel_counts.values().sum()
+        let env: usize = self
+            .env_values
+            .values()
+            .map(|value| {
+                let parsed = value
+                    .parse::<Value>()
+                    .unwrap_or_else(|never| match never {});
+                count_value(&parsed, SENTINEL_BODY)
+            })
+            .sum();
+        self.sentinel_counts.values().sum::<usize>() + env
     }
 
     /// Whether any key arrives through more than one mechanism.
@@ -248,7 +275,7 @@ pub fn check(data: &str) {
                         Verdict::Fatal => model.fatal = true,
                         Verdict::Key(key) => {
                             if carries_sentinel(&content) {
-                                model.allow_sentinel(key.clone(), 1);
+                                model.allow_sentinel(key.clone());
                             }
                             // Two names normalising to one key (`AUTH` and `auth`) leave the
                             // winner to directory read order, which is not a property.
@@ -276,7 +303,7 @@ pub fn check(data: &str) {
                         continue;
                     }
                     if carries_sentinel(&content) {
-                        model.allow_sentinel(key_path(suffix), 1);
+                        model.allow_sentinel(key_path(suffix));
                     }
                     if model.indirect.insert(key_path(suffix), content).is_some() {
                         model.ambiguous = true;
@@ -298,13 +325,7 @@ pub fn check(data: &str) {
                         continue;
                     }
                     jail.env(&name, value);
-                    // Counted in the value `figment::providers::Env` produces, not in the raw
-                    // text: it unquotes `"..."` and expands `[a, b]` and `{k = v}`, so one
-                    // variable can carry the body several times, or once without matching it.
-                    let parsed = value
-                        .parse::<Value>()
-                        .unwrap_or_else(|never| match never {});
-                    model.allow_sentinel(key_path(suffix), count_value(&parsed, SENTINEL_BODY));
+                    model.set_env(&name, value);
                     model.env.insert(key_path(suffix));
                 }
             }
