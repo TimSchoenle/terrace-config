@@ -56,7 +56,7 @@ oci = ["dep:sha2", "dep:flate2", "dep:tar"]
 
 [[bin]]
 name = "terrace-contract"
-path = "src/bin/main.rs"
+path = "src/bin/terrace-contract/main.rs"
 required-features = ["cli"]
 
 [dependencies]

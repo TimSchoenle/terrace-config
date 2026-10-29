@@ -185,7 +185,7 @@ pub fn contracted_charts(charts: &Path) -> Result<Vec<(PathBuf, Declaration)>, E
 ///
 /// # Errors
 /// [`Error::Invalid`] when a vendored contract cannot be read.
-pub fn declared_secrets(
+pub fn declared_credentials(
     chart_dir: &Path,
     declaration: &Declaration,
 ) -> Result<Vec<Declared>, Error> {
@@ -296,7 +296,7 @@ pub fn credentials(declared: &[Declared]) -> Vec<Credential> {
 pub fn inventory(charts: &Path) -> Result<Vec<Declared>, Error> {
     let mut found = Vec::new();
     for (chart_dir, declaration) in contracted_charts(charts)? {
-        found.extend(declared_secrets(&chart_dir, &declaration)?);
+        found.extend(declared_credentials(&chart_dir, &declaration)?);
     }
     Ok(found)
 }
@@ -798,7 +798,7 @@ fn collect(
     values_files: &[String],
     surface: &mut Surface,
 ) -> Result<(), Error> {
-    for credential in credentials(&declared_secrets(chart_dir, declaration)?) {
+    for credential in credentials(&declared_credentials(chart_dir, declaration)?) {
         // Delivered by any one of the images that declare it is delivered: the credential is one
         // artefact an operator creates, and the report is about that artefact existing. Which image
         // reads it where is the over-projection question, one report down.

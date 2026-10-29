@@ -618,7 +618,7 @@ impl Init {
                 "    {} setting(s) surfaced as chart values, {} credential(s) delivered as files, \
                  {} key(s) written off\n",
                 plan.projected.len(),
-                plan.secrets.len(),
+                plan.credentials.len(),
                 plan.written_off.len()
             );
             steps.push(
@@ -643,7 +643,7 @@ impl Init {
                     self.invented.join(", ")
                 ));
             }
-            if !plan.secrets.is_empty() || !plan.written_off.is_empty() {
+            if !plan.credentials.is_empty() || !plan.written_off.is_empty() {
                 steps.push(format!(
                     "Read the `unbound` reasons in {shown}/{DECLARATION}. Each is defensible and \
                      none is considered."

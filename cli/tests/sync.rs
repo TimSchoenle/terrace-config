@@ -1,6 +1,6 @@
 //! `scope`, `sync` and `diff`, through the binary, against a real Git repository: which charts a
 //! change selects, which steps a run takes, which revision a comparison reads, and which exit code a
-//! pipeline sees.
+//! pipeline sees. Also what the gate steps a run takes print when they examine nothing.
 
 #![cfg(feature = "cli")]
 
@@ -403,4 +403,25 @@ fn diff_reads_the_base_revision_of_a_chart_tree_below_the_repository_root() {
             "{parent}: {shown}"
         );
     }
+}
+
+#[test]
+fn shapes_check_over_charts_without_a_shape_says_it_checked_nothing() {
+    let repository = Repository::new();
+    let output = repository.run(&["shapes", "--check"]);
+    let shown = text(&output);
+    assert_eq!(code(&output), 0, "{shown}");
+    assert!(shown.contains("nothing to check"), "{shown}");
+    assert!(!shown.contains("all current"), "{shown}");
+}
+
+#[test]
+fn check_with_json_output_prints_only_the_report_when_no_chart_is_contracted() {
+    let repository = Repository::new();
+    std::fs::create_dir_all(repository.path().join("rendered")).expect("render dir");
+    let output = repository.run(&["check", "--format", "json"]);
+    assert_eq!(code(&output), 0, "{}", text(&output));
+    let report: Json =
+        serde_json::from_slice(&output.stdout).expect("stdout holds one JSON document");
+    assert!(report["findings"].is_array(), "{report}");
 }
