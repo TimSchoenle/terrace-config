@@ -159,9 +159,12 @@ refusing text the loader accepts stops a correct deployment. `text_form` names t
 applies before the range check, and it separates "any text is fine" (`text`) from "nothing could be
 determined" (`unknown`).
 
-A key whose `text_form` is not `text` cannot be supplied by a secrets file or a `_FILE` target at
-all, because those layers deliver strings and the loader does not coerce them. Gate 3 decides this
-from `text_form` alone.
+A secrets file and a `_FILE` target deliver strings, and the loader does not coerce them, so a key
+whose `constraint` is not a string type cannot be supplied by either. That is the rule the Rust
+guidance states ([`CONTRACT.md`](../rust/docs/CONTRACT.md)), and it admits a string key whose
+environment parse is `text_form: unknown`, such as an address. Gate 3 is deliberately stricter: it
+accepts only `text_form: text`, because nothing says how a loader reads an `unknown` key, and a
+false report on a mount costs one review comment where a missed one leaves a credential unread.
 
 ### What the document cannot say
 
@@ -387,8 +390,8 @@ the gate can enumerate. Every such file at the secrets directory must spell some
 that spells a key must be named by a `_FILE` variable, or nothing reads it. A variable gate 2
 classified as a key's `env_file` must, when the manifest carries its value, point inside a mounted
 volume; a `valueFrom` path exists only at run time and is not checked. Any other `*_FILE` variable
-is gate 2's to account for. The key a file supplies must have `text_form: text`,
-because a file's contents reach the loader as a string with no parse.
+is gate 2's to account for. The key a file supplies must have `text_form: text` (stricter than the
+`constraint` rule above), because a file's contents reach the loader as a string with no parse.
 
 **Gate 4, the real loader.** The service binary loads the rendered configuration with its real
 types, defaults and shadow policy, and exits non-zero with the loader's own message. It needs an
