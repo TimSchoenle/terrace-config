@@ -53,8 +53,10 @@ types ──> Schema ──> Contract ──JSON──> render   markdown, toml,
                                         …
 ```
 
-Everything left of the arrow needs the language's toolchain and is per-language. Everything right of
-it needs a JSON document and nothing else. A new implementation's obligation is therefore one
+Everything left of the arrow needs the language's toolchain and is per-language. The document,
+rendering and conformance layer right of it needs a JSON document and nothing else; the image and
+chart commands also need the image, a registry or a rendered chart, but never the producer's
+language. A new implementation's obligation is therefore one
 sentence: **emit a document that passes `terrace-contract conform --tier <n>`.** It writes no
 renderer, no validator and no conformance kit. Passing `conform` is the document's half of a tier,
 not the whole claim: tier 1 also needs the implementation's reads documented in
@@ -272,7 +274,10 @@ right and the other is a bug.
 
 ## Renderings are artefacts of the spec
 
-Every rendering is a pure function of the document, so the corpus carries the rendered bytes:
+Every rendering is a pure function of the document and its rendering options, so the corpus
+carries the rendered bytes for one fixed set of options: the default columns, the default JSON
+Schema and TOML example settings, and the default in-image path for the labels and the Dockerfile
+block:
 
 ```text
 spec/v1/conformance/<case>/
@@ -286,9 +291,10 @@ spec/v1/conformance/<case>/
 The goldens have one author, the Rust reference implementation's `TERRACE_SPEC_BLESS` run (the
 command is in `spec/v1/CONFORMANCE.md`). `terrace-contract` renders the same documents and is
 checked against those bytes, never blessing them, as is anything else that renders, so a drift is a
-failing test in the implementation that drifted. A Java service's README table and a Rust service's
-are the same bytes, which `CONFORMANCE.md` says the document itself can reach only between
-implementations sharing a loader and a type mapping.
+failing test in the implementation that drifted. Rendering is shared, so two documents that are
+equal render to equal bytes whichever language produced them. The documents themselves are equal
+only between implementations sharing a loader and a type mapping, which is why `CONFORMANCE.md`
+gives Java its own goldens: its type names and JSON Schema rendering differ from Rust's.
 
 ## Reading documents this repository did not write
 
@@ -361,8 +367,10 @@ correct and absent from the document.
 **Gate 2, the environment.** Per container, against that container's own image's contract, because a
 variable only a sibling image reads is the defect this gate exists for. Every variable is
 classified by an ordered list, first match wins, and the step rejecting an unaccounted prefixed
-variable sits above both external lists. A value is checked against `text_constraint`, then parsed
-as `text_form` says and checked against `constraint`. The gate also finds a key supplied by two
+variable sits above both external lists. A value the manifest carries is checked against
+`text_constraint`, then parsed as `text_form` says and checked against `constraint`. A `valueFrom`
+entry is classified by its name, but its value exists only when the pod runs, so it is not
+checked. The gate also finds a key supplied by two
 layers at once, aliases included, which the loader refuses at boot, and names both spellings. When
 an unaccounted variable looks like a service link and the pod does not set
 `enableServiceLinks: false`, the message says so.

@@ -304,7 +304,7 @@
           "type": ["string", "null"]
         },
         "required": {
-          "description": "Whether some layer must supply the key. Not JSON Schema's `required`, which asks whether one document carries it: a required secret is supplied by a mounted file and the rendered document does not carry it at all.",
+          "description": "Whether some layer must supply the key. Not JSON Schema's `required`, which asks whether one document carries it: a required secret is supplied by a mounted file, the recommended way, or by the environment, and the rendered document does not carry it at all.",
           "type": "boolean"
         },
         "secret": {
