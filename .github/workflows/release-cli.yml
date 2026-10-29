@@ -3,7 +3,7 @@ name: release-cli
 # Publishing `terrace-contract`: §9 of `docs/contract-cli-plan.md`, as a pipeline.
 #
 # The crate is `publish = false` and stays so. What a consuming build actually wants is a binary or
-# an image — no toolchain, no compile, no platform detection — so the artefacts are the release, and
+# an image (no toolchain, no compile, no platform detection), so the artefacts are the release, and
 # crates.io would only be a third name for the same thing.
 #
 # Two channels, from one set of bytes:
@@ -13,7 +13,7 @@ name: release-cli
 #
 # The image is built *from the binaries this workflow already produced* rather than compiled again
 # inside it. A `cargo build` per architecture under emulation costs an hour where a `COPY` costs a
-# second — and, more importantly, the bytes in the image are then the same bytes the release
+# second. More importantly, the bytes in the image are then the same bytes the release
 # attached and cosign signed, where a second build would produce a second artefact nobody verified
 # against the first.
 #
@@ -23,13 +23,13 @@ name: release-cli
 #
 # Called by `release-please.yaml` once it has cut the `cli` package's tag, and callable by hand
 # against a tag that already exists. It publishes what that tag names and never decides what to
-# release — the version, the changelog and the tag are release-please's, and a publisher that also
+# release: the version, the changelog and the tag are release-please's, and a publisher that also
 # chose a version would be a second place the version lives.
 
 on:
   # Called by `release-please.yaml` in the same run that cut the tag, rather than triggered by the
   # tag landing. The two differ in one way that matters: a called workflow is part of the release
-  # run, so the release either happened or it did not — where a separate tag-triggered run can
+  # run, so the release either happened or it did not, where a separate tag-triggered run can
   # succeed at tagging and fail at publishing, leaving a tag nobody can install.
   workflow_call:
     inputs:
@@ -38,8 +38,8 @@ on:
         required: true
         type: string
 
-  # And by hand, against a tag that already exists: a publish that failed halfway — a registry
-  # outage, an expired token — is re-run rather than re-tagged. Dispatched from `main` only; the
+  # And by hand, against a tag that already exists: a publish that failed halfway (a registry
+  # outage, an expired token) is re-run rather than re-tagged. Dispatched from `main` only; the
   # `resolve` job below refuses any other ref.
   workflow_dispatch:
     inputs:
@@ -50,7 +50,7 @@ on:
 
 # A release must never be cancelled halfway: the assets, the image and the two signatures are
 # separate API calls, and a cancellation between them leaves a state no rerun can infer. Named for
-# this workflow rather than `github.workflow`, which for a called workflow is the *caller's* name —
+# this workflow rather than `github.workflow`, which for a called workflow is the *caller's* name,
 # so the group would otherwise be the release run's own, and a publish would cancel nothing but
 # would sit behind it.
 concurrency:
@@ -71,7 +71,7 @@ jobs:
   # ----------------------------------------------------------------------------------------------
   #
   # The signing certificate names this workflow file at the ref the run started from, never the
-  # commit that was checked out — so a run on `main` signs as `release-cli.yml@refs/heads/main`
+  # commit that was checked out, so a run on `main` signs as `release-cli.yml@refs/heads/main`
   # whatever it built, and what it builds has to be something `main` released. Three checks,
   # before any job builds or holds a write token:
   #
@@ -138,7 +138,7 @@ jobs:
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
   # ----------------------------------------------------------------------------------------------
-  # 9.2 — the binaries
+  # 9.2: the binaries
   # ----------------------------------------------------------------------------------------------
   build:
     name: build (${{ matrix.target }})
@@ -158,7 +158,7 @@ jobs:
             os: ubuntu-latest
             arch: amd64
           # ARM runners, and the image's second architecture. Built *natively*, on an ARM
-          # runner, rather than cross-compiled from the amd64 one — and that is not a preference.
+          # runner, rather than cross-compiled from the amd64 one, and that is not a preference.
           # `cross` runs the compiler inside a container that mounts the crate's workspace root,
           # which here is `cli/`; `validate.rs` embeds `spec/v1/contract.schema.json` from the
           # repository root, a directory that is then not in the container at all, and the build
@@ -246,7 +246,7 @@ jobs:
             echo "asset=${stem}.tar.gz" >> "$GITHUB_OUTPUT"
           fi
 
-      # The bare binary as well, for the two architectures the image is built from — kept separate
+      # The bare binary as well, for the two architectures the image is built from, kept separate
       # from the archive so the image build is a `COPY` rather than an unpack.
       - name: Stage the image binary
         if: matrix.arch != ''
@@ -274,7 +274,7 @@ jobs:
           retention-days: 1
 
   # ----------------------------------------------------------------------------------------------
-  # 9.2 — the release, its checksums and their signatures
+  # 9.2: the release, its checksums and their signatures
   # ----------------------------------------------------------------------------------------------
   release:
     name: release
@@ -301,7 +301,7 @@ jobs:
           path: dist
 
       # One file over all of them, rather than one `.sha256` each. It is what a consumer checks in
-      # one command, and it is the file the signature is over — so a tampered archive fails the
+      # one command, and it is the file the signature is over, so a tampered archive fails the
       # checksum and a tampered checksum file fails the signature.
       - name: Checksums
         working-directory: dist
@@ -344,7 +344,7 @@ jobs:
 
       # `--clobber` stays, for the re-run the trigger above documents: a publish that failed after
       # uploading some assets must be able to replace them on the next attempt. What it can
-      # overwrite is bounded by `resolve` — only a `main` run, only an existing release tag, and only
+      # overwrite is bounded by `resolve`: only a `main` run, only an existing release tag, and only
       # bytes built from that tag's commit on `main`.
       - name: Attach
         env:
@@ -353,8 +353,8 @@ jobs:
         run: gh release upload "$TAG" dist/* --clobber --repo "$REPOSITORY"
 
       # §9.3's composite action lives in another repository, and a consumer of it pins a version
-      # there rather than here. What this owes it is a release whose asset names are derivable —
-      # `terrace-contract-<version>-<target>.<ext>` beside one `SHA256SUMS` and its signature —
+      # there rather than here. What this owes it is a release whose asset names are derivable:
+      # `terrace-contract-<version>-<target>.<ext>` beside one `SHA256SUMS` and its signature,
       # which is what the step above just attached, and what the summary below states so that a
       # person writing an installer does not have to open the release page to learn the shape.
       - name: Say what a consumer can now pin
@@ -383,7 +383,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ----------------------------------------------------------------------------------------------
-  # 9.1 — the container image
+  # 9.1: the container image
   # ----------------------------------------------------------------------------------------------
   image:
     name: image

@@ -1,6 +1,6 @@
 # The macro crate is a member rather than a workspace of its own: it is version-locked to this
 # one, so `cargo fmt --all`, `cargo clippy --workspace` and a single `Cargo.lock` covering both
-# is exactly the coupling that already exists. (`fuzz/` is the opposite case — see its manifest.)
+# is exactly the coupling that already exists. (`fuzz/` is the opposite case; see its manifest.)
 [workspace]
 members = ["macros"]
 
@@ -47,24 +47,24 @@ loader = ["dep:figment", "dep:serde"]
 # reason to compile `serde_derive` on this crate's account.
 #
 # `regex` is the one engine a pattern refinement is checked with. A refinement's pattern is held to a
-# portable subset before it is published, and a default is held to the refined constraint — which
+# portable subset before it is published, and a default is held to the refined constraint, which
 # means matching a name or a value against that pattern here, in the crate, rather than trusting it.
 schema = ["loader", "serde/derive", "dep:serde_json", "dep:terrace-config-macros", "dep:regex"]
 # `schema-cli` is the generator every consumer of `schema` was writing by hand: the `--format`
 # vocabulary, the argument parsing, the dispatch across the six renderings, and the two readers
 # that check a built image against what was generated. It costs no dependency `schema` did not
-# already pull — it is a feature so that a service which links `schema` to render a table at
+# already pull. It is a feature so that a service which links `schema` to render a table at
 # runtime does not also compile an argument parser it will never call.
 schema-cli = ["schema"]
 # `testing` is an add-on to `loader` in the same way `schema` is, and for the same reason: every
-# affordance it has is one of the loader's layers — a secrets directory, TOML fragments, `_FILE`
-# indirection — and every name it writes is derived from the loader's own `Dialect`. It belongs in
+# affordance it has is one of the loader's layers (a secrets directory, TOML fragments, `_FILE`
+# indirection), and every name it writes is derived from the loader's own `Dialect`. It belongs in
 # a consumer's `[dev-dependencies]`; it is deliberately **not** part of `full`, so that a service
 # asking for everything the crate does at runtime does not link a test harness.
 #
 # `figment/test` supplies the process-wide lock, the temporary directory and the save/restore of
 # the environment. `std::env::set_var` is `unsafe` in edition 2024 and this crate forbids unsafe
-# code, so `figment::Jail` is not a convenience here — it is the only way in.
+# code, so `figment::Jail` is not a convenience here: it is the only way in.
 #
 # `tokio?/rt` is weak on purpose: it reads as "if tokio is being compiled anyway, add `rt`", which
 # is what `Jail::block_on` needs, without `testing` pulling tokio in for a consumer who does not
@@ -74,8 +74,8 @@ testing = ["loader", "figment/test", "tokio?/rt"]
 # `explain` is the third add-on to `loader`, and the only feature in this manifest that costs no
 # dependency at all. It is a feature anyway, for the reason the rest of the crate is split: a
 # service that loads its configuration and never reports on it should not carry the reporting.
-# What it carries is not trivial — a second walk of every layer, a `Display` over all of it, and
-# the strings that render it — and it is dead weight in an image that will never print one.
+# What it carries is not trivial: a second walk of every layer, a `Display` over all of it, and
+# the strings that render it. It is dead weight in an image that will never print one.
 #
 # Unlike `testing`, it *is* part of `full`: printing where a value came from is something a
 # service does at runtime, in the log it was already writing at boot.
@@ -114,7 +114,7 @@ tracing = { version = "0.1", optional = true }
 figment = { version = "=0.10.19", features = ["toml", "env", "test"] }
 # The spec conformance suite in `tests/spec.rs`: `spec/v1/contract.schema.json` is the document a
 # second implementation is held to, and a meta-schema nothing validates against drifts from the
-# implementation it was written from. Default features off — they pull `reqwest` and a TLS stack
+# implementation it was written from. Default features off: they pull `reqwest` and a TLS stack
 # to resolve remote `$ref`s, and the meta-schema deliberately has none.
 jsonschema = { version = "=0.60.1", default-features = false }
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -122,8 +122,8 @@ secrecy = { version = "=0.10.3", features = ["serde"] }
 tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread", "time", "test-util"] }
 tokio-util = "=0.7.20"
 
-# Declared on the workspace and inherited by both members, so the macro crate — which writes the
-# code every consumer compiles — cannot be held to a looser standard than the crate it writes it
+# Declared on the workspace and inherited by both members, so the macro crate, which writes the
+# code every consumer compiles, cannot be held to a looser standard than the crate it writes it
 # for.
 [lints]
 workspace = true
@@ -159,14 +159,14 @@ doc_include_without_cfg = "warn"
 must_use_candidate = "allow"
 
 [workspace.lints.rustdoc]
-# A broken intra-doc link renders as literal `[`Foo`]` text — invisible to anyone reading the
+# A broken intra-doc link renders as literal `[`Foo`]` text, invisible to anyone reading the
 # rendered page, and this crate's doc comments are the artefact being reused.
 broken_intra_doc_links = "deny"
 private_intra_doc_links = "warn"
 unescaped_backticks = "warn"
 
 # The shape a documentation job takes, kept compiling by `cargo clippy --all-targets` rather
-# than by a README that says what it used to look like.
+# than by a README describing it.
 [[example]]
 name = "config-schema"
 required-features = ["schema-cli"]

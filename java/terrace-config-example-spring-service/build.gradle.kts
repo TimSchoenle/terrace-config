@@ -2,7 +2,7 @@
 // terrace-config-example-service, this time configured through Spring's own `Binder` rather than
 // the vanilla loader. `OrdersPropertiesBindingTest` and
 // `OrdersServiceFileIndirectionIntegrationTest` exercise this module's own `OrdersProperties`
-// through a real Spring context, so — like the other two examples — it is kept correct by real
+// through a real Spring context, so, like the other two examples, it is kept correct by real
 // assertions, not merely by compiling. `OrdersProperties` is also `@TerraceConfig`, so the
 // `de.timscho.terrace-config` plugin emits `contract.json` from it through `SpringContractMain` at
 // build time, and `terraceContractCheck` (part of `check`) fails when the committed copy drifts.
@@ -23,7 +23,7 @@ terraceContract {
 
 dependencies {
     // The `_FILE` indirection `EnvironmentPostProcessor`, `SpringDialect` and
-    // `SpringContractProducer` — everything a service takes from this contract beyond plain
+    // `SpringContractProducer`: everything a service takes from this contract beyond plain
     // Spring Boot. `application.yml`/environment-variable binding itself needs no dependency on
     // it at all.
     implementation(project(":terrace-config-spring-boot"))

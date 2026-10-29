@@ -172,8 +172,8 @@ jobs:
           name: ${{ matrix.workspace }}
 
   # A build of each feature set on its own, with no dev-dependencies in the graph. This is the
-  # job that catches a feature only unified in by a dev-dependency — `tokio/macros` was exactly
-  # that, and `cargo test --all-features` passed while `cargo doc` did not.
+  # job that catches a feature only unified in by a dev-dependency, as `tokio/macros` once was:
+  # `cargo test --all-features` passed while `cargo doc` did not.
   features:
     name: features (${{ matrix.features }})
     runs-on: ubuntu-latest
@@ -243,7 +243,7 @@ jobs:
   # Two things run here. The replay suite is the gate: it re-runs every committed seed and a
   # deterministic sweep through the oracles on a plain `cargo test`, no sanitizer involved, and a
   # reproducer promoted into `corpus/` keeps being checked forever. The short campaign after it is
-  # a smoke test that the libFuzzer plumbing still links — not a hunt; a real hunt is a human
+  # a smoke test that the libFuzzer plumbing still links, not a hunt; a real hunt is a human
   # running `cargo fuzz run` for hours.
   fuzz:
     name: fuzz
@@ -295,7 +295,7 @@ jobs:
 
   # The crate is distributed as a git dependency with no `path` component, relying on Cargo's
   # search of the whole repository for a package named `terrace-config`. This is the only check
-  # that the published install snippet — a bare `{ git = "..." }` with no `path` key — actually
+  # that the published install snippet (a bare `{ git = "..." }` with no `path` key) actually
   # resolves now that the package lives under `rust/`. Keep it permanently; it is cheap and it is
   # the one thing that must never regress silently.
   consumer-smoke-test:
@@ -455,8 +455,8 @@ jobs:
         with:
           command: check
           manifest-path: rust/Cargo.toml
-      # `cli/` is a second workspace and a second dependency tree — an archive reader, a hash, a
-      # YAML reader, a schema validator — none of which this action would see from the root.
+      # `cli/` is a second workspace and a second dependency tree (an archive reader, a hash, a
+      # YAML reader, a schema validator), none of which this action would see from the root.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
@@ -557,7 +557,7 @@ jobs:
       # `cli/` is a workspace of its own, so the `doc`, `deny` and `msrv` jobs above run at the
       # repository root and never reach it. Without these three steps its `[lints.rustdoc]` table
       # is enforced by nothing, its dependencies are licence- and advisory-checked by nothing, and
-      # its own `rust-version` is checked by nothing — the same gap the fuzz job records for
+      # its own `rust-version` is checked by nothing: the same gap the fuzz job records for
       # `fuzz/`, one workspace over.
       - name: doc
         working-directory: cli
@@ -569,7 +569,7 @@ jobs:
       # The fuzz crate is a third workspace, and its oracles are the only thing checking that a
       # rendering keeps its own promise on documents nobody wrote: that the TOML file parses, that
       # a Markdown row has its header's column count, that a placeholder's shape comes from
-      # `constraint` rather than from `ty`. It replays without libFuzzer on purpose — an oracle
+      # `constraint` rather than from `ty`. It replays without libFuzzer on purpose: an oracle
       # that only runs under a nightly sanitizer is an oracle nobody checks.
       - name: fuzz oracles
         run: cargo test

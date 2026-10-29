@@ -16,7 +16,7 @@ cargo-fuzz = true
 
 # The oracles live in a library, not in the target binaries. `cargo fuzz` needs
 # `-Z sanitizer=address`, which is nightly-only and on Windows needs a runtime that ships with
-# Visual Studio rather than with rustup — an oracle that can only run under that toolchain is an
+# Visual Studio rather than with rustup, and an oracle that can only run under that toolchain is an
 # oracle nobody checks. With the bodies here, `tests/seeds.rs` replays the whole committed corpus
 # on a plain `cargo test`, anywhere, and the fuzzer's job is to find new inputs to add to it.
 [lib]
@@ -40,7 +40,7 @@ terrace-config = { path = "..", features = ["full", "testing"] }
 serde_json = "1"
 
 # Versions restated rather than inherited: this is a workspace of its own, so `workspace = true`
-# has nothing to resolve against. They must not drift *downwards* from the root manifest — a
+# has nothing to resolve against. They must not drift *downwards* from the root manifest: a
 # target extracting through an older figment than the crate does is measuring the wrong parser.
 #
 # No `test` feature: the jail every oracle runs in comes from `terrace_config::testing` now, and

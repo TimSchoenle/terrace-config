@@ -1,8 +1,8 @@
 // Applied by every module under java/ (directly, or transitively through
-// terrace-config.lombok-conventions). Replaces what used to be the root java/build.gradle.kts's
-// `subprojects { ... }` block: same Java 25 toolchain, UTF-8 encoding, JUnit 5 + AssertJ test
-// dependencies, and the JetBrains annotations vocabulary, for every module, just expressed once
-// here instead of via cross-project configuration. See java/README.md's "buildSrc" section.
+// terrace-config.lombok-conventions): the Java 25 toolchain, UTF-8 encoding, the documentation
+// gate, JUnit 5 + AssertJ test dependencies, the JetBrains annotations vocabulary, Checkstyle and
+// Spotless, for every module, expressed once here instead of through cross-project
+// configuration. See java/README.md's "buildSrc" section.
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.plugins.quality.Checkstyle
 
@@ -14,7 +14,7 @@ plugins {
 
 // Precompiled script plugins can't use the type-safe `libs.xxx` accessors (Gradle has to assume
 // the plugin might be applied to a project with a different catalog shape), only this
-// lower-level, string-keyed lookup — see java/README.md's "buildSrc" section.
+// lower-level, string-keyed lookup; see java/README.md's "buildSrc" section.
 val libs = extensions.getByType(VersionCatalogsExtension::class.java).named("libs")
 
 repositories {
@@ -76,7 +76,7 @@ dependencies {
 }
 
 // `@Contract`, `@Unmodifiable`, `@Blocking`/`@NonBlocking`, `@VisibleForTesting` and the rest of
-// the IntelliJ inspection vocabulary jspecify doesn't cover -- see the catalog entry in
+// the IntelliJ inspection vocabulary jspecify doesn't cover; see the catalog entry in
 // gradle/libs.versions.toml for why every module, including terrace-config-annotations, takes
 // this uniformly and only as `compileOnly`: CLASS retention means it is never a runtime
 // requirement, so unlike jspecify (see each module's own dependencies block) there is no
@@ -94,10 +94,10 @@ checkstyle {
     toolVersion = libs.findVersion("checkstyle").get().requiredVersion
     // checkstyleMain runs the "library" tier ruleset straight from its canonical JitPack
     // publication (com.github.TimSchoenle.actions:checkstyle-library, built from TimSchoenle/
-    // actions:configs/checkstyle/library — see the catalog comment on checkstyle-library-ruleset
+    // actions:configs/checkstyle/library; see the catalog comment on checkstyle-library-ruleset
     // for why the coordinate isn't the de.timscho one that repo's own README documents) instead of
     // a locally vendored copy, so a rule change there only needs a version bump in
-    // gradle/libs.versions.toml to take effect — no hand-synced duplicate file to keep in step,
+    // gradle/libs.versions.toml to take effect, with no hand-synced duplicate file to keep in step,
     // and unlike fetching straight from `main`, the version is pinned and reviewable like any
     // other dependency bump.
     //
@@ -106,7 +106,7 @@ checkstyle {
     // reference inside checkstyle.xml pre-rewritten to `classpath:/...` at publish time. So unlike
     // a `configDirectory`-based setup, nothing needs vendoring here: Checkstyle resolves those
     // suppression files against the jar itself, provided the jar is on the same classpath as the
-    // checkstyle tool at runtime — see the `checkstyle` configuration dependency below.
+    // checkstyle tool at runtime; see the `checkstyle` configuration dependency below.
     config = resources.text.fromArchiveEntry(checkstyleConfig, "checkstyle.xml")
     isIgnoreFailures = false
     maxWarnings = 0
@@ -133,11 +133,10 @@ spotless {
     java {
         palantirJavaFormat(libs.findVersion("palantir-java-format").get().requiredVersion)
         formatAnnotations()
-        // One flat, alphabetically-sorted block with no blank-line separation — matches
-        // checkstyleMain's JitPack-consumed "library" tier ImportOrder (groups="/.*/", so every
-        // import falls into the same single group; see terrace-config.java-conventions'
-        // checkstyle block). Previously grouped java/javax/de.timscho with blank lines between
-        // them, which that check's single-group expectation doesn't recognize as valid separation.
+        // One flat, alphabetically sorted block with no blank-line separation, matching
+        // checkstyleMain's "library" tier ImportOrder (groups="/.*/", so every import falls into
+        // the same single group; see the checkstyle block above). That check does not accept blank
+        // lines between groups as separation.
         importOrder("")
         removeUnusedImports()
         trimTrailingWhitespace()

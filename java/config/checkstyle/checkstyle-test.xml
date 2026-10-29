@@ -34,7 +34,7 @@
         <module name="SuppressWarningsHolder"/>
 
         <!-- ============================== Imports ============================== -->
-        <!-- NOT enabled: CustomImportOrder/ImportOrder — see checkstyle.xml's Imports section for
+        <!-- NOT enabled: CustomImportOrder/ImportOrder; see checkstyle.xml's Imports section for
              why (it mismatches Spotless's own static-import placement, which is what actually
              governs import grouping here). -->
         <module name="AvoidStarImport"/>
