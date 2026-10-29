@@ -44,7 +44,7 @@ use terrace_config::testing::Harness;
 use terrace_config::{ShadowPolicy, Terrace};
 
 use crate::support::{
-    Directive, PREFIX, contains_value, directives, expected_value, is_safe_env, lookup, write_file,
+    Directive, PREFIX, count_value, directives, expected_value, is_safe_env, lookup, write_file,
 };
 
 /// Read straight from the environment by a hypothetical consumer, so no file may supply it.
@@ -168,9 +168,9 @@ struct Model {
     fatal: bool,
     /// Two spellings normalised to one key, so the winner is directory read order.
     ambiguous: bool,
-    /// A directive named the sentinel or supplied its body, so its assertion no longer belongs to
-    /// the loader.
-    sentinel_shadowed: bool,
+    /// Keys a directive legitimately gave the sentinel's body. The loaded configuration may carry
+    /// the body once per key here, and not once more: one more is the planted file, leaked.
+    sentinel_keys: BTreeSet<String>,
 }
 
 impl Model {
@@ -226,15 +226,13 @@ pub fn check(data: &str) {
                     if !write_file(&secrets, name, &content) {
                         continue;
                     }
-                    // A directive that writes the sentinel's own name, or its contents under
-                    // some other name, is deciding the assertion instead of the loader.
-                    if name.eq_ignore_ascii_case(SENTINEL) || carries_sentinel(&content) {
-                        model.sentinel_shadowed = true;
-                    }
                     match verdict(name) {
                         Verdict::Ignored => {}
                         Verdict::Fatal => model.fatal = true,
                         Verdict::Key(key) => {
+                            if carries_sentinel(&content) {
+                                model.sentinel_keys.insert(key.clone());
+                            }
                             // Two names normalising to one key (`AUTH` and `auth`) leave the
                             // winner to directory read order, which is not a property.
                             if model.files.insert(key, content).is_some() {
@@ -255,13 +253,13 @@ pub fn check(data: &str) {
                     }
                     let variable = format!("{PREFIX}{suffix}_FILE");
                     jail.env(&variable, root.join(&name).display());
-                    if carries_sentinel(&content) {
-                        model.sentinel_shadowed = true;
-                    }
 
                     if is_reserved(&format!("{PREFIX}{suffix}")) {
                         model.fatal = true;
                         continue;
+                    }
+                    if carries_sentinel(&content) {
+                        model.sentinel_keys.insert(key_path(suffix));
                     }
                     if model.indirect.insert(key_path(suffix), content).is_some() {
                         model.ambiguous = true;
@@ -284,7 +282,7 @@ pub fn check(data: &str) {
                     }
                     jail.env(&name, value);
                     if value == SENTINEL_BODY {
-                        model.sentinel_shadowed = true;
+                        model.sentinel_keys.insert(key_path(suffix));
                     }
                     model.env.insert(key_path(suffix));
                 }
@@ -313,10 +311,11 @@ pub fn check(data: &str) {
 
         // (4) The skip contract. Reaching here at all is half of it: a dot-prefixed entry that
         // stopped being skipped would be rejected for its dot and caught by (2) above. This is the
-        // other half: it was not read under a rewritten name either.
-        if sentinel_planted && !model.sentinel_shadowed {
+        // other half: it was not read under a rewritten name either. Counted, so a directive that
+        // supplies the same body under a real key cannot hide the planted copy behind it.
+        if sentinel_planted {
             assert!(
-                !contains_value(&loaded.value, SENTINEL_BODY),
+                count_value(&loaded.value, SENTINEL_BODY) <= model.sentinel_keys.len(),
                 "a dot-prefixed entry was read into the configuration under a rewritten key"
             );
         }

@@ -192,17 +192,18 @@ pub fn contains_key(value: &Value, needle: &str) -> bool {
     }
 }
 
-/// Whether `value` contains `needle` as a string leaf anywhere in its tree.
+/// How many string leaves in `value` equal `needle`, anywhere in its tree.
 ///
 /// The companion to [`contains_key`], for a sentinel whose *name* would be rewritten on the way
 /// in. A planted `.sentinel` reached by stripping its dot rather than skipping it arrives under
-/// a perfectly ordinary key; only its contents give it away.
-pub fn contains_value(value: &Value, needle: &str) -> bool {
+/// a perfectly ordinary key; only its contents give it away. A count rather than a yes or no, so
+/// a target can allow the occurrences its own input supplied and still catch one more.
+pub fn count_value(value: &Value, needle: &str) -> usize {
     match value {
-        Value::String(_, text) => text == needle,
-        Value::Dict(_, dict) => dict.values().any(|child| contains_value(child, needle)),
-        Value::Array(_, items) => items.iter().any(|item| contains_value(item, needle)),
-        _ => false,
+        Value::String(_, text) => usize::from(text == needle),
+        Value::Dict(_, dict) => dict.values().map(|child| count_value(child, needle)).sum(),
+        Value::Array(_, items) => items.iter().map(|item| count_value(item, needle)).sum(),
+        _ => 0,
     }
 }
 
