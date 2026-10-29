@@ -8,8 +8,11 @@ import de.timscho.config.core.model.App;
 import de.timscho.config.core.model.Contract;
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.External;
+import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.Producer;
 import de.timscho.config.core.model.Schema;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -135,10 +138,10 @@ public final class SpringContractProducer {
      * pattern rather than publish one stricter than the loader.
      */
     private static Schema withoutTextConstraints(final Schema schema) {
-        return schema.toBuilder()
-                .keys(schema.getKeys().stream()
-                        .map(key -> key.toBuilder().textConstraint(null).build())
-                        .toList())
-                .build();
+        final List<Key> keys = new ArrayList<>(schema.getKeys().size());
+        for (final Key key : schema.getKeys()) {
+            keys.add(key.toBuilder().textConstraint(null).build());
+        }
+        return schema.toBuilder().keys(List.copyOf(keys)).build();
     }
 }
