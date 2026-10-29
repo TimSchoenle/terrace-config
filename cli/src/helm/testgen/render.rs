@@ -4,7 +4,7 @@ use serde_json::Value as Json;
 
 use crate::error::Error;
 
-use super::pattern::selector_path;
+use super::pattern::{jsonpath_string, selector_path};
 use super::probe::json_text;
 use super::{Case, Plan, Skipped, VALUES_ROOT};
 
@@ -285,7 +285,10 @@ pub(super) fn identity_case(
     labels.sort();
     for (label, value) in labels {
         lines.push("      - equal:".to_owned());
-        lines.push(format!("          path: metadata.labels[\"{label}\"]"));
+        lines.push(format!(
+            "          path: {}",
+            yaml_path(format!("metadata.labels[{}]", jsonpath_string(&label)?))
+        ));
         lines.push(format!(
             "          value: {}",
             yaml_scalar(&Json::String(value))
@@ -296,16 +299,24 @@ pub(super) fn identity_case(
 
 /// The document selector, matching on the key existing rather than on its contents.
 pub(super) fn selector(target: &Target) -> Result<Vec<String>, Error> {
-    let path = selector_path(&target.key, &target.discriminator)?;
-    let scalar = if plain_selector(&path) {
-        path
-    } else {
-        yaml_quoted(&path)
-    };
+    let scalar = yaml_path(selector_path(&target.key, &target.discriminator)?);
     Ok(vec![
         "    documentSelector:".to_owned(),
         format!("      path: {scalar}"),
     ])
+}
+
+/// A selector or assertion path as a YAML scalar that reads back unchanged.
+///
+/// A label or document key may carry characters YAML gives meaning to, such as `: ` or a leading
+/// `&`, and written bare those would change or break the suite, so a path that is not plain is
+/// single-quoted.
+pub(super) fn yaml_path(path: String) -> String {
+    if plain_selector(&path) {
+        path
+    } else {
+        yaml_quoted(&path)
+    }
 }
 
 /// Why every case below selects the document it does, in whichever form actually applies.
@@ -450,7 +461,10 @@ pub(super) fn probe_case(case: &Case, target: &Target) -> Result<Vec<String>, Er
     lines.extend(set_block(&case.set_values));
     lines.push("    asserts:".to_owned());
     lines.push("      - matchRegex:".to_owned());
-    lines.push(format!("          path: data[\"{}\"]", target.key));
+    lines.push(format!(
+        "          path: {}",
+        yaml_path(format!("data[{}]", jsonpath_string(&target.key)?))
+    ));
     lines.push(format!("          pattern: {}", yaml_quoted(&case.pattern)));
     Ok(lines)
 }

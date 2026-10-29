@@ -1152,3 +1152,17 @@ fn a_set_scalar_keeps_its_yaml_type() {
     assert_eq!(yaml_scalar(&json!("0.5")), "'0.5'");
     assert_eq!(yaml_scalar(&json!("plain")), "plain");
 }
+
+#[test]
+fn an_assertion_path_is_quoted_only_when_yaml_would_read_it_differently() {
+    use super::render::yaml_path;
+
+    assert_eq!(
+        yaml_path("data[\"config.toml\"]".to_owned()),
+        "data[\"config.toml\"]"
+    );
+    assert_eq!(
+        yaml_path("metadata.labels[\"team: core\"]".to_owned()),
+        "'metadata.labels[\"team: core\"]'"
+    );
+}
