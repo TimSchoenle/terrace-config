@@ -3,6 +3,7 @@ package de.timscho.config.core.io;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import de.timscho.config.core.model.Contract;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.jetbrains.annotations.Blocking;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads and writes a {@link Contract} as the {@code json} rendering: {@code
@@ -71,16 +73,19 @@ public final class ContractCodec {
      * Parses a {@code json} rendering. Unknown properties are ignored.
      *
      * <p>Binding is not validation: nothing here checks the document against {@code
-     * spec/v1/contract.schema.json}, so a document missing a required field binds with that field
-     * {@code null}. A caller that needs a valid envelope validates the result.
+     * spec/v1/contract.schema.json}. A document missing a required field binds with that field
+     * {@code null}, or with its default where the model has one, such as {@code terrace_contract}.
+     * Checking the bound result cannot tell an omitted field from a defaulted one, so a caller that
+     * needs a valid envelope validates the document itself before binding it.
      *
      * @param json the document, UTF-8 encoded
      * @return the parsed contract
-     * @throws UncheckedIOException if {@code json} is not JSON or does not bind to {@link Contract}
+     * @throws UncheckedIOException if {@code json} is not JSON, is the JSON {@code null}, or does not
+     *     bind to {@link Contract}
      */
     public static Contract read(final byte[] json) {
         try {
-            return MAPPER.readValue(json, Contract.class);
+            return present(MAPPER.readValue(json, Contract.class));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -92,15 +97,26 @@ public final class ContractCodec {
      *
      * @param source the file to read
      * @return the parsed contract
-     * @throws UncheckedIOException if the file cannot be read, is not JSON, or does not bind to
-     *     {@link Contract}
+     * @throws UncheckedIOException if the file cannot be read, is not JSON, is the JSON {@code
+     *     null}, or does not bind to {@link Contract}
      */
     @Blocking
     public static Contract read(final Path source) {
         try (InputStream in = Files.newInputStream(source)) {
-            return MAPPER.readValue(in, Contract.class);
+            return present(MAPPER.readValue(in, Contract.class));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * The bound contract, refusing the JSON {@code null}: Jackson binds that document to {@code
+     * null}, which a caller of this null-marked API would otherwise dereference.
+     */
+    private static Contract present(final @Nullable Contract contract) throws MismatchedInputException {
+        if (contract == null) {
+            throw MismatchedInputException.from(null, Contract.class, "the document is JSON null, not a contract");
+        }
+        return contract;
     }
 }

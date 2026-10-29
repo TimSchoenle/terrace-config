@@ -299,7 +299,12 @@ public class SchemaAssembler {
             final List<String> values,
             final Dialect dialect) {
         if (!container) {
-            return leafConstraint(textForm, values, field.range());
+            // An `Optional` is resolved as a container, so its `@Range` sits on the element, the
+            // same way its `@ElementValues` does; read from there the bound would otherwise drop.
+            final RangeConstraint range = field.range() != null
+                    ? field.range()
+                    : field.element() != null ? field.element().range() : null;
+            return leafConstraint(textForm, values, range);
         }
         final Map<String, Object> schema = new TreeMap<>();
         final Map<String, Object> element = elementSchema(field, dialect);

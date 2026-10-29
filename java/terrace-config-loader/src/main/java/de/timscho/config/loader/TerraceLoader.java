@@ -261,13 +261,16 @@ public final class TerraceLoader {
      * the configured paths.
      *
      * <p>Reports the same layers {@link #load} would bind, without binding them to any type, so it
-     * still succeeds where binding would fail (a value the target type cannot hold, say). It reads
-     * the layers exactly as {@link #load} does, so a source {@link #load} cannot read, or a shadowed
-     * key under {@link ShadowPolicy#REJECT}, makes it throw too.
+     * still succeeds where binding would fail (a value the target type cannot hold, say). It finds
+     * the layers exactly as {@link #load} does, so a configuration directory that cannot be listed,
+     * a secrets layer that cannot be read, or a shadowed key under {@link ShadowPolicy#REJECT} makes
+     * it throw too. A TOML fragment that does not parse is the exception: {@link #load} throws for
+     * it, while this reports it as {@link Fragment.Unreadable}, since each fragment is
+     * parsed on its own only for the report.
      *
      * @return the report
-     * @throws LoaderException if a configured source cannot be read or parsed, or a key is shadowed under
-     *     {@link ShadowPolicy#REJECT}
+     * @throws LoaderException if the configuration directory cannot be listed, the secrets layer
+     *     cannot be read, or a key is shadowed under {@link ShadowPolicy#REJECT}
      */
     public Explanation explain() {
         return this.explain(System.getenv());

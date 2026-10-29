@@ -12,9 +12,14 @@ import java.lang.annotation.Target;
  * loader still refuses a value the type cannot hold. The Rust derive drops such a bound instead
  * ({@code rust/docs/SCHEMA.md}, "A number the type is too wide for").
  *
- * <p>On a scalar field it bounds the value. On a container field it bounds the element, since a
- * bound on the container itself would mean nothing, and it takes the place of {@link Element} and
- * {@link ElementValues}: a container field carries at most one of the three.
+ * <p>On a scalar field it bounds the value. On a container field, a collection or an {@code
+ * Optional}, it bounds the element, since a bound on the container itself would mean nothing, and
+ * it takes the place of {@link Element} and {@link ElementValues}: a container field carries at
+ * most one of the three.
+ *
+ * <p>The bound is published, not enforced: the loader binds a value outside it without complaint,
+ * so a service that relies on it checks the bound itself, or validates the merged configuration
+ * against the published schema.
  *
  * <p>{@link Double#NaN} marks an end as unset, since no finite double can otherwise mean that.
  *

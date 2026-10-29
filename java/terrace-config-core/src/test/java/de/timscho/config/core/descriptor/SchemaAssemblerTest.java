@@ -105,6 +105,24 @@ class SchemaAssemblerTest {
                 .isEqualTo(Map.of("type", "object", "additionalProperties", Map.of("type", "integer", "minimum", 1.0)));
     }
 
+    /** An {@code Optional}'s {@code @Range} is resolved onto its element and still bounds the key. */
+    @Test
+    void anOptionalPublishesTheRangeItsElementCarries() {
+        final ElementDescriptor bounded =
+                new ElementDescriptor("Integer", List.of(), new RangeConstraint(null, 10.0, null, null), List.of());
+
+        assertThat(constraintOf(field(
+                        "retries",
+                        "Optional<Integer>",
+                        ContainerKind.OPTIONAL,
+                        bounded,
+                        List.of(),
+                        false,
+                        false,
+                        List.of())))
+                .isEqualTo(Map.of("maximum", 10.0));
+    }
+
     /** A descriptor generated before plain-leaf elements were reported publishes what it always did. */
     @Test
     void aContainerWithNoElementDescriptorPublishesOnlyItsOwnType() {
