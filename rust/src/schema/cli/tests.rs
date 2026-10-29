@@ -11,7 +11,7 @@ fn a_rendering_is_written_with_exactly_one_trailing_newline() {
     }
 }
 
-/// A writer standing in for a closed pipe: every write and flush fails.
+/// A writer standing in for a closed pipe: every write and flush fails, so the write fails first.
 struct Closed;
 
 impl io::Write for Closed {
@@ -27,5 +27,24 @@ impl io::Write for Closed {
 #[test]
 fn a_write_failure_is_returned_rather_than_panicking() {
     let error = emit(&mut Closed, "body").expect_err("a closed pipe");
+    assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+}
+
+/// A writer that accepts every byte and then fails to flush them, as a buffered pipe can.
+struct FlushFails;
+
+impl io::Write for FlushFails {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Err(io::ErrorKind::BrokenPipe.into())
+    }
+}
+
+#[test]
+fn a_flush_failure_is_returned_after_a_successful_write() {
+    let error = emit(&mut FlushFails, "body").expect_err("a failed flush");
     assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
 }
