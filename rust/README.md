@@ -274,7 +274,7 @@ for everything this crate does at runtime should not link a test harness.
 | [Reloading](../rust/docs/RELOAD.md) | The reload feature rebuilds a running service when the files its configuration came from change. |
 | [Generating the configuration reference](../rust/docs/SCHEMA.md) | The schema feature derives a reference table, an example file and a JSON Schema from the types. |
 | [Testing your configuration](../rust/docs/TESTING.md) | The testing feature is a jail that arranges both halves of a layer and restores the environment. |
-| [The config contract: image-embedded configuration schemas, validated by the charts](../rust/docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. |
+| [The config contract: image-embedded configuration schemas, validated by the charts](../rust/docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. helm-charts can then prove — before anything reaches a cluster — that the config.toml it renders is one the pinned image… |
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
 to run a campaign, and [spec/](../spec/) is the contract format itself — normative, language-neutral,
