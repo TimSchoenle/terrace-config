@@ -308,9 +308,12 @@ impl<'a> Cli<'a> {
     /// Prints the rendering to stdout with exactly one trailing newline, since the renderings
     /// themselves disagree about whether they end in one, and returns [`ExitCode::SUCCESS`]. When
     /// the arguments do not parse or the rendering fails, it prints the message to stderr, writes
-    /// nothing to stdout, and returns [`ExitCode::FAILURE`]. When stdout itself cannot be written,
-    /// such as a closed pipe, it returns [`ExitCode::FAILURE`] too, and part of the rendering may
-    /// already be out. A shell redirect truncates its target before this runs, so a step that
+    /// nothing to stdout, and returns [`ExitCode::FAILURE`]. An argument that is not valid Unicode
+    /// is one that does not parse. When writing or flushing stdout reports an error, such as a
+    /// closed pipe, it returns [`ExitCode::FAILURE`] too, and part of the rendering may already be
+    /// out. A stdout that is not open for writing at all is not reported: the standard library
+    /// discards output to a closed descriptor as written, so the call succeeds with nothing
+    /// printed. A shell redirect truncates its target before this runs, so a step that
     /// regenerates a committed file should write to a temporary file and replace the target only
     /// on success.
     #[must_use]

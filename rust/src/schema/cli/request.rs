@@ -1,5 +1,6 @@
 //! What was asked for: a format, how much of the configuration, and what build this is.
 
+use std::ffi::OsString;
 use std::fmt;
 
 use super::Format;
@@ -91,10 +92,13 @@ impl Request {
 
     /// [`Self::parse`] over this process's arguments.
     ///
+    /// Read as [`std::env::args_os`] rather than [`std::env::args`], which panics on an argument
+    /// that is not valid Unicode: such an argument is refused with a [`UsageError`] instead.
+    ///
     /// # Errors
-    /// As [`Self::parse`].
+    /// As [`Self::parse`], and [`UsageError`] for an argument that is not valid Unicode.
     pub fn from_env() -> Result<Self, UsageError> {
-        Self::parse(std::env::args().skip(1))
+        Self::parse(unicode(std::env::args_os().skip(1))?)
     }
 
     /// The rendering to emit.
@@ -276,3 +280,20 @@ impl fmt::Display for UsageError {
 }
 
 impl std::error::Error for UsageError {}
+
+/// Every argument as a `String`, refusing the first that is not valid Unicode.
+fn unicode<I>(args: I) -> Result<Vec<String>, UsageError>
+where
+    I: IntoIterator<Item = OsString>,
+{
+    args.into_iter()
+        .map(|argument| {
+            argument.into_string().map_err(|raw| {
+                UsageError(format!("argument {} is not valid Unicode", raw.display()))
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;
