@@ -1,4 +1,5 @@
-//! Gates 2 and 3: one container's environment and file mounts, against its own image's contract.
+//! Gates 2, 2b and 3: one container's environment, its supplied keys and its file mounts, against
+//! its own image's contract.
 //!
 //! **Never the union.** A container runs exactly one image, so a variable set on it that only a
 //! sibling image reads is precisely the defect gate 2 exists to catch, and checking it against the
@@ -8,8 +9,8 @@
 //! The container is scanned once into a [`ContainerView`], because the two gates are not
 //! independent. The environment scan finds the secrets directory and every `_FILE` target, which is
 //! what gate 3 needs to know; gate 3 finds which keys a mounted file supplies, which is what the
-//! layer-collision check needs on top of what gate 2 found. Three passes over one container sharing
-//! one reading of it, rather than three readings that could disagree.
+//! layer-collision check and gate 2b need on top of what gate 2 found. Passes over one container
+//! sharing one reading of it, rather than several readings that could disagree.
 //!
 //! # The range step is asked for, not assumed
 //!
@@ -20,13 +21,15 @@
 //! about any one value: reporting it per value would say the same sentence two hundred times about
 //! one missing field.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
 
 use crate::classify::{Kind, classify};
 use crate::error::Error;
-use crate::k8s::{Environment, environment_of, inside_a_mount, projected_file_names, volume_at};
+use crate::k8s::{
+    Environment, environment_of, inside_a_mount, projected_file_names, unlisted_sources, volume_at,
+};
 use crate::report::{Finding, error, warning};
 use crate::union::{Union, suggest};
 use crate::value::{Range, form, range};
@@ -47,8 +50,12 @@ pub struct ContainerView<'a> {
     pub container: &'a Json,
     /// Its environment.
     pub environment: Environment,
-    /// The path `<PREFIX>_SECRETS_DIR`, whatever the document calls it, points at.
+    /// The path `<PREFIX>_SECRETS_DIR`, whatever the document calls it, points at, when the render
+    /// shows it.
     pub secrets_dir: Option<String>,
+    /// The loader variable naming the secrets directory, set even when its value is opaque (a
+    /// `valueFrom` or an `envFrom` Secret), which leaves the directory unknown rather than absent.
+    secrets_dir_variable: Option<String>,
     /// Paths named by a `_FILE` variable, so gate 3 can tell a credential read by indirection from
     /// one merely lying in a volume nothing will open.
     pub indirect: BTreeMap<String, String>,
@@ -56,8 +63,11 @@ pub struct ContainerView<'a> {
 
 impl<'a> ContainerView<'a> {
     /// Reads one container against the contract of the image it runs.
-    pub fn read(container: &'a Json, union: &Union) -> Self {
-        let environment = environment_of(container);
+    ///
+    /// `manifests` is the render the container came from, which is where an `envFrom` source is
+    /// followed to the keys it hands over.
+    pub fn read(manifests: &[Json], container: &'a Json, union: &Union) -> Self {
+        let environment = environment_of(manifests, container);
         let mut view = Self {
             name: container
                 .get("name")
@@ -66,6 +76,7 @@ impl<'a> ContainerView<'a> {
                 .to_owned(),
             container,
             secrets_dir: None,
+            secrets_dir_variable: None,
             indirect: BTreeMap::new(),
             environment,
         };
@@ -77,7 +88,10 @@ impl<'a> ContainerView<'a> {
                     if decision.entry.and_then(|entry| entry.text("role"))
                         == Some("secrets_dir") =>
                 {
-                    view.secrets_dir = Some(value);
+                    if view.environment.visible(&variable) {
+                        view.secrets_dir = Some(value);
+                    }
+                    view.secrets_dir_variable = Some(variable);
                 }
                 Kind::KeyEnvFile if !value.is_empty() && view.environment.visible(&variable) => {
                     view.indirect.insert(value, variable);
@@ -86,6 +100,15 @@ impl<'a> ContainerView<'a> {
             }
         }
         view
+    }
+
+    /// Who sets `variable`, as a message names it: the container, and the `envFrom` source when
+    /// the variable came from one rather than from the container's own `env`.
+    fn setter(&self, variable: &str) -> String {
+        match self.environment.origins.get(variable) {
+            Some(origin) => format!("container {} through {origin}", quoted(&self.name)),
+            None => format!("container {}", quoted(&self.name)),
+        }
     }
 }
 
@@ -144,7 +167,10 @@ impl ServiceLinks {
     }
 }
 
-/// Runs gates 2 and 3 over one container, against the contract of the image it runs.
+/// Runs gates 2, 2b and 3 over one container, against the contract of the image it runs.
+///
+/// `document` is every key path the rendered document carries, or [`None`] when gate 1 could not
+/// read it; see [`super::document_keys`].
 ///
 /// # Errors
 /// [`Error::Invalid`] when the contract carries a `text_form` or a constraint keyword this build
@@ -155,9 +181,10 @@ pub fn check_container(
     spec: &Json,
     container: &Json,
     union: &Union,
+    document: Option<&BTreeSet<String>>,
     relaxed: Relaxed,
 ) -> Result<Vec<Finding>, Error> {
-    let view = ContainerView::read(container, union);
+    let view = ContainerView::read(manifests, container, union);
     let mut suppliers = Suppliers::default();
 
     let mut findings = environment_gate(&view, union, &mut suppliers, relaxed)?;
@@ -170,6 +197,10 @@ pub fn check_container(
         relaxed,
     )?);
     findings.extend(collision_gate(&view, &suppliers, relaxed));
+    let unseen = unseen_sources(manifests, spec, &view);
+    findings.extend(required_gate(
+        &view, union, &suppliers, document, &unseen, relaxed,
+    )?);
     Ok(findings)
 }
 
@@ -210,8 +241,8 @@ fn environment_gate(
                     suppliers.add(&container.name, ENVIRONMENT_LAYER.to_owned());
                 } else {
                     findings.push(error(format!(
-                        "env: {variable} set by container {} matches no key in the contract{}",
-                        quoted(&view.name),
+                        "env: {variable} set by {} matches no key in the contract{}",
+                        view.setter(variable),
                         suggest(variable, union.spellings("env"))
                     )));
                 }
@@ -226,10 +257,9 @@ fn environment_gate(
             }
             Kind::Unknown if !relaxed.env => {
                 let message = format!(
-                    "env: {variable} is set by container {} and the contract accounts for it \
-                     nowhere: it is not a key, not a declared external variable, and matches no \
-                     ignore pattern",
-                    quoted(&view.name)
+                    "env: {variable} is set by {} and the contract accounts for it nowhere: it is \
+                     not a key, not a declared external variable, and matches no ignore pattern",
+                    view.setter(variable)
                 );
                 match union.unknown.as_str() {
                     "reject" => findings.push(error(message)),
@@ -257,14 +287,14 @@ fn check_value(
 ) -> Result<Vec<Finding>, Error> {
     if let Some(failure) = form(entry.entry(), value)? {
         return Ok(vec![error(format!(
-            "env: {variable} on container {}: {failure}",
-            quoted(&view.name)
+            "env: {variable} on {}: {failure}",
+            view.setter(variable)
         ))]);
     }
     Ok(match range(entry.entry(), &union.loader_name, value)? {
         Range::Wrong(failure) => vec![error(format!(
-            "env: {variable} on container {}: {failure}",
-            quoted(&view.name)
+            "env: {variable} on {}: {failure}",
+            view.setter(variable)
         ))],
         // Reported once per document by the caller, because it is one fact about the document
         // rather than one about each of its values.
@@ -423,6 +453,11 @@ fn mounts(
             if view.indirect.contains_key(&format!("{path}/{file_name}")) {
                 continue;
             }
+            if configured.is_none() && view.secrets_dir_variable.is_some() {
+                // The secrets directory is set to a value the render does not show, so whether
+                // this mount is it cannot be told.
+                continue;
+            }
             findings.push(error(format!(
                 "files: {path}/{file_name} spells the key {}, but nothing reads it: {}",
                 quoted(&key.name),
@@ -499,9 +534,189 @@ fn collision_gate(
     findings
 }
 
+/// Gate 2b: every key the image requires, supplied by some layer this container can see.
+///
+/// `required` says some layer must supply the key, not that the document must carry it, so the
+/// answer is the union of what gates 2 and 3 found supplied and what the rendered document holds.
+/// Two kinds of key narrow the layers that count. A **secret** is never supplied by the document,
+/// which does not carry one, so an operator told to "add it to the file" is told to put a
+/// credential in a `ConfigMap`. A **reserved** key is read from the environment before the layers
+/// exist, so only the environment counts for it. A file layer counts only for a key a file can
+/// supply at all, which is a `text_form` of `text`, and the same narrowing applies to a file source
+/// the render does not show.
+///
+/// It runs only where every layer was read. A values file exempt from gate 2 or 3 has a layer this
+/// gate did not see, and an unreadable document (`document` is [`None`]) leaves every non-secret key
+/// undecided; both stay silent rather than report keys a layer nobody read may well supply. A
+/// source the render does not show (`unseen`, from [`unseen_sources`]) is the same problem one
+/// container at a time, so a key it could carry is a warning naming the source rather than an
+/// error.
+fn required_gate(
+    view: &ContainerView<'_>,
+    union: &Union,
+    suppliers: &Suppliers,
+    document: Option<&BTreeSet<String>>,
+    unseen: &Unseen,
+    relaxed: Relaxed,
+) -> Result<Vec<Finding>, Error> {
+    if relaxed.required || relaxed.env || relaxed.files {
+        return Ok(Vec::new());
+    }
+    let mut findings = Vec::new();
+    for key in &union.keys {
+        if !flag(key, "required") {
+            continue;
+        }
+        let secret = flag(key, "secret");
+        let reserved = flag(key, "reserved");
+        let files_count = !reserved && key.entry().file_supplyable()?;
+        let supplied = suppliers.layers.get(&key.name).is_some_and(|layers| {
+            layers
+                .iter()
+                .any(|layer| files_count || layer == ENVIRONMENT_LAYER)
+        });
+        if supplied {
+            continue;
+        }
+        let document_counts = !secret && !reserved;
+        if document_counts {
+            match document {
+                Some(present) if present.contains(&key.name) => continue,
+                Some(_) => {}
+                None => continue,
+            }
+        }
+
+        let ways = supply_ways(view, union, key, files_count, document_counts);
+        let message = format!(
+            "required: the key {} is required, and no layer supplies it to container {}: {}",
+            quoted(&key.name),
+            quoted(&view.name),
+            ways
+        );
+        let mut could = unseen.environment.clone();
+        if files_count {
+            could.extend(unseen.files.iter().cloned());
+        }
+        if could.is_empty() {
+            findings.push(error(message));
+        } else {
+            findings.push(warning(format!(
+                "{message}; unless {} supplies it, which the render does not show",
+                could.join(" or ")
+            )));
+        }
+    }
+    Ok(findings)
+}
+
+/// The sources that could hand this container a key without the render showing which, split by
+/// the layer they feed, because a file source cannot supply a key only the environment counts for.
+#[derive(Debug, Default)]
+struct Unseen {
+    /// `envFrom` objects the render does not hold.
+    environment: Vec<String>,
+    /// Whatever the secrets directory presents that cannot be listed: a directory the render does
+    /// not show the path of, a Secret it does not hold, a volume of another type, or a directory
+    /// inside a volume rather than at its mount point.
+    files: Vec<String>,
+}
+
+/// Collects the [`Unseen`] sources of one container.
+fn unseen_sources(manifests: &[Json], spec: &Json, view: &ContainerView<'_>) -> Unseen {
+    let mut unseen = Unseen {
+        environment: view.environment.unresolved.clone(),
+        files: Vec::new(),
+    };
+    let Some(directory) = view.secrets_dir.as_deref() else {
+        if let Some(variable) = view.secrets_dir_variable.as_deref() {
+            unseen
+                .files
+                .push(format!("the secrets directory {variable} names"));
+        }
+        return unseen;
+    };
+    match volume_at(view.container, directory) {
+        Some(volume) => unseen.files.extend(
+            unlisted_sources(manifests, spec, volume)
+                .into_iter()
+                .map(|source| format!("{source} in the secrets directory")),
+        ),
+        None if inside_a_mount(view.container, directory) => {
+            unseen
+                .files
+                .push("the volume holding the secrets directory".to_owned());
+        }
+        None => {}
+    }
+    unseen
+}
+
+/// Every layer that could supply `key` on this container, as the sentence a finding ends with.
+fn supply_ways(
+    view: &ContainerView<'_>,
+    union: &Union,
+    key: &crate::union::Merged,
+    files_count: bool,
+    document_counts: bool,
+) -> String {
+    let mut ways: Vec<String> = Vec::new();
+    if let Some(env) = key.text("env") {
+        ways.push(format!("set {env}"));
+    }
+    if files_count {
+        if let Some(variable) = key.text("env_file") {
+            ways.push(format!("set {variable} to a file the container mounts"));
+        }
+        if let Some(file_name) = key.text("secrets_file") {
+            ways.push(match view.secrets_dir.as_deref() {
+                Some(directory) => format!(
+                    "mount a file named {} in the secrets directory {}",
+                    quoted(file_name),
+                    quoted(directory)
+                ),
+                None => match secrets_dir_variable(union) {
+                    Some(variable) => format!(
+                        "point {variable} at a mounted directory holding a file named {}",
+                        quoted(file_name)
+                    ),
+                    None => format!(
+                        "mount a file named {} in the secrets directory",
+                        quoted(file_name)
+                    ),
+                },
+            });
+        }
+    }
+    if document_counts {
+        ways.push("write it into the rendered document".to_owned());
+    }
+    match ways.as_slice() {
+        [] => "the contract publishes no spelling this deployment could set".to_owned(),
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+    }
+}
+
+/// The loader variable naming the secrets directory, when the contract publishes one.
+fn secrets_dir_variable(union: &Union) -> Option<&str> {
+    union
+        .loader
+        .iter()
+        .find(|entry| entry.text("role") == Some("secrets_dir"))
+        .map(|entry| entry.name.as_str())
+}
+
+/// One boolean field of an entry; absent and anything but `true` are false.
+fn flag(key: &crate::union::Merged, field: &str) -> bool {
+    key.fields.get(field) == Some(&Json::Bool(true))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{Value as Json, json};
+
+    use std::collections::BTreeSet;
 
     use super::{Relaxed, ServiceLinks, check_container};
     use crate::report::Level;
@@ -530,7 +745,7 @@ mod tests {
     }
 
     fn check(container: &Json, union: &Union) -> Vec<crate::report::Finding> {
-        check_container(&[], &json!({}), container, union, Relaxed::default())
+        check_container(&[], &json!({}), container, union, None, Relaxed::default())
             .expect("the contract is readable")
     }
 
@@ -712,9 +927,398 @@ mod tests {
             ..Relaxed::default()
         };
         assert_eq!(
-            check_container(&[], &json!({}), &container, &merged, relaxed)
+            check_container(&[], &json!({}), &container, &merged, None, relaxed)
                 .expect("the contract is readable"),
             Vec::new()
+        );
+    }
+
+    /// The requiredness gate's inputs: a render, a pod spec, and what the document carries.
+    fn required(
+        manifests: &[Json],
+        spec: &Json,
+        container: &Json,
+        union: &Union,
+        document: Option<&[&str]>,
+        relaxed: Relaxed,
+    ) -> Vec<crate::report::Finding> {
+        let carried: Option<BTreeSet<String>> =
+            document.map(|paths| paths.iter().map(|path| (*path).to_owned()).collect());
+        check_container(manifests, spec, container, union, carried.as_ref(), relaxed)
+            .expect("the contract is readable")
+            .into_iter()
+            .filter(|finding| finding.message.starts_with("required:"))
+            .collect()
+    }
+
+    fn token_contract() -> Union {
+        union(
+            &json!([{"path": "auth.token", "env": "P_AUTH__TOKEN", "env_file": "P_AUTH__TOKEN_FILE",
+                    "secrets_file": "auth__token", "text_form": "text", "required": true}]),
+            &json!([{"env": "P_SECRETS_DIR", "role": "secrets_dir"}]),
+            "figment",
+        )
+    }
+
+    #[test]
+    fn a_required_key_no_layer_supplies_names_every_layer_that_could() {
+        let findings = required(
+            &[],
+            &json!({}),
+            &json!({"name": "app"}),
+            &token_contract(),
+            Some(&[]),
+            Relaxed::default(),
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].level, Level::Error);
+        assert_eq!(
+            findings[0].message,
+            "required: the key 'auth.token' is required, and no layer supplies it to container \
+             'app': set P_AUTH__TOKEN, set P_AUTH__TOKEN_FILE to a file the container mounts, \
+             point P_SECRETS_DIR at a mounted directory holding a file named 'auth__token', or \
+             write it into the rendered document"
+        );
+    }
+
+    #[test]
+    fn a_required_key_is_supplied_by_any_one_layer() {
+        let union = token_contract();
+        let strict = Relaxed::default();
+        let by_env = json!({"name": "app", "env": [{"name": "P_AUTH__TOKEN", "value": "x"}]});
+        assert_eq!(
+            required(&[], &json!({}), &by_env, &union, Some(&[]), strict),
+            Vec::new()
+        );
+
+        let by_value_from = json!({"name": "app", "env": [
+            {"name": "P_AUTH__TOKEN", "valueFrom": {"secretKeyRef": {"name": "s", "key": "k"}}}
+        ]});
+        assert_eq!(
+            required(&[], &json!({}), &by_value_from, &union, Some(&[]), strict),
+            Vec::new()
+        );
+
+        let by_file = json!({"name": "app", "env": [
+            {"name": "P_AUTH__TOKEN_FILE", "value": "/run/token"}
+        ], "volumeMounts": [{"name": "v", "mountPath": "/run"}]});
+        assert_eq!(
+            required(&[], &json!({}), &by_file, &union, Some(&[]), strict),
+            Vec::new()
+        );
+
+        let by_secrets_dir = json!({"name": "app", "env": [
+            {"name": "P_SECRETS_DIR", "value": "/secrets"}
+        ], "volumeMounts": [{"name": "creds", "mountPath": "/secrets"}]});
+        let spec = json!({"volumes": [{"name": "creds", "secret": {"secretName": "creds",
+            "items": [{"key": "token", "path": "auth__token"}]}}]});
+        assert_eq!(
+            required(&[], &spec, &by_secrets_dir, &union, Some(&[]), strict),
+            Vec::new()
+        );
+
+        let by_document = json!({"name": "app"});
+        assert_eq!(
+            required(
+                &[],
+                &json!({}),
+                &by_document,
+                &union,
+                Some(&["auth", "auth.token"]),
+                strict
+            ),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn a_secret_in_the_document_does_not_count_and_the_document_is_not_offered() {
+        let union = union(
+            &json!([{"path": "auth.token", "env": "P_AUTH__TOKEN", "text_form": "text",
+                    "required": true, "secret": true}]),
+            &json!([]),
+            "figment",
+        );
+        let findings = required(
+            &[],
+            &json!({}),
+            &json!({"name": "app"}),
+            &union,
+            Some(&["auth", "auth.token"]),
+            Relaxed::default(),
+        );
+        assert_eq!(
+            findings[0].message,
+            "required: the key 'auth.token' is required, and no layer supplies it to container \
+             'app': set P_AUTH__TOKEN"
+        );
+    }
+
+    #[test]
+    fn a_reserved_key_counts_only_the_environment_and_a_typed_key_no_file() {
+        let union = union(
+            &json!([
+                {"path": "log.level", "env": "P_LOG__LEVEL", "env_file": "P_LOG__LEVEL_FILE",
+                 "text_form": "text", "required": true, "reserved": true},
+                {"path": "port", "env": "P_PORT", "env_file": "P_PORT_FILE",
+                 "text_form": "integer", "required": true},
+            ]),
+            &json!([]),
+            "figment",
+        );
+        let findings = required(
+            &[],
+            &json!({}),
+            &json!({"name": "app"}),
+            &union,
+            Some(&["log", "log.level"]),
+            Relaxed::default(),
+        );
+        let messages: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "required: the key 'log.level' is required, and no layer supplies it to container \
+                 'app': set P_LOG__LEVEL",
+                "required: the key 'port' is required, and no layer supplies it to container \
+                 'app': set P_PORT, or write it into the rendered document",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_file_does_not_supply_a_reserved_or_typed_key_and_an_unseen_file_source_does_not_soften_it()
+    {
+        let union = union(
+            &json!([
+                {"path": "log.level", "env": "P_LOG__LEVEL", "env_file": "P_LOG__LEVEL_FILE",
+                 "secrets_file": "log__level", "text_form": "text", "required": true,
+                 "reserved": true},
+                {"path": "port", "env": "P_PORT", "env_file": "P_PORT_FILE",
+                 "secrets_file": "port", "text_form": "integer", "required": true},
+            ]),
+            &json!([{"env": "P_SECRETS_DIR", "role": "secrets_dir"}]),
+            "figment",
+        );
+        let strict = Relaxed::default();
+        let carried: &[&str] = &[];
+
+        // Both keys arrive only by file: the `_FILE` variable for one, the secrets directory for
+        // the other. The loader reads neither, so both are still unsupplied.
+        let by_file = json!({"name": "app", "env": [
+            {"name": "P_LOG__LEVEL_FILE", "value": "/run/level"},
+            {"name": "P_SECRETS_DIR", "value": "/secrets"}
+        ], "volumeMounts": [{"name": "run", "mountPath": "/run"},
+                            {"name": "creds", "mountPath": "/secrets"}]});
+        let spec = json!({"volumes": [{"name": "creds", "secret": {"secretName": "creds",
+            "items": [{"key": "p", "path": "port"}]}}]});
+        let messages: Vec<String> = required(&[], &spec, &by_file, &union, Some(carried), strict)
+            .into_iter()
+            .map(|finding| finding.message)
+            .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "required: the key 'log.level' is required, and no layer supplies it to container \
+                 'app': set P_LOG__LEVEL",
+                "required: the key 'port' is required, and no layer supplies it to container \
+                 'app': set P_PORT, or write it into the rendered document",
+            ]
+        );
+
+        // A secrets directory the render cannot list could hold either file, which still supplies
+        // neither key, so the findings stay errors.
+        let unlisted =
+            json!({"volumes": [{"name": "creds", "secret": {"secretName": "external"}}]});
+        let findings = required(&[], &unlisted, &by_file, &union, Some(carried), strict);
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert!(
+            findings.iter().all(|finding| finding.level == Level::Error),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_rendered_env_from_source_supplies_its_keys() {
+        let manifests = vec![json!({"kind": "Secret", "metadata": {"name": "creds"},
+                                    "data": {"P_AUTH__TOKEN": "eA=="}})];
+        let container = json!({"name": "app", "envFrom": [{"secretRef": {"name": "creds"}}]});
+        assert_eq!(
+            required(
+                &manifests,
+                &json!({}),
+                &container,
+                &token_contract(),
+                Some(&[]),
+                Relaxed::default()
+            ),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn an_env_from_source_the_render_does_not_hold_turns_the_finding_into_a_warning() {
+        let container = json!({"name": "app", "envFrom": [{"secretRef": {"name": "external"}}]});
+        let findings = required(
+            &[],
+            &json!({}),
+            &container,
+            &token_contract(),
+            Some(&[]),
+            Relaxed::default(),
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].level, Level::Warning);
+        assert!(
+            findings[0].message.ends_with(
+                "; unless envFrom Secret 'external' supplies it, which the render does not show"
+            ),
+            "{findings:?}"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_document_leaves_non_secrets_undecided_and_still_checks_secrets() {
+        let union = union(
+            &json!([
+                {"path": "a", "env": "P_A", "text_form": "text", "required": true},
+                {"path": "b", "env": "P_B", "text_form": "text", "required": true, "secret": true},
+            ]),
+            &json!([]),
+            "figment",
+        );
+        let findings = required(
+            &[],
+            &json!({}),
+            &json!({"name": "app"}),
+            &union,
+            None,
+            Relaxed::default(),
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert!(findings[0].message.contains("the key 'b'"), "{findings:?}");
+    }
+
+    #[test]
+    fn requiredness_is_not_judged_where_a_layer_went_unread() {
+        let union = token_contract();
+        for gate in ["required", "env", "files"] {
+            let mut relaxed = Relaxed::default();
+            relaxed.relax(gate).expect("a known gate");
+            assert_eq!(
+                required(
+                    &[],
+                    &json!({}),
+                    &json!({"name": "app"}),
+                    &union,
+                    Some(&[]),
+                    relaxed
+                ),
+                Vec::new(),
+                "{gate}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_variable_from_env_from_is_named_with_its_source() {
+        let manifests = vec![
+            json!({"kind": "ConfigMap", "metadata": {"name": "settings"},
+                                    "data": {"P_TYPO": "1"}}),
+        ];
+        let container = json!({"name": "app", "envFrom": [{"configMapRef": {"name": "settings"}}]});
+        let merged = union(&json!([]), &json!([]), "figment");
+        let findings = check_container(
+            &manifests,
+            &json!({}),
+            &container,
+            &merged,
+            None,
+            Relaxed::default(),
+        )
+        .expect("the contract is readable");
+        assert_eq!(
+            findings[0].message,
+            "env: P_TYPO set by container 'app' through envFrom ConfigMap 'settings' matches no \
+             key in the contract"
+        );
+    }
+
+    #[test]
+    fn a_secrets_directory_the_render_cannot_list_turns_the_finding_into_a_warning() {
+        let container = json!({"name": "app", "env": [
+            {"name": "P_SECRETS_DIR", "value": "/secrets"}
+        ], "volumeMounts": [{"name": "creds", "mountPath": "/secrets"}]});
+        let spec = json!({"volumes": [{"name": "creds", "secret": {"secretName": "external"}}]});
+        let findings = required(
+            &[],
+            &spec,
+            &container,
+            &token_contract(),
+            Some(&[]),
+            Relaxed::default(),
+        );
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].level, Level::Warning);
+        assert!(
+            findings[0].message.ends_with(
+                "; unless Secret 'external' in the secrets directory supplies it, which the render \
+                 does not show"
+            ),
+            "{findings:?}"
+        );
+
+        // The same Secret rendered, and not carrying the file: now it is known not to.
+        let manifests = vec![json!({"kind": "Secret", "metadata": {"name": "external"},
+                                    "data": {"unrelated": "eA=="}})];
+        let findings = required(
+            &manifests,
+            &spec,
+            &container,
+            &token_contract(),
+            Some(&[]),
+            Relaxed::default(),
+        );
+        assert_eq!(findings[0].level, Level::Error, "{findings:?}");
+    }
+
+    #[test]
+    fn a_secrets_directory_set_from_a_secret_is_unknown_rather_than_absent() {
+        let container = json!({"name": "app", "env": [
+            {"name": "P_SECRETS_DIR", "valueFrom": {"secretKeyRef": {"name": "s", "key": "dir"}}}
+        ], "volumeMounts": [{"name": "creds", "mountPath": "/"}]});
+        let spec = json!({"volumes": [{"name": "creds", "secret": {"secretName": "creds",
+            "items": [{"key": "token", "path": "auth__token"}]}}]});
+        let manifests: &[Json] = &[];
+        let carried: BTreeSet<String> = BTreeSet::new();
+        let findings = check_container(
+            manifests,
+            &spec,
+            &container,
+            &token_contract(),
+            Some(&carried),
+            Relaxed::default(),
+        )
+        .expect("the contract is readable");
+
+        // The mount at `/` is not mistaken for the directory, which would have read the empty
+        // opaque value as its path, and it is not reported as unread either, because it may be
+        // the directory. The required key is a warning naming the directory's variable.
+        let messages: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(findings.len(), 1, "{messages:?}");
+        assert_eq!(findings[0].level, Level::Warning);
+        assert!(
+            messages[0].ends_with(
+                "; unless the secrets directory P_SECRETS_DIR names supplies it, which the render \
+                 does not show"
+            ),
+            "{messages:?}"
         );
     }
 }

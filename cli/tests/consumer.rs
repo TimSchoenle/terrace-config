@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value as Json, json};
 use terrace_contract::gate::{Relaxed, check_container};
-use terrace_contract::k8s::{projected_file_names, secret_file_names};
+use terrace_contract::k8s::{environment_of, projected_file_names, secret_file_names};
 use terrace_contract::union::{Union, union_contracts};
 use terrace_contract::value::{Range, form, range, reads_for};
 use terrace_contract::{Contract, Tier, conform, validate};
@@ -180,8 +180,15 @@ fn a_gate_over_a_foreign_loader_reports_the_skip_rather_than_a_failure() {
         "name": "app",
         "env": [{"name": "FOREIGN_SERVER__PORT", "value": "99999"}],
     });
-    let findings = check_container(&[], &json!({}), &container, &merged, Relaxed::default())
-        .expect("the contract is readable");
+    let findings = check_container(
+        &[],
+        &json!({}),
+        &container,
+        &merged,
+        None,
+        Relaxed::default(),
+    )
+    .expect("the contract is readable");
     assert_eq!(
         findings,
         Vec::new(),
@@ -305,8 +312,15 @@ fn the_one_rule_that_reads_the_separator_can_only_turn_a_finding_into_silence() 
     );
 
     let container = json!({"name": "app", "env": [{"name": "RELAXED_SERVER__PORT", "value": "1"}]});
-    let findings = check_container(&[], &json!({}), &container, &merged, Relaxed::default())
-        .expect("the contract is readable");
+    let findings = check_container(
+        &[],
+        &json!({}),
+        &container,
+        &merged,
+        None,
+        Relaxed::default(),
+    )
+    .expect("the contract is readable");
     assert_eq!(findings.len(), 1, "{findings:?}");
     assert!(
         findings[0]
@@ -423,6 +437,25 @@ fn a_secrets_own_values_never_leave_the_reader() {
             );
         }
     }
+
+    // `envFrom` hands a container the same Secret's keys as variables, and its values must stay
+    // behind just the same.
+    let environment = environment_of(
+        &manifests,
+        &json!({"envFrom": [{"secretRef": {"name": "rendered"}}]}),
+    );
+    assert!(
+        !environment.values.is_empty(),
+        "envFrom found no variables at all, so this proves nothing"
+    );
+    assert!(
+        environment
+            .values
+            .iter()
+            .all(|(name, value)| !name.contains(SENTINEL) && !value.contains(SENTINEL)),
+        "envFrom: a value reached a caller: {:?}",
+        environment.values
+    );
 }
 
 #[test]
@@ -433,13 +466,13 @@ fn only_the_volume_reader_looks_inside_a_secret_at_all() {
     // so the set of files that mention those two fields is a property worth pinning.
     const ALLOWED: &[&str] = &[
         // Reads the key names one volume presents, which is what a file name in a secrets
-        // directory is. Takes `.keys()`, never `.values()`, and the test above holds it to that.
+        // directory is, and the key names an `envFrom` Secret hands over as variables. Takes a
+        // Secret's keys, never its values, and the test above holds it to that.
         "k8s.rs",
         // Reads the *ConfigMap* holding the rendered configuration document, which is the plain
         // text a chart chose to render and the one thing a credential is never allowed to be.
         // Named here because the field spelling is the same, not because a Secret is opened.
         "gate/document.rs",
-        "helm/secrets.rs",
     ];
 
     let mut found: Vec<String> = Vec::new();
@@ -459,7 +492,7 @@ fn only_the_volume_reader_looks_inside_a_secret_at_all() {
     allowed.sort();
     assert_eq!(
         found, allowed,
-        "a rule outside the three that admit to it reads a rendered object's `data`. A Secret's \
+        "a rule outside the files that admit to it reads a rendered object's `data`. A Secret's \
          values are the one thing in a rendered tree this half must never carry, so a new reader \
          of that field belongs here with the reason it is safe."
     );
@@ -525,10 +558,17 @@ fn removing_every_ty_changes_nothing_a_rule_decides() {
             {"name": "FOREIGNTY_SOMETHING", "value": "x"},
         ],
     });
-    let mine = check_container(&[], &json!({}), &container, &with, Relaxed::default())
+    let mine = check_container(&[], &json!({}), &container, &with, None, Relaxed::default())
         .expect("the contract is readable");
-    let theirs = check_container(&[], &json!({}), &container, &without, Relaxed::default())
-        .expect("the contract is readable");
+    let theirs = check_container(
+        &[],
+        &json!({}),
+        &container,
+        &without,
+        None,
+        Relaxed::default(),
+    )
+    .expect("the contract is readable");
 
     assert!(
         !mine.is_empty(),
@@ -550,8 +590,15 @@ fn a_foreign_type_name_is_printed_where_a_message_shows_one_and_nowhere_else() {
         "env": [{"name": "FOREIGNTY_CACHE__TTL_FILE", "value": "/secrets/ttl"}],
         "volumeMounts": [{"name": "v", "mountPath": "/secrets"}],
     });
-    let findings = check_container(&[], &json!({}), &container, &merged, Relaxed::default())
-        .expect("the contract is readable");
+    let findings = check_container(
+        &[],
+        &json!({}),
+        &container,
+        &merged,
+        None,
+        Relaxed::default(),
+    )
+    .expect("the contract is readable");
     let named = findings
         .iter()
         .find(|finding| finding.message.contains("cannot be supplied by a file"))

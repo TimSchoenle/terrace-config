@@ -10,12 +10,13 @@
 //! matched. A hand-written mapping would duplicate a fact the manifest already states, and could
 //! drift from it.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::Value as Json;
 
 use crate::error::Error;
-use crate::gate::{Relaxed, ServiceLinks, check_container, check_document};
+use crate::gate::{Relaxed, ServiceLinks, check_container, check_document, document_keys};
 use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec};
 use crate::report::{Report, warning};
 use crate::union::Union;
@@ -207,6 +208,11 @@ fn check_pair(
     let findings = check_document(&manifests, &document.source, &binding.union, relaxed)?;
     let present = findings.is_some();
     report.extend(&at, findings.unwrap_or_default());
+    let carried = if relaxed.document {
+        None
+    } else {
+        document_keys(&manifests, &document.source)
+    };
     let mut seen: Vec<String> = Vec::new();
 
     let consumers = document.consumers_in(&manifests);
@@ -270,9 +276,14 @@ fn check_pair(
             if !relaxed.env {
                 report.extend(&at, ServiceLinks::check(spec, &binding.union));
             }
-            for found in
-                check_containers(&at, &manifests, spec, consumer, binding, relaxed, report)?
-            {
+            let context = Context {
+                at: &at,
+                manifests: &manifests,
+                binding,
+                document: carried.as_ref(),
+                relaxed,
+            };
+            for found in check_containers(&context, spec, consumer, report)? {
                 if !seen.contains(&found) {
                     seen.push(found);
                 }
@@ -287,16 +298,34 @@ fn check_pair(
     Ok((present, seen))
 }
 
+/// What every container of one rendered values file is checked against.
+struct Context<'a> {
+    /// Where findings are reported.
+    at: &'a str,
+    /// The whole render, where volumes and `envFrom` sources are followed.
+    manifests: &'a [Json],
+    /// The images the document declares, and their contracts.
+    binding: &'a Binding,
+    /// Every key path the rendered document carries, or [`None`] when it could not be read.
+    document: Option<&'a BTreeSet<String>>,
+    /// The gates this values file is exempt from.
+    relaxed: Relaxed,
+}
+
 /// The declared containers this workload runs. Returns the ones it had.
 fn check_containers(
-    at: &str,
-    manifests: &[Json],
+    context: &Context<'_>,
     spec: &Json,
     consumer: &Consumer,
-    binding: &Binding,
-    relaxed: Relaxed,
     report: &mut Report,
 ) -> Result<Vec<String>, Error> {
+    let Context {
+        at,
+        manifests,
+        binding,
+        document,
+        relaxed,
+    } = *context;
     let present = containers_of(spec);
     let mut checked = Vec::new();
 
@@ -332,7 +361,7 @@ fn check_containers(
 
         report.extend(
             at,
-            check_container(manifests, spec, container, mine, relaxed)?,
+            check_container(manifests, spec, container, mine, document, relaxed)?,
         );
     }
 
