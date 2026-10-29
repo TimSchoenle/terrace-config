@@ -1,8 +1,8 @@
-//! Dump a configuration surface for a documentation job.
+//! Dumps a configuration surface for a documentation job.
 //!
 //! This is the shape the `schema` feature is built for, and it is meant to be copied into the
-//! service whose configuration is being documented — a handful of lines that a CI step can run
-//! and redirect somewhere:
+//! service whose configuration is being documented: a handful of lines that a CI step can run and
+//! redirect somewhere:
 //!
 //! ```text
 //! cargo run --example config-schema -- --format json              > docs/config.json
@@ -25,11 +25,11 @@
 //!
 //! # The build outputs
 //!
-//! `contract` and `labels` are the two a container build consumes rather than a documentation
-//! job. The contract is copied into the image and attached to its digest in the registry; the
-//! labels are what let anything find it without pulling a layer. See
+//! `contract` and `labels` are the two a container build consumes rather than a documentation job.
+//! The contract is copied into the image and attached to its digest in the registry; the labels are
+//! what let anything find it without pulling a layer. See
 //! [`schema::Contract`](terrace_config::schema::Contract) for the shape and
-//! [`External`](terrace_config::schema::External) for the half no derive can see — the variables
+//! [`External`](terrace_config::schema::External) for the half no derive can see: the variables
 //! this image reads that are nobody's configuration key.
 //!
 //! It reads nothing from the environment, so it produces the same answer on a developer's
@@ -37,8 +37,8 @@
 //!
 //! # A configuration is not one file
 //!
-//! The types below are deliberately in separate modules, as they would be in a real service —
-//! each `Describe` derived beside the code that consumes the values, often in a different crate
+//! The types below are deliberately in separate modules, as they would be in a real service, each
+//! `Describe` derived beside the code that consumes the values, often in a different crate
 //! entirely. `#[config(nested)]` is a trait bound, so it follows the *type*: describing the root
 //! walks the whole tree wherever it lives, and nothing has to be registered anywhere central.
 //!
@@ -96,7 +96,7 @@ impl Default for Config {
     }
 }
 
-/// Stands in for a `csp` module — or a `myservice-csp` crate.
+/// Stands in for a `csp` module or a `myservice-csp` crate.
 mod csp {
     use serde::{Deserialize, Serialize};
     use terrace_config::schema::Describe;
@@ -151,12 +151,12 @@ mod github {
         // attributes below are here is for whoever changes this line.
         //
         // `SecretString` rather than `String` because that is what a service holding a credential
-        // uses, and it deliberately does not implement `Serialize` — which would otherwise stop
-        // the whole struct deriving it and `with_defaults_from` from taking a `Config`.
+        // uses, and it deliberately does not implement `Serialize`, which would otherwise stop the
+        // whole struct deriving it and `with_defaults_from` from taking a `Config`.
         // `skip_serializing` costs nothing here: a secret has no default worth printing, and
-        // `#[config(secret)]` renders `<redacted>` in place of one anyway. The field is kept in
-        // the shape a consumer will have it so that `cargo clippy --all-targets` fails if that
-        // stops being true.
+        // `#[config(secret)]` renders `<redacted>` in place of one anyway. The field is kept in the
+        // shape a consumer will have it so that `cargo clippy --all-targets` fails if that stops
+        // being true.
         #[config(secret)]
         #[serde(skip_serializing)]
         #[expect(
@@ -173,10 +173,10 @@ mod github {
     }
 }
 
-/// Everything below is what a service actually writes. The rest of the program — the `--format`
-/// vocabulary, the argument parsing, the dispatch, the printing and the exit code — is
-/// [`Cli`](terrace_config::schema::cli::Cli), because it was the same program in every repository
-/// that had one.
+/// Everything below is what a service actually writes. The rest of the program (the `--format`
+/// vocabulary, the argument parsing, the dispatch, the printing and the exit code) is
+/// [`Cli`](terrace_config::schema::cli::Cli), because it is the same program in every repository
+/// that has one.
 fn main() -> ExitCode {
     // Built whole and sliced by `--only` inside `Cli::render`, rather than described from a
     // subsystem's own type: the whole schema is the only place the real key paths exist, and a
@@ -212,8 +212,8 @@ fn main() -> ExitCode {
     )
     // The whole `///` comment rather than its summary. A reference table is read at a glance and
     // wants one sentence per key; `config.example.toml` is read once, while being filled in, and
-    // the paragraph below the summary is where a key with a shape — a list, a map, a duration —
-    // gets to show it.
+    // the paragraph below the summary is where a key with a shape, such as a list, a map or a
+    // duration, gets to show it.
     .toml_example(TomlExample::new().docs(Docs::Full))
     .contract_with(&external)
     .main(schema)
@@ -222,11 +222,10 @@ fn main() -> ExitCode {
 /// The half of the contract no derive can reach, and the half a chart most needs.
 ///
 /// These three belong to the Dioxus toolchain, which reads them from the environment before any of
-/// this crate's layers exist — so they are not configuration keys, they are still set by the
-/// chart, and a validator told only about the `PORTFOLIO_` namespace would have to either flag
-/// them or ignore every variable outside it. Declared here, they are checked like any key: a chart
-/// passing `PORT: "http"` fails the same gate a chart passing `PORTFOLIO_GITHUB__TTL_SECS: "soon"`
-/// fails.
+/// this crate's layers exist. They are not configuration keys, but the chart still sets them, and a
+/// validator told only about the `PORTFOLIO_` namespace would have to either flag them or ignore
+/// every variable outside it. Declared here, they are checked like any key: a chart passing
+/// `PORT: "http"` fails the same gate a chart passing `PORTFOLIO_GITHUB__TTL_SECS: "soon"` fails.
 fn external(builder: ContractBuilder) -> ContractBuilder {
     builder.external(
         External::new()

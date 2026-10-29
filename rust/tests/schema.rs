@@ -1,12 +1,12 @@
 //! The schema export: what the derive sees, and what the loader spells it as.
 //!
 //! These are the tests that keep generated documentation honest. A schema that lists a key the
-//! loader cannot read, or omits one it can, is worse than no generated documentation at all —
-//! the whole point is that the table cannot drift from the code.
+//! loader cannot read, or omits one it can, is worse than no generated documentation at all: the
+//! whole point is that the table cannot drift from the code.
 
 #![cfg(feature = "schema")]
 // Every struct here is a fixture that exists to be *described*. The derive reads each field at
-// compile time and the assertions check what it produced, so no field is ever read at runtime —
+// compile time and the assertions check what it produced, so no field is ever read at runtime,
 // which is the whole point of the feature and not something to work around by adding uses.
 #![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
 
@@ -180,10 +180,9 @@ fn a_custom_dialect_changes_every_spelling() {
     );
 }
 
-/// A separator containing a letter used to break `Dialect::key_path`, which folded the input to
-/// lower case before looking for `_X_` in it. The schema was the honest half — it reported no
-/// spelling rather than one that did not work — and this is the same assertion the other way
-/// round, now that `key_path` matches the separator case-insensitively.
+/// A separator containing a letter breaks a `Dialect::key_path` that folds the input to lower case
+/// before looking for `_X_` in it. `key_path` matches the separator case-insensitively, and this
+/// asserts that every key's advertised spelling reaches it.
 #[test]
 fn a_separator_containing_a_letter_reaches_every_key() {
     let schema = Terrace::new("APP_")
@@ -289,10 +288,10 @@ fn an_unset_secret_reports_unset_rather_than_redacted() {
     assert!(schema.to_markdown().contains("| unset |"));
 }
 
-/// The value and the prose answer different questions — `0` is what an operator compares against
-/// what they set, "permanent" is why they would leave it alone — so both are reported. A note
-/// that *replaced* the value, which is what this used to do, meant the observed value was thrown
-/// away and had to be hand-copied into the prose to appear at all.
+/// The value and the prose answer different questions: `0` is what an operator compares against
+/// what they set, and "permanent" is why they would leave it alone, so both are reported. A note
+/// that *replaced* the value would throw the observed value away, and it would have to be
+/// hand-copied into the prose to appear at all.
 #[test]
 fn a_note_accompanies_the_observed_default_rather_than_replacing_it() {
     let schema = schema().with_defaults_from(&Config::default()).unwrap();
@@ -531,9 +530,9 @@ fn an_optional_subtree_is_described_through_the_option() {
     assert_eq!(paths(&schema), ["inner.leaf"]);
 }
 
-/// A configuration is not one file. Each subsystem derives `Describe` beside the code that
-/// consumes it, and describing the root walks all of it — `#[config(nested)]` is a trait bound,
-/// so it follows the type rather than the module.
+/// A configuration is not one file. Each subsystem derives `Describe` beside the code that consumes
+/// it, and describing the root walks all of it: `#[config(nested)]` is a trait bound, so it follows
+/// the type rather than the module.
 #[test]
 fn a_configuration_split_across_modules_is_described_as_one_tree() {
     mod csp {
@@ -648,8 +647,8 @@ fn a_colliding_rename_is_refused() {
 /// as an inline table rather than dropped, so the output says what is actually there.
 #[test]
 fn every_kind_of_default_value_renders() {
-    // `#[serde(default)]` so none of these is *required* — a required key reports no default at
-    // all, which is a different property, tested above.
+    // `#[serde(default)]` so none of these is *required*: a required key reports no default at all,
+    // which is a different property, tested above.
     #[derive(Serialize, Deserialize, Default, Describe)]
     #[serde(default)]
     struct Shapes {
@@ -699,7 +698,7 @@ fn every_kind_of_default_value_renders() {
 }
 
 /// A configuration type that contains itself has no finite set of keys, so there is no correct
-/// output — only a stack overflow, or this.
+/// output, only a stack overflow or this.
 #[test]
 #[should_panic(expected = "nests more than 32 levels deep")]
 fn a_type_that_contains_itself_is_refused_rather_than_overflowing_the_stack() {
@@ -714,7 +713,7 @@ fn a_type_that_contains_itself_is_refused_rather_than_overflowing_the_stack() {
     let _ = Schema::describe::<Cyclic>(&Terrace::new("T_").dialect());
 }
 
-/// Nesting right up to the limit is legal — the guard is for a type with no bottom, not for a
+/// Nesting right up to the limit is legal: the guard is for a type with no bottom, not for a
 /// configuration that happens to be deep.
 #[test]
 fn nesting_to_the_limit_is_allowed() {
@@ -780,8 +779,8 @@ fn every_column_renders_for_every_key() {
     }
 }
 
-/// A `Describe` with no keys at all is a real shape — an empty configuration section — and has
-/// to render as a table with a header and no rows rather than as anything malformed.
+/// A `Describe` with no keys at all is a real shape, an empty configuration section, and has to
+/// render as a table with a header and no rows rather than as anything malformed.
 #[test]
 fn a_schema_with_no_keys_still_renders_and_round_trips() {
     struct Empty;
@@ -874,7 +873,7 @@ fn an_enum_key_reports_the_values_it_accepts() {
     assert_eq!(key(&schema, "log_level").values, ["trace", "debug", "info"]);
     assert_eq!(key(&schema, "fallback").values, ["trace", "debug", "info"]);
 
-    // The choices are what an operator can act on, so they are what the table prints — with the
+    // The choices are what an operator can act on, so they are what the table prints, with the
     // separating pipes escaped, or they would end the cell.
     let markdown = schema.to_markdown();
     assert!(
@@ -884,7 +883,7 @@ fn an_enum_key_reports_the_values_it_accepts() {
 }
 
 /// Variant names are `PascalCase` by convention, so `rename_all` means something different for a
-/// variant than for a field — `snake_case` has to insert the underscores rather than keep them.
+/// variant than for a field: `snake_case` has to insert the underscores rather than keep them.
 #[test]
 fn variant_renaming_follows_serdes_variant_rules() {
     macro_rules! variants {
@@ -976,11 +975,10 @@ fn a_required_key_says_what_to_supply_even_with_no_default() {
     assert!(row.contains("| required |"), "{row}");
 }
 
-/// Found by the `schema` fuzz target on the first libFuzzer campaign that ran it: a key path
-/// carrying a NUL produced an environment spelling the schema advertised and `std::env::set_var`
-/// then refused. POSIX and Windows both forbid `=` in a variable name, and a NUL ends the string
-/// that carries it, so a name containing either is one no operator can create — the same false
-/// claim as printing the wrong name.
+/// A key path carrying a NUL produces an environment spelling `std::env::set_var` refuses. POSIX
+/// and Windows both forbid `=` in a variable name, and a NUL ends the string that carries it, so a
+/// name containing either is one no operator can create. Advertising it is the same false claim as
+/// printing the wrong name.
 #[test]
 fn a_spelling_no_operating_system_could_hold_is_not_advertised() {
     #[derive(Describe)]
@@ -1051,10 +1049,10 @@ fn a_secrets_file_name_that_would_be_a_path_is_not_advertised() {
     }
 }
 
-/// Found by the libFuzzer campaign. A key path is not prose, but it is not the table author's to
-/// choose either — `#[serde(rename = "a|b")]` puts a cell separator into it, and the `Path`
-/// column was the one cell interpolating its value without escaping. One unescaped `|` adds a
-/// column to that row and the table stops rendering.
+/// A key path is not prose, but it is not the table author's to choose either:
+/// `#[serde(rename = "a|b")]` puts a cell separator into it, and the `Path` column interpolates
+/// that value like any other cell. One unescaped `|` adds a column to that row and the table stops
+/// rendering.
 #[test]
 fn a_pipe_in_a_key_path_does_not_add_a_column() {
     #[derive(Describe)]
@@ -1100,10 +1098,10 @@ fn a_pipe_in_a_loader_variable_does_not_add_a_column() {
     assert!(markdown.contains(r"`T_PRO\|FILE`"), "{markdown}");
 }
 
-/// Found by the `schema` fuzz campaign. figment's environment layer trims the key it produces, so
-/// a path with surrounding whitespace can never come back from it: `TEST_BY ` arrives as `by`, and
-/// the schema was promising it would supply `by `. An operator following that would set a variable
-/// that quietly fills in a *neighbouring* key — worse than one that does nothing.
+/// figment's environment layer trims the key it produces, so a path with surrounding whitespace can
+/// never come back from it: `TEST_BY ` arrives as `by`, and a schema advertising it would promise
+/// to supply `by `. An operator following that would set a variable that quietly fills in a
+/// *neighbouring* key, which is worse than one that does nothing.
 #[test]
 fn a_path_the_environment_layer_would_trim_has_no_environment_spelling() {
     #[derive(Describe)]
@@ -1120,8 +1118,8 @@ fn a_path_the_environment_layer_would_trim_has_no_environment_spelling() {
     assert_eq!(key(&schema, " by").env, None);
     assert_eq!(key(&schema, "normal").env.as_deref(), Some("T_NORMAL"));
 
-    // The file layers do not trim, so they can still reach it — the two mechanisms genuinely
-    // differ, and the schema reports them separately rather than blanket-refusing the key.
+    // The file layers do not trim, so they can still reach it. The two mechanisms genuinely differ,
+    // and the schema reports them separately rather than blanket-refusing the key.
     assert_eq!(key(&schema, "by ").secrets_file.as_deref(), Some("by "));
 }
 
@@ -1145,8 +1143,8 @@ fn a_path_with_an_empty_segment_has_no_environment_spelling() {
     assert_eq!(key(&schema, "outer.").env, None);
 }
 
-/// A `///` comment is rustdoc first and table prose second. The whole of it used to go into the
-/// `Purpose` cell, which forced a field carrying four paragraphs of load-bearing explanation to
+/// A `///` comment is rustdoc first and table prose second. Putting the whole of it into the
+/// `Purpose` cell would force a field carrying four paragraphs of load-bearing explanation to
 /// choose between documenting its type properly and rendering a readable table.
 #[test]
 fn only_the_summary_paragraph_reaches_the_table() {
@@ -1185,7 +1183,7 @@ fn only_the_summary_paragraph_reaches_the_table() {
 }
 
 /// A comment that opens with a list has no leading paragraph. Taking the first block is still the
-/// answer — an empty cell would be worse than a flattened one.
+/// answer: an empty cell would be worse than a flattened one.
 #[test]
 fn a_comment_with_no_leading_paragraph_still_renders_a_cell() {
     #[derive(Describe)]
@@ -1206,9 +1204,9 @@ fn a_comment_with_no_leading_paragraph_still_renders_a_cell() {
     assert!(markdown.contains("| — |"), "{markdown}");
 }
 
-/// Both file spellings are mechanical — the secrets file is the path with the separator
-/// substituted, the indirection variable is the environment name plus a documented suffix — so
-/// neither is in the default set. Both are still in the contract, and still available by name.
+/// Both file spellings are mechanical (the secrets file is the path with the separator substituted,
+/// the indirection variable is the environment name plus a documented suffix), so neither is in the
+/// default set. Both are still in the contract, and still available by name.
 #[test]
 fn the_default_columns_leave_the_file_spellings_out() {
     let markdown = schema().to_markdown();
@@ -1265,7 +1263,7 @@ fn defaults_can_be_supplied_as_an_already_serialised_value() {
 
 /// The case the `Serialize` bound bites on, and the reason it is worth documenting: a config
 /// holding a secret is what this crate exists for. `secrecy::SecretString` refuses to implement
-/// `Serialize` on purpose, so the struct cannot derive it either — unless the field is skipped,
+/// `Serialize` on purpose, so the struct cannot derive it either, unless the field is skipped,
 /// which costs nothing because a secret's default is never rendered anyway.
 #[test]
 fn a_config_holding_a_secret_type_can_still_supply_defaults() {
@@ -1287,8 +1285,8 @@ fn a_config_holding_a_secret_type_can_still_supply_defaults() {
         .with_defaults_from(&WithSecret::default())
         .expect("the default config serialises");
 
-    // The skipped field supplies no value, so the key is documented with no default at all —
-    // which is the truth, and is what `secret` would have redacted to anyway.
+    // The skipped field supplies no value, so the key is documented with no default at all, which
+    // is the truth, and is what `secret` would have redacted to anyway.
     assert!(key(&schema, "token").secret);
     assert_eq!(key(&schema, "token").default, None);
     assert_eq!(key(&schema, "ttl_secs").default.as_deref(), Some("0"));
@@ -1316,7 +1314,7 @@ fn merging_two_roots_unions_their_keys_and_loader_variables() {
         .schema::<Server>()
         .merge(terrace.schema::<Updater>());
 
-    // `self` first, then what `other` adds — declaration order survives within each half.
+    // `self` first, then what `other` adds. Declaration order survives within each half.
     assert_eq!(
         paths(&merged),
         [
@@ -1332,7 +1330,7 @@ fn merging_two_roots_unions_their_keys_and_loader_variables() {
     assert_eq!(merged.schema_version, SCHEMA_VERSION);
 }
 
-/// Two binaries reading one shared key is the normal case in a workspace, not a mistake — so an
+/// Two binaries reading one shared key is the normal case in a workspace, not a mistake, so an
 /// identical description on both sides is kept once rather than refused.
 #[test]
 fn a_key_described_the_same_way_on_both_sides_is_kept_once() {
@@ -1372,7 +1370,7 @@ fn schemas_of_different_dialects_cannot_be_merged() {
 }
 
 /// A README with one key table per subsystem wants the loader variables once, above the first of
-/// them — not repeated over every table, and not reachable only by clearing a public field.
+/// them, not repeated over every table, and not reachable only by clearing a public field.
 #[test]
 fn each_table_renders_on_its_own() {
     let schema = schema();
@@ -1393,9 +1391,9 @@ fn each_table_renders_on_its_own() {
     assert_eq!(schema.to_markdown(), format!("{loader}\n{keys}"));
 }
 
-/// The loader table has no header of its own to render when there are no variables — a header
-/// with no rows promises variables that do not exist. The key table is the opposite case, and the
-/// two are deliberately not symmetric.
+/// The loader table has no header of its own to render when there are no variables: a header with
+/// no rows promises variables that do not exist. The key table is the opposite case, and the two
+/// are deliberately not symmetric.
 #[test]
 fn an_empty_loader_table_is_empty_rather_than_a_bare_header() {
     struct Empty;
@@ -1420,9 +1418,9 @@ fn an_empty_loader_table_is_empty_rather_than_a_bare_header() {
 // The two renderings that write a *file*.
 //
 // These are the tests that matter most, because the failure mode is worse. A reference table that
-// has drifted reads wrong; a `config.example.toml` that has drifted is *copied* — into a
-// deployment, as the config a service actually loads — and a JSON Schema that has drifted tells an
-// editor to underline a key that is perfectly valid.
+// has drifted reads wrong; a `config.example.toml` that has drifted is *copied* into a deployment,
+// as the config a service actually loads; and a JSON Schema that has drifted tells an editor to
+// underline a key that is perfectly valid.
 //
 // So the property under test is not "the string looks right". It is that the generated file goes
 // back through a real TOML parse and a real `serde` extraction and arrives at the values it was
@@ -1463,7 +1461,7 @@ fn is_assignment(line: &str) -> bool {
     })
 }
 
-/// Extract a `Config` from TOML text, as the loader's own TOML layer would.
+/// Extracts a `Config` from TOML text, as the loader's own TOML layer would.
 fn load(toml: &str) -> Config {
     Figment::new()
         .merge(Toml::string(toml))
@@ -1473,9 +1471,9 @@ fn load(toml: &str) -> Config {
 
 /// The whole point of the rendering: what it writes is a file the loader reads.
 ///
-/// Everything with a default is commented out, so this is the *empty* case — the generated file
-/// with nothing filled in has to load, carrying the placeholder at each required key and the
-/// serde default everywhere else.
+/// Everything with a default is commented out, so this is the *empty* case: the generated file with
+/// nothing filled in has to load, carrying the placeholder at each required key and the serde
+/// default everywhere else.
 #[test]
 fn the_generated_example_loads_unedited() {
     let loaded = load(&example());
@@ -1489,7 +1487,7 @@ fn the_generated_example_loads_unedited() {
 /// Uncommenting the file gives back the values it was rendered from.
 ///
 /// This is what makes a commented line and a deleted line the same thing, and it is the assertion
-/// that catches a default written as the wrong *type* — `dist_dir = public` does not parse, and
+/// that catches a default written as the wrong *type*: `dist_dir = public` does not parse, and
 /// `ttl_secs = "0"` parses and then fails to deserialise.
 #[test]
 fn uncommenting_the_example_reproduces_the_defaults() {
@@ -1603,7 +1601,7 @@ fn the_example_carries_every_key_the_table_does() {
     }
 }
 
-/// The preamble names the variables that decide whether this file is read at all — the ones no
+/// The preamble names the variables that decide whether this file is read at all: the ones no
 /// derive can see, and the ones an operator needs before any key matters.
 #[test]
 fn the_preamble_names_the_loader_variables() {
@@ -1763,7 +1761,7 @@ fn an_unknown_type_constrains_nothing() {
     );
 }
 
-/// A reserved key is not a property. With the document closed, a file that sets one is flagged —
+/// A reserved key is not a property. With the document closed, a file that sets one is flagged,
 /// which is what the loader says about it too.
 #[test]
 fn a_reserved_key_is_not_a_property() {
@@ -1880,10 +1878,10 @@ enum Method {
 /// Deliberately not `Describe`: the keys under it are operator-chosen names, and the producer
 /// that owns this shape has said so. The feature must not force it to opt in.
 ///
-/// Generic on purpose. The derive refuses a *bare* name it can read nothing from, so a fixture
-/// that has to reach the runtime interpreter with a meaningless spelling has to be one of the
-/// shapes the derive leaves alone — and what is under test is that module, which must keep
-/// publishing `{"type": "object"}` for a map whose value it cannot name.
+/// Generic on purpose. The derive refuses a *bare* name it can read nothing from, so a fixture that
+/// has to reach the runtime interpreter with a meaningless spelling has to be one of the shapes the
+/// derive leaves alone, and what is under test is that module, which must keep publishing
+/// `{"type": "object"}` for a map whose value it cannot name.
 #[derive(Deserialize, Serialize, Default)]
 struct Opaque<T> {
     region: T,
@@ -2023,7 +2021,7 @@ fn an_element_schema_leaves_the_text_constraint_alone() {
 }
 
 /// The rendering an editor and a Helm chart read carries the same shape, nested at the key's
-/// position — and closes the element's objects for the reason it closes the document's own.
+/// position, and closes the element's objects for the reason it closes the document's own.
 #[test]
 fn the_json_schema_renders_the_element_shape() {
     let rendered = containers()
@@ -2039,8 +2037,8 @@ fn the_json_schema_renders_the_element_shape() {
         item["properties"]["target"]["additionalProperties"],
         json!(false)
     );
-    // A map's `additionalProperties` is a schema and must be recursed into, never overwritten
-    // with `false` — that would turn "every value looks like this" into "there are no values".
+    // A map's `additionalProperties` is a schema and must be recursed into, never overwritten with
+    // `false`, which would turn "every value looks like this" into "there are no values".
     assert_eq!(
         document["properties"]["peers"]["additionalProperties"]["properties"]["id"]["type"],
         json!("integer")
@@ -2097,8 +2095,8 @@ fn a_reported_element_on_a_key_that_is_not_a_container_is_dropped() {
     assert!(schema.keys[0].constraint.is_none(), "{:?}", schema.keys[0]);
 }
 
-/// An element type whose elements contain itself is cyclic exactly as a field of itself is, and
-/// has no finite shape to describe — only a stack overflow, or this.
+/// An element type whose elements contain itself is cyclic exactly as a field of itself is, and has
+/// no finite shape to describe, only a stack overflow or this.
 #[test]
 #[should_panic(expected = "nests more than 32 levels deep")]
 fn an_element_that_contains_itself_is_refused_rather_than_overflowing_the_stack() {
@@ -2400,7 +2398,7 @@ fn neither_attribute_changes_the_shape_of_the_document() {
 /// and both halves of that impl.
 ///
 /// Its own `Deserialize` is the derived one, which is what makes a list of its variant spellings
-/// true — the property `#[config(values(…))]` asserts and this crate cannot check. A type whose
+/// true: the property `#[config(values(…))]` asserts and this crate cannot check. A type whose
 /// `Deserialize` converts from something else is the case that must *not* be described this way;
 /// `tracing::Level` is the one that turns up, and `docs/SCHEMA.md` works it through.
 #[derive(Deserialize, Serialize, Default)]
@@ -2448,8 +2446,8 @@ fn a_literal_value_list_describes_a_type_no_impl_can_reach() {
     assert_eq!(key(&schema, "log_level").ty.as_deref(), Some("Foreign"));
 }
 
-/// The route to prefer: the spellings are read off a type rather than retyped, so they cannot
-/// drift from what serde matches — and every rendering is identical to the list's.
+/// The route to prefer: the spellings are read off a type rather than retyped, so they cannot drift
+/// from what serde matches, and every rendering is identical to the list's.
 #[test]
 fn values_from_reports_another_types_variants() {
     #[derive(Deserialize, Serialize, Default, Describe)]
@@ -2543,8 +2541,8 @@ fn a_literal_element_list_describes_a_container_of_one() {
 /// they come from.
 ///
 /// Both halves match the *last segment of the type token* and resolve nothing, so an alias named
-/// `Url` is exactly the same input as the real one — which is what makes this test possible
-/// without `url`, `uuid` and `secrecy` in the dependency list.
+/// `Url` is exactly the same input as the real one, which is what makes this test possible without
+/// `url`, `uuid` and `secrecy` in the dependency list.
 mod leaf_alias {
     pub(crate) type Url = String;
     pub(crate) type Uuid = String;
@@ -2554,10 +2552,10 @@ mod leaf_alias {
 /// Every spelling the crate reads a shape out of, in one struct.
 ///
 /// It holds the two halves of one fact together. The derive's own list decides which of these
-/// fields compile at all — a spelling missing from it is refused as publishing nothing — and
+/// fields compile at all (a spelling missing from it is refused as publishing nothing), and
 /// `rust_type` decides which of them publish a constraint. A leaf recognised by one half and not
-/// the other fails here rather than in a consumer's build, and the key count below is what forces
-/// a leaf added to either half to arrive with a field of its own.
+/// the other fails here rather than in a consumer's build, and the key count below is what forces a
+/// leaf added to either half to arrive with a field of its own.
 #[derive(Describe)]
 struct Leaves {
     string: String,

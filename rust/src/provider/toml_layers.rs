@@ -18,20 +18,20 @@ pub struct TomlLayers {
 }
 
 impl TomlLayers {
-    /// Expand `path` into the TOML files it denotes.
+    /// Expands `path` into the TOML files it denotes.
     ///
-    /// A plain path is returned as-is, missing or not — `Toml::file` skips an absent file, and
-    /// "a misspelled path is not an error" is deliberate: a service with no config file at all
-    /// is the normal development case. A *directory* is expanded to every `*.toml` directly
-    /// inside it, sorted by name so a `10-base.toml` / `20-overrides.toml` pair merges in the
-    /// order an operator reading the mount would predict.
+    /// A plain path is returned as-is, missing or not. `Toml::file` skips an absent file, and "a
+    /// misspelled path is not an error" is deliberate: a service with no config file at all is the
+    /// normal development case. A *directory* is expanded to every `*.toml` directly inside it,
+    /// sorted by name so a `10-base.toml` / `20-overrides.toml` pair merges in the order an
+    /// operator reading the mount would predict.
     ///
     /// Dot-prefixed entries are skipped for the same reason as in
     /// [`SecretsDir`](super::SecretsDir): a Kubernetes `ConfigMap` volume is a directory of
     /// symlinks beside a `..data` directory. For that same reason the regular-file test goes
     /// through `fs::metadata`, which follows symlinks, and not `DirEntry::metadata()`, which
-    /// despite the name does not — under a `ConfigMap` mount the latter rejects every fragment
-    /// and yields an empty config layer.
+    /// despite the name does not. Under a `ConfigMap` mount the latter rejects every fragment and
+    /// yields an empty config layer.
     ///
     /// `origin` names whatever pointed at `path` and is quoted back in any error.
     ///

@@ -1,9 +1,9 @@
 //! The three figment providers, each usable on its own against a hand-built `Figment`.
 //!
 //! Two of them carry configuration values that arrive as *files* rather than as environment
-//! variables, both shaped for Kubernetes: a directory of key-named files ([`SecretsDir`] — what
-//! a `Secret` mounted as a volume looks like) and per-key indirection ([`FileSuffixEnv`],
-//! `MYAPP_<KEY>_FILE=/path` — what Docker Compose `secrets:` looks like).
+//! variables, both shaped for Kubernetes: a directory of key-named files ([`SecretsDir`], which is
+//! what a `Secret` mounted as a volume looks like) and per-key indirection ([`FileSuffixEnv`],
+//! `MYAPP_<KEY>_FILE=/path`, which is what Docker Compose `secrets:` looks like).
 //!
 //! A value in a pod's environment is readable from `/proc/<pid>/environ` by anything sharing
 //! the namespace, is inherited by every child process, and is printed by anything that dumps
@@ -11,12 +11,12 @@
 //! place when the `Secret` changes, which is what lets a running service pick up a rotated
 //! credential without being restarted.
 //!
-//! **Values from these layers are emitted unparsed, as strings.** `figment::providers::Env`
-//! runs a TOML-ish parse over every value, so `12345678` becomes a number — and
-//! `Figment::extract` uses figment's default interpreter, which will not coerce a number back
-//! into a string, so an all-digit password supplied that way fails to deserialise into
-//! `SecretString`. These layers exist to carry secrets, and a secret is an opaque byte string.
-//! Anything structured belongs in the TOML layer, which parses it properly.
+//! **Values from these layers are emitted unparsed, as strings.** `figment::providers::Env` runs a
+//! TOML-ish parse over every value, so `12345678` becomes a number, and `Figment::extract` uses
+//! figment's default interpreter, which will not coerce a number back into a string, so an
+//! all-digit password supplied that way fails to deserialise into `SecretString`. These layers
+//! exist to carry secrets, and a secret is an opaque byte string. Anything structured belongs in
+//! the TOML layer, which parses it properly.
 
 mod file_suffix;
 mod secrets_dir;
@@ -86,7 +86,7 @@ pub(crate) fn read_value(path: &Path) -> Result<String, Error> {
     Ok(text.trim_end_matches(['\r', '\n']).to_owned())
 }
 
-/// Insert `value` at a dot-separated `key` path, creating intermediate dictionaries.
+/// Inserts `value` at a dot-separated `key` path, creating intermediate dictionaries.
 ///
 /// Written out rather than using `figment::util::nest` because that returns one nested `Value`
 /// per key and merging them needs figment's private `Coalescible`.

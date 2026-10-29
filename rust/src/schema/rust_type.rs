@@ -1,33 +1,33 @@
 //! What a Rust type token says about the value a key takes.
 //!
-//! [`Key::ty`] is token text, not a resolved type — a derive has only tokens, so a type alias
-//! arrives as its alias and `SecretString` arrives as itself. Every other rendering prints it
-//! back unchanged for exactly that reason. The JSON Schema rendering cannot: `type` is the
-//! keyword that makes an editor reject `port = "8080"`, and there is nowhere else for it to come
-//! from.
+//! [`Key::ty`] is token text, not a resolved type. A derive has only tokens, so a type alias
+//! arrives as its alias and `SecretString` arrives as itself. Every other rendering prints it back
+//! unchanged for exactly that reason. The JSON Schema rendering cannot: `type` is the keyword that
+//! makes an editor reject `port = "8080"`, and there is nowhere else for it to come from.
 //!
 //! So this is the one place in the crate that *interprets* a token, and it is written to fail
-//! closed. A spelling it recognises produces the strictest constraint that is certainly true —
-//! `u16` is an integer in `0..=65535`, and a schema saying so rejects nothing a `u16` would have
-//! accepted. A spelling it does not recognise produces **nothing**, which in JSON Schema means
-//! "any value": a key whose type is a domain newtype validates as it did before, rather than
-//! being rejected on a guess about what the newtype wraps.
+//! closed. A spelling it recognises produces the strictest constraint that is certainly true: `u16`
+//! is an integer in `0..=65535`, and a schema saying so rejects nothing a `u16` would have
+//! accepted. A spelling it does not recognise produces **nothing**, which in JSON Schema means "any
+//! value". A key whose type is a domain newtype is accepted, not rejected on a guess about what the
+//! newtype wraps.
 //!
 //! # The one thing a token cannot say
 //!
-//! `Vec<RouteConfig>` is an array — that much is in the spelling — and what one element of it
-//! looks like is not, because `RouteConfig` is a name and this module has no type graph to look it
-//! up in. Teaching it more names would not help: the next configuration has a different struct.
+//! `Vec<RouteConfig>` is an array, which the spelling says, and what one element of it looks like
+//! is not in the spelling, because `RouteConfig` is a name and this module has no type graph to
+//! look it up in. Teaching it more names would not help: the next configuration has a different
+//! struct.
 //!
 //! So the element is supplied from outside, by the type that *does* know: [`interpret_with`] takes
 //! the schema a `#[config(element)]` field reported and puts it where the walk stops. Everything
 //! about the containers around it still comes from the spelling, which is why a map of sets of an
-//! opted-in enum needs no special case — the walk was already reading both containers correctly
-//! and only the bottom was blank.
+//! opted-in enum needs no special case: the walk reads both containers correctly and only the
+//! bottom is blank.
 //!
 //! # The other thing a token cannot say
 //!
-//! `sample_rate: f32` is a number, and that it is a *fraction* is not in the spelling — the type
+//! `sample_rate: f32` is a number, and that it is a *fraction* is not in the spelling. The type
 //! admits every finite float and the service takes four hundredths of them. So the interval is
 //! supplied from outside too, by [`Bounds`], and it arrives at the same position for the same
 //! reason: the walk descends one path, so a bound written on a `Vec<f32>` bounds what is in the
@@ -40,7 +40,7 @@ use serde_json::{Map, Value as Json, json};
 use super::{Bound, Bounds, TextForm};
 
 /// The JSON Schema keywords `ty` justifies, narrowed by whatever `bounds` the key was annotated
-/// with — or [`None`] for a spelling with no certain meaning and nothing annotated.
+/// with, or [`None`] for a spelling with no certain meaning and nothing annotated.
 ///
 /// Keywords rather than a shape enum of this crate's own: they are the vocabulary the output is
 /// written in, and `items`, `uniqueItems` and `additionalProperties` all carry a nested schema,
@@ -51,16 +51,16 @@ pub(super) fn interpret(ty: &str, bounds: Option<Bounds>) -> Option<Map<String, 
 
 /// The same keywords, with `element` standing in at the position the walk cannot name itself.
 ///
-/// [`walk`] already reads a container correctly — `HashMap<String, HashSet<Method>>` is an object
-/// of arrays of *something* — and the only thing missing is the something. It recurses down
-/// exactly one path (a sequence's item, a map's value), so there is exactly one such position per
-/// type, and `element` goes in it however deep the containers are stacked.
+/// [`walk`] already reads a container correctly: `HashMap<String, HashSet<Method>>` is an object of
+/// arrays of *something*, and the only thing missing is the something. It recurses down exactly one
+/// path (a sequence's item, a map's value), so there is exactly one such position per type, and
+/// `element` goes in it however deep the containers are stacked.
 ///
 /// [`None`] when `ty` is not a container, which is a guard rather than a formality. A key typed as
 /// a bare domain struct has no element position, and grafting the schema at the key itself would
-/// say the key *is* one element — an object where the file holds an array. A hand-written
+/// say the key *is* one element, an object where the file holds an array. A hand-written
 /// [`Describe`](super::Describe) reporting whatever type text it likes is what this protects
-/// against; the derive rejects the same shape at compile time, with a message that can name the
+/// against. The derive rejects the same shape at compile time, with a message that can name the
 /// field.
 pub(super) fn interpret_with(
     ty: &str,
@@ -73,7 +73,7 @@ pub(super) fn interpret_with(
     walk(ty, Some(element), bounds)
 }
 
-/// Whether `ty` names something with an element position — a sequence, a set or a map.
+/// Whether `ty` names something with an element position: a sequence, a set or a map.
 ///
 /// The wrappers `serde` sees through are transparent here for the reason they are transparent in
 /// [`walk`]: `Option<Vec<T>>` is supplied as an array, and the `Option` is a fact about whether
@@ -102,12 +102,11 @@ fn is_container(ty: &str) -> bool {
 
 /// One spelling, read: the containers it is made of, and what it bottoms out in.
 ///
-/// `element` is what the bottom is when the spelling itself cannot say — [`None`] for an ordinary
+/// `element` is what the bottom is when the spelling itself cannot say: [`None`] for an ordinary
 /// read, and the caller's element schema when a key reported one. `bounds` is the interval the
 /// bottom must fall in, when the key was annotated with one. Both are carried down through every
 /// container and every transparent wrapper, so both land wherever the recursion stops: a bound
-/// written on a `Vec<f32>` bounds the numbers in the vector, which is the only thing it could
-/// mean.
+/// written on a `Vec<f32>` bounds the numbers in the vector, which is the only thing it could mean.
 fn walk(
     ty: &str,
     element: Option<&Map<String, Json>>,
@@ -135,7 +134,7 @@ fn walk(
     let name = head.rsplit("::").next()?;
 
     // Everything with an inside. Each of these has exactly one position the walk descends into, so
-    // this is where `element` and `bounds` are passed on rather than applied — there is nothing a
+    // this is where `element` and `bounds` are passed on rather than applied. There is nothing a
     // `minimum` could say about a `Vec`, and the array itself is fully described by its spelling.
     match (name, args.as_slice()) {
         // Wrappers `serde` sees straight through. `Option` is stripped by the derive already;
@@ -172,8 +171,8 @@ fn walk(
             &json!({ "type": "string", "minLength": 1, "maxLength": 1 }),
         )),
 
-        // Every one of these deserialises from a TOML string, and several of them — `PathBuf`,
-        // `Url`, `IpAddr` — are the ones a configuration actually holds.
+        // Every one of these deserialises from a TOML string, and several of them (`PathBuf`,
+        // `Url`, `IpAddr`) are the ones a configuration actually holds.
         (
             "String" | "str" | "PathBuf" | "Path" | "OsString" | "OsStr" | "CString" | "CStr"
             | "SecretString" | "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr"
@@ -181,8 +180,8 @@ fn walk(
             [],
         ) => Some(json_map(&json!({ "type": "string" }))),
 
-        // A spelling with no certain meaning is where a reported element schema belongs — and
-        // where, without one, this module says nothing rather than guessing.
+        // A spelling with no certain meaning is where a reported element schema belongs. Without
+        // one, this module says nothing rather than guessing.
         (name, []) => integer(name).or_else(|| element.cloned()),
         _ => element.cloned(),
     };
@@ -191,17 +190,17 @@ fn walk(
 
 /// The annotated interval, applied to the schema the walk stopped on.
 ///
-/// Both rules below are the rule this whole module is written around — never publish a keyword
-/// that rejects what the loader takes:
+/// Both rules below follow from the rule this whole module is written around: never publish a
+/// keyword that rejects what the loader takes.
 ///
 /// - **A looser bound is dropped.** `minimum` is one keyword rather than a list, so `max = 100_000`
 ///   on a `u16` would *replace* the exact `65535` rather than sit beside it, and the schema would
 ///   then accept a file that cannot load. Whichever of the two admits less survives.
-/// - **A bound on something that is not a number is dropped.** A spelling this module recognises
-///   as a string or a boolean has no interval to narrow. A spelling it recognises as *nothing*
-///   keeps the bound and carries it alone: a newtype over an `f32` is the case the annotation
-///   exists for, and `minimum` with no `type` beside it constrains numbers and lets everything
-///   else past — which is exactly what is known.
+/// - **A bound on something that is not a number is dropped.** A spelling this module recognises as
+///   a string or a boolean has no interval to narrow. A spelling it recognises as *nothing* keeps
+///   the bound and carries it alone: a newtype over an `f32` is the case the annotation exists for,
+///   and `minimum` with no `type` beside it constrains numbers and lets everything else past, which
+///   is exactly what is known.
 fn bounded(schema: Option<Map<String, Json>>, bounds: Option<Bounds>) -> Option<Map<String, Json>> {
     let Some(bounds) = bounds else {
         return schema;
@@ -279,8 +278,8 @@ fn narrow(schema: &mut Map<String, Json>, edge: Edge, bound: Bound, exclusive: b
 
 /// A bound as a real number, for deciding which of two is tighter.
 ///
-/// Only the comparison is approximate. What is written out is [`number`], which keeps an integer
-/// an integer — so a bound past an `f64`'s exact range is compared roughly and published exactly,
+/// Only the comparison is approximate. What is written out is [`number`], which keeps an integer an
+/// integer, so a bound past an `f64`'s exact range is compared roughly and published exactly,
 /// rather than the other way round.
 #[expect(
     clippy::cast_precision_loss,
@@ -304,9 +303,9 @@ fn number(bound: Bound) -> Json {
 /// The keywords an integer spelling justifies, bounds included where they are exact.
 ///
 /// Bounds only up to 32 bits. `u64::MAX` is not representable as an IEEE double, so a `maximum`
-/// carrying it would be a *different* number than the one the type accepts — and a validator
-/// reading it back would reject values the loader takes. A zero lower bound on an unsigned type
-/// is exact at every width, and is the bound that actually catches a mistake.
+/// carrying it would be a *different* number than the one the type accepts, and a validator reading
+/// it back would reject values the loader takes. A zero lower bound on an unsigned type is exact at
+/// every width, and is the bound that actually catches a mistake.
 fn integer(name: &str) -> Option<Map<String, Json>> {
     let (min, max) = match name {
         "u8" => (Some(json!(0)), Some(json!(u8::MAX))),
@@ -344,33 +343,32 @@ fn integer(name: &str) -> Option<Map<String, Json>> {
 /// What form the *unparsed text* of an environment variable takes, and the keywords that check
 /// it.
 ///
-/// [`interpret`] describes a value once it is in the document — an integer, a boolean, an array.
-/// A variable holds none of those; it holds text, and `"0"` fails `{"type": "integer"}` under
-/// every conforming validator. A consumer told only the document-space constraint has to know
-/// that `u64` means "parse the text first, TOML-ish, then check", which is the Rust-type
-/// vocabulary this module exists to stop publishing.
+/// [`interpret`] describes a value once it is in the document: an integer, a boolean, an array. A
+/// variable holds none of those. It holds text, and `"0"` fails `{"type": "integer"}` under every
+/// conforming validator. A consumer told only the document-space constraint has to know that `u64`
+/// means "parse the text first, TOML-ish, then check", which is the Rust-type vocabulary this
+/// module exists to stop publishing.
 ///
 /// Every rule below was measured against the loader rather than reasoned from TOML's grammar,
 /// because figment's `Env` provider is what decides this and its parse is neither TOML's nor
 /// `str::parse`'s. Against a `u64` key it accepts `0`, `42`, `007`, `+5` and `7` with surrounding
-/// whitespace, and refuses `1_000`, `0x1F`, `0b1` and `1e3` — so the pattern permits leading
-/// zeros, a leading `+` and outer whitespace, and does not permit the separators and radix
-/// prefixes TOML itself would. Against a `bool` it accepts `true` and `false` and nothing else:
-/// not `TRUE`, not `1`, not `yes`.
+/// whitespace, and refuses `1_000`, `0x1F`, `0b1` and `1e3`. So the pattern permits leading zeros,
+/// a leading `+` and outer whitespace, and does not permit the separators and radix prefixes TOML
+/// itself would. Against a `bool` it accepts `true` and `false` and nothing else: not `TRUE`, not
+/// `1`, not `yes`.
 ///
-/// Erring towards permissive is not a stylistic choice here. A pattern that rejects text the
-/// loader accepts stops a deployment that was correct, which is the failure this whole module is
-/// written to avoid — so a spelling whose accepted set is not known exactly gets [`None`].
+/// Erring towards permissive is not a stylistic choice here. A pattern that rejects text the loader
+/// accepts stops a deployment that was correct, which is the failure this whole module is written
+/// to avoid. A spelling whose accepted set is not known exactly gets [`None`].
 ///
 /// # Why a string type gets nothing
 ///
 /// `{"type": "string"}` is what every environment value already is, so emitting it would be a
-/// constraint that constrains nothing. The interesting rule for a string-typed key is the
-/// opposite one — figment parses `12345678` into a number and `Figment::extract` will not coerce
-/// it back, so an all-digit password supplied this way fails to load (see
-/// [`provider`](crate::provider)). Expressing that needs a `not` over the forms that parse, and
-/// the boundary of "what parses" is exactly what is not known exactly enough to reject on. It is
-/// documented instead of guessed.
+/// constraint that constrains nothing. The interesting rule for a string-typed key is the opposite
+/// one. Figment parses `12345678` into a number and `Figment::extract` will not coerce it back, so
+/// an all-digit password supplied this way fails to load (see [`provider`](crate::provider)).
+/// Expressing that needs a `not` over the forms that parse, and the boundary of "what parses" is
+/// exactly what is not known exactly enough to reject on. It is documented instead of guessed.
 pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
     let ty = strip_reference(ty.trim());
 
@@ -392,9 +390,9 @@ pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
 
         ("bool", []) => (TextForm::Boolean, Some(one_of(&["true", "false"]))),
 
-        // Accepts any text, and the loader agrees: none of these parses on the way in, so there
-        // is nothing a validator could have caught. `Text` says exactly that — no check possible
-        // and none needed.
+        // Accepts any text, and the loader agrees: none of these parses on the way in, so there is
+        // nothing a validator could have caught. `Text` says exactly that: no check possible and
+        // none needed.
         (
             "String" | "str" | "PathBuf" | "Path" | "OsString" | "OsStr" | "CString" | "CStr"
             | "SecretString",
@@ -404,16 +402,16 @@ pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
         // A string in TOML and a *parse* in Rust, which is a different thing. Measured against the
         // loader: given `!!!`, an `IpAddr` key fails with "invalid IP address syntax", a
         // `SocketAddr` with "invalid socket address syntax", and a `char` with "expected a
-        // character" — while `String` and `PathBuf` take it.
+        // character", while `String` and `PathBuf` take it.
         //
         // So `Text` here would be the same defect `TextForm` was introduced to fix, one field
         // over: a value meaning "checked and fine" used for values that were never checked. This
         // crate has no pattern for a URL and would rather publish nothing than publish a wrong
         // one, so the honest answer is that a check exists and this document does not describe it.
         //
-        // `Uuid` and `Ipv4Addr` are a few characters of regex and could move back to a described
-        // form later; the rule for doing that is the rule everywhere else in this module — measure
-        // what the loader accepts first, and emit a superset or nothing.
+        // `Uuid` and `Ipv4Addr` are a few characters of regex and could get a described form. The
+        // rule for that is the rule everywhere else in this module: measure what the loader accepts
+        // first, and emit a superset or nothing.
         (
             "Url" | "Uuid" | "IpAddr" | "Ipv4Addr" | "Ipv6Addr" | "SocketAddr" | "SocketAddrV4"
             | "SocketAddrV6" | "char",
@@ -432,12 +430,12 @@ pub(super) fn in_text(ty: &str) -> (TextForm, Option<Map<String, Json>>) {
     }
 }
 
-/// A fixed set of spellings, as the *text* of an environment variable — which is the same set
-/// with the whitespace figment's `Env` provider strips before anything compares it.
+/// A fixed set of spellings, as the *text* of an environment variable.
 ///
-/// A bare `enum` is what belongs in [`interpret`]'s output and it is wrong here, which is the
-/// whole reason the two constraints are separate fields. Measured: `PROBE_LEVEL="info "`,
-/// `" info"` and `"\tinfo\n"` all load, and so do `"true "` and `" false"` for a boolean — the
+/// That is the same set with the whitespace figment's `Env` provider strips before anything
+/// compares it. A bare `enum` is what belongs in [`interpret`]'s output and it is wrong here, which
+/// is the whole reason the two constraints are separate fields. `PROBE_LEVEL="info "`, `" info"`
+/// and `"\tinfo\n"` all load, and so do `"true "` and `" false"` for a boolean, because the
 /// provider trims. The *document* layer trims nothing, so `level = "info "` in a TOML file really
 /// is refused, and `constraint` stays a bare `enum` for exactly that reason.
 ///
@@ -453,10 +451,10 @@ pub(super) fn one_of(values: &[impl AsRef<str>]) -> Map<String, Json> {
 
 /// `value` as a regular expression matching itself.
 ///
-/// JSON Schema's `pattern` is ECMA-262, where a backslash before any of these is always the
-/// literal character — so escaping the whole set is correct without knowing which of them a
+/// JSON Schema's `pattern` is ECMA-262, where a backslash before any of these is always the literal
+/// character, so escaping the whole set is correct without knowing which of them a
 /// `#[serde(rename = "…")]` might contain. Getting this wrong in the permissive direction would
-/// accept a spelling the loader refuses; getting it wrong in the strict direction would reject a
+/// accept a spelling the loader refuses. Getting it wrong in the strict direction would reject a
 /// deployment that works, which is the one this module is written to avoid.
 fn escape(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
@@ -473,25 +471,24 @@ fn escape(value: &str) -> String {
 /// literal, so it is bracketed.
 ///
 /// Measured, like the rest. Against a `Vec<String>` key figment takes `[]` and `["a","b"]` and
-/// refuses `a,b`, `a` and the empty string — so `PORTFOLIO_GITHUB__REPOS=a,b`, which is the first
+/// refuses `a,b`, `a` and the empty string. So `PORTFOLIO_GITHUB__REPOS=a,b`, which is the first
 /// thing anyone would try, is caught here rather than at boot. The pattern says nothing about what
 /// is *between* the brackets, because that is TOML's grammar and this is not a TOML parser.
 fn bracketed() -> Map<String, Json> {
     json_map(&json!({
         "type": "string",
-        // `[\s\S]` rather than `.`, which does not match a newline in most engines — and a
-        // multi-line array is legal TOML, so a pattern that refused one would refuse a value the
-        // loader takes.
+        // `[\s\S]` rather than `.`, which does not match a newline in most engines. A multi-line
+        // array is legal TOML, so a pattern that refused one would refuse a value the loader takes.
         "pattern": r"^\s*[\[\{][\s\S]*[\]\}]\s*$",
     }))
 }
 
 /// The text form of an integer spelling: a sign, digits, and the whitespace figment trims.
 ///
-/// No bounds. A pattern cannot express a numeric range, and half-expressing one — digits capped
-/// at five characters for a `u16`, say — would reject `00080`, which the loader takes. The range
-/// lives in [`interpret`]'s output and applies to the parsed value; this applies to the text, and
-/// the two are complementary rather than alternatives.
+/// No bounds. A pattern cannot express a numeric range, and half-expressing one, such as digits
+/// capped at five characters for a `u16`, would reject `00080`, which the loader takes. The range
+/// lives in [`interpret`]'s output and applies to the parsed value. This applies to the text, and
+/// the two are complementary.
 fn integer_text(name: &str) -> Option<Map<String, Json>> {
     // Reuses the same table, so a spelling this crate stops recognising stops being described in
     // both places at once rather than in one of them.
@@ -508,8 +505,9 @@ fn integer_text(name: &str) -> Option<Map<String, Json>> {
     })))
 }
 
-/// An array of `item`, with the element schema when `item` is a spelling this understands — or
-/// when the key reported one, which is what `element` carries. `bounds` goes to the item for the
+/// An array of `item`, with the element schema when `item` is a spelling this understands.
+///
+/// The key can also report one, which is what `element` carries. `bounds` goes to the item for the
 /// same reason: an interval describes what is in the array, not the array.
 fn sequence(
     item: &str,
@@ -536,7 +534,7 @@ fn strip_reference(ty: &str) -> &str {
     let Some(lifetime) = rest.strip_prefix('\'') else {
         return rest;
     };
-    // `'a str` — everything up to the first space is the lifetime.
+    // `'a str`: everything up to the first space is the lifetime.
     lifetime
         .split_once(char::is_whitespace)
         .map_or(rest, |(_, ty)| ty.trim_start())
@@ -701,7 +699,7 @@ mod tests {
     }
 
     /// A container whose element the spelling already names keeps that reading. Nothing in the
-    /// crate produces this pairing — `Vec<String>` cannot report a describing element — but the
+    /// crate produces this pairing, since `Vec<String>` cannot report a describing element, but the
     /// walk must not let a reported schema overwrite a certainty.
     #[test]
     fn a_named_element_is_not_replaced_by_a_reported_one() {

@@ -201,10 +201,10 @@ pub(crate) fn field_body(
         ));
     }
 
-    // After `skip`, after `nested` and after the `flatten` error, so a field that resolved its
-    // type by any of those never reaches this — and the three attributes left are checked here.
-    // `range` is one of them: a bound on a spelling this crate cannot read is carried alone, so
-    // an annotated domain newtype publishes an interval rather than nothing.
+    // After `skip`, after `nested` and after the `flatten` error, so a field that resolved its type
+    // by any of those never reaches this, and the three attributes left are checked here. `range`
+    // is one of them: a bound on a spelling this crate cannot read is carried alone, so an
+    // annotated domain newtype publishes an interval rather than nothing.
     if opts.values.is_none() && opts.element.is_none() && opts.range.is_none() {
         describes_something(field, ty)?;
     }

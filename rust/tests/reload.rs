@@ -6,7 +6,7 @@
 //!
 //! Both tests have the same skeleton, because there are only two things a supervisor test can
 //! assert: that a change rebuilt the runtime, and that some other change did not. The skeleton
-//! itself lives in [`terrace_config::testing`] — [`Rebuilds`] records what the build closure was
+//! itself lives in [`terrace_config::testing`]: [`Rebuilds`] records what the build closure was
 //! handed, waits for a build that should come, and waits out one that should not.
 
 #![cfg(all(feature = "loader", feature = "reload", feature = "testing"))]
@@ -36,10 +36,10 @@ fn harness() -> Harness {
 /// runtime with the new value, and a reload that *fails to load* leaves the runtime that is
 /// already serving completely alone.
 ///
-/// The second half is the one worth pinning. The reload path runs the same code that at boot
-/// only ever ran under a scheduler that would restart the container, so if a failed reload ever
-/// propagated instead of being swallowed, a single bad file write would take down every healthy
-/// pod at once — and nothing about the happy path would look different.
+/// The second half is the one worth pinning. The reload path runs the same code that at boot only
+/// ever ran under a scheduler that would restart the container, so if a failed reload ever
+/// propagated instead of being swallowed, a single bad file write would take down every healthy pod
+/// at once, and nothing about the happy path would look different.
 #[test]
 fn a_rotated_secret_rebuilds_and_a_broken_reload_does_not() {
     let debounce = Debounce::default();
@@ -110,7 +110,7 @@ fn a_change_that_resolves_to_the_same_values_does_not_rebuild() {
         let boot = jail.load_watched::<TestConfig>()?;
         let loader = jail.terrace();
         let files = jail.sandbox();
-        // The values are not compared here — only how often the runtime was built — so there is
+        // The values are not compared here, only how often the runtime was built, so there is
         // nothing to record but the fact of it.
         let rebuilds: Rebuilds<()> = Rebuilds::new();
 

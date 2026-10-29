@@ -1,6 +1,6 @@
-//! Layered [figment](https://docs.rs/figment) configuration that survives mounted-secret
-//! rotation — Kubernetes `Secret` volumes, `_FILE` indirection, and a supervisor that rebuilds
-//! your service when they change.
+//! Layered [figment](https://docs.rs/figment) configuration that survives mounted-secret rotation:
+//! Kubernetes `Secret` volumes, `_FILE` indirection, and a supervisor that rebuilds your service
+//! when they change.
 //!
 //! # The two feature sets
 //!
@@ -38,7 +38,7 @@
 Lowest precedence first, for `Terrace::new("MYAPP_")`:
 
 1. Your struct's `serde` defaults.
-2. TOML at `$MYAPP_CONFIG` — a file, or every `*.toml` in it when it names a directory.
+2. TOML at `$MYAPP_CONFIG`: a file, or every `*.toml` in it when it names a directory.
 3. `MYAPP_`-prefixed, `__`-nested environment variables.
 4. Every key-named file in `$MYAPP_SECRETS_DIR`.
 5. `MYAPP_<KEY>_FILE=/path` indirection.
@@ -72,11 +72,11 @@ let config: Config = Terrace::new("MYAPP_").reserve("MYAPP_PROFILE").load()?;
 
 # What makes it different
 
-Three properties, each of which exists because it failed in production first:
+Three properties, each guarding against a failure a running deployment would otherwise hit:
 
 - **A secrets *directory* provider that survives a projected Kubernetes volume.** `..data`
   symlink traversal, dot-prefix skipping, and `fs::metadata` rather than
-  `DirEntry::metadata()` — which despite its name does not follow symlinks, and so reports
+  `DirEntry::metadata()`, which despite its name does not follow symlinks, and so reports
   every real key as "not a file" and yields a silently empty layer. See
   [`provider::SecretsDir::read`].
 - **Shadow-key *rejection* rather than precedence.** A stale environment variable shadowing a
@@ -89,7 +89,7 @@ Three properties, each of which exists because it failed in production first:
 # Secrets and `Debug`
 
 Two public types hold secret material: [`provider::FileValue`] and [`Sources`], whose
-fingerprint is every configuration value merged together. Neither derives [`Debug`] — both
+fingerprint is every configuration value merged together. Neither derives [`Debug`]. Both
 print `<redacted>` in place of the value, so that logging one is never a way to leak a
 credential. No error in this crate prints a value either.
 "#
@@ -101,9 +101,8 @@ credential. No error in this crate prints a value either.
 
 The loader never learns the shape of a config: it hands the merged figment to `serde` and takes
 back a `T`. [`schema`] inverts that, so the four artefacts every service keeps beside its
-configuration — the reference table, the machine-readable contract, the example file, and the
-JSON Schema an editor validates against — are generated from the type instead of maintained
-beside it.
+configuration are generated from the type instead of maintained beside it: the reference table,
+the machine-readable contract, the example file, and the JSON Schema an editor validates against.
 
 [`schema::Contract`] is the fifth, and the only one whose reader is not a person or an editor: the
 document a container build embeds in its image and attaches to its digest, so that a deployment
@@ -195,7 +194,7 @@ each key, which file or variable inside that layer, and which keys more than one
 use terrace_config::Terrace;
 
 let terrace = Terrace::new("MYAPP_");
-// At boot, and again from inside a reload — it re-reads at the moment it is called.
+// At boot, and again from inside a reload: it re-reads at the moment it is called.
 println!("{}", terrace.explain()?);
 # Ok::<(), terrace_config::Error>(())
 ```
@@ -222,10 +221,10 @@ to the values already running, leaves the running service exactly as it is. See 
     all(feature = "reload", feature = "schema"),
     doc = r#"
 Not every value a rebuild re-reads is one it should apply. A key consumed before the supervisor
-runs — a `tracing` filter, a metrics endpoint — is not applied by any rebuild, and one whose change
-under live traffic is unsafe should not be. Mark the rest `#[config(reload = "live")]`, declare
-the rebuild on the loader with [`Terrace::reloads`], and load through [`Terrace::reloader`]: every
-other key then keeps its boot value across rebuilds, is reported as a pending restart when it
+runs, such as a `tracing` filter or a metrics endpoint, is not applied by any rebuild, and one whose
+change under live traffic is unsafe should not be. Mark the rest `#[config(reload = "live")]`,
+declare the rebuild on the loader with [`Terrace::reloads`], and load through [`Terrace::reloader`]:
+every other key then keeps its boot value across rebuilds, is reported as a pending restart when it
 changes on disk, and is published as `restart` in the contract, so a deployment knows to roll the
 process for it.
 "#
@@ -275,7 +274,7 @@ pub use reloader::Reloader;
 #[cfg(feature = "loader")]
 pub use terrace::Terrace;
 
-// Re-exported so a consumer can name the type in a signature without adding figment to their
-// own manifest — `Terrace::figment` returns one.
+// Re-exported so a consumer can name the type in a signature without adding figment to their own
+// manifest, since `Terrace::figment` returns one.
 #[cfg(feature = "loader")]
 pub use figment;

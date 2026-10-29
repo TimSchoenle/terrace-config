@@ -1,19 +1,18 @@
 //! The read step of the ordered list, checked against the loader for every form.
 //!
 //! `contract.rs` pins fields: that a key reports `text_form: integer`, that its pattern is the one
-//! that was measured. Nothing pinned the *list* — the specification those fields are consumed by —
-//! and three findings in a row have been a rule that was correct when written and became wrong
-//! when a later commit moved what it depended on, in a diff that never touched the rule:
+//! that was measured. This file pins the *list*, the specification those fields are consumed by. A
+//! rule in it can be correct when written and become wrong when a later change moves what it
+//! depends on, in a diff that never touches the rule:
 //!
-//! - gate 3's file-layer rule, keyed on `text_form`, after the parsing types were reclassified;
-//! - `required`, meaning one thing in JSON Schema and another here, once the loader had four
-//!   layers;
-//! - "when `constraint` is a string type, skip the read", after `choice` gained a trim.
+//! - gate 3's file-layer rule, keyed on `text_form`, depends on how the parsing types are
+//!   classified;
+//! - `required` means one thing in JSON Schema and another here, given the loader's four layers;
+//! - "when `constraint` is a string type, skip the read" depends on whether `choice` trims.
 //!
-//! This file is the missing half. It implements the documented read exactly as the table in
-//! [`External`]'s documentation states it, then asserts that what the read produces is what the
-//! loader actually loaded — so a form whose read stops matching the loader fails here rather than
-//! in somebody's cluster.
+//! This file implements the documented read exactly as the table in [`External`]'s documentation
+//! states it, then asserts that what the read produces is what the loader actually loaded, so a
+//! form whose read stops matching the loader fails here rather than in somebody's cluster.
 
 #![cfg(all(feature = "schema", feature = "testing"))]
 
@@ -85,7 +84,7 @@ fn read(form: TextForm, text: &str) -> Option<Json> {
         TextForm::Boolean => Some(Json::from(text == "true")),
         TextForm::Choice | TextForm::Text | TextForm::Unknown => Some(Json::from(text)),
         // `Structured` needs a TOML parser rather than a primitive, which is what its own
-        // documentation says — a consumer without one does the form half and skips this. It shares
+        // documentation says: a consumer without one does the form half and skips this. It shares
         // an arm with the wildcard, which covers a variant added after this file was written: both
         // mean "no read here", and a new form landing in it fails the coverage test below rather
         // than silently getting one.
@@ -218,7 +217,7 @@ fn a_file_strips_line_terminators_and_keeps_every_other_space() {
     // which is the rule stated beside this one.
     for (key, text, expected) in [
         ("text", "hello", "hello"),
-        // The ordinary way a chart writes a Secret — a YAML block scalar leaves the newline.
+        // The ordinary way a chart writes a Secret: a YAML block scalar leaves the newline.
         ("text", "hello\n", "hello"),
         ("text", "hello\r\n", "hello"),
         ("text", "hello\n\n", "hello"),

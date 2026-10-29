@@ -6,10 +6,10 @@ use crate::error::Error;
 
 /// A handle to the temporary directory one test runs in.
 ///
-/// Every path a test writes is relative to this directory, and the whole tree is deleted when
-/// the test returns. Nothing here reads or writes an environment variable — that is
-/// [`Jail`](super::Jail)'s half — which is what lets this type be `Clone` and `'static` where
-/// `Jail` is neither: a task driving a test from the outside, rotating a mounted secret while a
+/// Every path a test writes is relative to this directory, and the whole tree is deleted when the
+/// test returns. Nothing here reads or writes an environment variable, which is
+/// [`Jail`](super::Jail)'s half, and that is what lets this type be `Clone` and `'static` where
+/// `Jail` is neither. A task driving a test from the outside, rotating a mounted secret while a
 /// supervisor watches for it, needs a handle it can move into `tokio::spawn`.
 ///
 /// ```no_run
@@ -45,16 +45,16 @@ impl Sandbox {
 
     /// An absolute path inside the sandbox.
     ///
-    /// Pure path arithmetic: it touches no filesystem and checks nothing, so it answers for a
-    /// file that does not exist yet — which is most of what a test needs it for, naming the
-    /// path it is about to point a variable at. The escape check belongs to the operations that
-    /// actually create something.
+    /// Pure path arithmetic: it touches no filesystem and checks nothing, so it answers for a file
+    /// that does not exist yet. That is most of what a test needs it for: naming the path it is
+    /// about to point a variable at. The escape check belongs to the operations that actually
+    /// create something.
     #[must_use]
     pub fn path(&self, relative: impl AsRef<Path>) -> PathBuf {
         self.root.join(relative)
     }
 
-    /// Create a directory and every missing parent, and return its absolute path.
+    /// Creates a directory and every missing parent, and returns its absolute path.
     ///
     /// # Errors
     /// [`Error::Source`] if `relative` leaves the sandbox, or if the directory cannot be
@@ -66,12 +66,12 @@ impl Sandbox {
         Ok(path)
     }
 
-    /// Write a file, creating every missing parent directory, and return its absolute path.
+    /// Writes a file, creating every missing parent directory, and returns its absolute path.
     ///
-    /// The contents are written verbatim — no trailing newline is added, and none is removed.
-    /// Both halves matter to this crate: the secrets provider strips a trailing newline because
-    /// every editor adds one, and it must not strip a trailing space, so a test has to be able
-    /// to write either.
+    /// The contents are written verbatim: no trailing newline is added, and none is removed. Both
+    /// halves matter to this crate: the secrets provider strips a trailing newline because every
+    /// editor adds one, and it must not strip a trailing space, so a test has to be able to write
+    /// either.
     ///
     /// # Errors
     /// [`Error::Source`] if `relative` leaves the sandbox, or if the file cannot be written.
@@ -89,7 +89,7 @@ impl Sandbox {
         Ok(path)
     }
 
-    /// Remove a file, and return its absolute path.
+    /// Removes a file, and returns its absolute path.
     ///
     /// Removing something that is not there is an error rather than a no-op: a test that
     /// deletes the wrong path would otherwise assert against a mount it never changed.
@@ -102,7 +102,7 @@ impl Sandbox {
         Ok(path)
     }
 
-    /// Create a symbolic link at `link`, pointing at `target`, and return the link's absolute
+    /// Creates a symbolic link at `link`, pointing at `target`, and returns the link's absolute
     /// path.
     ///
     /// **`target` is written into the link verbatim**, and is not resolved against the sandbox:
@@ -110,14 +110,14 @@ impl Sandbox {
     /// rewriting that as an absolute path would test a mount that never exists in a cluster.
     ///
     /// Unix only, which is the honest signature rather than a limitation of this crate. Windows
-    /// needs either developer mode or a privilege for `std::os::windows::fs::symlink_file`,
-    /// so a portable version of this would silently create regular files on the one platform
-    /// where the distinction is invisible — and the distinction is the whole test: reading a
-    /// projected volume through `DirEntry::metadata()`, which does not follow symlinks, reports
-    /// every real key as "not a file" and yields a silently empty layer.
+    /// needs either developer mode or a privilege for `std::os::windows::fs::symlink_file`, so a
+    /// portable version of this would silently create regular files on the one platform where the
+    /// distinction is invisible. The distinction is the whole test: reading a projected volume
+    /// through `DirEntry::metadata()`, which does not follow symlinks, reports every real key as
+    /// "not a file" and yields a silently empty layer.
     ///
-    /// A test that calls this therefore carries `#[cfg(unix)]` itself. See
-    /// [`Layout::Symlinked`](super::Layout::Symlinked) for the whole-volume version.
+    /// A test that calls this therefore carries `#[cfg(unix)]` itself.
+    /// [`Layout::Symlinked`](super::Layout::Symlinked) is the whole-volume version.
     ///
     /// # Errors
     /// [`Error::Source`] if `link` leaves the sandbox, or if the link cannot be created.
@@ -150,9 +150,9 @@ impl Sandbox {
     /// writing outside its sandbox leaves a file behind that the next run inherits, and there is
     /// no reason to spell a path inside one that way.
     ///
-    /// An absolute path that is already inside the sandbox is accepted unchanged. Every method
-    /// here hands one back, and threading one into the next call — `jail.path("conf.d")`, then a
-    /// file in it — should not mean making it relative again by hand.
+    /// An absolute path that is already inside the sandbox is accepted unchanged. Every method here
+    /// hands one back, and threading one into the next call (`jail.path("conf.d")`, then a file in
+    /// it) should not mean making it relative again by hand.
     fn resolve(&self, relative: &Path) -> Result<PathBuf, Error> {
         let relative = relative.strip_prefix(&self.root).unwrap_or(relative);
 

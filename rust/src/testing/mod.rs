@@ -30,17 +30,17 @@
 //! loader the harness was built with. Sandboxes are serialised process-wide, because the
 //! environment is a global and a test harness runs tests in parallel by default.
 //!
-//! The closure returns this crate's [`Error`](crate::Error). That is not a detail: the obvious
-//! way to write this fixture is around `figment::Jail`, whose closure returns a `figment::Error`
-//! — a type large enough that clippy's `result_large_err` fires on every test file that uses it,
-//! and which has no `From<std::io::Error>`, so arranging a symlink means converting an error by
-//! hand. Both problems are structural, and both are gone here: `?` works on the arrangement and
-//! on the load being tested, in one error type the consuming project already names.
+//! The closure returns this crate's [`Error`](crate::Error). The obvious way to write this fixture
+//! is around `figment::Jail`, whose closure returns a `figment::Error`. That type is large enough
+//! that clippy's `result_large_err` fires on every test file that uses it, and it has no
+//! `From<std::io::Error>`, so arranging a symlink means converting an error by hand. Here `?` works
+//! on the arrangement and on the load being tested, in one error type the consuming project already
+//! names.
 //!
 //! # What it arranges
 //!
-//! Each method sets *both* halves of a layer — the file and the variable that makes the loader
-//! read it — and derives every name from the loader under test rather than restating it:
+//! Each method sets *both* halves of a layer, the file and the variable that makes the loader read
+//! it, and derives every name from the loader under test rather than restating it:
 //!
 //! | Method | The layer it arranges |
 //! |---|---|
@@ -50,23 +50,22 @@
 //! | [`Jail::indirection`] | `<PREFIX><KEY>_FILE=/path` |
 //! | [`Jail::secrets_volume`], [`Jail::config_volume`] | a whole mount, `..data` symlinks included — see [`Layout`] |
 //!
-//! Deriving matters more than it looks. A test that sets `TEST_AUTH__JWT_SECRET_FILE` by hand
-//! keeps passing after [`Terrace::file_suffix`](crate::Terrace::file_suffix) renames the
-//! mechanism, while testing a variable the loader no longer reads;
-//! `jail.indirection("auth.jwt_secret", …)` cannot.
+//! Deriving matters more than it looks. A test that sets `TEST_AUTH__JWT_SECRET_FILE` by hand keeps
+//! passing after [`Terrace::file_suffix`](crate::Terrace::file_suffix) renames the mechanism, while
+//! testing a variable the loader does not read. `jail.indirection("auth.jwt_secret", …)` cannot.
 //!
-// The reloading half exists only when the supervisor does, and `broken_intra_doc_links` is
-// denied — so this section is a gated `doc` attribute rather than a `//!` comment, the same way
-// the crate documentation is. Interleaved with the `//!` blocks around it because rustdoc
-// concatenates every inner attribute in source order, which puts it back where it reads.
+// The reloading half exists only when the supervisor does, and `broken_intra_doc_links` is denied,
+// so this section is a gated `doc` attribute rather than a `//!` comment, the same way the crate
+// documentation is. Interleaved with the `//!` blocks around it because rustdoc concatenates every
+// inner attribute in source order, which puts it back where it reads.
 #![cfg_attr(
     feature = "reload",
     doc = r#"
 # Reloading
 
-[`Rebuilds`] records what the supervisor built and waits for it — including the wait that is
+[`Rebuilds`] records what the supervisor built and waits for it, including the wait that is
 supposed to time out, which is how "a failed reload leaves the running service alone" is
-asserted — and [`ServiceError`] is the error type [`reload::run`](crate::reload::run) asks a
+asserted. [`ServiceError`] is the error type [`reload::run`](crate::reload::run) asks a
 service for.
 "#
 )]

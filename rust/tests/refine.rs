@@ -1,7 +1,7 @@
 //! Refinements: constraints a type cannot state, supplied when the schema is built.
 //!
 //! Every rule `Schema::refine` documents is pinned here, because each one is a way the published
-//! contract could claim a check it does not carry — or carry one that contradicts the rest of the
+//! contract could claim a check it does not carry, or carry one that contradicts the rest of the
 //! key. The failure these exist to prevent is concrete: a host that refuses to start without an
 //! `imprint` document, a contract publishing `{}` as a valid default for that map, and a chart that
 //! renders exactly that, passes every gate, and fails at boot.
@@ -398,7 +398,7 @@ fn a_key_made_required_makes_its_tables_required_exactly_as_a_derived_one_does()
 
     assert_eq!(rendered["required"], json!(["legal"]));
     let legal = &rendered["properties"]["legal"];
-    // An alias makes a required key a choice of spellings rather than one name — the same shape
+    // An alias makes a required key a choice of spellings rather than one name, the same shape
     // `json_schema` gives a derive-required key with an alias.
     assert_eq!(
         legal["allOf"],
@@ -1078,7 +1078,7 @@ fn hosted_or_external() -> Refinement {
     ]))
 }
 
-/// A requirement needs a version and a hosted document, and a grace period needs an effective date —
+/// A requirement needs a version and a hosted document, and a grace period needs an effective date,
 /// but only under a requirement, since the runtime returns before any other check without one.
 fn consent_rule() -> Refinement {
     Refinement::holds(Condition::when(

@@ -1,8 +1,8 @@
 //! The generator's own behaviour: what it accepts, what it refuses, and what it reads back.
 //!
-//! The refusals carry most of the weight here. Every one of them is a case where the alternative
-//! is not a crash but a *plausible* artefact — a contract missing the keys `--only` cut, a label
-//! check that compared nothing and passed — and those are the failures a build log does not
+//! The refusals carry most of the weight here. Every one of them is a case where the alternative is
+//! a *plausible* artefact rather than a crash (a contract missing the keys `--only` cut, a label
+//! check that compared nothing and passed), and those are the failures a build log does not
 //! surface.
 
 #![cfg(feature = "schema-cli")]
@@ -59,7 +59,7 @@ fn the_default_request_is_the_rendering_that_loses_nothing() {
     assert_eq!(request.format(), Format::Json);
     assert_eq!(request.only(), "");
     // Not an argument the caller has to remember, and the same constant the `COPY` in a Dockerfile
-    // uses — the two have to agree, and this is what makes agreeing the default.
+    // uses. The two have to agree, and this is what makes agreeing the default.
     assert_eq!(request.path(), DEFAULT_PATH);
 }
 
@@ -195,7 +195,7 @@ fn the_labels_are_read_from_whichever_tool_printed_them() {
         "PORTFOLIO_".to_owned(),
     )]);
 
-    // `docker inspect --format '{{json .Config.Labels}}'` — the labels object itself.
+    // `docker inspect --format '{{json .Config.Labels}}'`: the labels object itself.
     let bare = r#"{"dev.terrace.config.prefix":"PORTFOLIO_"}"#;
     // A whole `docker inspect` config object.
     let docker = r#"{"Config":{"Labels":{"dev.terrace.config.prefix":"PORTFOLIO_"}}}"#;
@@ -425,8 +425,7 @@ fn a_request_can_be_built_without_this_modules_argument_syntax() {
 fn every_rendering_ends_in_exactly_one_newline() {
     // The renderings disagree among themselves: `to_markdown*` and `to_toml_example` end in a
     // newline and the contract and label formats do not. `Cli::main` normalises, because the
-    // difference is invisible on a terminal and a diff in a committed `config.example.toml` —
-    // which is how it was found, in two repositories at once.
+    // difference is invisible on a terminal and a diff in a committed `config.example.toml`.
     //
     // `render` is the layer below and deliberately does not normalise: it returns what the
     // rendering produced, for a caller writing it somewhere other than stdout.

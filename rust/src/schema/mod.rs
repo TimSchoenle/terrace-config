@@ -1,15 +1,15 @@
 //! Every key a configuration *could* carry, in a form another program can read.
 //!
-//! The other modules answer "what did this deployment supply?". This one answers "what is there
-//! to supply?" — the question a reference table in a README is trying to answer, and the one the
+//! The other modules answer "what did this deployment supply?". This one answers "what is there to
+//! supply?". That is the question a reference table in a README is trying to answer, and one the
 //! loader itself never asks, because [`Terrace`](crate::Terrace) hands the merged figment to
 //! `serde` and never learns the shape of what came back.
 //!
 //! The shape therefore has to come from the type, at compile time, via
-//! [`#[derive(Describe)]`](macro@Describe). Most of such a table is recoverable without a macro —
+//! [`#[derive(Describe)]`](macro@Describe). Most of such a table is recoverable without a macro:
 //! the key path, its environment spelling, whether a value is required. Three things are not, and
-//! all three are gone before any runtime sees the type: the sentence saying what the key is
-//! *for*, the type it takes, and the variants an enum-valued key accepts.
+//! all three are gone before any runtime sees the type: the sentence saying what the key is *for*,
+//! the type it takes, and the variants an enum-valued key accepts.
 //!
 //! # Four renderings, one walk
 //!
@@ -30,33 +30,32 @@
 //! whatever that pipeline wants.
 //!
 //! [`Schema::to_markdown`] emits GitHub-flavoured tables that can be pasted in unmodified. Its
-//! documentation column carries the summary — the first paragraph — of each `///` comment, on
+//! documentation column carries the summary of each `///` comment, which is its first paragraph, on
 //! rustdoc's own convention: whatever a field says below its summary line belongs on the field's
 //! own documentation page, not inside a table cell, and [`Schema::to_json`] still carries all of
 //! it.
 //!
-//! [`Schema::to_toml_example`] emits the file itself: every key as a comment carrying its
-//! purpose, its type and its environment spelling, above an assignment showing the value it
-//! already has. A key with a default is commented out, because setting it changes nothing; a
-//! required key is not, because the file does not load without it. A secret is a placeholder,
-//! never a value — this file is committed, and [`Key::secret`] exists to say which keys must not
-//! be in it.
+//! [`Schema::to_toml_example`] emits the file itself: every key as a comment carrying its purpose,
+//! its type and its environment spelling, above an assignment showing the value it already has. A
+//! key with a default is commented out, because setting it changes nothing; a required key is not,
+//! because the file does not load without it. A secret is a placeholder, never a value. This file
+//! is committed, and [`Key::secret`] exists to say which keys must not be in it.
 //!
-//! [`Schema::to_json_schema`] emits a JSON Schema over the same keys, which is what makes an
-//! editor complete and validate the TOML file, and what a Helm chart's `values.schema.json`
-//! consumes. It is the only rendering that has to *interpret* [`Key::ty`] — see [`JsonSchema`]
-//! for how far that interpretation goes and where it stops.
+//! [`Schema::to_json_schema`] emits a JSON Schema over the same keys, which is what makes an editor
+//! complete and validate the TOML file, and what a Helm chart's `values.schema.json` consumes. It
+//! is the only rendering that has to *interpret* [`Key::ty`], and [`JsonSchema`] says how far that
+//! interpretation goes and where it stops.
 //!
 //! [`Schema::into_contract`] is the fifth and the odd one out: not a rendering of the schema but a
 //! document *containing* two of them, published with the image rather than with the source. It
-//! exists because the reader is a deployment pipeline holding an image digest and nothing else —
-//! see [`Contract`] for what that reader needs that no single rendering above supplies, and
-//! [`External`] for the variables an image reads that no derive can find.
+//! exists because the reader is a deployment pipeline holding an image digest and nothing else.
+//! [`Contract`] says what that reader needs that no single rendering above supplies, and
+//! [`External`] covers the variables an image reads that no derive can find.
 //!
 //! # What the type cannot say
 //!
-//! A constraint the application decides at runtime — a map it refuses to start without an
-//! `imprint` entry in — is in no type for the derive to read. [`Schema::refine`] states one after
+//! A constraint the application decides at runtime, such as a map it refuses to start without an
+//! `imprint` entry in, is in no type for the derive to read. [`Schema::refine`] states one after
 //! the walk, and [`Refine`] lets a library that owns such a check publish it wherever the host
 //! mounts it. A refinement only ever tightens, and is checked before anything is published.
 //!
@@ -127,55 +126,50 @@ use crate::error::Error;
 
 /// The version of the JSON document [`Schema::to_json`] produces.
 ///
-/// Bumped when an existing field changes meaning or disappears — **not** when one is added. A
-/// consumer that ignores unknown fields never needs to look at this; one that does not should
-/// refuse a version it was not written against.
+/// It is bumped when an existing field changes meaning or disappears, and **not** when one is
+/// added. A consumer that ignores unknown fields never needs to look at this. One that does not
+/// should refuse a version it was not written against.
 ///
-/// Adding [`Key::ty`], [`Key::values`] and [`Key::aliases`] therefore did not bump it. Splitting
-/// [`Key::default`] from [`Key::note`] would have, since `default` used to hold prose — but no
-/// document with the old meaning was ever published, so a bump would announce a migration nobody
-/// can have performed.
+/// # What version 2 adds
 ///
-/// # What changed in version 2
-///
-/// [`Key::constraint`] on a container-typed key can now carry the shape of one *element*, under
-/// `items` for a sequence and `additionalProperties` for a map, nested as deeply as the
-/// containers are stacked. A key that used to read `{"type": "array"}` reads
-/// `{"type": "array", "items": {"type": "object", "properties": {…}}}` when its element type opts
+/// [`Key::constraint`] on a container-typed key can carry the shape of one *element*, under `items`
+/// for a sequence and `additionalProperties` for a map, nested as deeply as the containers are
+/// stacked. Where version 1 has `{"type": "array"}`, version 2 has
+/// `{"type": "array", "items": {"type": "object", "properties": {…}}}` when the element type opts
 /// in with [`#[config(element)]`](macro@Describe).
 ///
 /// **A version-1 consumer is not broken by it, and that is the rule the bump exists to let it
 /// check.** Every keyword involved is standard JSON Schema and additive: a validator that already
 /// applies `constraint` as a schema gets stricter without being told, and one that reads only
 /// `type` sees exactly what it saw before. The version moved because a consumer with an *allowlist
-/// of keywords* — which is the shape a hand-rolled validator takes — has to widen it before those
-/// keywords appear, and would otherwise discover the nesting at deployment time. Gate on this,
-/// then widen.
+/// of keywords*, which is the shape a hand-rolled validator takes, has to widen it before those
+/// keywords appear, and would otherwise discover the nesting at deployment time. Gate on this, then
+/// widen.
 ///
 /// Nothing was removed and nothing changed meaning, so a version-1 reader that ignores what it
 /// does not recognise needs no change at all. [`Key::text_form`] and [`Key::text_constraint`] are
 /// untouched: an element lives in document space, and an environment variable still carries the
 /// whole container as one TOML literal.
 ///
-/// # What did not bump it: `required` on a map-typed key
+/// # What does not bump it: `required` on a map-typed key
 ///
 /// [`Schema::refine`] can put `required` at the top of a map-typed key's constraint, where no type
-/// ever put it. That is an addition within version 2, not a version 3. The version gates a
-/// *keyword allowlist*, and `required` has been in version 2's since version 2 existed — every
-/// element struct with a mandatory field publishes it one level down, and a constraint is one JSON
-/// Schema, not a set of positions each with a vocabulary of its own. A version-2 consumer that
-/// walks the constraint recursively, which the nesting already obliged it to, meets `required` at
-/// the top exactly as it meets it under `additionalProperties`.
+/// ever puts it. That is an addition within version 2, not a version 3. The version gates a
+/// *keyword allowlist*, and `required` is in version 2's: every element struct with a mandatory
+/// field publishes it one level down, and a constraint is one JSON Schema, not a set of positions
+/// each with a vocabulary of its own. A version-2 consumer that walks the constraint recursively,
+/// which the nesting already obliges it to, meets `required` at the top exactly as it meets it
+/// under `additionalProperties`.
 ///
 /// # Version 3, and only where it is used
 ///
 /// [`Refinement::EntryNames`] publishes `propertyNames`, which no earlier version's allowlist
-/// holds — so it is version 3, on version 2's reasoning exactly. But a version is a promise about
-/// the keywords a document *may* carry, and nearly every document carries none of the new one. So
-/// this constant stays the version a schema is described at, and [`Schema::refine`] raises
-/// [`Schema::schema_version`] to [`LATEST_SCHEMA_VERSION`] only when it writes the keyword that needs
-/// it. A document using nothing new is published exactly as before, and a version-2 consumer is
-/// told to widen only by a document it would otherwise under-check.
+/// holds, so it is version 3 on version 2's reasoning exactly. But a version is a promise about the
+/// keywords a document *may* carry, and nearly every document carries none of the new one. So this
+/// constant stays the version a schema is described at, and [`Schema::refine`] raises
+/// [`Schema::schema_version`] to [`LATEST_SCHEMA_VERSION`] only when it writes the keyword that
+/// needs it. A document using nothing new is published exactly as before, and a version-2 consumer
+/// is told to widen only by a document it would otherwise under-check.
 pub const SCHEMA_VERSION: u32 = 2;
 
 /// The newest version of the schema half this crate writes. See [`SCHEMA_VERSION`] for why the two
@@ -184,8 +178,8 @@ pub const SCHEMA_VERSION: u32 = 2;
 /// # Version 4
 ///
 /// [`Refinement::Holds`] publishes a condition between a struct's fields, which needs `oneOf`,
-/// `if`, `then`, `minProperties` and `maxProperties` — none in an earlier allowlist. It needs
-/// `allOf`, `not` and `const` as well, which a version-2 producer could already write, and a
+/// `if`, `then`, `minProperties` and `maxProperties`, none of which is in an earlier allowlist. It
+/// needs `allOf`, `not` and `const` as well, which a version-2 producer could already write, and a
 /// version-4 consumer is held to all eight. A document carrying no condition stays at the version
 /// its other keywords need.
 pub const LATEST_SCHEMA_VERSION: u32 = 4;
@@ -197,20 +191,19 @@ pub(crate) const ENTRY_NAMES_VERSION: u32 = 3;
 /// cyclic.
 ///
 /// A configuration struct that contains itself has no finite key set, so there is no correct
-/// output — only a stack overflow, or this.
+/// output. The choice is between a stack overflow and the panic this limit raises.
 const MAX_DEPTH: usize = 32;
 
 /// A type whose configuration keys can be enumerated.
 ///
-/// Derived with [`#[derive(Describe)]`](macro@Describe). Implementing it by hand is supported
-/// and occasionally necessary — a newtype over a `HashMap` has keys the derive cannot see — but
-/// the derive is the reason this exists.
+/// Derived with [`#[derive(Describe)]`](macro@Describe). Implementing it by hand is supported and
+/// occasionally necessary, for a newtype over a `HashMap` whose keys the derive cannot see.
 pub trait Describe {
-    /// Push this type's keys into `sink`, relative to whatever prefix `sink` already holds.
+    /// Pushes this type's keys into `sink`, relative to whatever prefix `sink` already holds.
     fn describe(sink: &mut Sink);
 }
 
-/// A type whose accepted values are a fixed set — an enum of unit variants.
+/// A type whose accepted values are a fixed set: an enum of unit variants.
 ///
 /// Derived by [`#[derive(Describe)]`](macro@Describe) on an enum, and pulled into a key by
 /// `#[config(values)]` on the field. The variants are spelled the way `serde` will accept them,
@@ -218,11 +211,11 @@ pub trait Describe {
 /// `info` documents a value nobody can set.
 ///
 /// A trait, so a foreign enum is out of reach: the orphan rule sits between an application and
-/// `impl Values for other::Compression`. Two field attributes reach past it —
-/// `#[config(values_from = "…")]` names a local type that *does* implement this, a
-/// `#[serde(remote = "…")]` mirror being the case that turns up, and `#[config(values("…",
-/// "…"))]` lists the spellings outright when no mirror can be written. Both report through this
-/// same field, so no rendering can tell the three routes apart.
+/// `impl Values for other::Compression`. Two field attributes reach past it.
+/// `#[config(values_from = "…")]` names a local type that *does* implement this, usually a
+/// `#[serde(remote = "…")]` mirror. `#[config(values("…", "…"))]` lists the spellings outright when
+/// no mirror can be written. Both report through this same field, so no rendering can tell the
+/// three routes apart.
 pub trait Values {
     /// Every value the type accepts, in declaration order.
     const VARIANTS: &'static [&'static str];
@@ -248,17 +241,16 @@ pub enum Bound {
 /// knows the value is a fraction has been writing `minimum: 0` and `maximum: 1` itself.
 ///
 /// The bounds land where the reading of [`Leaf::ty`] stops: on the field's own type for a scalar,
-/// and on the *element* for a container of numbers — a `minimum` on a `Vec` would mean nothing,
-/// and `Vec<f32>` bounds what is in the vector. That is the position [`Element`] fills for a
-/// container of structs, reached by the same walk and for the same reason.
+/// and on the *element* for a container of numbers, because a `minimum` on a `Vec` would mean
+/// nothing and `Vec<f32>` bounds what is in the vector. That is the position [`Element`] fills for
+/// a container of structs, reached by the same walk and for the same reason.
 ///
 /// **Narrowing only.** A bound looser than the one the type already justifies is dropped rather
 /// than published: `minimum` is one keyword, so `max = 100_000` on a `u16` would *replace* the
 /// exact `65535` rather than sit beside it, and the schema would then accept a file the loader
-/// refuses. A bound on a spelling this crate recognises as something other than a number is
-/// dropped for the matching reason — there is nothing there for it to mean. A spelling it
-/// recognises as *nothing* keeps it, because a newtype over an `f32` is the case the annotation
-/// exists for.
+/// refuses. A bound on a spelling this crate recognises as something other than a number is dropped
+/// for the matching reason: there is nothing there for it to mean. A spelling it recognises as
+/// *nothing* keeps it, because a newtype over an `f32` is the case the annotation exists for.
 // No `Eq`, for [`Key`]'s reason: a bound can be a float, and a float is not reflexively equal to
 // itself.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -267,11 +259,11 @@ pub struct Bounds {
     pub min: Option<Bound>,
     /// The largest accepted value, from `max = …` or `exclusive_max = …`.
     pub max: Option<Bound>,
-    /// Whether [`Self::min`] is itself outside the accepted range — `exclusiveMinimum` rather
-    /// than `minimum`.
+    /// Whether [`Self::min`] is itself outside the accepted range, which publishes
+    /// `exclusiveMinimum` in place of `minimum`.
     pub min_exclusive: bool,
-    /// Whether [`Self::max`] is itself outside the accepted range — `exclusiveMaximum` rather
-    /// than `maximum`.
+    /// Whether [`Self::max`] is itself outside the accepted range, which publishes
+    /// `exclusiveMaximum` in place of `maximum`.
     pub max_exclusive: bool,
 }
 
@@ -280,11 +272,11 @@ pub struct Bounds {
 /// This is what a `///` comment and a `#[config(...)]` attribute survive as. The derive always
 /// supplies string literals, which are `&'static str`; the lifetime is borrowed rather than
 /// `'static` because [`Sink::leaf`] copies every field into a [`String`] on the way in, so
-/// demanding `'static` would buy nothing and would stop a hand-written [`Describe`] — a test
-/// harness, a fuzz oracle — from reporting keys it computed at runtime.
+/// demanding `'static` would buy nothing and would stop a hand-written [`Describe`], such as a test
+/// harness or a fuzz oracle, from reporting keys it computed at runtime.
 #[derive(Debug, Clone, Copy)]
 pub struct Leaf<'a> {
-    /// The key's own segment, after `rename`/`rename_all` — not the full path.
+    /// The key's own segment after `rename`/`rename_all`, not the full path.
     pub name: &'a str,
     /// The `///` comment, dedented, newlines preserved. Empty when there was none.
     pub docs: &'a str,
@@ -314,17 +306,17 @@ pub struct Leaf<'a> {
 pub struct Sink {
     /// The path segments currently open, innermost last.
     prefix: Vec<String>,
-    /// The keys collected so far, in declaration order — which is the order a hand-written
-    /// table would have used, and carries grouping that sorting destroys.
+    /// The keys collected so far, in declaration order. That is the order a hand-written table
+    /// would have used, and it carries grouping that sorting destroys.
     keys: Vec<Key>,
     /// The paths already seen, so a collision is caught rather than duplicated into the output.
     seen: BTreeSet<String>,
     /// The element schema of each key that reported one, by that key's index in [`Self::keys`].
     ///
-    /// Held beside the keys rather than among them, because an element has no path: an array
-    /// index is not a key segment and no environment variable names one. It is composed into
+    /// Held beside the keys rather than among them, because an element has no path: an array index
+    /// is not a key segment and no environment variable names one. It is composed into
     /// [`Key::constraint`] by [`Self::into_keys`], beside the constraint the key's own type
-    /// justifies — one place decides what a key accepts, which is what stops the two from
+    /// justifies. One place decides what a key accepts, which is what stops the two from
     /// disagreeing.
     elements: BTreeMap<usize, Map<String, Json>>,
     /// The bounds each key reported, by that key's index in [`Self::keys`].
@@ -335,9 +327,8 @@ pub struct Sink {
     /// keywords already inside that object, and two spellings of one fact is what
     /// [`Self::into_keys`] exists to prevent.
     bounds: BTreeMap<usize, Bounds>,
-    /// The paths whose type refuses a key it did not declare, from
-    /// `#[serde(deny_unknown_fields)]` — relative to this sink, so the described type's own level
-    /// is the empty string.
+    /// The paths whose type refuses a key it did not declare, from `#[serde(deny_unknown_fields)]`,
+    /// relative to this sink, so the described type's own level is the empty string.
     ///
     /// Read only for a type published as an [`Element`], where the shape lands in
     /// [`Key::constraint`] and no rendering option reaches it. Whether the *document* flags an
@@ -347,10 +338,10 @@ pub struct Sink {
     /// How many levels are open above this sink: its own [`Self::prefix`], plus the element scope
     /// of every sink it descends from.
     ///
-    /// `prefix.len()` was the whole answer while [`Self::nested`] was the only way down.
-    /// [`Self::repeated`] starts a *fresh* sink for the element type, whose prefix begins empty —
-    /// so a type whose elements contain itself would reset the count every turn and recurse until
-    /// the stack ran out, which is the failure [`MAX_DEPTH`] exists to turn into a message.
+    /// `prefix.len()` alone is not enough, because [`Self::repeated`] starts a *fresh* sink for the
+    /// element type whose prefix begins empty. A type whose elements contain itself would reset the
+    /// count every turn and recurse until the stack ran out, which is the failure [`MAX_DEPTH`]
+    /// exists to turn into a message.
     depth: usize,
     /// The [`Self::reload`] scopes currently open, which decide [`Key::reload`] for every key
     /// recorded inside them.
@@ -361,33 +352,33 @@ pub struct Sink {
 ///
 /// [`Key::ty`] says `Vec<RouteConfig>`, and everything about that spelling except the last word is
 /// readable: it is an array, of something. The something is a name, and this crate has no type
-/// graph to look a name up in — so the type that *does* know reports it here, and
-/// [`Sink::repeated`] attaches it to the key.
+/// graph to look a name up in, so the type that *does* know reports it here and [`Sink::repeated`]
+/// attaches it to the key.
 ///
 /// Two shapes, matching the two things a `#[derive(Describe)]` produces: a struct of named fields
 /// *has* keys, and an enum of unit variants *is* a set of values.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum Element<'a> {
-    /// The element is a type with keys of its own — anything implementing [`Describe`].
+    /// The element is a type with keys of its own, meaning anything implementing [`Describe`].
     ///
     /// Pass its `describe`: `Element::Fields(<RouteConfig as Describe>::describe)`. It is run
     /// into a sink of its own, and what comes back becomes one nested object schema rather than
     /// entries in the key list. `#[config(nested)]` inside the element works unchanged, so a
     /// `RouteTarget` under a `RouteConfig` under a `Vec` comes out three levels deep.
     Fields(fn(&mut Sink)),
-    /// The element is a fixed set of values — anything implementing [`Values`].
+    /// The element is a fixed set of values, meaning anything implementing [`Values`].
     ///
     /// Pass its variants: `Element::Choice(<Severity as Values>::VARIANTS)`. The same schema
     /// `#[config(values)]` produces for a key, one level down.
     ///
     /// **A derived list says what the derive says, which is `serde`'s default wire form.** A type
-    /// whose `Deserialize` is not the derived one — `#[serde(try_from = "String")]` over a
-    /// case-insensitive `FromStr` is the case that turns up — accepts spellings that are not in
-    /// this list, and a schema listing only the variants would reject a file the loader takes.
-    /// That is the one thing this crate will not publish, so do not describe such an element:
-    /// `#[config(skip)]` the key, or spell out what the `Deserialize` accepts with
-    /// `#[config(element_values("…", "…"))]`, which asks nothing of the type at all.
+    /// whose `Deserialize` is not the derived one, typically `#[serde(try_from = "String")]` over a
+    /// case-insensitive `FromStr`, accepts spellings that are not in this list, and a schema
+    /// listing only the variants would reject a file the loader takes. That is the one thing this
+    /// crate will not publish, so do not describe such an element: `#[config(skip)]` the key, or
+    /// spell out what the `Deserialize` accepts with `#[config(element_values("…", "…"))]`, which
+    /// asks nothing of the type at all.
     Choice(&'a [&'a str]),
 }
 
@@ -433,9 +424,9 @@ impl Sink {
     ///
     /// The half of [`Schema::describe_at`]'s work that needs no [`Dialect`]: the two constraints
     /// and the text form, with any element schema and any reported bounds composed into the first.
-    /// An element type's keys get this half and no more, because the other half derives
-    /// environment spellings and an element has none to derive — which is the whole reason it is a
-    /// nested schema and not a row in the key list.
+    /// An element type's keys get this half and no more, because the other half derives environment
+    /// spellings and an element has none to derive. That is why an element is a nested schema and
+    /// not a row in the key list.
     fn into_keys(mut self) -> (Vec<Key>, BTreeSet<String>) {
         for (index, key) in self.keys.iter_mut().enumerate() {
             key.constraint = json_schema::constraint(
@@ -452,13 +443,13 @@ impl Sink {
         (self.keys, self.closed)
     }
 
-    /// Record one key at the current prefix.
+    /// Records one key at the current prefix.
     ///
     /// # Panics
-    /// If two fields resolve to the same key path. That is a bug in the annotations rather than
-    /// in the input — a `rename` colliding with a sibling, or two `flatten`ed structs sharing a
-    /// field — and a documentation table that silently lists a key twice is worse than one that
-    /// refuses to be generated.
+    /// If two fields resolve to the same key path. That is a bug in the annotations, such as a
+    /// `rename` colliding with a sibling or two `flatten`ed structs sharing a field, and not in the
+    /// input. A documentation table that silently lists a key twice is worse than one that refuses
+    /// to be generated.
     pub fn leaf(&mut self, leaf: Leaf<'_>) {
         let mut path = self.prefix.join(".");
         if !path.is_empty() {
@@ -509,21 +500,21 @@ impl Sink {
         });
 
         // Beside the key rather than in it, and only when there is something to hold: an
-        // unannotated key must leave `constraint` exactly as it was, which is what keeps a
-        // contract that uses neither attribute serialising byte for byte as it did.
+        // unannotated key must leave `constraint` untouched, so a contract that uses neither
+        // attribute carries no trace of them.
         if let Some(bounds) = leaf.bounds {
             self.bounds.insert(self.keys.len() - 1, bounds);
         }
     }
 
-    /// Record that the type being described at this level refuses a key it did not declare.
+    /// Records that the type being described at this level refuses a key it did not declare.
     ///
     /// What `#[serde(deny_unknown_fields)]` does to the deserialiser, said in the schema. Without
     /// it a closed struct and an open map are the same `properties` object, so a misspelt field
-    /// passes every validator — and the derive reads it off the serde attribute rather than a
-    /// second annotation, so the two cannot come to disagree.
+    /// passes every validator. The derive reads it off the serde attribute rather than a second
+    /// annotation, so the two cannot come to disagree.
     ///
-    /// Reported by the type, once, before or after its keys — the level it closes is the one open
+    /// Reported by the type, once, before or after its keys. The level it closes is the one open
     /// when it is called, so a `#[config(nested)]` struct inside an element closes itself and not
     /// its parent.
     ///
@@ -535,16 +526,16 @@ impl Sink {
         self.closed.insert(self.prefix.join("."));
     }
 
-    /// Record every key `describe` reports as taking `class` when the configuration is reloaded.
+    /// Records every key `describe` reports as taking `class` when the configuration is reloaded.
     ///
-    /// What `#[config(reload = "…")]` becomes: the derive wraps a container's whole body in one
-    /// of these, and an annotated field's `leaf` or `nested` call in another. Scopes nest, and
-    /// **an explicit [`Reload::Restart`] anywhere on the path wins** — over a `live` opened before
-    /// it and one opened after it alike. Nearest-wins was the alternative, and it has no answer
-    /// for a field marked `restart` holding a type that calls itself `live`: either order lets one
-    /// `live` silently override a `restart`, which is the direction in which a change is never
-    /// applied. A key that must be `live` inside a `restart` parent is expressed by moving the
-    /// `restart` down to the fields that need it.
+    /// What `#[config(reload = "…")]` becomes: the derive wraps a container's whole body in one of
+    /// these, and an annotated field's `leaf` or `nested` call in another. Scopes nest, and **an
+    /// explicit [`Reload::Restart`] anywhere on the path wins**, over a `live` opened before it and
+    /// one opened after it alike. Nearest-wins was the alternative, and it has no answer for a
+    /// field marked `restart` holding a type that calls itself `live`: either order lets one `live`
+    /// silently override a `restart`, which is the direction in which a change is never applied. A
+    /// key that must be `live` inside a `restart` parent is expressed by moving the `restart` down
+    /// to the fields that need it.
     ///
     /// A key no scope covers is left undeclared. [`Schema::with_reload`] turns that into
     /// [`Reload::Restart`] once the binary declares what it supports, so `live` is always
@@ -579,7 +570,7 @@ impl Sink {
         self.reload.close(class);
     }
 
-    /// Record a subtree under `segment`.
+    /// Records a subtree under `segment`.
     ///
     /// # Panics
     /// If nesting exceeds 32 levels, which means the type contains itself and has no finite set
@@ -598,18 +589,17 @@ impl Sink {
         self.prefix.pop();
     }
 
-    /// Record one key whose value is a container, and say what one element of it holds.
+    /// Records one key whose value is a container, with what one element of it holds.
     ///
     /// [`Self::leaf`] with the one thing a type spelling cannot supply. `Vec<RouteConfig>` is
-    /// already read as an array; this is what fills in the element, and the result is a nested
-    /// schema on [`Key::constraint`] — `items` for a sequence, `additionalProperties` for a map,
-    /// composed through both when they are stacked, so `HashMap<String, HashSet<Method>>` reaches
-    /// the enum.
+    /// already read as an array. This fills in the element, and the result is a nested schema on
+    /// [`Key::constraint`]: `items` for a sequence and `additionalProperties` for a map, composed
+    /// through both when they are stacked, so `HashMap<String, HashSet<Method>>` reaches the enum.
     ///
     /// **It adds one key and no more.** An element has no path: an array index is not a key
     /// segment, and `PREFIX_ROUTES__0__NAME` names nothing the loader would read. So the element's
     /// own fields never become entries in the schema's key list, and a consumer walking that list
-    /// sees exactly what it saw before — one key, `routes`, whose constraint now says more.
+    /// sees one key, `routes`, whose constraint says more.
     ///
     /// The element schema is dropped, and the key described exactly as [`Self::leaf`] would
     /// describe it, when [`Leaf::ty`] is not a container this crate reads. A schema saying `routes`
@@ -649,7 +639,7 @@ impl Sink {
     ///
     /// # Panics
     /// As [`Self::leaf`] for a repeated key path, and as [`Self::nested`] for a type that contains
-    /// itself — an element type holding a container of itself is cyclic in exactly the same way a
+    /// itself. An element type holding a container of itself is cyclic in exactly the same way a
     /// field of itself is.
     pub fn repeated(&mut self, leaf: Leaf<'_>, element: Element<'_>) {
         self.leaf(leaf);
@@ -670,18 +660,17 @@ impl Sink {
 /// One key a configuration can carry, in every spelling that can supply it.
 ///
 /// The three spellings are [`Option`] because not every key has them. A key path that does not
-/// survive the round trip back through [`Dialect::key_path`] cannot be named in the environment
-/// at all — `#[serde(rename_all = "camelCase")]` produces exactly this, because an environment
-/// key is folded to lower case on the way in and `distDir` never comes back. A table that
-/// printed a spelling nobody can use would be worse than one that says there is none.
+/// survive the round trip back through [`Dialect::key_path`] cannot be named in the environment at
+/// all. `#[serde(rename_all = "camelCase")]` produces exactly this, because an environment key is
+/// folded to lower case on the way in and `distDir` never comes back. A table that printed a
+/// spelling nobody can use would be worse than one that says there is none.
 // No `Eq`: [`Self::default_value`] can hold a float, and a float is not reflexively equal to
 // itself. Deriving the marker anyway would be a claim about `NaN` that this type cannot keep.
 //
-// `non_exhaustive` because this type grows: `constraint` and `text_constraint` were both added
-// after it shipped, and the document's own versioning rule says an added field is not a breaking
-// change. It cannot be one for a consumer of the *JSON* and a breaking change for a consumer of
-// the *struct* — so construction goes through [`Sink::leaf`], which is where the invariants
-// between these fields are maintained anyway.
+// `non_exhaustive` because this type grows, and the document's own versioning rule says an added
+// field is not a breaking change. It cannot be additive for a consumer of the *JSON* and breaking
+// for a consumer of the *struct*, so construction goes through [`Sink::leaf`], which is where the
+// invariants between these fields are maintained anyway.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Key {
@@ -690,10 +679,10 @@ pub struct Key {
     /// The environment variable supplying it directly, e.g. `PORTFOLIO_CSP__CLOUDFLARE__TURNSTILE`.
     ///
     /// [`None`] means **no environment variable is published for this key**, and
-    /// [`Self::unreachable`] says why — the two reasons differ in whether the environment can
-    /// reach the key at all. A consumer that treats a missing `env` as "skip this key" is right
-    /// for one of them and wrong for the other, which is why the reason is published rather than
-    /// left to be inferred from a `null`.
+    /// [`Self::unreachable`] says why. The two reasons differ in whether the environment can reach
+    /// the key at all. A consumer that treats a missing `env` as "skip this key" is right for one
+    /// of them and wrong for the other, which is why the reason is published rather than left to be
+    /// inferred from a `null`.
     pub env: Option<String>,
     /// The variable naming a *file* holding it, e.g. `PORTFOLIO_GITHUB__TOKEN_FILE`.
     pub env_file: Option<String>,
@@ -701,8 +690,10 @@ pub struct Key {
     pub secrets_file: Option<String>,
     /// The `///` comment on the field. Empty when there was none.
     pub docs: String,
-    /// The field's type as written, with any `Option<…>` stripped — `required` already says
-    /// whether the key may be left out, so `Option<String>` would say it twice.
+    /// The field's type as written, with any `Option<…>` stripped.
+    ///
+    /// [`Self::required`] already says whether the key may be left out, so `Option<String>` would
+    /// say it twice.
     ///
     /// Token text, not a resolved type: a type alias appears as its alias and `SecretString`
     /// appears as itself, because a derive has only tokens. That is what the field says, and
@@ -711,41 +702,42 @@ pub struct Key {
     /// The fixed set of values the key accepts, spelled as `serde` accepts them. Empty when the
     /// key is not a choice.
     pub values: Vec<String>,
-    /// What a value of this key must be **once it is in the document**, as JSON Schema keywords
-    /// — `type`, `enum`, the numeric bounds, `items`.
+    /// What a value of this key must be **once it is in the document**, as JSON Schema keywords.
+    ///
+    /// The keywords are `type`, `enum`, the numeric bounds and `items`.
     ///
     /// Document space, not text space. A TOML file holds an integer and this describes it; an
     /// environment variable holds `"0"`, which fails `{"type": "integer"}` under every conforming
-    /// validator. [`Self::text_constraint`] is the one that applies there, and the two are
-    /// complementary rather than alternatives — a consumer checking a variable applies the text
-    /// constraint to the raw characters and this one to whatever the parse produced.
+    /// validator. [`Self::text_constraint`] is the one that applies there. The two are
+    /// complementary: a consumer checking a variable applies the text constraint to the raw
+    /// characters and this one to whatever the parse produced.
     ///
     /// [`Schema::to_json_schema`] carries the same keywords *nested*, at the key's position in the
     /// document. This carries them flat, and the reason is the environment: a consumer checking
     /// [`Self::env`] has a variable name and a string, not a document, and digging the constraint
-    /// out of a nested schema by dotted path is a step every consumer would reimplement. Without
-    /// it they reimplement something worse — a vocabulary of Rust type names, in whatever language
-    /// they are written in, with `PathBuf` as the trap: it is a string and nothing in the name
+    /// out of a nested schema by dotted path is a step every consumer would reimplement. Without it
+    /// they reimplement something worse: a vocabulary of Rust type names, in whatever language they
+    /// are written in, with `PathBuf` as the trap, because it is a string and nothing in the name
     /// says so.
     ///
     /// **It nests, for a container-typed key whose element describes itself.** [`Sink::repeated`]
     /// is how an element gets in here, under `items` for a sequence and `additionalProperties` for
     /// a map, composed as deeply as the containers are stacked. The key is still one key with one
-    /// spelling — an element has no path, so nothing about this appears in [`Schema::keys`] — and
-    /// a consumer that walks the keywords rather than handing them to a validator has to recurse.
+    /// spelling, because an element has no path and nothing about it appears in [`Schema::keys`]. A
+    /// consumer that walks the keywords rather than handing them to a validator has to recurse, and
     /// [`SCHEMA_VERSION`] is what that consumer gates on.
     ///
     /// The element is **open unless its type closed it**. `serde` accepts a field nobody declared
     /// unless the struct says otherwise, so closing one that said nothing would reject a file the
-    /// loader takes — but a struct carrying `#[serde(deny_unknown_fields)]` did say otherwise, and
-    /// the derive reports it as `additionalProperties: false` on that level and no other. Whether
-    /// an undeclared key is an error *elsewhere* is [`JsonSchema::closed`]'s question, and
+    /// loader takes. A struct carrying `#[serde(deny_unknown_fields)]` does say otherwise, and the
+    /// derive reports it as `additionalProperties: false` on that level and no other. Whether an
+    /// undeclared key is an error *elsewhere* is [`JsonSchema::closed`]'s question, and
     /// [`Schema::to_json_schema`] answers it for what it renders.
     ///
-    /// **It carries numeric bounds**, from a `#[config(range(...))]` field — `minimum`, `maximum`
-    /// and their exclusive spellings, at the same position an element lands: the key itself for a
-    /// scalar, and inside the containers for a bounded element. See [`Bounds`], which never lets
-    /// one widen a bound the type already justified.
+    /// **It carries numeric bounds** from a `#[config(range(...))]` field: `minimum`, `maximum` and
+    /// their exclusive spellings, at the same position an element lands. That is the key itself for
+    /// a scalar, and inside the containers for a bounded element. [`Bounds`] never lets one widen a
+    /// bound the type already justified.
     ///
     /// **It carries what the application decided at runtime**, where [`Schema::refine`] put it: a
     /// map-typed key's `required` entries, for a map the host refuses to start without. That is the
@@ -760,20 +752,18 @@ pub struct Key {
     ///
     /// [`Self::env`] is the layer this is about. It is emitted only where it says something the
     /// text does not already say: a pattern for an integer, the two spellings of a boolean, the
-    /// variants of a choice. [`None`] means the text is unconstrained — which is the answer for
+    /// variants of a choice. [`None`] means the text is unconstrained, which is the answer for
     /// every string-like type, since an environment value is a string to begin with.
     ///
     /// [`None`] here means there is no pattern to match, which [`Self::text_form`] disambiguates:
     /// [`TextForm::Text`] means any text is fine, and [`TextForm::Unknown`] means nothing could be
-    /// said. The two used to be indistinguishable, and a list-typed key was the case that made the
-    /// difference cost a deployment.
+    /// said.
     ///
-    /// **It constrains form, not range.** A pattern matches characters, so `99999` is a
-    /// well-formed integer and only [`Self::constraint`]'s `maximum` catches it not fitting a
-    /// `u16` — which means a validator has to do both, in the order
-    /// [`External`] sets out: match the text, parse it by the form that
-    /// matched, then check the parsed value. Doing only the first leaves every bound in this
-    /// document decorative.
+    /// **It constrains form, not range.** A pattern matches characters, so `99999` is a well-formed
+    /// integer and only [`Self::constraint`]'s `maximum` catches it not fitting a `u16`. A
+    /// validator therefore has to do both, in the order [`External`] sets out: match the text,
+    /// parse it by the form that matched, then check the parsed value. Doing only the first leaves
+    /// every bound in this document decorative.
     ///
     /// And a 64-bit range is not checkable from this document at all, by either constraint:
     /// `u64::MAX` is not representable as an IEEE double, so no `maximum` is published rather than
@@ -784,8 +774,8 @@ pub struct Key {
     ///
     /// **The file layers are a different question, and the answer is usually "not at all".**
     /// [`Self::secrets_file`] and [`Self::env_file`] deliver their contents as strings with no
-    /// parse, and `Figment::extract` does not coerce a string into a number or a boolean — so a
-    /// key whose [`Self::constraint`] is anything but a string type cannot be supplied by either,
+    /// parse, and `Figment::extract` does not coerce a string into a number or a boolean, so a key
+    /// whose [`Self::constraint`] is anything but a string type cannot be supplied by either,
     /// whatever the file contains. That is deliberate, and [`provider`](crate::provider) explains
     /// it: those layers exist to carry secrets, and a secret is an opaque byte string. A chart
     /// mounting a key-named file for a numeric key has made a mistake no file contents can fix.
@@ -801,8 +791,8 @@ pub struct Key {
     /// Other key paths that supply this same key, from `#[serde(alias = "…")]`.
     ///
     /// Full paths. An alias left out of the schema is a spelling that works and is documented
-    /// nowhere — which is why the spellings derived from these are published too, rather than
-    /// left to a consumer to derive: see [`Self::env_aliases`].
+    /// nowhere. The spellings derived from these are published too, in [`Self::env_aliases`], so no
+    /// consumer has to derive them.
     pub aliases: Vec<String>,
     /// Every *other* environment spelling this key answers to, one per [`Self::aliases`] entry
     /// that has one.
@@ -820,12 +810,12 @@ pub struct Key {
     /// failure: a chart still using the old name is a *correct* deployment, and a gate that
     /// refuses it is refusing the one thing that made the rename safe.
     ///
-    /// Always serialised, empty or not — unlike [`Self::constraint`] and [`Self::default`], which
+    /// Always serialised, empty or not, unlike [`Self::constraint`] and [`Self::default`], which
     /// are omitted when unset. There, absence *means* something: no check is possible, no default
     /// exists. Here an absent list and an empty one say the same thing, so omitting it would save
-    /// bytes at the cost of a distinction a reader has to discover is not one. And this is the hot
-    /// path — steps 2 and 3 of the ordered list consult it for every variable on every container —
-    /// which is the worst place to hand a consumer two shapes.
+    /// bytes at the cost of a distinction a reader has to discover is not one. It is also on the
+    /// hot path: steps 2 and 3 of the ordered list consult it for every variable on every
+    /// container, which is the worst place to hand a consumer two shapes.
     #[serde(default)]
     pub env_aliases: Vec<String>,
     /// The `_FILE` spelling of each of [`Self::env_aliases`], where the dialect permits one.
@@ -838,10 +828,10 @@ pub struct Key {
     /// Same reasoning as [`Self::env_aliases`], and measured the same way: a file named for an
     /// alias supplies the key exactly as one named for [`Self::path`] does.
     ///
-    /// Worth knowing when checking for a key supplied twice: the loader's own shadow check
-    /// compares *spellings*, so a canonical variable against an alias-named file is not the pair
-    /// it reports. `serde` still refuses the load — with `duplicate field`, naming neither source
-    /// — so the diagnostic that names both is the one a consumer builds from these fields.
+    /// Worth knowing when checking for a key supplied twice: the loader's own shadow check compares
+    /// *spellings*, so a canonical variable against an alias-named file is not the pair it reports.
+    /// `serde` still refuses the load with `duplicate field`, naming neither source, so the
+    /// diagnostic that names both is the one a consumer builds from these fields.
     ///
     /// Always serialised, for [`Self::env_aliases`]' reason.
     #[serde(default)]
@@ -850,16 +840,18 @@ pub struct Key {
     ///
     /// **A fact about the key, not about [`Self::env`].** A key answers to every one of its
     /// [`aliases`](Self::aliases), so [`Unreachable::Unnameable`] appears only when *no* spelling
-    /// names it — a camelCase path with a working `#[serde(alias)]` beside it has an absent `env`
-    /// and is perfectly reachable, and saying otherwise would tell an operator a configuration
-    /// that works is impossible.
+    /// names it. A camelCase path with a working `#[serde(alias)]` beside it has an absent `env`
+    /// and is perfectly reachable, and saying otherwise would tell an operator a configuration that
+    /// works is impossible.
     ///
     /// [`Unreachable::Indirection`] is the other quantifier: any spelling colliding is enough,
     /// because the hazard it names does not go away when another spelling works.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unreachable: Option<Unreachable>,
-    /// What the value is when nothing supplies it, rendered for display. [`None`] means unset —
-    /// or, for a [`required`](Self::required) key, that there is no default to have.
+    /// What the value is when nothing supplies it, rendered for display.
+    ///
+    /// [`None`] means unset or, for a [`required`](Self::required) key, that there is no default to
+    /// have.
     ///
     /// Filled in by [`Schema::with_defaults_from`]; the exact value, never prose.
     ///
@@ -867,16 +859,16 @@ pub struct Key {
     /// environment variable in its own `ENV` block supplies it on every run, so what an operator
     /// omitting the key actually gets is this value only when the image is silent about it. The
     /// derive cannot see an `ENV` line, so a [`Contract`] is a claim about the code's defaults and
-    /// not about the image's — see [`Contract`] for where that gap is recorded.
+    /// not about the image's. [`Contract`] records that gap.
     pub default: Option<String>,
     /// That same default as the value it *is*, rather than as the text a table prints.
     ///
     /// The two are not redundant, because the rendering is lossy on purpose: a table cell reads
-    /// better as `public` than as `"public"`, and `[a, b]` than as `["a", "b"]`. That is the
-    /// right trade for a cell and the wrong one for a file — a generated `config.toml` in which
-    /// a string default lost its quotes does not parse, and one in which a number gained them
-    /// does not load. [`Schema::to_toml_example`] and [`Schema::to_json_schema`] therefore read
-    /// this, and [`Schema::to_markdown`] reads [`Self::default`].
+    /// better as `public` than as `"public"`, and `[a, b]` than as `["a", "b"]`. That is the right
+    /// trade for a cell and the wrong one for a file: a generated `config.toml` in which a string
+    /// default lost its quotes does not parse, and one in which a number gained them does not load.
+    /// [`Schema::to_toml_example`] and [`Schema::to_json_schema`] therefore read this, and
+    /// [`Schema::to_markdown`] reads [`Self::default`].
     ///
     /// [`None`] whenever [`Self::default`] is, and *also* when the key is
     /// [`secret`](Self::secret): the display string redacts the value, so keeping the value
@@ -885,10 +877,10 @@ pub struct Key {
     pub default_value: Option<figment::value::Value>,
     /// The `#[config(note = "…")]` prose explaining what that default *means*.
     ///
-    /// Separate from [`Self::default`] because they answer different questions — `0` is what an
-    /// operator compares against what they set, and "permanent" is why they would leave it
-    /// alone. Collapsing them into one string, which is what this used to do, meant the observed
-    /// value was discarded and had to be hand-written into the prose to appear at all.
+    /// Separate from [`Self::default`] because they answer different questions. `0` is what an
+    /// operator compares against what they set, and "permanent" is why they would leave it alone.
+    /// One string holding both would lose the observed value unless someone copied it into the
+    /// prose by hand.
     pub note: Option<String>,
     /// Whether loading fails when nothing supplies this key.
     pub required: bool,
@@ -915,27 +907,25 @@ pub struct Key {
 
 /// What form the text supplying a key takes, and so how to read it.
 ///
-/// The reason this is a field rather than something a consumer infers from
-/// [`Key::text_constraint`]: inference works while the crate emits two shapes and becomes a guess
-/// the moment it emits a third — which it now does. And a bare [`None`] constraint used to mean
-/// two incompatible things, "any text is fine" and "this needs a structured literal nobody
-/// described"; a chart setting `PORTFOLIO_GITHUB__REPOS=a,b` passed every gate and failed at boot
-/// because a validator could not tell them apart. This is what tells them apart.
+/// A field, not something a consumer infers from [`Key::text_constraint`], because a bare [`None`]
+/// constraint means two incompatible things: "any text is fine" and "this needs a structured
+/// literal nobody described". A chart setting `PORTFOLIO_GITHUB__REPOS=a,b` passes every gate that
+/// cannot tell them apart and fails at boot. This is what tells them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum TextForm {
-    /// Any text. A `String`, a `PathBuf`, a `SecretString` — nothing to check and nothing to
-    /// parse.
+    /// Any text, with nothing to check and nothing to parse.
     ///
-    /// Only for types that genuinely accept anything. A type whose `Deserialize` parses and can
-    /// refuse — `IpAddr`, `Url`, `char` — is [`Self::Unknown`], because `Text` promises a check
-    /// was not needed and the loader would be contradicting it.
+    /// A `String`, a `PathBuf` or a `SecretString`: only types that genuinely accept anything. A
+    /// type whose `Deserialize` parses and can refuse, such as `IpAddr`, `Url` or `char`, is
+    /// [`Self::Unknown`], because `Text` promises a check was not needed and the loader would be
+    /// contradicting it.
     Text,
     /// Digits with an optional sign. Read it as an integer, then check [`Key::constraint`], which
     /// is where a `minimum` and `maximum` live.
     Integer,
-    /// `true` or `false`, and nothing else — not `TRUE`, not `1`, not `yes`.
+    /// `true` or `false`, and nothing else: not `TRUE`, not `1`, not `yes`.
     ///
     /// Surrounding whitespace is permitted for [`Self::Choice`]'s reason and measured the same
     /// way: `"true "` and `" false"` both load through the environment layer.
@@ -944,30 +934,31 @@ pub enum TextForm {
     ///
     /// [`Key::constraint`] carries the bare set, because a TOML document must spell a variant
     /// exactly. [`Key::text_constraint`] carries the same set with surrounding whitespace
-    /// permitted, because figment's `Env` provider trims before it compares — measured, `"info "`
-    /// and `"\tinfo\n"` both load. The two differ, which is why they are two fields.
+    /// permitted, because figment's `Env` provider trims before it compares: `"info "` and
+    /// `"\tinfo\n"` both load. The two differ, which is why they are two fields.
     Choice,
-    /// A TOML literal: an array, an inline table. Only the environment layer can carry one at all
-    /// — the file layers deliver text with no parse, so a key of this form cannot be supplied by a
-    /// secrets file or a `_FILE` path whatever it contains. That is a consequence of the general
-    /// rule rather than a rule of its own: an array is not a string in document space, and
-    /// [`Key::constraint`] is where "can a file supply this key" is answered. **Do not read this
-    /// form as that rule** — a key can be [`Self::Unknown`] and still mount from a file, which is
-    /// every type whose `Deserialize` parses a string.
+    /// A TOML literal: an array, an inline table.
+    ///
+    /// Only the environment layer can carry one. The file layers deliver text with no parse, so a
+    /// key of this form cannot be supplied by a secrets file or a `_FILE` path whatever it
+    /// contains. That is a consequence of the general rule, not a rule of its own: an array is not
+    /// a string in document space, and [`Key::constraint`] is where "can a file supply this key" is
+    /// answered. **Do not read this form as that rule.** A key can be [`Self::Unknown`] and still
+    /// mount from a file, which is every type whose `Deserialize` parses a string.
     ///
     /// The one form whose second step needs a parser. [`Self::Integer`], [`Self::Boolean`] and
     /// [`Self::Choice`] are read with any language's own primitives; reading one of these means
-    /// parsing TOML. A consumer without a TOML parser can still apply
-    /// [`Key::text_constraint`] — the bracket form is the half that catches `a,b` — and should
-    /// skip [`Key::constraint`] rather than guess at the value.
+    /// parsing TOML. A consumer without a TOML parser can still apply [`Key::text_constraint`],
+    /// whose bracket form is the half that catches `a,b`, and should skip [`Key::constraint`]
+    /// rather than guess at the value.
     Structured,
     /// Nothing certain is known: a domain newtype, a float, a type this crate does not interpret.
     /// No check is possible, and unlike [`Self::Text`] that is a gap rather than an answer.
     ///
     /// Also where a form a *later* version of this crate emits lands, which is the same answer for
     /// the same reason: a check exists and this document cannot describe it to you. Without the
-    /// fallback, one unfamiliar form on one key would make the whole document unreadable — see
-    /// [`CONTRACT_VERSION`].
+    /// fallback, one unfamiliar form on one key would make the whole document unreadable, as
+    /// [`CONTRACT_VERSION`] explains.
     #[default]
     #[serde(other)]
     Unknown,
@@ -982,13 +973,13 @@ pub enum TextForm {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Unreachable {
-    /// No environment variable maps back to this key at all — not its path, and not any of its
+    /// No environment variable maps back to this key, through its path or any of its
     /// [`aliases`](Key::aliases).
     ///
-    /// `#[serde(rename_all = "camelCase")]` is the common cause — an environment key is folded to
-    /// lower case on the way in and `distDir` never comes back — and a path carrying the dialect's
-    /// own nesting separator, or surrounding whitespace, or an empty segment does the same. The
-    /// key is real and the document can supply it; the environment cannot.
+    /// `#[serde(rename_all = "camelCase")]` is the common cause, because an environment key is
+    /// folded to lower case on the way in and `distDir` never comes back. A path carrying the
+    /// dialect's own nesting separator, or surrounding whitespace, or an empty segment does the
+    /// same. The key is real and the document can supply it. The environment cannot.
     ///
     /// Says nothing about the file layers, which derive separately and do not fold or trim:
     /// [`Key::secrets_file`] is the field that answers whether a mounted file can reach the key,
@@ -997,9 +988,9 @@ pub enum Unreachable {
     /// A name this key would take is another key's `_FILE` variable.
     ///
     /// Reported when *any* spelling collides, canonical or alias, even beside a spelling that
-    /// works — the opposite quantifier to [`Self::Unnameable`], and deliberately so. This is not
-    /// "the key is out of reach"; it is "a name this schema gave to another key also fills this
-    /// one", which stays true however many other ways the key can be reached.
+    /// works. That is the opposite quantifier to [`Self::Unnameable`], on purpose: the hazard is
+    /// that a name this schema gave to another key also fills this one, which stays true however
+    /// many other ways the key can be reached.
     ///
     /// The one case where [`Key::env`] being [`None`] does **not** mean the environment cannot
     /// reach the key. It can, under a name this document gives to somebody else: with `token` and
@@ -1031,8 +1022,8 @@ pub enum LoaderRole {
     ///
     /// A *new* variant rather than folding into one of the three above, and the distinction is
     /// load-bearing. Every role means "the loader reads this variable", so the ordered list's step
-    /// 1 is satisfied by [`LoaderVar::env`] alone whatever this says — but a consumer looking for
-    /// the secrets directory matches on the role, and an unknown one read as [`Self::Config`]
+    /// 1 is satisfied by [`LoaderVar::env`] alone whatever this says. A consumer looking for the
+    /// secrets directory matches on the role, though, and an unknown one read as [`Self::Config`]
     /// would hand it the wrong variable. This keeps step 1 working and that lookup honest.
     #[serde(other)]
     Other,
@@ -1040,8 +1031,8 @@ pub enum LoaderRole {
 
 /// A variable the loader reads to decide what the layers *are*, rather than a configuration key.
 ///
-/// These never appear in the config struct, so no derive can find them — but an operator setting
-/// the service up needs them more than they need any single key.
+/// These never appear in the config struct, so no derive can find them. An operator setting the
+/// service up needs them more than they need any single key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct LoaderVar {
@@ -1103,15 +1094,15 @@ impl Schema {
 
     /// The keys of `T`, as they are spelled when `T` sits at `root` in a larger configuration.
     ///
-    /// A configuration type is rarely one struct in one file — it is a root that nests structs
-    /// from other modules and other crates, each deriving [`Describe`] beside the code that
-    /// consumes it. [`Self::describe`] on the root walks all of it, wherever it lives, because
+    /// A configuration type is rarely one struct in one file. It is a root that nests structs from
+    /// other modules and other crates, each deriving [`Describe`] beside the code that consumes it.
+    /// [`Self::describe`] on the root walks all of it, wherever it lives, because
     /// `#[config(nested)]` is a trait bound and follows the type rather than the file.
     ///
-    /// This is for the other direction: documenting one subsystem on its own page, spelled the
-    /// way an operator will have to spell it. `describe_at::<Csp>(dialect, "csp")` produces
+    /// This is for the other direction: documenting one subsystem on its own page, spelled the way
+    /// an operator will have to spell it. `describe_at::<Csp>(dialect, "csp")` produces
     /// `csp.cloudflare.turnstile`, where `describe::<Csp>` alone would produce
-    /// `cloudflare.turnstile` — a path that appears in no configuration file anywhere.
+    /// `cloudflare.turnstile`, a path that appears in no configuration file anywhere.
     ///
     /// An empty `root` is [`Self::describe`]. Use [`Self::subset`] instead when a whole schema
     /// has already been built and only part of it is wanted.
@@ -1133,10 +1124,10 @@ impl Schema {
 
         // The constraints and the text form come back filled in: they are what a type says, and
         // need no dialect. Everything below is what a *dialect* says, which is the half an element
-        // type never gets.
-        // The closed levels are dropped here and read only for an [`Element`]: this is the
-        // *document*, and whether an undeclared key in it is an error is `JsonSchema::closed`'s
-        // question — one a chart's values answer differently from the type they configure.
+        // type never gets. The closed levels are dropped here and read only for an [`Element`]:
+        // this is the *document*, and whether an undeclared key in it is an error is
+        // `JsonSchema::closed`'s question, which a chart's values answer differently from the type
+        // they configure.
         let (mut keys, _closed) = sink.into_keys();
         for key in &mut keys {
             let (env, canonical_reason) = env_spelling(dialect, &key.path);
@@ -1164,16 +1155,16 @@ impl Schema {
             // A key answers to every one of its spellings, so both questions this field settles
             // are asked of all of them rather than of the canonical one alone.
             //
-            // `Indirection` wins wherever it appears, even beside a spelling that works. It is not
-            // "this key is out of reach" — it is "some name this schema gave to another key also
-            // fills this one", which stays true however many other ways the key can be reached,
-            // and is the thing `ContractBuilder::build` refuses on.
+            // `Indirection` wins wherever it appears, even beside a spelling that works. It says
+            // some name this schema gave to another key also fills this one, which stays true
+            // however many other ways the key can be reached, and is the thing
+            // `ContractBuilder::build` refuses on.
             //
             // `Unnameable` is the opposite quantifier: only when *nothing* names the key. Set from
             // the canonical spelling alone it would say the environment cannot reach a key that a
-            // working alias reaches — which a `rename_all` container with a compatibility alias
-            // produces, and which is worse than the bare `None` it replaced, because a consumer
-            // believing it tells an operator a working configuration is impossible.
+            // working alias reaches, which a `rename_all` container with a compatibility alias
+            // produces. A consumer believing that tells an operator a working configuration is
+            // impossible.
             key.unreachable = if canonical_reason == Some(Unreachable::Indirection)
                 || alias_spellings
                     .iter()
@@ -1201,9 +1192,9 @@ impl Schema {
                 .env
                 .as_deref()
                 .is_some_and(|env| dialect.is_reserved(env));
-            // A reserved key is read straight from the environment, so neither file mechanism
-            // can supply it. Saying otherwise would document a path that errors on use — and the
-            // alias spellings of one are file mechanisms just as much as the canonical.
+            // A reserved key is read straight from the environment, so neither file mechanism can
+            // supply it. Saying otherwise would document a path that errors on use, and the alias
+            // spellings of one are file mechanisms just as much as the canonical.
             if key.reserved {
                 key.env_file = None;
                 key.secrets_file = None;
@@ -1225,7 +1216,7 @@ impl Schema {
         }
     }
 
-    /// Declare what this binary supports, and settle every key's [`Key::reload`] against it.
+    /// Declares what this binary supports, and settles every key's [`Key::reload`] against it.
     ///
     /// [`Terrace::reloads`](crate::Terrace::reloads) is the usual way in:
     /// [`Terrace::schema`](crate::Terrace::schema) calls this with whatever was declared there.
@@ -1233,13 +1224,13 @@ impl Schema {
     /// After it, every key carries a class, because a document that declares support should state
     /// `restart` rather than leave a reader to default to it:
     ///
-    /// - a key no `#[config(reload = "…")]` covered becomes [`Reload::Restart`] — `live` is always
-    ///   something an author wrote;
+    /// - a key no `#[config(reload = "…")]` covered becomes [`Reload::Restart`], so `live` is
+    ///   always something an author wrote;
     /// - a [`reserved`](Key::reserved) key becomes [`Reload::Restart`] whatever it was annotated,
     ///   because it is read from an environment that cannot change;
     /// - under a `support` that does not [rebuild](ReloadSupport::rebuilds), every key becomes
-    ///   [`Reload::Restart`]. A type annotated `live` is legitimately shared with a binary that does
-    ///   not reload, and this document describes that binary.
+    ///   [`Reload::Restart`]. A type annotated `live` is legitimately shared with a binary that
+    ///   does not reload, and this document describes that binary.
     #[must_use]
     pub fn with_reload(mut self, support: ReloadSupport) -> Self {
         let rebuilds = support.rebuilds();
@@ -1253,8 +1244,8 @@ impl Schema {
 
     /// Every path whose value a rebuild must keep at its boot value, aliases included.
     ///
-    /// The keys not published [`Reload::Live`] — undeclared ones among them, which a reader treats
-    /// as `restart` — and each of their [`aliases`](Key::aliases), since a key answers to every
+    /// The keys not published [`Reload::Live`], including undeclared ones a reader treats as
+    /// `restart`, and each of their [`aliases`](Key::aliases), since a key answers to every
     /// spelling and a value supplied under an alias is the same value.
     #[must_use]
     pub fn restart_paths(&self) -> Vec<&str> {
@@ -1270,9 +1261,9 @@ impl Schema {
     /// The part of this schema under `prefix`, spellings and all.
     ///
     /// For a documentation site that gives each subsystem its own page: build the whole schema
-    /// once — which is the only way the paths are guaranteed to be the real ones — then slice it
-    /// per page. `subset("csp")` keeps `csp.cloudflare.turnstile` and drops `github.token`; an
-    /// empty `prefix` keeps everything.
+    /// once, which is the only way the paths are guaranteed to be the real ones, then slice it per
+    /// page. `subset("csp")` keeps `csp.cloudflare.turnstile` and drops `github.token`. An empty
+    /// `prefix` keeps everything.
     ///
     /// The loader variables are kept, because they are not part of any subtree and an operator
     /// reading one page still has to know where the configuration file comes from. A page that
@@ -1289,7 +1280,7 @@ impl Schema {
         self
     }
 
-    /// Fill in each key's default from a value representing "nothing was supplied".
+    /// Fills in each key's default from a value representing "nothing was supplied".
     ///
     /// What that value is, is the caller's to decide, because only the caller knows: usually
     /// `T::default()`, but a type whose `Default` and whose `#[serde(default = "…")]` disagree
@@ -1297,15 +1288,15 @@ impl Schema {
     /// a `#[config(default = "…")]` override is left alone.
     ///
     /// A [`secret`](Key::secret) key renders `<redacted>` rather than its value, and keeps no
-    /// [`default_value`](Key::default_value) at all. The rendering here is not a debugging aid —
-    /// it is written into documentation, which is the last place a credential should end up, and
-    /// a default that *is* a credential is exactly the case where this matters.
+    /// [`default_value`](Key::default_value) at all. The rendering is written into documentation,
+    /// which is the last place a credential should end up, and a default that *is* a credential is
+    /// exactly the case where this matters.
     ///
-    /// A type holding a secret is the case this bound bites on: `secrecy::SecretString` refuses
-    /// to implement [`Serialize`] on purpose, so a config struct containing one cannot derive it
-    /// either. Mark the field `#[serde(skip_serializing)]` — a secret has no default worth
-    /// printing, and [`Key::secret`] would redact it anyway — or, when the type is not yours to
-    /// annotate, build the value yourself and use [`Self::with_defaults_from_value`].
+    /// A type holding a secret is the case this bound bites on: `secrecy::SecretString` refuses to
+    /// implement [`Serialize`] on purpose, so a config struct containing one cannot derive it
+    /// either. Mark the field `#[serde(skip_serializing)]`, since a secret has no default worth
+    /// printing and [`Key::secret`] would redact it anyway. When the type is not yours to annotate,
+    /// build the value yourself and use [`Self::with_defaults_from_value`].
     ///
     /// # Errors
     /// Returns [`Error::Figment`] if `value` cannot be serialised.
@@ -1314,13 +1305,13 @@ impl Schema {
         Ok(self.with_defaults_from_value(&root))
     }
 
-    /// Fill in each key's default from an already-serialised value.
+    /// Fills in each key's default from an already-serialised value.
     ///
     /// [`Self::with_defaults_from`] is this with the serialisation done for you, and is what a
-    /// caller who owns the config type should reach for. This is the escape hatch for the case
-    /// where the root type cannot implement [`Serialize`] at all — a field whose type is from
-    /// another crate and refuses to, `secrecy::SecretString` being the one that turns up in a
-    /// configuration — and the value has to be assembled by hand:
+    /// caller who owns the config type should reach for. This is the escape hatch for a root type
+    /// that cannot implement [`Serialize`] at all, because a field's type is from another crate and
+    /// refuses to (`secrecy::SecretString` is the usual one), so the value has to be assembled by
+    /// hand:
     ///
     /// ```
     /// # use terrace_config::Terrace;
@@ -1353,20 +1344,18 @@ impl Schema {
     ///
     /// One more, for a key a [`Refinement`] has tightened: an observed map lacking an entry the
     /// refinement requires is not a default, because the image would refuse it at boot. The key
-    /// becomes [`required`](Key::required) with no default — what [`Self::refine`] does to a
+    /// becomes [`required`](Key::required) with no default. [`Self::refine`] does the same to a
     /// default it finds already observed, so the two may run in either order.
     #[must_use]
     pub fn with_defaults_from_value(mut self, root: &figment::value::Value) -> Self {
         for key in &mut self.keys {
-            // A required key has no default *by definition* — loading fails when nothing
-            // supplies it. Whatever `Default` happened to put in the field is an artefact of
-            // constructing the value at all, and printing it as a default would tell an operator
-            // they can leave the key out.
+            // A required key has no default *by definition*: loading fails when nothing supplies
+            // it. Whatever `Default` happened to put in the field is an artefact of constructing
+            // the value at all, and printing it as a default would tell an operator they can leave
+            // the key out.
             //
-            // A `note` is no longer a reason to skip: the prose explains what the value means and
-            // the value is still the value, so both are reported. Skipping here — which is what
-            // this did — threw the observed value away and left the prose as the only place it
-            // could appear, hand-copied.
+            // A `note` is not a reason to skip: the prose explains what the value means and the
+            // value is still the value, so both are reported.
             if key.required {
                 continue;
             }
@@ -1406,14 +1395,14 @@ impl Schema {
     /// The union of this schema and `other`.
     ///
     /// A workspace whose binaries each read part of one configuration surface has no single root
-    /// type to describe — the point of the split is that neither binary sees the other's keys.
-    /// Describing each root and merging is how such a workspace gets one document without
+    /// type to describe, because the point of the split is that neither binary sees the other's
+    /// keys. Describing each root and merging is how such a workspace gets one document without
     /// inventing an aggregate type that exists only for the generator and can silently drift from
     /// every root it stands in for.
     ///
     /// `self`'s keys keep their order and `other`'s new ones are appended, so declaration order
-    /// survives within each half. A key both halves describe is kept once — two binaries reading
-    /// one shared key is the normal case, not a mistake.
+    /// survives within each half. A key both halves describe is kept once, since two binaries
+    /// reading one shared key is the normal case, not a mistake.
     ///
     /// ```
     /// # use terrace_config::Terrace;
@@ -1439,12 +1428,13 @@ impl Schema {
     /// ```
     ///
     /// # Panics
-    /// If the two schemas disagree — a different [`dialect`](Self::dialect), or one key path or loader variable described differently on
-    /// each side. Merging those would produce a document carrying two answers to one question,
-    /// and the same reasoning applies as in [`Sink::leaf`]: a table that quietly picks one is
-    /// worse than one that refuses to be generated. Describing both halves from the same
-    /// [`Terrace`](crate::Terrace) rules out the dialect case; a path described
-    /// differently by two roots is a real disagreement between them, and is meant to be loud.
+    /// If the two schemas disagree: a different [`dialect`](Self::dialect), or one key path or
+    /// loader variable described differently on each side. Merging those would produce a document
+    /// carrying two answers to one question, and the same reasoning applies as in [`Sink::leaf`]: a
+    /// table that quietly picks one is worse than one that refuses to be generated. Describing both
+    /// halves from the same [`Terrace`](crate::Terrace) rules out the dialect case. A path
+    /// described differently by two roots is a real disagreement between them, and is meant to be
+    /// loud.
     #[must_use]
     pub fn merge(mut self, other: Self) -> Self {
         // A version is the vocabulary a document may carry, and each is a superset of the last, so
@@ -1491,7 +1481,7 @@ impl Schema {
         self
     }
 
-    /// The schema as a JSON document — the machine-readable contract.
+    /// The schema as a JSON document, which is the machine-readable contract.
     ///
     /// Every field of every key, including the ones [`Self::to_markdown`] omits. Pretty-printed,
     /// because the usual consumer of the file is a diff.
@@ -1519,11 +1509,11 @@ impl LoaderRole {
 
 /// How much of a key's `///` comment a rendering carries.
 ///
-/// Rustdoc's own convention, made a parameter: the first paragraph of a comment is its summary
-/// and the rest is detail. Which of the two a rendering wants is a property of the *rendering*
-/// rather than of the comment — a Markdown table cell has a page width to stay inside, a
-/// generated `config.toml` has a reader who is about to edit the key, and a JSON Schema
-/// `description` is read in an editor's hover where length costs nothing.
+/// Rustdoc's own convention, made a parameter: the first paragraph of a comment is its summary and
+/// the rest is detail. Which of the two a rendering wants is a property of the *rendering* rather
+/// than of the comment: a Markdown table cell has a page width to stay inside, a generated
+/// `config.toml` has a reader who is about to edit the key, and a JSON Schema `description` is read
+/// in an editor's hover where length costs nothing.
 ///
 /// [`Key::docs`] keeps the whole text whatever this is set to, so nothing chosen here is lost
 /// from [`Schema::to_json`].
@@ -1553,9 +1543,9 @@ impl Docs {
 
 /// The summary of a `///` comment: its first paragraph, on one line.
 ///
-/// Soft wraps inside that paragraph become spaces rather than breaks — they are the author's line
-/// width, not a break they asked a reader to see. A comment opening with a list or a fenced block
-/// has no leading paragraph to find, so its first block comes out instead, flattened the same way.
+/// Soft wraps inside that paragraph become spaces, because they are the author's line width and not
+/// a break they asked a reader to see. A comment opening with a list or a fenced block has no
+/// leading paragraph to find, so its first block comes out instead, flattened the same way.
 fn summary(docs: &str) -> String {
     docs.lines()
         .take_while(|line| !line.trim().is_empty())
@@ -1563,14 +1553,10 @@ fn summary(docs: &str) -> String {
         .join(" ")
 }
 
-/// A default value as a table would show it.
-///
-/// Returns [`None`] for a value that means "absent", so an explicit `null` and a missing key
-/// render the same way — which is what they mean to an operator.
 /// `value` with every unset field of every table taken out.
 ///
 /// An `Option` holding `None` serialises as an empty value, and a table holding one would publish
-/// `"field": null` — a value no TOML file can spell and no element schema admits, since the field's
+/// `"field": null`. No TOML file can spell that and no element schema admits it, since the field's
 /// own constraint is its inner type's. What the loader sees for such a field is absence, so absence
 /// is what the default says. An item of a list keeps its place: removing it would move the rest.
 fn without_unset(value: &figment::value::Value, depth: usize) -> figment::value::Value {
@@ -1595,6 +1581,10 @@ fn without_unset(value: &figment::value::Value, depth: usize) -> figment::value:
     }
 }
 
+/// A default value as a table would show it.
+///
+/// Returns [`None`] for a value that means "absent", so an explicit `null` and a missing key render
+/// the same way, which is what they mean to an operator.
 fn render_value(value: &figment::value::Value, depth: usize) -> Option<String> {
     use figment::value::{Empty, Num, Value};
 
@@ -1663,30 +1653,30 @@ fn alias_paths(prefix: &[String], aliases: &[&str]) -> Vec<String> {
 
 /// Whether an operating system could hold an environment variable of this name.
 ///
-/// Not a style rule — a hard limit. POSIX and Windows both forbid `=` in a name, and a NUL ends
-/// the string that carries it, so `std::env::set_var` panics on either. A schema that printed
-/// such a name would be pointing an operator at a variable that cannot be created, which is the
-/// same false claim as printing the wrong one. Found by the `schema` fuzz target, which set every
-/// spelling the schema reported and died on the first one containing a NUL.
+/// A hard limit, not a style rule. POSIX and Windows both forbid `=` in a name, and a NUL ends the
+/// string that carries it, so `std::env::set_var` panics on either. A schema that printed such a
+/// name would be pointing an operator at a variable that cannot be created, which is the same false
+/// claim as printing the wrong one. The `schema` fuzz target sets every spelling the schema
+/// reports, so a name failing this is a crash there.
 fn is_settable_env_name(name: &str) -> bool {
     !name.is_empty() && !name.contains(['\0', '='])
 }
 
 /// Whether a directory could hold an entry of this name.
 ///
-/// A secrets-directory key is one entry *in* a directory, so anything that would make it a path
-/// instead — a separator — or that cannot be in a file name at all names no file that
-/// `SecretsDir` could ever read back.
+/// A secrets-directory key is one entry *in* a directory. A separator would make it a path instead,
+/// and a character no file name can hold names no file at all, so either names nothing `SecretsDir`
+/// could ever read back.
 fn is_nameable_file(name: &str) -> bool {
     !name.is_empty() && !name.contains(['\0', '/', '\\'])
 }
 
 /// The environment spelling of `path`, when the environment can actually name it.
 ///
-/// [`Dialect::env_spelling`] always produces *a* string; whether that string comes back as the
-/// same key is the question. It does not when a path segment is not already lower case, when it
-/// contains the separator, or when the whole name ends in the indirection suffix — the last
-/// because such a variable is read as a path to a file rather than as a value.
+/// [`Dialect::env_spelling`] always produces *a* string; whether that string comes back as the same
+/// key is the question. It does not when a path segment is not already lower case, when it contains
+/// the separator, or when the whole name ends in the indirection suffix, because such a variable is
+/// read as a path to a file rather than as a value.
 fn env_spelling(dialect: &Dialect, path: &str) -> (Option<String>, Option<Unreachable>) {
     let name = dialect.env_spelling(path);
     if !is_settable_env_name(&name) {
@@ -1735,15 +1725,15 @@ fn indirection_name(dialect: &Dialect, env: &str, path: &str) -> Option<String> 
 /// figment's and does two things the dialect does not:
 ///
 /// - **It trims.** The mapped key is trimmed at both ends, so a key path with surrounding
-///   whitespace can never come back — `TEST_BY ` arrives as `by`, and a schema promising it would
+///   whitespace can never come back. `TEST_BY ` arrives as `by`, and a schema promising it would
 ///   supply `by ` sends an operator to set a variable that quietly fills in a different key. The
-///   file layers do *not* trim, so a secrets-directory entry can still reach such a path; the two
-///   mechanisms genuinely differ here and the schema has to say so separately.
+///   file layers do *not* trim, so a secrets-directory entry can still reach such a path. The two
+///   mechanisms differ here and the schema has to say so separately.
 /// - **It drops a key with an empty segment.** `a..b` and `.a` are refused outright rather than
 ///   nested, so no environment variable supplies them.
 ///
-/// Found by the `schema` fuzz target, which set every spelling the schema reported and caught the
-/// value landing at a neighbouring key.
+/// The `schema` fuzz target sets every spelling the schema reports and checks the value lands at
+/// that key, so a divergence from figment here is a crash there.
 fn env_layer_key(dialect: &Dialect, name: &str) -> Option<String> {
     let suffix = name.trim().strip_prefix(dialect.prefix())?;
     let mapped = suffix.replace(dialect.separator(), ".");
@@ -1756,9 +1746,9 @@ fn env_layer_key(dialect: &Dialect, name: &str) -> Option<String> {
 
 /// The secrets-directory file name for `path`, when one can name it.
 ///
-/// A secrets-directory entry is the key with the nesting separator substituted for `.`, no
-/// prefix — and a name containing `.` is refused outright, which is what makes a separator
-/// containing one produce no answer here.
+/// A secrets-directory entry is the key with the nesting separator substituted for `.`, with no
+/// prefix. A name containing `.` is refused outright, which is why a separator containing one
+/// produces no answer here.
 fn secrets_file_name(dialect: &Dialect, path: &str) -> Option<String> {
     let name = path.replace('.', dialect.separator());
     if name.contains('.') || !is_nameable_file(&name) {
@@ -1841,8 +1831,8 @@ mod tests {
         );
     }
 
-    /// A separator containing `.` cannot be spelled as a secrets-directory file name at all —
-    /// `SecretsDir::read` refuses any entry whose name contains one.
+    /// A separator containing `.` cannot be spelled as a secrets-directory file name at all,
+    /// because `SecretsDir::read` refuses any entry whose name contains one.
     #[test]
     fn a_dotted_separator_has_no_secrets_file_spelling() {
         let dialect = Dialect::new("TEST_").nesting_separator(".");

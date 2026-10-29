@@ -1,28 +1,27 @@
 //! Rebuilding a running service when the files its configuration came from change.
 //!
-//! A Kubernetes `Secret` or `ConfigMap` mounted as a volume is updated in place by the kubelet:
-//! a new timestamped directory is written and `..data` is renamed over the old one. That is the
-//! only way a long-lived process learns a credential was rotated — environment variables are
-//! fixed for the life of a process — so a service that takes its secrets from files can pick up
-//! a rotation without being restarted.
+//! A Kubernetes `Secret` or `ConfigMap` mounted as a volume is updated in place by the kubelet: a
+//! new timestamped directory is written and `..data` is renamed over the old one. That is the only
+//! way a long-lived process learns a credential was rotated, because environment variables are
+//! fixed for the life of a process. A service that takes its secrets from files can pick up a
+//! rotation without being restarted.
 //!
-//! [`run`] takes the closure that builds the whole runtime and re-runs it. Everything the
-//! closure builds is rebuilt: the connection pool, the application state, the router, the
-//! listener, the background tasks. That is deliberate — the alternative, hot-swapping
-//! individual fields behind shared handles, means every consumer has to be correct against a
-//! value that changes underneath it, and the failure when one is not is a service running half
-//! on the old configuration.
+//! [`run`] takes the closure that builds the whole runtime and re-runs it. Everything the closure
+//! builds is rebuilt: the connection pool, the application state, the router, the listener, the
+//! background tasks. That is deliberate. The alternative, hot-swapping individual fields behind
+//! shared handles, means every consumer has to be correct against a value that changes underneath
+//! it, and the failure when one is not is a service running half on the old configuration.
 //!
 //! # What is *not* rebuilt
 //! Process-global installations that happen before [`run`] is reached and cannot be redone: a
 //! `tracing` subscriber, a metrics recorder. Changing the configuration that drives those still
 //! needs a restart.
 //!
-//! A [`Source`] can say which keys those are and hold them at their boot values across rebuilds,
-//! so the configuration handed to `build` is always the one actually in effect. What changed on
-//! disk and was held back is its [`Source::pending_restart`], and this supervisor logs every
-//! change to that list — the file says one thing and the process does another until it restarts,
-//! which an operator has to be able to see.
+//! A [`Source`] can say which keys those are and hold them at their boot values across rebuilds, so
+//! the configuration handed to `build` is always the one actually in effect. What changed on disk
+//! and was held back is its [`Source::pending_restart`], and this supervisor logs every change to
+//! that list. The file says one thing and the process does another until it restarts, which an
+//! operator has to be able to see.
 //!
 //! # Failure posture
 //! A reload that cannot be loaded, or that fails to build, leaves the running service exactly
@@ -33,10 +32,10 @@
 //! # Independence
 //! **Nothing in this module depends on the `loader` feature, and nothing in it should.** The
 //! supervisor is useful to anyone with a `Fn(Arc<C>, CancellationToken) -> Future` and a way to
-//! detect change, regardless of how they load configuration; coupling it to figment would
-//! shrink its audience for no benefit. [`Source`] is the seam, and `terrace_config::Sources`
-//! implements it when both features are on — named in prose rather than linked, so that this
-//! module's documentation resolves without the `loader` feature.
+//! detect change, regardless of how they load configuration. Coupling it to figment would shrink
+//! its audience for no benefit. [`Source`] is the seam, and `terrace_config::Sources` implements it
+//! when both features are on. It is named in prose rather than linked, so that this module's
+//! documentation resolves without the `loader` feature.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -57,10 +56,10 @@ const SIGNAL_DEPTH: usize = 1;
 
 /// How long the filesystem must be quiet before a change is acted on.
 ///
-/// One logical Kubernetes volume update fires several events — the new directory is created,
-/// files are written, `..data` is renamed — and rebuilding on the first of them would read a
-/// half-written mount. The kubelet's own sync period is on the order of a minute, so half a
-/// second of extra latency costs nothing and removes the whole class of torn reads.
+/// One logical Kubernetes volume update fires several events (the new directory is created, files
+/// are written, `..data` is renamed), and rebuilding on the first of them would read a half-written
+/// mount. The kubelet's own sync period is on the order of a minute, so half a second of extra
+/// latency costs nothing and removes the whole class of torn reads.
 ///
 /// A parameter rather than a constant because a crate cannot hardcode one deployment's kubelet
 /// sync period.
@@ -86,7 +85,7 @@ pub struct WatchError(pub String);
 ///
 /// A trait rather than a `F: PartialEq` fingerprint type parameter. The fingerprint the
 /// `loader` feature uses has to be a `figment::value::Value`, because comparing the typed
-/// config struct is impossible — config structs hold secret types that deliberately have no
+/// config struct is impossible: config structs hold secret types that deliberately have no
 /// `PartialEq`. A type parameter would work and would keep figment out of this module, but it
 /// leaks the mechanism into every caller's signature. The trait hides it in one impl on the one
 /// type that has it.
@@ -107,12 +106,12 @@ pub trait Source: Sized {
     }
 }
 
-/// Run a service, rebuilding it whenever its configuration files change.
+/// Runs a service, rebuilding it whenever its configuration files change.
 ///
-/// `build` receives the current configuration and a token that is cancelled when the runtime
-/// must stop — either because the process is shutting down or because a rebuild is due. It
-/// should return once it has stopped: the replacement is not built until it does, so the old
-/// listener has released the address before the new one binds it.
+/// `build` receives the current configuration and a token that is cancelled when the runtime must
+/// stop, either because the process is shutting down or because a rebuild is due. It should return
+/// once it has stopped: the replacement is not built until it does, so the old listener has
+/// released the address before the new one binds it.
 ///
 /// `reload` re-reads the configuration from scratch and is called once per debounced change. A
 /// reload that cannot be loaded, or that resolves to the values already running, leaves the
@@ -121,11 +120,11 @@ pub trait Source: Sized {
 /// Returns when the runtime returns of its own accord, which for a serving service means the
 /// shutdown signal has been handled and in-flight requests have drained.
 ///
-/// Uses the default [`Debounce`]; see [`run_with`] to choose one.
+/// Uses the default [`Debounce`]. [`run_with`] takes one.
 ///
 /// # Errors
 /// Returns `E::from(WatchError)` if the filesystem watcher cannot be installed, or whatever the
-/// runtime itself returned. A *reload* failure is never returned — it is logged and the running
+/// runtime itself returned. A *reload* failure is never returned: it is logged and the running
 /// configuration is kept.
 pub async fn run<C, S, R, F, Fut, E>(
     boot: (C, S),
@@ -176,7 +175,7 @@ where
                 let (next, next_sources) = match reread(&reload, &sources) {
                     Reread::Failed => continue,
                     Reread::Unchanged(next_sources) => {
-                        // The same values, so nothing is torn down — but the bookkeeping is
+                        // The same values, so nothing is torn down. The bookkeeping is still
                         // adopted, or every later event would report the same pending restart
                         // again.
                         sources = next_sources;
@@ -208,17 +207,17 @@ enum Reread<C, S> {
     /// The reload failed; the running configuration stays, bookkeeping and all.
     Failed,
     /// The values are the ones already running. The sources are adopted anyway, for what they
-    /// record beside the values — see [`Source::pending_restart`].
+    /// record beside the values, such as [`Source::pending_restart`].
     Unchanged(S),
     /// The values changed, and the runtime is rebuilt with them.
     Changed(C, S),
 }
 
-/// Re-read the configuration, and say whether the running service has to be rebuilt.
+/// Re-reads the configuration, and says whether the running service has to be rebuilt.
 ///
-/// Neither a failure nor an unchanged result touches a service that is currently working, and
-/// both are the common case — a `..data` swap that moved no key, or a half-written mount caught
-/// between events.
+/// Neither a failure nor an unchanged result touches a service that is currently working, and both
+/// are the common case: a `..data` swap that moved no key, or a half-written mount caught between
+/// events.
 fn reread<C, S, R, E>(reload: &R, current: &S) -> Reread<C, S>
 where
     S: Source,
@@ -245,7 +244,7 @@ where
     }
 }
 
-/// Log a change to the keys held at their boot values, once per change rather than per event.
+/// Logs a change to the keys held at their boot values, once per change rather than per event.
 fn report_pending(before: &[String], after: &[String]) {
     if before == after {
         return;
@@ -266,15 +265,15 @@ fn report_pending(before: &[String], after: &[String]) {
 /// Holds the debouncer itself: dropping it stops the watch, so it has to outlive the supervisor
 /// loop rather than the call that installed it.
 struct Watch {
-    /// `None` when there is nothing to watch — no secrets directory, no indirection target —
-    /// in which case [`Self::changed`] never resolves and the service runs.
+    /// `None` when there is nothing to watch (no secrets directory, no indirection target), in
+    /// which case [`Self::changed`] never resolves and the service runs.
     signals: Option<mpsc::Receiver<()>>,
     /// Kept alive for its `Drop`; never read.
     _debouncer: Option<Debouncer<notify::RecommendedWatcher, RecommendedCache>>,
 }
 
 impl Watch {
-    /// Install a debounced watch over every directory that exists.
+    /// Installs a debounced watch over every directory that exists.
     ///
     /// # Errors
     /// Returns [`WatchError`] if the platform watcher cannot be created or a directory cannot
@@ -296,9 +295,8 @@ impl Watch {
         }
 
         let (tx, rx) = mpsc::channel(SIGNAL_DEPTH);
-        // `notify-debouncer-full` owns the timer, the event cache and the burst collapsing that
-        // this module used to hand-roll as a sleep plus a `try_recv` drain. What arrives here is
-        // already one notification per quiet period.
+        // `notify-debouncer-full` owns the timer, the event cache and the burst collapsing. What
+        // arrives here is already one notification per quiet period.
         let mut debouncer = new_debouncer(debounce.0, None, move |result: DebounceEventResult| {
             // The callback runs on the debouncer's own thread. `try_send` rather than a
             // blocking send: a full channel already means "re-read pending", so dropping this
@@ -324,7 +322,7 @@ impl Watch {
         })
     }
 
-    /// Resolve once the watched files have changed *and* gone quiet again.
+    /// Resolves once the watched files have changed *and* gone quiet again.
     async fn changed(&mut self) {
         let Some(signals) = self.signals.as_mut() else {
             // Nothing to watch: never resolve, so the caller's `select!` reduces to just
@@ -366,8 +364,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// With nothing to watch, `changed()` must never resolve — otherwise the supervisor's
-    /// `select!` would spin, rebuilding the service as fast as it can construct it.
+    /// With nothing to watch, `changed()` must never resolve. Otherwise the supervisor's `select!`
+    /// would spin, rebuilding the service as fast as it can construct it.
     #[tokio::test]
     async fn nothing_to_watch_never_wakes() {
         let mut watch =

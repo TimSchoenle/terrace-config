@@ -94,7 +94,7 @@ fn nothing_the_environment_cannot_name_is_published_as_nameable() {
 
 #[test]
 fn a_name_that_is_another_keys_indirection_is_reported_as_reachable_elsewhere() {
-    // The one case where a missing `env` does *not* mean the environment cannot reach the key —
+    // The one case where a missing `env` does *not* mean the environment cannot reach the key,
     // which is why it gets its own reason rather than sharing `Unnameable`.
     let schema = Terrace::new("PROBE_").schema::<Indirection>();
 
@@ -112,10 +112,10 @@ fn a_name_that_is_another_keys_indirection_is_reported_as_reachable_elsewhere() 
 
 #[test]
 fn a_spelling_claimed_by_anothers_indirection_is_refused_rather_than_published() {
-    // Measured: `PROBE_TOKEN_FILE=<a path>` fills `token` from that file and leaves `token_file`
-    // at its default. That variable is `token`'s mechanism, and the environment layer withholds
-    // the loader's own mechanism from the deserialiser — which is precisely what leaves
-    // `token_file` with no variable of its own rather than sharing one.
+    // Measured: `PROBE_TOKEN_FILE=<a path>` fills `token` from that file and leaves `token_file` at
+    // its default. That variable is `token`'s mechanism, and the environment layer withholds the
+    // loader's own mechanism from the deserialiser, which is precisely what leaves `token_file`
+    // with no variable of its own rather than sharing one.
     let mut both = (String::new(), false);
     Harness::over(Terrace::new("PROBE_")).run(|jail| {
         let held = jail.write("held", "s3cret")?;
@@ -151,7 +151,7 @@ struct Plain {
 #[test]
 fn an_empty_prefix_is_refused() {
     // The ordered list's step 4 rejects a variable that begins with the prefix and matched nothing
-    // earlier — and every name begins with the empty string, so step 5 and step 6 would never be
+    // earlier, and every name begins with the empty string, so step 5 and step 6 would never be
     // reached and a declared external surface would never be read. The deeper reason is that a
     // prefixless loader cannot tell its own namespace from the machine's.
     let error = Terrace::new("")
@@ -178,8 +178,8 @@ fn an_ordinary_dialect_still_builds() {
         .expect("builds");
 }
 
-// ---------------------------------------------------------------------------------------------
-// The same shapes again, with an alias — the spelling every rule above was written without
+// --------------------------------------------------------------------------------------------- The
+// same shapes again, with an alias: the spelling every rule above leaves out
 // ---------------------------------------------------------------------------------------------
 
 /// A `rename_all` container whose field keeps the old spelling working. The migration
@@ -195,9 +195,9 @@ struct CamelWithAlias {
 #[test]
 fn a_working_alias_means_the_key_is_reachable() {
     // `unreachable` is a fact about the *key*, and a key answers to every one of its spellings.
-    // Read off the canonical spelling alone it said the environment could not reach a key that a
-    // working alias reaches — worse than the bare `None` it replaced, because a consumer believing
-    // it tells an operator a working configuration is impossible.
+    // Read off the canonical spelling alone, it would say the environment cannot reach a key that a
+    // working alias reaches. That is worse than saying nothing, because a consumer believing it
+    // tells an operator a working configuration is impossible.
     let key = key_of(
         &Terrace::new("PROBE_").schema::<CamelWithAlias>(),
         "cacheDir",
@@ -267,9 +267,9 @@ fn an_indirection_collision_through_an_alias_is_refused_too() {
 
 #[test]
 fn an_external_variable_may_not_take_an_alias_spelling_either() {
-    // The third door the round named: an alias spelling is one the loader answers to, so declaring
-    // it external — or covering it with an ignore pattern — exempts a real key from the check that
-    // owns it, exactly as the canonical spelling would.
+    // An alias spelling is one the loader answers to, so declaring it external, or covering it with
+    // an ignore pattern, exempts a real key from the check that owns it, exactly as the canonical
+    // spelling would.
     let schema = || {
         Terrace::new("PROBE_")
             .schema::<CamelWithAlias>()

@@ -1,14 +1,14 @@
 //! Loading a configuration for a supervisor that keeps restart-class keys at their boot values.
 //!
-//! `reload::run` rebuilds the whole runtime from whatever the reload closure
-//! returns. Left at that, every key is applied by every rebuild, and a key published
-//! [`Reload::Restart`](crate::schema::Reload::Restart) — one consumed before the supervisor runs,
-//! or one the author does not want changed under live traffic — changes the moment any `live` key
-//! beside it does. The contract would then say something the process does not do.
+//! `reload::run` rebuilds the whole runtime from whatever the reload closure returns. Left at that,
+//! every key is applied by every rebuild, and a key published
+//! [`Reload::Restart`](crate::schema::Reload::Restart), meaning one consumed before the supervisor
+//! runs or one the author does not want changed under live traffic, changes the moment any `live`
+//! key beside it does. The contract would then say something the process does not do.
 //!
 //! [`Reloader`] closes that gap by **pinning**: every restart-class path, and every alias of it,
-//! keeps the value it had when the process started. A change confined to those keys is therefore
-//! no change at all to the running service, and is reported as a pending restart instead — see
+//! keeps the value it had when the process started. A change confined to those keys is therefore no
+//! change at all to the running service, and is reported as a pending restart instead, through
 //! [`Sources::pending_restart`].
 //!
 //! The restart paths come from the same [`Describe`] implementation the contract is generated
@@ -74,7 +74,7 @@ use crate::terrace::Terrace;
 /// ```
 ///
 /// The boot values are captured once and never replaced. Pinning to the previous *generation*
-/// instead would let a restart key drift one reload at a time — each rebuild carrying forward a
+/// instead would let a restart key drift one reload at a time, each rebuild carrying forward a
 /// value the process was never started with.
 pub struct Reloader<T> {
     /// The loader to re-read through, as it was when the reloader was built.
@@ -96,12 +96,13 @@ impl<T> std::fmt::Debug for Reloader<T> {
 }
 
 impl<T: DeserializeOwned> Reloader<T> {
-    /// Load the configuration again, with every restart-class key held at its boot value.
+    /// Loads the configuration again, with every restart-class key held at its boot value.
     ///
     /// Reads the environment and the files exactly as the boot load did. The typed value is
     /// extracted from the configuration **as it is on disk** first, so a restart key whose new
     /// value would fail the next boot fails this reload now, loudly, rather than at the next
-    /// restart — and only then from the pinned one, which is what the rebuilt runtime receives.
+    /// restart. Only then is it extracted from the pinned one, which is what the rebuilt runtime
+    /// receives.
     ///
     /// # Errors
     /// As [`Terrace::load`]: a value that fails to parse, a file-backed source that cannot be
@@ -132,7 +133,7 @@ impl<T: DeserializeOwned> Reloader<T> {
 }
 
 impl Terrace {
-    /// Load a typed config for a supervisor, and the [`Reloader`] that loads it again.
+    /// Loads a typed config for a supervisor, and the [`Reloader`] that loads it again.
     ///
     /// The one entry point for a binary that declared
     /// [`ReloadSupport::rebuild`](crate::schema::ReloadSupport::rebuild): the boot load captures
@@ -140,8 +141,8 @@ impl Terrace {
     /// and the reloader holds them there for the life of the process. See [`Reloader`].
     ///
     /// # Errors
-    /// Returns [`Error::Invalid`] when this loader did not declare a rebuild — a binary publishing
-    /// `none` has no business supervising reloads — and otherwise as [`Terrace::load`].
+    /// Returns [`Error::Invalid`] when this loader did not declare a rebuild, since a binary
+    /// publishing `none` has no business supervising reloads, and otherwise as [`Terrace::load`].
     ///
     /// # Panics
     /// As [`Terrace::schema`]: if two of `T`'s fields resolve to one key path, or `T` contains
@@ -181,7 +182,7 @@ impl Terrace {
     }
 }
 
-/// Every restart-class path, and what it held at boot — [`None`] where it was absent.
+/// Every restart-class path, and what it held at boot, or [`None`] where it was absent.
 struct Pins {
     /// Sorted by path, so a pending report comes out in a stable order.
     entries: Vec<(String, Option<Value>)>,
@@ -197,7 +198,7 @@ impl std::fmt::Debug for Pins {
 }
 
 impl Pins {
-    /// Record what each of `paths` holds in `boot`.
+    /// Records what each of `paths` holds in `boot`.
     fn capture(paths: &[&str], boot: &Value) -> Self {
         let mut entries: Vec<(String, Option<Value>)> = paths
             .iter()
@@ -232,7 +233,7 @@ impl Pins {
     }
 }
 
-/// Set the node at the dotted `path` to `value`, or remove it when `value` is [`None`].
+/// Sets the node at the dotted `path` to `value`, or removes it when `value` is [`None`].
 ///
 /// Tables on the way are created when setting and left alone when removing, so restoring a key
 /// that was absent at boot never invents an empty table the boot configuration did not have. A

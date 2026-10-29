@@ -1,11 +1,11 @@
 //! The contract export: the document a build publishes, and the claims it refuses to publish.
 //!
 //! These tests exist for a different reason from `schema.rs`'s. There, a wrong answer produces
-//! documentation that reads wrong. Here it produces a document a deployment pipeline *acts* on —
-//! and every way this file can be wrong is a way a gate stops catching what it was built to catch.
-//! So the assertions are about the two properties a consumer has no way to check for itself: that
-//! the document is byte-stable, and that the declared external surface cannot be used to exempt a
-//! real configuration key from validation.
+//! documentation that reads wrong. Here it produces a document a deployment pipeline *acts* on, and
+//! every way this file can be wrong is a way a gate stops catching what it was built to catch. So
+//! the assertions are about the two properties a consumer has no way to check for itself: that the
+//! document is byte-stable, and that the declared external surface cannot be used to exempt a real
+//! configuration key from validation.
 
 #![cfg(feature = "schema")]
 #![expect(dead_code, reason = "fixtures are read by the derive, not at runtime")]
@@ -51,7 +51,7 @@ fn default_dist() -> String {
     "public".to_owned()
 }
 
-/// The loader every test here describes against — a reserved variable included, because a reserved
+/// The loader every test here describes against, a reserved variable included, because a reserved
 /// variable is one of the two ways an external declaration can collide with the loader.
 fn terrace() -> Terrace {
     Terrace::new("PORTFOLIO_").reserve("PORTFOLIO_PROFILE")
@@ -140,8 +140,8 @@ fn the_json_schema_half_is_the_json_schema_rendering() {
         .meta_schema(DRAFT_07)
         .closed(true)
         // The contract's defaults, restated: a contract asserts nothing about which layer supplies
-        // a required key, so its `required` lists — and the `anyOf` an aliased required key would
-        // produce — are both off.
+        // a required key, so its `required` lists, and the `anyOf` an aliased required key would
+        // produce, are both off.
         .require_present(false)
         .title("portfolio configuration");
     let standalone: Json =
@@ -181,8 +181,8 @@ fn the_title_falls_back_to_the_app_but_never_overrides_one() {
 
 #[test]
 fn overriding_a_knob_cannot_change_the_dialect() {
-    // The builder used to take a whole `JsonSchema`, so the documented way to relax one knob —
-    // `.json_schema(JsonSchema::new().closed(false))` — silently took the dialect back to 2020-12
+    // A builder taking a whole `JsonSchema` would make the obvious way to relax one knob,
+    // `.json_schema(JsonSchema::new().closed(false))`, silently take the dialect back to 2020-12
     // with it. That validates fine alone and fails only where it is expensive: against a pipeline
     // pinning a draft-07 engine, or when two contracts of one document refuse to merge.
     for contract in [
@@ -218,7 +218,7 @@ fn a_reserved_key_is_in_the_schema_half_and_out_of_the_json_schema() {
 
     // The two halves answer different questions and the reserved variable is where they diverge:
     // the loader does read `PORTFOLIO_PROFILE`, so a validator checking a pod's environment must
-    // know about it — and no file may supply it, so a schema completing it in a config file would
+    // know about it, and no file may supply it, so a schema completing it in a config file would
     // offer a key that does nothing.
     assert!(
         contract
@@ -268,7 +268,7 @@ fn a_built_image_is_checked_against_the_contract_rather_than_the_dockerfile() {
         .verify_labels(DEFAULT_PATH, &labels)
         .expect("the labels this contract produced are the ones it accepts");
 
-    // A build argument that failed to interpolate — the failure a source diff cannot see, because
+    // A build argument that failed to interpolate: the failure a source diff cannot see, because
     // the Dockerfile is correct and the image is not.
     let mut wrong = labels.clone();
     wrong.insert(LABEL_PREFIX.to_owned(), String::new());
@@ -341,7 +341,7 @@ fn a_declared_variable_is_described_well_enough_to_be_checked() {
 #[test]
 fn a_variable_inside_the_loaders_prefix_is_refused() {
     // The one that matters. Everything in the prefix is a configuration key, so declaring one
-    // external would leave it governed and exempt at once — and the exemption would win, silently
+    // external would leave it governed and exempt at once, and the exemption would win, silently
     // removing exactly the key a rename is most likely to break.
     let error = with_external(External::new().var(ExternalVar::new("PORTFOLIO_ISR__TTL_SECS")))
         .expect_err("refused");
@@ -423,7 +423,7 @@ fn renamed() -> Terrace {
 fn an_ignore_pattern_may_not_cover_a_variable_the_loader_reads() {
     // The prefix is not the whole namespace. A *key's* environment spelling is derived from the
     // prefix and so is always caught by the check above; a *loader* variable's is whatever the
-    // caller passed. Exempting one of those is worse than exempting a key — `CREDENTIALS_DIR`
+    // caller passed. Exempting one of those is worse than exempting a key: `CREDENTIALS_DIR`
     // decides where every credential is read from, so a chart misspelling it loses all of them at
     // once, silently.
     for pattern in [
@@ -481,8 +481,8 @@ fn a_variable_cannot_be_declared_and_ignored_at_once() {
 #[test]
 fn a_wildcard_that_happens_to_cover_a_declared_variable_is_left_alone() {
     // `ignore("KUBERNETES_*")` beside a declared `KUBERNETES_SERVICE_HOST` is an ordinary thing to
-    // write, and the ordered list already resolves it — step 5 beats step 6. Refusing it would
-    // make that ordering carry no weight.
+    // write, and the ordered list already resolves it: step 5 beats step 6. Refusing it would make
+    // that ordering carry no weight.
     with_external(
         External::new()
             .var(ExternalVar::new("KUBERNETES_SERVICE_HOST").ty("String"))
@@ -558,9 +558,10 @@ fn a_secret_key_carries_no_default_out_of_the_box() {
 
 #[test]
 fn a_hand_built_secret_default_is_refused_at_the_boundary() {
-    // Nothing in this crate produces this pair — `with_defaults_from` drops a secret's value. The
-    // check is here anyway because this is the point the document crosses into a public registry,
-    // and "no code path produces it" is a weaker guarantee than "the type will not carry it".
+    // Nothing in this crate produces this pair, since `with_defaults_from` drops a secret's value.
+    // The check is here anyway because this is the point the document crosses into a public
+    // registry, and "no code path produces it" is a weaker guarantee than "the type will not carry
+    // it".
     let mut schema = schema();
     for key in &mut schema.keys {
         if key.secret {
@@ -639,7 +640,7 @@ fn a_type_nothing_can_interpret_leaves_the_constraint_absent_rather_than_guessed
         .expect("builds");
 
     // Absent means "declared but unconstrained", which is nearer to `ignore` than the declaration
-    // reads — and inventing a constraint for a type this crate does not recognise would reject
+    // reads, and inventing a constraint for a type this crate does not recognise would reject
     // values the image accepts, which is the one thing a schema here must never do.
     assert_eq!(contract.external.env[0].constraint, None);
     assert_eq!(contract.external.env[0].ty.as_deref(), Some("MyNewtype"));
@@ -715,7 +716,7 @@ fn the_text_pattern_admits_everything_the_loader_admits() {
 
     // Measured against the loader rather than reasoned from TOML's grammar: figment's `Env`
     // provider takes all of these for a `u64` key, so a pattern rejecting one would stop a
-    // deployment that was correct — the failure this whole module is written to avoid.
+    // deployment that was correct, the failure this whole module is written to avoid.
     for text in ["0", "42", "007", "+5", " 7", "7 "] {
         assert!(matches_pattern(pattern, text), "{text} must be admitted");
     }
@@ -776,8 +777,8 @@ fn a_choice_admits_the_whitespace_the_environment_layer_trims() {
     // The two spaces differ, and a bare enum in both fields was wrong in one of them. Measured:
     // figment's Env provider trims, so an environment value of `info` with a trailing space, a
     // leading space, or surrounding tabs and newlines all load. The document layer trims nothing,
-    // so the same spelling inside a TOML string really is refused — which is why `constraint`
-    // keeps the bare set and only the text form widens.
+    // so the same spelling inside a TOML string really is refused, which is why `constraint` keeps
+    // the bare set and only the text form widens.
     let schema = Terrace::new("CHOICES_").schema::<Choices>();
     let key = |path: &str| {
         schema
@@ -829,10 +830,10 @@ struct Renamed {
 #[test]
 fn a_spelling_carrying_regex_metacharacters_is_escaped() {
     // A rename takes any string, so a variant can carry a dot or a plus. Left unescaped, the first
-    // would match any character in that position — accepting a spelling the loader refuses — and
-    // the second would make the preceding character optional. Escaping the ECMA-262 metacharacter
-    // set is always correct, and getting it wrong in the strict direction would reject a
-    // deployment that works.
+    // would match any character in that position, accepting a spelling the loader refuses, and the
+    // second would make the preceding character optional. Escaping the ECMA-262 metacharacter set
+    // is always correct, and getting it wrong in the strict direction would reject a deployment
+    // that works.
     let schema = Terrace::new("RENAMED_").schema::<Renamed>();
     let pattern = schema.keys[0].text_constraint.as_ref().expect("carried")["pattern"]
         .as_str()
@@ -923,8 +924,8 @@ struct Mandatory {
 fn a_contract_marks_nothing_required_in_its_json_schema() {
     // Measured: the loader takes a required key from the document, from the environment, or from a
     // secrets file, and refuses only when nothing supplies it. JSON Schema's `required` says the
-    // *document* must carry it, so a chart supplying a required secret from a mount — the only way
-    // to supply a secret — renders a document a `required` list refuses and a deployment that
+    // *document* must carry it, so a chart supplying a required secret from a mount (the only way
+    // to supply a secret) renders a document a `required` list refuses and a deployment that
     // starts. A false rejection of the arrangement the secrets-directory layer exists for.
     let contract = Terrace::new("MANDATORY_")
         .schema::<Mandatory>()
@@ -973,9 +974,9 @@ fn an_alias_is_published_in_every_spelling_that_supplies_it() {
     // exactly as it answers to the canonical spellings.
     //
     // An alias is what a maintainer adds when renaming a key so existing deployments keep working.
-    // Publishing only the canonical spelling would send the old name to the ordered list's step 4
-    // — "a key spelling nothing in this image reads" — and reject a correct deployment, turning
-    // the shim that makes a rename safe into the thing that fails the gate.
+    // Publishing only the canonical spelling would send the old name to the ordered list's step 4,
+    // "a key spelling nothing in this image reads", and reject a correct deployment, turning the
+    // shim that makes a rename safe into the thing that fails the gate.
     let contract = contract();
     let key = key_of(&contract, "github.username");
 
@@ -999,7 +1000,7 @@ fn a_key_without_aliases_carries_no_alias_spellings() {
 #[test]
 fn the_alias_sets_are_on_every_key_whether_or_not_it_has_any() {
     // They are the fields the ordered list consults for every variable on every container, so a
-    // consumer reaching them has not yet decided which key it is holding — the worst place to hand
+    // consumer reaching them has not yet decided which key it is holding: the worst place to hand
     // it two shapes. And unlike `constraint` and `default`, which are omitted when unset because
     // absence *means* something there, an absent list here would say exactly what an empty one
     // says. `aliases`, which these are derived from, is always present too.
@@ -1077,8 +1078,8 @@ struct Shapes {
 }
 
 // No `Describe`: it is a leaf, and the derive reports the token `Newtype<String>` as its type
-// without needing the type to describe anything. That is the point of the fixture — a spelling
-// the crate cannot interpret.
+// without needing the type to describe anything. That is the point of the fixture: a spelling the
+// crate cannot interpret.
 //
 // Generic rather than bare, because the derive now refuses a bare name it can read nothing from
 // and offers `#[config(skip)]` for one that has nothing to publish. Neither is what is under test
@@ -1135,9 +1136,8 @@ fn a_type_that_parses_its_string_is_not_unconstrained_text() {
     // syntax" and a `char` with "expected a character".
     //
     // `Text` promises no check was needed. For the last three that is a claim the loader
-    // contradicts — the same "one value, two meanings" defect `TextForm` exists to remove, one
-    // field over. `Unknown` says the true thing: a check exists and this document does not
-    // describe it.
+    // contradicts, the same "one value, two meanings" defect `TextForm` exists to remove, one field
+    // over. `Unknown` says the true thing: a check exists and this document does not describe it.
     let schema = Terrace::new("PARSING_").schema::<Parsing>();
     let form = |path: &str| {
         schema
@@ -1186,8 +1186,8 @@ fn a_string_constraint_is_what_says_a_file_can_supply_a_key() {
 
 #[test]
 fn the_document_half_still_calls_them_strings() {
-    // Only the *form* claim was wrong. In document space every one of these is a TOML string, and
-    // `constraint` saying so is correct — a TOML file writing `listen = "127.0.0.1"` is right.
+    // Only the *form* differs from a string. In document space every one of these is a TOML string,
+    // and `constraint` saying so is correct: a TOML file writing `listen = "127.0.0.1"` is right.
     let schema = Terrace::new("PARSING_").schema::<Parsing>();
     for path in ["text", "path", "listen", "peer"] {
         let key = schema
@@ -1201,10 +1201,10 @@ fn the_document_half_still_calls_them_strings() {
 
 #[test]
 fn a_list_key_requires_the_bracket_form_rather_than_accepting_anything() {
-    // The case that made the form necessary. `text_constraint: null` used to mean both "any text
+    // The case the form exists for. Without it, `text_constraint: null` would mean both "any text
     // is fine" and "this needs a structured literal nobody described", so a chart setting
-    // `SHAPES_REPOS=a,b` — the first thing anyone would try — passed every gate and failed at
-    // boot with a type error.
+    // `SHAPES_REPOS=a,b`, the first thing anyone would try, would pass every gate and fail at boot
+    // with a type error.
     let contract = shapes();
     let repos = key_of(&contract, "repos");
 
@@ -1228,8 +1228,8 @@ fn a_string_key_says_any_text_is_fine_rather_than_saying_nothing() {
     let contract = shapes();
     let name = key_of(&contract, "name");
 
-    // No pattern, because an environment value is a string already — but the form is what makes
-    // that "nothing to check" rather than "nothing is known".
+    // No pattern, because an environment value is a string already, but the form is what makes that
+    // "nothing to check" rather than "nothing is known".
     assert_eq!(name.text_constraint, None);
     assert_eq!(name.text_form, TextForm::Text);
 }
@@ -1274,7 +1274,7 @@ fn bracketed(pattern: &str, text: &str) -> bool {
 #[test]
 fn a_document_from_a_later_crate_still_reads() {
     // `CONTRACT_VERSION` promises a version is bumped only when a field changes meaning or
-    // disappears, never when one is added — so a consumer must be able to read a document carrying
+    // disappears, never when one is added, so a consumer must be able to read a document carrying
     // things it has no name for. A consumer branching on strings gets that for free; one
     // deserialising into typed enums does not, and an unfamiliar variant is a parse error for the
     // *whole document* rather than for the field carrying it.
@@ -1299,8 +1299,8 @@ fn a_document_from_a_later_crate_still_reads() {
     // Failing closed: read as `Allow` this would silently switch off the ordered list's last step.
     assert_eq!(parsed.external.unknown, Unknown::Reject);
 
-    // And the rest of the document survived, which is the whole point — one unfamiliar form on one
-    // key used to make the envelope, the app block and every other key unreadable.
+    // And the rest of the document survived, which is the whole point: one unfamiliar form on one
+    // key must not make the envelope, the app block or any other key unreadable.
     assert_eq!(parsed.terrace_contract, CONTRACT_VERSION);
     assert_eq!(parsed.app.name, "portfolio");
     assert!(parsed.json_schema["properties"].is_object());
@@ -1311,7 +1311,7 @@ fn a_document_from_a_later_crate_still_reads() {
 fn an_unknown_role_is_not_read_as_a_role_that_means_something() {
     // The reason `LoaderRole` needed a new variant rather than folding into one of the three. Every
     // role means "the loader reads this variable", so the ordered list's step 1 is satisfied by
-    // `env` alone whatever this says — but a consumer looking for the secrets directory matches on
+    // `env` alone whatever this says, but a consumer looking for the secrets directory matches on
     // the role, and an unknown one read as `Config` would hand it the wrong variable.
     let role: LoaderRole = serde_json::from_str("\"overlay\"").expect("reads");
 
@@ -1353,12 +1353,12 @@ fn the_known_spellings_still_round_trip() {
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// The element shape of a container-typed key, which is the half a chart used to transcribe
+// --------------------------------------------------------------------------------------------- The
+// element shape of a container-typed key, which a chart would otherwise transcribe by hand
 // ---------------------------------------------------------------------------------------------
 
-/// One element of `routes`, with a nested table and a choice inside it — the shape a chart's
-/// `values.schema.json` had to carry by hand while the contract said only `{"type": "array"}`.
+/// One element of `routes`, with a nested table and a choice inside it: the shape a chart's
+/// `values.schema.json` would carry by hand if the contract said only `{"type": "array"}`.
 #[derive(Deserialize, Serialize, Default, Describe)]
 struct Route {
     /// Name shown in the log line.
@@ -1445,7 +1445,7 @@ fn a_container_typed_key_publishes_its_element_shape() {
 }
 
 /// The element is a nested schema on one key, never keys of its own. A consumer walking the key
-/// list — which is how every environment-variable gate is written — sees exactly what it saw.
+/// list, which is how every environment-variable gate is written, sees exactly what it saw.
 #[test]
 fn an_element_contributes_no_keys_to_the_contract() {
     let paths: Vec<String> = routed()
@@ -1505,10 +1505,9 @@ fn the_nested_element_is_the_flat_one_with_the_documents_own_strictness() {
         flat["items"]["properties"]["target"]["properties"]
     );
 
-    // The one deliberate difference, at every level of the element. `serde` accepts a field
-    // nobody declared unless the struct says otherwise, so the flat constraint — the
-    // certainly-true half — leaves the element open, and `JsonSchema::closed` is what decides it
-    // for a rendering.
+    // The one deliberate difference, at every level of the element. `serde` accepts a field nobody
+    // declared unless the struct says otherwise, so the flat constraint, the certainly-true half,
+    // leaves the element open, and `JsonSchema::closed` is what decides it for a rendering.
     for at in [&nested["items"], &nested["items"]["properties"]["target"]] {
         assert_eq!(
             at["additionalProperties"],

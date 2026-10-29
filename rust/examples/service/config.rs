@@ -1,18 +1,19 @@
 //! The configuration a small HTTP service reads at boot.
 //!
-//! This is the module [`super`]'s `main` loads and the exact module
-//! `tests/example_service.rs` loads it through — included there with `#[path]` rather than
-//! copied, so a change here that breaks a real load fails that test instead of drifting past it
-//! unnoticed. See that file for the scenarios exercised.
+//! This is the module [`super`]'s `main` loads and the exact module `tests/example_service.rs`
+//! loads it through. It is included there with `#[path]` rather than copied, so a change here that
+//! breaks a real load fails that test instead of drifting past it unnoticed. See that file for the
+//! scenarios exercised.
 //!
 //! Every type below also derives [`Describe`] under the `schema` feature, cfg-gated rather than
 //! unconditional: this example's whole point is that it keeps building under `loader` alone
 //! (`required-features = ["loader"]` in `Cargo.toml`), and a bare `derive(Describe)` would pull
-//! `schema` in regardless of what a caller asked for. `cargo run --example service --features
-//! schema -- --contract` renders the same types this same file loads with — one definition, not a
-//! second one that could drift from it — and `examples/service/contract.json` is that rendering,
-//! checked by CI exactly the way `cargo fmt --check` checks formatting: regenerated fresh and
-//! diffed, never trusted merely because it once matched.
+//! `schema` in regardless of what a caller asked for.
+//! `cargo run --example service --features schema -- --contract` renders the same types this same
+//! file loads with, from one definition with no second copy to drift from it, and
+//! `examples/service/contract.json` is that rendering, checked by CI exactly the way
+//! `cargo fmt --check` checks formatting: regenerated fresh and diffed, never trusted merely
+//! because it once matched.
 
 use secrecy::SecretString;
 use serde::Deserialize;
@@ -24,21 +25,21 @@ use terrace_config::{Error, Terrace};
 
 /// The loader this service reads its configuration through.
 ///
-/// A function rather than a constant so the example and its test build the identical [`Terrace`]
-/// — cheap to construct, and the one place its prefix and reserved keys are spelled.
+/// A function rather than a constant so the example and its test build the identical [`Terrace`].
+/// It is cheap to construct, and the one place its prefix and reserved keys are spelled.
 pub(crate) fn loader() -> Terrace {
     Terrace::new("ORDERS_").reserve("ORDERS_PROFILE")
 }
 
-/// Load the service's configuration through [`loader`].
+/// Loads the service's configuration through [`loader`].
 ///
 /// # Errors
 /// Returns [`Error`] if a required value is missing, a value fails to parse, or a file-backed
-/// source — a secrets directory, a `_FILE` indirection — cannot be read.
-// `main` is this function's only caller: `tests/example_service.rs` drives `loader()` through
-// `testing::Harness` instead, which is the whole point of a harness — a sandboxed environment,
-// not this process's real one. Compiled under `cfg(test)` — the integration test binary that
-// includes this module by path — that leaves nothing left to call it.
+/// source (a secrets directory or a `_FILE` indirection) cannot be read.
+// `main` is this function's only caller. `tests/example_service.rs` drives `loader()` through
+// `testing::Harness` instead, because a harness sandboxes the environment rather than using this
+// process's real one. The integration test binary includes this module by path under
+// `cfg(test)`, where nothing is left to call it.
 #[cfg_attr(
     test,
     expect(
@@ -50,19 +51,21 @@ pub(crate) fn load() -> Result<Config, Error> {
     loader().load()
 }
 
-/// Render this service's configuration as a contract document — the `schema` feature's own
-/// rendering of exactly the types [`load`] deserialises into, not a hand-maintained description
-/// of them that could say something [`load`] no longer does.
-///
-/// # Errors
-/// Returns [`Error`] if two fields of [`Config`] resolve to one key path, or if building the
-/// contract document itself is refused.
 /// The service's own release, stamped into the contract as `app.version`. Deliberately not
 /// `CARGO_PKG_VERSION`: that is terrace-config's version, which the contract already records as
 /// `producer.version`, and borrowing it would make every library release a change to this example.
 #[cfg(feature = "schema")]
 pub(crate) const SERVICE_VERSION: &str = "v1.0.0";
 
+/// Renders this service's configuration as a contract document.
+///
+/// The document is the `schema` feature's own rendering of exactly the types [`load`] deserialises
+/// into, so it cannot say something [`load`] no longer does the way a hand-maintained description
+/// could.
+///
+/// # Errors
+/// Returns [`Error`] if [`Config::default`] cannot be serialised as defaults, or if building the
+/// contract document itself is refused.
 #[cfg(feature = "schema")]
 pub(crate) fn contract() -> Result<String, Error> {
     let schema = loader()
@@ -95,10 +98,10 @@ pub(crate) struct Config {
 }
 
 impl Default for Config {
-    /// Mirrors every field's own `#[serde(default = "…")]`, the same reason [`Database`] needs
-    /// one: `with_defaults_from` serialises this to populate the contract's defaults column, and
-    /// a boot with no config file, no environment variable and no mounted secret at all is what
-    /// it renders defaults *from* — not a special case of the type.
+    /// Mirrors every field's own `#[serde(default = "…")]`, the same reason [`Database`] needs one:
+    /// `with_defaults_from` serialises this to populate the contract's defaults column, and a boot
+    /// with no config file, no environment variable and no mounted secret at all is what it renders
+    /// defaults *from*, so it is no special case of the type.
     fn default() -> Self {
         Self {
             bind_addr: default_bind_addr(),
@@ -117,11 +120,11 @@ pub(crate) struct Database {
     /// though the compiled default below is not one — a real deployment supplies this through
     /// the secrets directory or `_FILE` indirection, never through the environment in plain
     /// sight.
-    // Not rustdoc: the paragraph above is what reaches `examples/service/contract.json` — an
-    // operator's document, not this source. `SecretString` deliberately does not implement
-    // `Serialize`, so `#[serde(skip_serializing)]` is what lets the rest of the struct still
-    // derive it; `#[config(secret)]` renders `<redacted>` in the contract in its place, rather
-    // than the compiled default a reader might otherwise mistake for a real one.
+    // Not rustdoc: the paragraph above is what reaches `examples/service/contract.json`, which is
+    // an operator's document and not this source. `SecretString` deliberately does not implement
+    // `Serialize`, so `#[serde(skip_serializing)]` is what lets the rest of the struct still derive
+    // it; `#[config(secret)]` renders `<redacted>` in the contract in its place, rather than the
+    // compiled default a reader might otherwise mistake for a real one.
     #[serde(default = "default_database_url", skip_serializing)]
     #[cfg_attr(feature = "schema", config(secret))]
     pub(crate) url: SecretString,
@@ -131,9 +134,9 @@ pub(crate) struct Database {
 }
 
 impl Default for Database {
-    /// Mirrors the two fields' own `#[serde(default = "…")]` functions, so a config file that
-    /// omits `[database]` entirely boots the same way as one that supplies an empty table — this
-    /// is what a config without any operator input looks like, not a special case of it.
+    /// Mirrors the two fields' own `#[serde(default = "…")]` functions, so a config file that omits
+    /// `[database]` entirely boots the same way as one that supplies an empty table. This is what a
+    /// config without any operator input looks like, not a special case of it.
     fn default() -> Self {
         Self {
             url: default_database_url(),
@@ -168,8 +171,8 @@ fn default_port() -> u16 {
     8080
 }
 
-/// A local development database. **Never a real credential** — an operator overriding one field
-/// of `database` still gets a value here, and this is the one that must be safe to print.
+/// A local development database. **Never a real credential**: an operator overriding one field of
+/// `database` still gets a value here, and this is the one that must be safe to print.
 fn default_database_url() -> SecretString {
     SecretString::from("postgres://localhost/orders_dev".to_owned())
 }

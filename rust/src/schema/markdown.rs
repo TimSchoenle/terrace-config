@@ -5,9 +5,9 @@
 //! set of columns that exist; a cell is prose, so `|` and `\` are escaped rather than trusted;
 //! and a cell shows the *summary* of a `///` comment rather than the whole of it.
 //!
-//! Nothing here interprets a value. `12` prints as `12` and `public` prints as `public`, quotes
-//! and all left off, because that is what reads well in a table — and it is exactly why the
-//! renderings that write a file read [`Key::default_value`] instead.
+//! Nothing here interprets a value. `12` prints as `12` and `public` prints as `public`, quotes and
+//! all left off, because that is what reads well in a table. That is exactly why the renderings
+//! that write a file read [`Key::default_value`] instead.
 
 use std::fmt::Write as _;
 
@@ -20,10 +20,10 @@ impl Schema {
     /// Two tables: the variables the loader reads, then the configuration keys under
     /// [`Column::DEFAULT`]. Use [`Self::to_markdown_with`] to choose the columns.
     ///
-    /// A [`Column::Docs`] cell carries the *summary* of the `///` comment — its first paragraph,
-    /// as rustdoc means the word — rather than the whole of it. [`Key::docs`] keeps the whole
-    /// text for [`Self::to_json`], so nothing is lost; a table cell is not where the four
-    /// paragraphs below the summary belong.
+    /// A [`Column::Docs`] cell carries the *summary* of the `///` comment, its first paragraph as
+    /// rustdoc means the word, and not the whole of it. [`Key::docs`] keeps the whole text for
+    /// [`Self::to_json`], so nothing is lost. A table cell is not where the four paragraphs below
+    /// the summary belong.
     ///
     /// Ends with a newline, so appending another section needs no separator of its own.
     #[must_use]
@@ -55,12 +55,12 @@ impl Schema {
     /// The loader-variable table alone.
     ///
     /// A documentation page with one key table per subsystem wants these variables once, not
-    /// repeated above every table — and the subsystem pages want [`Self::to_markdown_keys`] with
-    /// no loader table at all. Emitting the pair together is the common case, not the only one,
-    /// so each half is reachable on its own rather than through clearing a field.
+    /// repeated above every table, and the subsystem pages want [`Self::to_markdown_keys`] with no
+    /// loader table at all. Emitting the pair together is the common case, not the only one, so
+    /// each half is reachable on its own rather than through clearing a field.
     ///
     /// Empty when the schema has no loader variables, which is what
-    /// [`Schema::describe`](Self::describe) produces on its own — a header with no rows under it
+    /// [`Schema::describe`](Self::describe) produces on its own. A header with no rows under it
     /// would be a table promising variables that do not exist.
     ///
     /// Ends with a newline when it is not empty.
@@ -93,8 +93,8 @@ impl Schema {
     /// subsystem and has said where the configuration file comes from somewhere else.
     ///
     /// A schema with no keys still renders its header, unlike the loader table. An empty
-    /// configuration section is a real shape — a subsystem that reads nothing yet — and the
-    /// header is what says the section was generated rather than forgotten.
+    /// configuration section is a real shape, a subsystem that reads nothing yet, and the header is
+    /// what says the section was generated rather than forgotten.
     ///
     /// Ends with a newline.
     #[must_use]
@@ -121,7 +121,7 @@ impl Schema {
 pub enum Column {
     /// The TOML/figment key path.
     Path,
-    /// What kind of value the key takes — its type, or the choices it accepts.
+    /// What kind of value the key takes: its type, or the choices it accepts.
     Type,
     /// Other key paths that supply the same key.
     Aliases,
@@ -155,11 +155,11 @@ impl Column {
     /// The columns [`Schema::to_markdown`] emits: everything an operator needs, and nothing that
     /// pushes the table past the width of a page.
     ///
-    /// The two file spellings are left out because both are mechanical — [`Self::SecretsFile`]
-    /// is `path` with the separator substituted, and [`Self::EnvFile`] is [`Self::Env`] with the
-    /// dialect's documented suffix appended. Neither adds anything the reader cannot derive from
-    /// a column already in front of them plus one sentence of prose, and dropping the pair keeps
-    /// the table inside a page. Ask for either by name through [`Schema::to_markdown_with`].
+    /// The two file spellings are left out because both are mechanical. [`Self::SecretsFile`] is
+    /// `path` with the separator substituted, and [`Self::EnvFile`] is [`Self::Env`] with the
+    /// dialect's documented suffix appended. Neither adds anything the reader cannot derive from a
+    /// column already in front of them plus one sentence of prose, and dropping the pair keeps the
+    /// table inside a page. Ask for either by name through [`Schema::to_markdown_with`].
     ///
     /// [`Self::Flags`] carries what [`Self::Required`] and [`Self::Secret`] would have taken two
     /// columns to say, and [`Self::Aliases`] is empty for almost every key.
@@ -194,9 +194,9 @@ impl Column {
 
     fn render(self, key: &Key) -> String {
         match self {
-            // Escaped like every other cell. A key path is not prose, but it is not the
-            // table author's to choose either — `#[serde(rename = "a|b")]` puts a cell
-            // separator in it, and an unescaped one adds a column to the row.
+            // Escaped like every other cell. A key path is not prose, but it is not the table
+            // author's to choose either. `#[serde(rename = "a|b")]` puts a cell separator in it,
+            // and an unescaped one adds a column to the row.
             Self::Path => format!("`{}`", escape(&key.path)),
             // The choices when there are any, because `LogLevel` tells an operator nothing they
             // can act on and `trace | debug | info` tells them exactly what to type. The type
@@ -325,10 +325,10 @@ fn cell(text: &str) -> String {
 
 /// A doc comment in a table cell: its summary, on one line.
 ///
-/// The whole comment used to go in, which put every paragraph of a field's rustdoc into one cell
-/// and made a table out of an essay. The fix is rustdoc's own convention rather than a new
-/// annotation to keep in step: the first paragraph is the summary, and a comment written the way
-/// rustdoc asks for one already reads correctly here with nothing to change.
+/// The whole comment would put every paragraph of a field's rustdoc into one cell and make a table
+/// out of an essay. Rustdoc's own convention decides instead, with no annotation to keep in step:
+/// the first paragraph is the summary, and a comment written the way rustdoc asks for one already
+/// reads correctly here with nothing to change.
 ///
 /// [`Key::docs`] keeps the whole text, so the JSON contract loses nothing and a pipeline that
 /// wants the paragraphs below the summary can still render them.

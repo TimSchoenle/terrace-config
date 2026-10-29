@@ -19,16 +19,16 @@ pub struct FileSuffixEnv {
     /// The variable that named each of them, keyed the same way.
     ///
     /// A second map rather than a field on [`FileValue`], which is shared with
-    /// [`SecretsDir`](super::SecretsDir) where there is no variable to record. Recomputing the
-    /// name from the key path would very nearly work — it is what
-    /// [`Schema`](crate::schema::Schema) documents — but "very nearly" is the wrong standard for
-    /// a report whose job is to tell an operator which knob they actually turned: the
-    /// recomputed spelling is upper-cased, and the one they set may not have been.
+    /// [`SecretsDir`](super::SecretsDir) where there is no variable to record. Recomputing the name
+    /// from the key path, as [`Schema`](crate::schema::Schema) documents it, would very nearly
+    /// work. "Very nearly" is the wrong standard for a report whose job is to tell an operator
+    /// which knob they actually turned: the recomputed spelling is upper-cased, and the one they
+    /// set may not have been.
     origins: BTreeMap<String, String>,
 }
 
 impl FileSuffixEnv {
-    /// Read every indirection variable `dialect` recognises.
+    /// Reads every indirection variable `dialect` recognises.
     ///
     /// Scanned over the whole environment rather than by `env::var("…")` on a literal, because
     /// the keys are open-ended: there is no list of them to consult.
@@ -94,7 +94,7 @@ impl FileSuffixEnv {
 
     /// The directories a reload has to watch: the parent of every named path.
     ///
-    /// Parent directories rather than the files themselves — a Kubernetes volume update
+    /// Parent directories rather than the files themselves, because a Kubernetes volume update
     /// replaces the file by renaming a new `..data` directory over the old one, so a watch
     /// registered against the old inode never fires again.
     pub(crate) fn watch_paths(&self) -> impl Iterator<Item = PathBuf> + '_ {

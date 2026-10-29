@@ -17,20 +17,20 @@ use crate::provider::{FileSuffixEnv, SecretsDir, insert_nested};
 /// What to do when one key is supplied by two mechanisms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShadowPolicy {
-    /// Refuse to load. **The default, and the reason this crate exists.**
+    /// Refuses to load. **The default, and the reason this crate exists.**
     ///
     /// Precedence would be the softer option, and it is the wrong one here. The failure this
-    /// prevents is a half-migrated deployment where a stale environment variable shadows a
-    /// mounted secret that has since been rotated — the service keeps working, with the old
-    /// credential, and the discrepancy surfaces during an incident rather than during a deploy.
+    /// prevents is a half-migrated deployment where a stale environment variable shadows a mounted
+    /// secret that has since been rotated. The service keeps working with the old credential, and
+    /// the discrepancy surfaces during an incident rather than during a deploy.
     #[default]
     Reject,
-    /// Resolve by precedence: the environment first, then the secrets directory, then `_FILE`
+    /// Resolves by precedence: the environment first, then the secrets directory, then `_FILE`
     /// indirection, each overwriting the last.
     ///
-    /// Exists so the crate is adoptable rather than because it is a good idea. Anyone migrating
-    /// from `figment_file_provider_adapter` has precedence semantics today and will not switch
-    /// to a crate that fails their boot on the first deploy.
+    /// Exists so the crate is adoptable, not because it is a good idea. Anyone migrating from
+    /// `figment_file_provider_adapter` has precedence semantics and will not switch to a crate that
+    /// fails their boot on the first deploy.
     LastWins,
 }
 
@@ -45,15 +45,15 @@ pub(crate) struct FileLayers {
 }
 
 impl FileLayers {
-    /// Read every file-backed layer the environment points at, and apply `policy`.
+    /// Reads every file-backed layer the environment points at, and applies `policy`.
     ///
-    /// `dir` is the secrets directory, when one is configured; `origin` names whatever pointed
+    /// `dir` is the secrets directory, when one is configured, and `origin` names whatever pointed
     /// at it.
     ///
     /// # Errors
-    /// Returns [`Error::Source`] if a configured secrets directory or indirection path cannot
-    /// be read, if a file's contents are not UTF-8, if a file name is not a usable key, or —
-    /// under [`ShadowPolicy::Reject`] — if one key is supplied by more than one mechanism.
+    /// Returns [`Error::Source`] if a configured secrets directory or indirection path cannot be
+    /// read, if a file's contents are not UTF-8, if a file name is not a usable key, or, under
+    /// [`ShadowPolicy::Reject`], if one key is supplied by more than one mechanism.
     pub(crate) fn collect(
         dir: Option<PathBuf>,
         origin: &str,
@@ -115,7 +115,7 @@ impl FileLayers {
         paths
     }
 
-    /// Refuse a key supplied by more than one of: the environment, the secrets directory, the
+    /// Refuses a key supplied by more than one of the environment, the secrets directory and the
     /// indirection variables.
     fn reject_shadowed_keys(&self, dialect: &Dialect) -> Result<(), Error> {
         let env = dialect.plain_env_keys();
@@ -160,8 +160,8 @@ impl Provider for FileLayers {
     fn data(&self) -> Result<Map<Profile, Dict>, figment::Error> {
         let mut dict = Dict::new();
         // The secrets directory first so indirection wins on the merge. Under
-        // `ShadowPolicy::Reject` they cannot actually collide — `reject_shadowed_keys` already
-        // refused that — but the ordering makes the provider correct on its own rather than
+        // `ShadowPolicy::Reject` they cannot actually collide, because `reject_shadowed_keys`
+        // already refused that, but the ordering makes the provider correct on its own rather than
         // only in the context that validates it, and it is what `LastWins` means.
         let secrets = self.secrets.iter().flat_map(SecretsDir::values);
         let files = self.files.iter().flat_map(FileSuffixEnv::values);

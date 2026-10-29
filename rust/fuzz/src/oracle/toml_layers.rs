@@ -1,23 +1,23 @@
 //! Fuzzes the TOML layer: `$TEST_CONFIG` naming a directory of fragments, merged in name order.
 //!
 //! The fragments are the part of a deployment an operator edits by hand, and the expansion rules
-//! around them — sort by name, skip dot-prefixed entries, skip anything that is not `*.toml` —
-//! are what make a `ConfigMap` mount work. A bug in any of them is silent: the layer comes back
-//! smaller than it should and the service boots on defaults.
+//! around them (sort by name, skip dot-prefixed entries, skip anything that is not `*.toml`) are
+//! what make a `ConfigMap` mount work. A bug in any of them is silent: the layer comes back smaller
+//! than it should and the service boots on defaults.
 //!
 //! # Oracle
-//! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic — including over TOML the
+//! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic, including over TOML the
 //!    fuzzer has corrupted, which must be a typed error rather than an unwind out of the parser.
 //! 2. **The skip contract.** Entries a `ConfigMap` volume really does put beside the fragments
 //!    are planted every iteration, each carrying valid TOML defining a sentinel key. None may
 //!    ever reach the configuration.
 //! 3. **Merge order.** Fragments merge sorted by name, later winning. `00-first.toml` and
-//!    `zz-last.toml` define the same key and the later must win — a reversal would make a
-//!    `10-base` / `20-overrides` pair silently do the opposite of what an operator reading the
-//!    mount predicts.
-//! 4. **Determinism, and the watch set.** Re-reading a directory nothing touched is not a
-//!    change, and the directory itself is watched — the two things the supervisor needs in order
-//!    to notice a rollout without rebinding a listener for nothing.
+//!    `zz-last.toml` define the same key and the later must win. A reversal would make a `10-base`
+//!    / `20-overrides` pair silently do the opposite of what an operator reading the mount
+//!    predicts.
+//! 4. **Determinism, and the watch set.** Re-reading a directory nothing touched is not a change,
+//!    and the directory itself is watched: the two things the supervisor needs in order to notice a
+//!    rollout without rebinding a listener for nothing.
 //!
 //! # Input shape
 //! `t:<name>=<content>` per line, with `\n` decoded so a fragment can have more than one line.
@@ -58,7 +58,7 @@ fn harness() -> Harness {
     Harness::over(layers())
 }
 
-/// Run the oracle.
+/// Runs the oracle.
 ///
 /// Panics when the loader breaks one of the rules above.
 ///

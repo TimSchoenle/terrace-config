@@ -2,9 +2,9 @@
 //! `$TEST_SECRETS_DIR`, and `FileSuffixEnv` over `TEST_<KEY>_FILE` indirection.
 //!
 //! This is the oracle that matters. The secrets-directory provider is the one part of this crate
-//! with no equivalent anywhere on crates.io, its rules are a list of things that failed in
-//! production, and unlike the environment layer its input genuinely is attacker-shaped — a
-//! mounted `Secret` is written by whatever wrote the `Secret`.
+//! with no equivalent anywhere on crates.io, each of its rules guards a failure a running
+//! deployment would otherwise hit, and unlike the environment layer its input genuinely is
+//! attacker-shaped: a mounted `Secret` is written by whatever wrote the `Secret`.
 //!
 //! # Oracle
 //! 1. **Totality.** `Ok` or [`terrace_config::Error`], never a panic.
@@ -33,9 +33,9 @@
 //! e:<SUFFIX>=<value>     the plain environment variable TEST_<SUFFIX>
 //! ```
 //!
-//! Indirection **paths** are never taken from the input — only the contents of the file this
-//! module itself creates. A fuzzer-chosen path would have it reading arbitrary files on the
-//! host, which is a harness bug waiting to be reported as a crate bug.
+//! Indirection **paths** are never taken from the input, only the contents of the file this module
+//! itself creates. A fuzzer-chosen path would have it reading arbitrary files on the host, which is
+//! a harness bug waiting to be reported as a crate bug.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -44,7 +44,7 @@ use terrace_config::testing::Harness;
 use terrace_config::{ShadowPolicy, Terrace};
 
 use crate::support::{
-    Directive, PREFIX, contains_value, directives, expected_value, is_safe_env, lookup, write_file,
+    Directive, PREFIX, count_value, directives, expected_value, is_safe_env, lookup, write_file,
 };
 
 /// Read straight from the environment by a hypothetical consumer, so no file may supply it.
@@ -59,10 +59,10 @@ const ALL_RESERVED: &[&str] = &[RESERVED, "TEST_CONFIG", "TEST_SECRETS_DIR"];
 
 /// Whether an environment name is one of [`ALL_RESERVED`], **ignoring case**.
 ///
-/// Case-insensitively, and that is not fussiness. Windows environment names are
-/// case-insensitive, so setting `TEST_secrets_dir` overwrites the `TEST_SECRETS_DIR` this module
-/// pointed at the directory it built — the load then fails on a directory that does not exist,
-/// correctly, and the model has no way to know. A generated input found exactly that.
+/// Case-insensitively, and that is not fussiness. Windows environment names are case-insensitive,
+/// so setting `TEST_secrets_dir` overwrites the `TEST_SECRETS_DIR` this module pointed at the
+/// directory it built. The load then fails on a directory that does not exist, correctly, and the
+/// model has no way to know. A generated input reaches exactly that.
 ///
 /// The loader's own [`terrace_config::Dialect`] compares reserved names exactly, which is right
 /// on Linux, where the two really are different variables. Matching loosely here costs a little
@@ -75,18 +75,27 @@ fn is_reserved(name: &str) -> bool {
 
 /// Planted every iteration.
 ///
-/// Dot-prefixed, so the loader must skip it — and must skip it *before* noticing that the name also
+/// Dot-prefixed, so the loader must skip it, and must skip it *before* noticing that the name also
 /// contains a `.`, which on its own is a hard error.
 const SENTINEL: &str = ".sentinel_hidden";
 
 /// Planted contents, and the thing actually asserted about.
 ///
-/// Not the *key*, which was the first attempt and was almost useless: every dot-prefixed name
-/// also contains a dot, so a loader that stopped skipping them would reject the whole directory
-/// rather than leak it — a failure the exact-outcome oracle already catches. The reachable bug
-/// is the plausible "fix" of stripping the leading dot instead of skipping the entry, and that
-/// arrives under an ordinary key. Only the contents give it away.
+/// Not the *key*, which was the first attempt and was almost useless: every dot-prefixed name also
+/// contains a dot, so a loader that stopped skipping them would reject the whole directory rather
+/// than leak it, a failure the exact-outcome oracle already catches. The reachable bug is the
+/// plausible "fix" of stripping the leading dot instead of skipping the entry, and that arrives
+/// under an ordinary key. Only the contents give it away.
 const SENTINEL_BODY: &str = "terrace-fuzz-sentinel-must-not-be-read";
+
+/// Whether a file's contents resolve to [`SENTINEL_BODY`] once read.
+///
+/// Compared after the trimming contract, since that is the value the loader produces: a directive
+/// that supplies the body with a trailing newline, through any mechanism, puts it in the
+/// configuration legitimately.
+fn carries_sentinel(content: &str) -> bool {
+    expected_value(content) == SENTINEL_BODY
+}
 
 fn layers() -> Terrace {
     Terrace::new(PREFIX).reserve(RESERVED)
@@ -96,7 +105,7 @@ fn layers() -> Terrace {
 /// under test.
 ///
 /// `std::env::set_var` is `unsafe` in edition 2024 and both crates forbid unsafe code, so a jail is
-/// not a convenience here — it is the only way in.
+/// the only way in.
 fn harness() -> Harness {
     Harness::over(layers())
 }
@@ -159,11 +168,56 @@ struct Model {
     fatal: bool,
     /// Two spellings normalised to one key, so the winner is directory read order.
     ambiguous: bool,
-    /// A directive named the sentinel, so its assertion no longer belongs to the loader.
-    sentinel_shadowed: bool,
+    /// How many copies of the sentinel's body a file directive legitimately put under each key.
+    sentinel_counts: BTreeMap<String, usize>,
+    /// The plain environment as the loader sees it: each variable's last value, by name.
+    env_values: BTreeMap<String, String>,
 }
 
 impl Model {
+    /// Records that a file directive put the sentinel's body under `key`.
+    ///
+    /// A file value is one string, so a key holds at most one copy, whichever of two spellings
+    /// normalising to it wins the read order.
+    fn allow_sentinel(&mut self, key: String) {
+        self.sentinel_counts.insert(key, 1);
+    }
+
+    /// Records a plain environment variable, replacing an earlier value of the same variable.
+    ///
+    /// Keyed by the name the platform compares: Windows names are case-insensitive, so `TEST_a`
+    /// there replaces `TEST_A`, while on Linux both reach the loader. See `is_reserved`.
+    fn set_env(&mut self, name: &str, value: &str) {
+        let name = if cfg!(windows) {
+            name.to_ascii_uppercase()
+        } else {
+            name.to_owned()
+        };
+        self.env_values.insert(name, value.to_owned());
+    }
+
+    /// The most copies of the sentinel's body the loaded configuration may legitimately carry.
+    ///
+    /// Environment copies are counted in each surviving variable's value as
+    /// `figment::providers::Env` parses it: it unquotes `"..."` and expands `[a, b]` and
+    /// `{k = v}`, so one variable can carry the body several times. Summing over every variable
+    /// that reaches the loader covers two spellings of one key whose tables merge. Where two such
+    /// values replace rather than merge, the sum allows a copy that is gone, so the bound is an
+    /// upper bound there and exact everywhere else.
+    fn sentinel_bound(&self) -> usize {
+        let env: usize = self
+            .env_values
+            .values()
+            .map(|value| {
+                let parsed = value
+                    .parse::<Value>()
+                    .unwrap_or_else(|never| match never {});
+                count_value(&parsed, SENTINEL_BODY)
+            })
+            .sum();
+        self.sentinel_counts.values().sum::<usize>() + env
+    }
+
     /// Whether any key arrives through more than one mechanism.
     fn collides(&self) -> bool {
         let files: BTreeSet<&String> = self.files.keys().collect();
@@ -185,13 +239,15 @@ impl Model {
     }
 }
 
-/// Run the oracle. Panics when the loader breaks one of the rules above.
+/// Runs the oracle. Panics when the loader breaks one of the rules above.
 ///
 /// # Panics
 /// That is the contract: a panic is the finding.
 #[expect(
     clippy::too_many_lines,
-    reason = "one pass that builds the directory and the model together; splitting them would               put the two halves of every rule in different functions, which is the one thing               an oracle must not do"
+    reason = "one pass that builds the directory and the model together; splitting them would \
+              put the two halves of every rule in different functions, which is the one thing \
+              an oracle must not do"
 )]
 pub fn check(data: &str) {
     // Ignored: a jail-setup failure says nothing about the code under test.
@@ -214,15 +270,13 @@ pub fn check(data: &str) {
                     if !write_file(&secrets, name, &content) {
                         continue;
                     }
-                    // A directive that writes the sentinel's own name, or its contents under
-                    // some other name, is deciding the assertion instead of the loader.
-                    if name.eq_ignore_ascii_case(SENTINEL) || content == SENTINEL_BODY {
-                        model.sentinel_shadowed = true;
-                    }
                     match verdict(name) {
                         Verdict::Ignored => {}
                         Verdict::Fatal => model.fatal = true,
                         Verdict::Key(key) => {
+                            if carries_sentinel(&content) {
+                                model.allow_sentinel(key.clone());
+                            }
                             // Two names normalising to one key (`AUTH` and `auth`) leave the
                             // winner to directory read order, which is not a property.
                             if model.files.insert(key, content).is_some() {
@@ -248,6 +302,9 @@ pub fn check(data: &str) {
                         model.fatal = true;
                         continue;
                     }
+                    if carries_sentinel(&content) {
+                        model.allow_sentinel(key_path(suffix));
+                    }
                     if model.indirect.insert(key_path(suffix), content).is_some() {
                         model.ambiguous = true;
                     }
@@ -268,6 +325,7 @@ pub fn check(data: &str) {
                         continue;
                     }
                     jail.env(&name, value);
+                    model.set_env(&name, value);
                     model.env.insert(key_path(suffix));
                 }
             }
@@ -293,12 +351,13 @@ pub fn check(data: &str) {
             }
         };
 
-        // (4) The skip contract. Reaching here at all is half of it — a dot-prefixed entry that
-        // stopped being skipped would be rejected for its dot and caught by (2) above. This is
-        // the other half: it was not read under a rewritten name either.
-        if sentinel_planted && !model.sentinel_shadowed {
+        // (4) The skip contract. Reaching here at all is half of it: a dot-prefixed entry that
+        // stopped being skipped would be rejected for its dot and caught by (2) above. This is the
+        // other half: it was not read under a rewritten name either. Counted, so a directive that
+        // supplies the same body under a real key cannot hide the planted copy behind it.
+        if sentinel_planted {
             assert!(
-                !contains_value(&loaded.value, SENTINEL_BODY),
+                count_value(&loaded.value, SENTINEL_BODY) <= model.sentinel_bound(),
                 "a dot-prefixed entry was read into the configuration under a rewritten key"
             );
         }

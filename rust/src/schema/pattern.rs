@@ -1,16 +1,16 @@
 //! The portable pattern subset: regular expressions every engine reading a contract agrees on.
 //!
 //! A pattern a [`Refinement`](super::Refinement) publishes is read by whatever validates the
-//! contract — an ECMA-262 engine behind a JSON Schema validator, Rust's `regex`, Java's
+//! contract: an ECMA-262 engine behind a JSON Schema validator, Rust's `regex`, Java's
 //! `java.util.regex`, Python's `re`. Those engines disagree about a great deal: what `.` excludes,
 //! whether `\d` is ASCII, whether `\s` holds U+FEFF, whether `$` matches before a trailing newline,
 //! whether `[a&&b]` is an intersection. A pattern leaning on any of it means one thing to the
-//! producer that checked it and another to the gate that applies it, and the contract is then
-//! exact in one language and unsound in the next.
+//! producer that checked it and another to the gate that applies it, and the contract is then exact
+//! in one language and unsound in the next.
 //!
 //! So a refinement's pattern is held to a subset in which every construct means the same thing in
-//! all of them, and refused — with the construct named and the portable spelling suggested —
-//! otherwise. The subset is normative; `spec/v1/FORMAT.md` (*Portable patterns*) states it for a
+//! all of them, and refused otherwise, with the construct named and the portable spelling
+//! suggested. The subset is normative. `spec/v1/FORMAT.md` (*Portable patterns*) states it for a
 //! second implementation, and [`check`] is this crate's reading of it:
 //!
 //! - **Literals**: any character of the Basic Multilingual Plane except the syntax characters
@@ -25,8 +25,8 @@
 //!
 //! Matching is JSON Schema's: unanchored, over characters. Outside the subset stay `.`, the class
 //! escapes `\d \w \s \b` and their negations, back-references, lookaround, lazy repetition, flags,
-//! and any character beyond U+FFFF. Each has a spelling inside it — a class naming exactly the
-//! characters meant — and that spelling is the one every engine reads alike.
+//! and any character beyond U+FFFF. Each has a spelling inside it, a class naming exactly the
+//! characters meant, and that spelling is the one every engine reads alike.
 //!
 //! One difference survives, and only an ECMA-262 engine run without the `u` flag can observe it:
 //! such an engine reads a character beyond U+FFFF in the *value* as two, and a negated class matches
@@ -52,7 +52,7 @@ const SYNTAX: &[char] = &[
     '^', '$', '\\', '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|',
 ];
 
-/// Refuse a pattern outside the portable subset, saying which construct and where.
+/// Refuses a pattern outside the portable subset, saying which construct and where.
 ///
 /// # Errors
 /// A sentence naming the first construct outside the subset, its position in characters, and the
@@ -348,8 +348,8 @@ impl Parser {
         }
     }
 
-    /// Refuse an unescaped `--` inside a class, which Rust reads as set difference and Python warns
-    /// it will.
+    /// Refuses an unescaped `--` inside a class, which Rust reads as set difference and Python
+    /// warns it will.
     fn no_set_difference(&self) -> Result<(), String> {
         if self.peek() == Some('-') && self.peek_at(1) == Some('-') {
             Err(self.refuse(
@@ -392,7 +392,7 @@ impl Parser {
     }
 }
 
-/// Refuse a literal character beyond U+FFFF, which an ECMA-262 engine without the `u` flag reads
+/// Refuses a literal character beyond U+FFFF, which an ECMA-262 engine without the `u` flag reads
 /// as two.
 fn beyond_the_plane(literal: char) -> Result<(), String> {
     if u32::from(literal) > 0xFFFF {

@@ -20,12 +20,12 @@ impl<T> From<Loaded<T>> for (T, Sources) {
 
 /// The filesystem inputs a config was assembled from, and a fingerprint of the result.
 ///
-/// The fingerprint is the fully merged figment value rather than the typed config: config
-/// structs that hold secrets typically hold a type such as `secrecy::SecretString`, which
-/// deliberately has no `PartialEq`, so the typed value cannot be compared. Comparing the merged
-/// value instead means a reload that changes nothing — a `ConfigMap` rewritten with identical
-/// contents, a `..data` swap that moved no key — is detected as a no-op before anything is torn
-/// down and rebuilt.
+/// The fingerprint is the fully merged figment value rather than the typed config: config structs
+/// that hold secrets typically hold a type such as `secrecy::SecretString`, which deliberately has
+/// no `PartialEq`, so the typed value cannot be compared. Comparing the merged value instead means
+/// a reload that changes nothing, such as a `ConfigMap` rewritten with identical contents or a
+/// `..data` swap that moved no key, is detected as a no-op before anything is torn down and
+/// rebuilt.
 ///
 /// That fingerprint contains **every configuration value, secrets included**, which is why
 /// [`Debug`] is written by hand and redacts it. Printing a `Sources` must never be a way to
@@ -67,11 +67,10 @@ impl Sources {
     /// The keys whose value on disk differs from the one the process is running with, because a
     /// rebuild does not apply them.
     ///
-    /// Filled in only by `Terrace::reloader`'s reloads, which keep
-    /// every restart-class key at its boot value; empty everywhere else. Paths, never values, and
-    /// sorted. A non-empty list is real state an operator needs to see — the file says one thing
-    /// and the process does another until it restarts — which is why
-    /// `reload::run` logs every change to it.
+    /// Filled in only by `Terrace::reloader`'s reloads, which keep every restart-class key at its
+    /// boot value, and empty everywhere else. Paths, never values, and sorted. A non-empty list is
+    /// real state an operator needs to see, because the file says one thing and the process does
+    /// another until it restarts. That is why `reload::run` logs every change to it.
     #[must_use]
     pub fn pending_restart(&self) -> &[String] {
         &self.pending
@@ -90,10 +89,10 @@ impl Sources {
     /// Whether `self` resolves to different values than `previous`.
     ///
     /// Compared structurally rather than with `==`, for one reason: `NaN != NaN`. A configuration
-    /// holding a float NaN — `timeout = nan` in a TOML file — made a fingerprint unequal to
-    /// *itself*, so every filesystem event looked like a change and the supervisor tore the
-    /// service down and rebuilt it, for as long as that key stayed in the file. Found by the
-    /// `toml_layers` fuzz target.
+    /// holding a float NaN, such as `timeout = nan` in a TOML file, would make a fingerprint
+    /// unequal to *itself*, so every filesystem event would look like a change and the supervisor
+    /// would tear the service down and rebuild it for as long as that key stayed in the file. The
+    /// `toml_layers` fuzz target exercises the case.
     ///
     /// Floats therefore compare by their bits, which makes the relation reflexive. It also makes
     /// `0.0` and `-0.0` distinct, which is the safe direction: the cost is one needless reload of
@@ -134,10 +133,10 @@ impl crate::reload::Source for Sources {
 
 /// Structural equality over a merged configuration value, with floats compared by their bits.
 ///
-/// Mirrors figment's own `PartialEq for Value` — which ignores the [`Tag`] on every variant, since
-/// two loads of one file are the same configuration however they were provided — and changes
-/// exactly one thing: a float leaf compares by bits, so a value equals itself. See
-/// [`Sources::differs_from`].
+/// Mirrors figment's own `PartialEq for Value`, which ignores the [`Tag`] on every variant since
+/// two loads of one file are the same configuration however they were provided, and changes exactly
+/// one thing: a float leaf compares by bits, so a value equals itself, as [`Sources::differs_from`]
+/// needs.
 ///
 /// [`Tag`]: figment::value::Tag
 pub(crate) fn same_value(a: &figment::value::Value, b: &figment::value::Value) -> bool {

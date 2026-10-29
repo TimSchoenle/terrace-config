@@ -6,7 +6,7 @@
 //!
 //! It is separate from the rest of the module because the two are used at different moments by
 //! different callers. The renderer runs inside the build, from the source tree. These run *after*
-//! the build, against an image — in a test, a small binary, or a CI step that has an image and no
+//! the build, against an image: in a test, a small binary, or a CI step that has an image and no
 //! Rust toolchain opinion beyond being able to run one.
 //!
 //! # Two checks, and neither replaces the other
@@ -28,7 +28,7 @@ use crate::schema::{Error, MARKER_BEGIN, MARKER_END};
 /// Accepts three shapes, because three tools spell the same thing differently and reading the
 /// wrong one is the classic way to make this check pass without comparing anything:
 ///
-/// - the labels object itself — `docker inspect --format '{{json .Config.Labels}}'`;
+/// - the labels object itself, from `docker inspect --format '{{json .Config.Labels}}'`;
 /// - a `docker inspect` config object, under `Config.Labels`;
 /// - a `crane config` object, under `config.Labels`.
 ///
@@ -38,12 +38,12 @@ use crate::schema::{Error, MARKER_BEGIN, MARKER_END};
 /// success, because a comparison against nothing passes:
 ///
 /// - `null`, which is what reading the wrong JSON path yields. An image with no labels at all
-///   reports `{}`; a `null` means the path was wrong, and that is a broken check rather than a
+///   reports `{}`. A `null` means the path was wrong, and that is a broken check rather than a
 ///   passing image.
 /// - a value that is not an object at all, or an object whose values are not strings.
 ///
 /// An empty object is *accepted* here and fails in the comparison instead, naming the labels that
-/// are missing — which is the more useful message, and the correct place for the judgement.
+/// are missing, which is the more useful message and the correct place for the judgement.
 pub fn labels_from_json(json: &str) -> Result<BTreeMap<String, String>, Error> {
     let value: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| Error::Invalid(format!("the labels are not JSON: {e}")))?;
@@ -85,8 +85,9 @@ pub fn labels_from_json(json: &str) -> Result<BTreeMap<String, String>, Error> {
 ///
 /// Cut at [`MARKER_BEGIN`] and [`MARKER_END`] rather than by line count, so a fourth label added
 /// upstream is compared like the first three instead of silently falling outside the window. Diff
-/// the result against [`Contract::to_dockerfile_labels`](crate::schema::Contract::to_dockerfile_labels)
-/// — the block without its markers — or compare the whole committed region against
+/// the result against
+/// [`Contract::to_dockerfile_labels`](crate::schema::Contract::to_dockerfile_labels), the block
+/// without its markers, or compare the whole committed region against
 /// [`Contract::to_dockerfile_block`](crate::schema::Contract::to_dockerfile_block).
 ///
 /// # Errors

@@ -1,9 +1,9 @@
 //! A small HTTP-shaped service, wired to load its configuration through [`terrace_config`].
 //!
-//! Unlike `config-schema`, booting is the primary job here — it is the other half of the crate:
-//! the layered loader a service actually boots with, exercised the way a real deployment
-//! exercises it. `--contract` is a second, optional job the same binary can do once `schema` is
-//! enabled, exactly the debug flag a real service might expose beside its normal boot path.
+//! Unlike `config-schema`, this example's primary job is booting, the other half of the crate: the
+//! layered loader a service actually boots with, exercised the way a real deployment exercises it.
+//! `--contract` is a second, optional job the same binary can do once `schema` is enabled, exactly
+//! the debug flag a real service might expose beside its normal boot path.
 //!
 //! ```text
 //! cargo run --example service
@@ -15,13 +15,13 @@
 //!
 //! A real deployment never sets `ORDERS_DATABASE__URL` in plain environment text. It mounts a
 //! `Secret` volume and sets `ORDERS_SECRETS_DIR` at that path, or points
-//! `ORDERS_DATABASE__URL_FILE` at one file — `tests/example_service.rs` boots this exact
+//! `ORDERS_DATABASE__URL_FILE` at one file. `tests/example_service.rs` boots this exact
 //! configuration both ways.
 //!
-//! That test file includes `config` below with `#[path]` rather than redeclaring its types, so
-//! this module is the one place `Config`'s shape is written and the one place a regression in it
-//! can hide. `--contract` renders the same types from the same file, which is what keeps
-//! `examples/service/contract.json` — regenerated and diffed by CI, never hand-edited — from
+//! That test file includes `config` below with `#[path]` rather than redeclaring its types, so this
+//! module is the one place `Config`'s shape is written and the one place a regression in it can
+//! hide. `--contract` renders the same types from the same file, which is what keeps
+//! `examples/service/contract.json`, which CI regenerates and diffs and nobody hand-edits, from
 //! being a description that could quietly stop matching what `config::load` actually does.
 
 mod config;

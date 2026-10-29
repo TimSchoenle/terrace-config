@@ -13,7 +13,7 @@ pub(crate) struct Container {
     pub(crate) rename_all: RenameRule,
     /// Whether `#[serde(default)]` on the container makes every field optional.
     pub(crate) field_default: bool,
-    /// The container's `#[serde(deny_unknown_fields)]` — whether a key it did not declare is an
+    /// The container's `#[serde(deny_unknown_fields)]`: whether a key it did not declare is an
     /// error rather than something `serde` quietly ignores.
     pub(crate) deny_unknown_fields: bool,
     /// The container's `#[serde(try_from = "…")]` or `#[serde(from = "…")]`, named so an error can
@@ -130,7 +130,7 @@ impl RenameRule {
     }
 
     /// Variant names are `PascalCase` by convention, so the same rule means something different
-    /// here than it does for a field — `snake_case` has to *insert* the underscores that
+    /// here than it does for a field: `snake_case` has to *insert* the underscores that
     /// [`Self::apply`] merely keeps.
     ///
     /// Reimplemented rather than approximated, because a value the table spells differently from

@@ -1,9 +1,9 @@
 //! A flat list of dotted key paths, as the tree those paths describe.
 //!
 //! The Markdown rendering has no use for this: a row is one full path and nothing else. The two
-//! renderings that write a *file* have nothing but — a TOML file groups its keys under
-//! `[csp.cloudflare]` headers, and a JSON Schema nests one `properties` object per level. One
-//! walk shared between them, so the two cannot disagree about which keys belong to which table.
+//! renderings that write a *file* have nothing but: a TOML file groups its keys under
+//! `[csp.cloudflare]` headers, and a JSON Schema nests one `properties` object per level. One walk
+//! shared between them, so the two cannot disagree about which keys belong to which table.
 
 use super::Key;
 
@@ -25,7 +25,7 @@ pub(super) struct Node<'a> {
 }
 
 impl<'a> Node<'a> {
-    /// Group `keys` by the path each one carries.
+    /// Groups `keys` by the path each one carries.
     ///
     /// Split on `.`, because that is what figment splits on: a key whose *name* contains a dot
     /// nests in the loader exactly as it nests here, and a renderer that treated the two
@@ -47,10 +47,10 @@ impl<'a> Node<'a> {
         }
     }
 
-    /// Place `key` at the end of `segments`, opening the levels on the way.
+    /// Places `key` at the end of `segments`, opening the levels on the way.
     fn insert(&mut self, segments: &[&'a str], key: &'a Key) {
         let [head, rest @ ..] = segments else {
-            // A path is never empty — `"".split('.')` still yields one segment — so this is
+            // A path is never empty, since `"".split('.')` still yields one segment, so this is
             // unreachable rather than a case with a sensible answer.
             return;
         };
@@ -82,14 +82,14 @@ impl<'a> Node<'a> {
     /// Whether a level of this name opens below this one.
     ///
     /// The one case where a key and a table collide: `csp` described as a leaf *and* `csp.mode`
-    /// described beside it — a field that wanted `#[config(nested)]` and did not get it. TOML
-    /// cannot express both, so the renderer has to know.
+    /// described beside it, which is a field that wanted `#[config(nested)]` and did not get it.
+    /// TOML cannot express both, so the renderer has to know.
     pub(super) fn opens(&self, segment: &str) -> bool {
         self.children.iter().any(|child| child.segment == segment)
     }
 }
 
-/// The last segment of a dotted path — the key's own name, as a file spells it.
+/// The last segment of a dotted path, which is the key's own name as a file spells it.
 pub(super) fn name(path: &str) -> &str {
     path.rsplit('.').next().unwrap_or(path)
 }

@@ -5,10 +5,9 @@ use std::str::FromStr;
 
 /// One of the renderings a generator can be asked for.
 ///
-/// Separate from [`Request`](super::Request) so that a consumer who parses arguments with `clap`
-/// or reads a format out of a build file gets the vocabulary — the spellings, the aliases and the
-/// [`Self::whole_image`] distinction — without also getting an argument parser they did not ask
-/// for.
+/// Separate from [`Request`](super::Request) so that a consumer who parses arguments with `clap` or
+/// reads a format out of a build file gets the vocabulary (the spellings, the aliases and the
+/// [`Self::whole_image`] distinction) without also getting an argument parser they did not ask for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum Format {
@@ -24,12 +23,12 @@ pub enum Format {
     ///
     /// A separate format rather than a section of [`Markdown`](Self::Markdown) because a README
     /// documents the two apart: the five layers are prose in one section and the keys are a table
-    /// in another, and the variables that *select* the layers — `<PREFIX>CONFIG`,
-    /// `<PREFIX>SECRETS_DIR` — belong with the prose. A generator that could only emit them
-    /// together left every consumer slicing one table out of the other.
+    /// in another, and the variables that *select* the layers, `<PREFIX>CONFIG` and
+    /// `<PREFIX>SECRETS_DIR`, belong with the prose. A generator that could only emit them together
+    /// would leave every consumer slicing one table out of the other.
     ///
-    /// It contains no configuration keys, so `--only` does not apply to it. See
-    /// [`reads_keys`](Self::reads_keys).
+    /// It contains no configuration keys, so `--only` does not apply to it, as
+    /// [`reads_keys`](Self::reads_keys) says.
     MarkdownLoader,
     /// The configuration keys alone, as a GitHub-flavoured table.
     ///
@@ -87,10 +86,10 @@ impl Format {
     ///
     /// The three build outputs are one set and they are claims about an image: the document says
     /// what the image reads, the labels say where to find the document, and the `LABEL` block is
-    /// those labels in the form a Dockerfile can carry. A contract built from a subset would
-    /// assert that the image does not read the keys the subset cut, which is the one claim in the
-    /// document that must never be wrong — so [`Request::parse`](super::Request::parse) refuses
-    /// the combination rather than publishing it.
+    /// those labels in the form a Dockerfile can carry. A contract built from a subset would assert
+    /// that the image does not read the keys the subset cut, which is the one claim in the document
+    /// that must never be wrong, so [`Request::parse`](super::Request::parse) refuses the
+    /// combination rather than publishing it.
     #[must_use]
     pub const fn whole_image(self) -> bool {
         matches!(self, Self::Contract | Self::Labels | Self::Dockerfile)
@@ -100,9 +99,9 @@ impl Format {
     ///
     /// False only for [`MarkdownLoader`](Self::MarkdownLoader), which renders the variables that
     /// select the *layers* rather than anything read out of them. Slicing it is not wrong so much
-    /// as vacuous, and a `--only` that quietly changed nothing is the kind of argument someone
-    /// adds to a CI step and then trusts — so
-    /// [`Request::validate`](super::Request::validate) refuses the pair instead.
+    /// as vacuous, and a `--only` that quietly changed nothing is the kind of argument someone adds
+    /// to a CI step and then trusts, so [`Request::validate`](super::Request::validate) refuses the
+    /// pair instead.
     #[must_use]
     pub const fn reads_keys(self) -> bool {
         !matches!(self, Self::MarkdownLoader)
@@ -113,7 +112,7 @@ impl FromStr for Format {
     type Err = UnknownFormat;
 
     /// Accepts the canonical spelling of each format and the two abbreviations that get typed
-    /// anyway — `md` and `jsonschema`.
+    /// anyway, `md` and `jsonschema`.
     ///
     /// Nothing else, because a format nobody meant is better refused than guessed: the output is
     /// redirected into a committed file.

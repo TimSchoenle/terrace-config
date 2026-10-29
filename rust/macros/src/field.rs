@@ -15,8 +15,8 @@ use crate::types::type_text;
 ///
 /// Whether the list *matches the type* is not checkable here and is not checked: nothing in a
 /// derive reads a foreign type's `Deserialize`. What is checkable is that the assertion is well
-/// formed — an empty list claims the key accepts no value at all, and a repeated spelling is a
-/// list that was edited in two places and would reach the schema's `enum` twice.
+/// formed: an empty list claims the key accepts no value at all, and a repeated spelling is a list
+/// that was edited in two places and would reach the schema's `enum` twice.
 pub(crate) fn value_literals(list: &MetaList, attribute: &str) -> syn::Result<Vec<String>> {
     let mut values: Vec<String> = Vec::new();
     for expr in list.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)? {
@@ -89,21 +89,21 @@ pub(crate) struct FieldOpts {
     pub(crate) has_serde_default: bool,
     /// `#[config(note = "…")]`, the prose accompanying whatever value is observed.
     pub(crate) note: Option<String>,
-    /// `#[config(values)]` or `#[config(values("…", "…"))]` — the fixed set of spellings the
-    /// key accepts, and where it came from.
+    /// `#[config(values)]` or `#[config(values("…", "…"))]`: the fixed set of spellings the key
+    /// accepts, and where it came from.
     pub(crate) values: Option<ValueList>,
-    /// `#[config(range(...))]` — the interval the field's number has to fall in.
+    /// `#[config(range(...))]`: the interval the field's number has to fall in.
     pub(crate) range: Option<RangeOpts>,
-    /// `#[config(element)]` or `#[config(element_values)]` — the field is a container, and this
-    /// is what one element of it holds.
+    /// `#[config(element)]` or `#[config(element_values)]`: the field is a container, and this is
+    /// what one element of it holds.
     pub(crate) element: Option<ElementKind>,
     /// Every `#[serde(alias = "…")]`, which are extra spellings the key also answers to.
     pub(crate) aliases: Vec<String>,
     /// `#[serde(with = "…")]` or `#[serde(deserialize_with = "…")]`, whichever was written.
     ///
     /// Serde's two *field* attributes that replace this field's `Deserialize`, so the variants a
-    /// type derives are no longer the spellings a file may hold. `try_from` and `from` do the same
-    /// thing one level up — they are container attributes, and [`expand_enum`] refuses there.
+    /// type derives are not the spellings a file may hold. `try_from` and `from` do the same thing
+    /// one level up. They are container attributes, and [`expand_enum`] refuses there.
     ///
     /// Only the name is kept. What these name is a path, and a derive cannot follow one: that a
     /// custom parse exists is the whole of what is knowable here, and it is enough to know the
@@ -137,7 +137,7 @@ impl ElementKind {
 
     /// Where a choice's spellings come from, for an error that can name both of two answers.
     ///
-    /// [`ValueList::Trait`] for [`Self::Fields`], which has no spellings of its own — the two are
+    /// [`ValueList::Trait`] for [`Self::Fields`], which has no spellings of its own. The two are
     /// only ever compared after [`Self::attribute`] has already told them apart.
     pub(crate) fn value_list(&self) -> &ValueList {
         match self {
@@ -150,9 +150,9 @@ impl ElementKind {
 /// Where the fixed set of spellings a key accepts comes from.
 ///
 /// [`Self::Trait`] is the derived path and the one to prefer: the variants come from the type, so
-/// they cannot drift from it. [`Self::Literal`] exists because a trait cannot always be reached —
-/// `impl Values for tracing::Level` is an orphan-rule error in every crate that would want to
-/// write it, and this crate will not take a dependency on `tracing` to write it here.
+/// they cannot drift from it. [`Self::Literal`] exists because a trait cannot always be reached:
+/// `impl Values for tracing::Level` is an orphan-rule error in every crate that would want to write
+/// it, and this crate will not take a dependency on `tracing` to write it here.
 #[derive(Clone)]
 pub(crate) enum ValueList {
     /// The type's own `Values` implementation.
@@ -160,18 +160,18 @@ pub(crate) enum ValueList {
     /// Another type's, named because the field's own has none.
     ///
     /// A `#[serde(remote = "…")]` mirror is what this exists for: serde matches the mirror's
-    /// variants exactly, `Describe` on it reports those same variants under the same
-    /// `rename_all`, and the two cannot drift because they are one declaration. Still checked by
-    /// the compiler — the named type has to implement `Values` — which is what separates it from
-    /// a list.
+    /// variants exactly, `Describe` on it reports those same variants under the same `rename_all`,
+    /// and the two cannot drift because they are one declaration. It is still checked by the
+    /// compiler, since the named type has to implement `Values`, which is what separates it from a
+    /// list.
     ///
     /// Boxed because a `syn::Type` is an order of magnitude larger than either other variant, and
     /// one of these is built per annotated field.
     From(Box<Type>),
     /// Spellings the author listed, for a type no `Values` implementation can reach.
     ///
-    /// Unverifiable by construction — nothing here reads the type's `Deserialize` — which is the
-    /// standing `#[config(note = "…")]` already has, and is documented as such.
+    /// Unverifiable by construction, because nothing here reads the type's `Deserialize`. That is
+    /// the standing `#[config(note = "…")]` already has, and is documented as such.
     Literal(Vec<String>),
 }
 
@@ -197,7 +197,7 @@ impl ValueList {
 }
 
 /// Compared by the *text* of the named type, because `syn`'s `PartialEq` lives behind the
-/// `extra-traits` feature and this crate compiles `syn` without it — the comparison exists only to
+/// `extra-traits` feature and this crate compiles `syn` without it. The comparison exists only to
 /// tell one repeated attribute from two contradicting ones.
 impl PartialEq for ValueList {
     fn eq(&self, other: &Self) -> bool {
@@ -272,10 +272,10 @@ pub(crate) struct RangeOpts {
 }
 
 impl RangeOpts {
-    /// Read one `range(...)` list into this, rejecting an end that is already set.
+    /// Reads one `range(...)` list into this, rejecting an end that is already set.
     ///
     /// Additive across attributes, so `#[config(range(min = 0), range(max = 1))]` means what it
-    /// looks like — but each end is settable once, because `min = 0, exclusive_min = 1` is two
+    /// looks like. Each end is settable once, though, because `min = 0, exclusive_min = 1` is two
     /// answers to one question and picking either would be the silent wrong answer this derive
     /// refuses everywhere else.
     pub(crate) fn extend(&mut self, list: &MetaList) -> syn::Result<()> {
@@ -371,7 +371,7 @@ impl RangeOpts {
 
 /// The number behind `name = 0` or `name = -1.5`.
 ///
-/// A negation is a unary expression rather than part of the literal, so it is unwrapped here — an
+/// A negation is a unary expression rather than part of the literal, so it is unwrapped here. An
 /// attribute holding `min = -1` parses as `Expr::Unary` and would otherwise be rejected as "not a
 /// literal", which names the wrong problem.
 pub(crate) fn bound_literal(expr: &Expr) -> syn::Result<BoundLit> {
@@ -431,8 +431,8 @@ impl FieldOpts {
                 }
                 Meta::NameValue(nv) if nv.path.is_ident("default") => opts.has_serde_default = true,
                 // An alias is a second name the key answers to. Left out of the schema it is a
-                // spelling that works and is documented nowhere — the same class of silent gap as
-                // a wrong environment variable, pointing the other way.
+                // spelling that works and is documented nowhere: the same class of silent gap as a
+                // wrong environment variable, pointing the other way.
                 Meta::NameValue(nv) if nv.path.is_ident("alias") => {
                     opts.aliases.push(string_value(&nv.value)?);
                 }
@@ -498,10 +498,10 @@ impl FieldOpts {
                     let values = value_literals(list, "element_values")?;
                     opts.set_element(ElementKind::Choice(ValueList::Literal(values)), field)?;
                 }
-                // `default` was this attribute's name back when the prose *replaced* the observed
-                // value rather than accompanying it. Named rather than left to the catch-all,
-                // because the fix is a rename plus a reworded string, and a bare "unknown option"
-                // would not say that.
+                // `default` is the spelling a reader reaches for when they mean `note`, but `note`
+                // accompanies the observed value and never replaces it. Named rather than left to
+                // the catch-all, because the fix is a rename plus a reworded string, and a bare
+                // "unknown option" would not say that.
                 Meta::NameValue(nv) if nv.path.is_ident("default") => {
                     return Err(syn::Error::new_spanned(
                         nv,
@@ -624,11 +624,11 @@ impl FieldOpts {
         Ok(())
     }
 
-    /// Record what shape one element of this field's container has.
+    /// Records what shape one element of this field's container has.
     ///
-    /// Repeating the same attribute is harmless; asking for both is not. An element is a type with
+    /// Repeating the same attribute is harmless. Asking for both is not. An element is a type with
     /// keys of its own or an enum of unit variants, never both, and a field claiming both leaves
-    /// the derive to pick — which is the silent wrong answer this crate refuses everywhere else.
+    /// the derive to pick, which is the silent wrong answer this crate refuses everywhere else.
     pub(crate) fn set_element(&mut self, kind: ElementKind, field: &Field) -> syn::Result<()> {
         match &self.element {
             Some(held) if held.attribute() != kind.attribute() => Err(syn::Error::new_spanned(
@@ -655,7 +655,7 @@ impl FieldOpts {
         }
     }
 
-    /// Record where the values this key accepts come from.
+    /// Records where the values this key accepts come from.
     ///
     /// Repeating the attribute says nothing new, which is not the same as saying two things: bare
     /// `values` reports the field type's own `Values` implementation and a list reports the list,

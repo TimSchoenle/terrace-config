@@ -2,8 +2,8 @@
 //!
 //! A supervisor test asserts about *when* the runtime was built, and there are only two things
 //! worth asserting: that a change rebuilt it with the new values, and that some other change did
-//! not rebuild it at all. Both need the same two primitives — a record of what the build closure
-//! was handed, and a way to wait for it without deadlocking a test that will never see it.
+//! not rebuild it at all. Both need the same two primitives: a record of what the build closure was
+//! handed, and a way to wait for it without deadlocking a test that will never see it.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -16,8 +16,8 @@ use crate::reload::WatchError;
 
 /// How long [`Rebuilds::wait_for`] waits before failing the test.
 ///
-/// Long enough that a missed wake-up fails rather than hangs CI — a hung test is a timeout with
-/// no output, twenty minutes later — and far longer than the debounce window a watcher normally
+/// Long enough that a missed wake-up fails rather than hangs CI, where a hung test is a timeout
+/// with no output twenty minutes later. Far longer than the debounce window a watcher normally
 /// answers in, so a loaded runner does not fail a healthy supervisor.
 const DEFAULT_PATIENCE: Duration = Duration::from_secs(15);
 
@@ -56,9 +56,9 @@ pub enum ServiceError {
 
 /// What the runtime-building closure has been handed, in order.
 ///
-/// One note per build — whatever the test wants to compare, usually the value that was supposed
-/// to change — so that `seen()` is both the count and the evidence: a test that fails on the
-/// count reports *what* was built rather than only how often.
+/// One note per build, holding whatever the test wants to compare (usually the value that was
+/// supposed to change), so that `seen()` is both the count and the evidence. A test that fails on
+/// the count reports *what* was built rather than only how often.
 ///
 /// Cloning shares the record, which is what lets the same one sit in the build closure and in the
 /// task driving the test.
@@ -119,7 +119,7 @@ impl<T> Rebuilds<T> {
         self
     }
 
-    /// Record one build.
+    /// Records one build.
     pub fn record(&self, note: T) {
         self.locked().push(note);
     }
@@ -139,7 +139,7 @@ impl<T> Rebuilds<T> {
         self.locked().clone()
     }
 
-    /// Wait until at least `builds` have been recorded.
+    /// Waits until at least `builds` have been recorded.
     ///
     /// # Panics
     /// If they have not been recorded within [`Self::patience`], reporting how far the
@@ -157,7 +157,7 @@ impl<T> Rebuilds<T> {
         }
     }
 
-    /// Assert that the count is `builds` now and is still `builds` after `quiet`.
+    /// Asserts that the count is `builds` now and is still `builds` after `quiet`.
     ///
     /// The shape of every negative assertion a supervisor test makes: a reload that fails to
     /// load, or that resolves to the values already running, must leave the running service
