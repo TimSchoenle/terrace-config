@@ -21,8 +21,9 @@ Nothing in this comment may contain a mustache that is not a real reference.
 
 {{ repo.description }}
 
-[![Release](https://img.shields.io/github/v/release/{{ repo.slug }}?sort=semver)]({{ repo.url }}/releases)
+[![Release](https://img.shields.io/github/v/release/{{ repo.slug }}?sort=semver&filter=v*)]({{ repo.url }}/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/{{ repo.slug }}/ci.yml?branch={{ repo.branch }}&label=ci)]({{ repo.url }}/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/{{ repo.slug }}/graph/badge.svg)](https://codecov.io/gh/{{ repo.slug }})
 [![Licence](https://img.shields.io/github/license/{{ repo.slug }})](../LICENSE)
 [![MSRV](https://img.shields.io/badge/MSRV-{{ toolchain.msrv }}-blue)](Cargo.toml)
 

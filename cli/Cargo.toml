@@ -131,6 +131,9 @@ missing_errors_doc = "warn"
 missing_panics_doc = "warn"
 doc_markdown = "warn"
 too_long_first_doc_paragraph = "warn"
+doc_link_with_quotes = "warn"
+doc_broken_link = "warn"
+doc_include_without_cfg = "warn"
 must_use_candidate = "allow"
 
 [workspace.lints.rustdoc]

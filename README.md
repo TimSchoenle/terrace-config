@@ -20,8 +20,8 @@ Nothing in this comment may contain a mustache that is not a real reference.
 A configuration contract for containerised services, machine-checked so a Helm chart's CI can
 prove what it renders is still read.
 
-[![Release](https://img.shields.io/github/v/release/TimSchoenle/terrace-config?sort=semver)](https://github.com/TimSchoenle/terrace-config/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/TimSchoenle/terrace-config/ci.yml?branch=main&label=ci)](https://github.com/TimSchoenle/terrace-config/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/TimSchoenle/terrace-config/graph/badge.svg)](https://codecov.io/gh/TimSchoenle/terrace-config)
 [![Licence](https://img.shields.io/github/license/TimSchoenle/terrace-config)](LICENSE)
 
 ## What this is
