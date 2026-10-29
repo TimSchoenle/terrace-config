@@ -128,6 +128,43 @@ class SchemaAssemblerTest {
         assertThat(key.isRequired()).isFalse();
     }
 
+    /**
+     * An {@code Optional} with no element descriptor, from a generator that predates them, keeps
+     * its own type's text form and publishes no bound.
+     */
+    @Test
+    void anOptionalWithNoElementDescriptorKeepsItsOwnType() {
+        final Key key = keyOf(field(
+                "retries", "Optional<Integer>", ContainerKind.OPTIONAL, null, List.of(), false, false, List.of()));
+
+        assertThat(key.getTextForm()).isEqualTo(TextForm.UNKNOWN);
+        assertThat(key.getConstraint()).isNull();
+    }
+
+    /** A bound recorded on the field itself takes precedence over one on its element. */
+    @Test
+    void aFieldBoundTakesPrecedenceOverItsElementBound() {
+        final ElementDescriptor element =
+                new ElementDescriptor("Integer", List.of(), new RangeConstraint(null, 10.0, null, null), List.of());
+        final KeyDescriptor field = new KeyDescriptor(
+                "retries",
+                "retries docs.",
+                "retries docs.",
+                "Optional<Integer>",
+                ContainerKind.OPTIONAL,
+                false,
+                null,
+                List.of(),
+                new RangeConstraint(null, 3.0, null, null),
+                List.of(),
+                element,
+                false,
+                false,
+                List.of());
+
+        assertThat(constraintOf(field)).isEqualTo(Map.of("type", "integer", "maximum", 3.0));
+    }
+
     /** A descriptor generated before plain-leaf elements were reported publishes what it always did. */
     @Test
     void aContainerWithNoElementDescriptorPublishesOnlyItsOwnType() {

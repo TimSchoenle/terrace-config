@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -58,6 +59,20 @@ class ContractCorpusRoundTripTest {
         assertThat(new String(rendered, StandardCharsets.UTF_8))
                 .as("re-serialising `%s` must reproduce the stored bytes exactly", caseName)
                 .isEqualTo(new String(stored, StandardCharsets.UTF_8));
+    }
+
+    /** The file forms read and write the same bytes as the in-memory forms. */
+    @ParameterizedTest
+    @MethodSource("corpusCases")
+    void roundTripsThroughAFile(String caseName, @TempDir Path dir) throws IOException {
+        Path storedFile = conformanceDir().resolve(caseName).resolve("contract.json");
+        Path written = dir.resolve("contract.json");
+
+        ContractCodec.write(ContractCodec.read(storedFile), written);
+
+        assertThat(Files.readString(written))
+                .as("writing `%s` read from its file must reproduce the stored bytes exactly", caseName)
+                .isEqualTo(Files.readString(storedFile));
     }
 
     @Test
