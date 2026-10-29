@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.7.1...terrace-config-java-v0.8.0) (2026-10-29)
+
+
+### Features
+
+* **cli:** add gate 2b, requiredness, and envFrom to the container environment ([01ea010](https://github.com/TimSchoenle/terrace-config/commit/01ea0103f4dc5e506299de6d2fd56f14d4d1ce78))
+
+
+### Dependencies
+
+* **deps:** pin dependencies ([#316](https://github.com/TimSchoenle/terrace-config/issues/316)) ([f391c9f](https://github.com/TimSchoenle/terrace-config/commit/f391c9fc77bffef43f7815c0dcd81cd473af0888))
+
 ## [0.7.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.7.0...terrace-config-java-v0.7.1) (2026-10-28)
 
 
