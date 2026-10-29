@@ -391,7 +391,8 @@ A secret is never supplied by the document, a reserved key only by the environme
 file cannot supply (one whose `text_form` is not `text`) by neither file layer. The finding
 names every layer that could supply the key, which tells an operator there is a choice where a
 `required` list would tell them to put a credential in a ConfigMap. A source the render does not
-show (an `envFrom` object or a secrets-directory Secret it does not hold, a volume of another type)
+show (an `envFrom` object or a secrets-directory Secret it does not hold, a volume of another type,
+a secrets directory whose path is itself a Secret value)
 could carry the key, so the finding is a warning naming it, unless the source is a file layer and
 the key one no file supplies. The gate does not run for a values file
 exempt from gate 2 or 3, and treats non-secret keys as undecided when the document cannot be read,

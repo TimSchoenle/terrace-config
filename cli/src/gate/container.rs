@@ -50,8 +50,12 @@ pub struct ContainerView<'a> {
     pub container: &'a Json,
     /// Its environment.
     pub environment: Environment,
-    /// The path `<PREFIX>_SECRETS_DIR`, whatever the document calls it, points at.
+    /// The path `<PREFIX>_SECRETS_DIR`, whatever the document calls it, points at, when the render
+    /// shows it.
     pub secrets_dir: Option<String>,
+    /// The loader variable naming the secrets directory, set even when its value is opaque (a
+    /// `valueFrom` or an `envFrom` Secret), which leaves the directory unknown rather than absent.
+    secrets_dir_variable: Option<String>,
     /// Paths named by a `_FILE` variable, so gate 3 can tell a credential read by indirection from
     /// one merely lying in a volume nothing will open.
     pub indirect: BTreeMap<String, String>,
@@ -72,6 +76,7 @@ impl<'a> ContainerView<'a> {
                 .to_owned(),
             container,
             secrets_dir: None,
+            secrets_dir_variable: None,
             indirect: BTreeMap::new(),
             environment,
         };
@@ -83,7 +88,10 @@ impl<'a> ContainerView<'a> {
                     if decision.entry.and_then(|entry| entry.text("role"))
                         == Some("secrets_dir") =>
                 {
-                    view.secrets_dir = Some(value);
+                    if view.environment.visible(&variable) {
+                        view.secrets_dir = Some(value);
+                    }
+                    view.secrets_dir_variable = Some(variable);
                 }
                 Kind::KeyEnvFile if !value.is_empty() && view.environment.visible(&variable) => {
                     view.indirect.insert(value, variable);
@@ -445,6 +453,11 @@ fn mounts(
             if view.indirect.contains_key(&format!("{path}/{file_name}")) {
                 continue;
             }
+            if configured.is_none() && view.secrets_dir_variable.is_some() {
+                // The secrets directory is set to a value the render does not show, so whether
+                // this mount is it cannot be told.
+                continue;
+            }
             findings.push(error(format!(
                 "files: {path}/{file_name} spells the key {}, but nothing reads it: {}",
                 quoted(&key.name),
@@ -603,9 +616,9 @@ fn required_gate(
 struct Unseen {
     /// `envFrom` objects the render does not hold.
     environment: Vec<String>,
-    /// Whatever the secrets directory presents that cannot be listed: a Secret the render does not
-    /// hold, a volume of another type, or a directory inside a volume rather than at its mount
-    /// point.
+    /// Whatever the secrets directory presents that cannot be listed: a directory the render does
+    /// not show the path of, a Secret it does not hold, a volume of another type, or a directory
+    /// inside a volume rather than at its mount point.
     files: Vec<String>,
 }
 
@@ -616,6 +629,11 @@ fn unseen_sources(manifests: &[Json], spec: &Json, view: &ContainerView<'_>) -> 
         files: Vec::new(),
     };
     let Some(directory) = view.secrets_dir.as_deref() else {
+        if let Some(variable) = view.secrets_dir_variable.as_deref() {
+            unseen
+                .files
+                .push(format!("the secrets directory {variable} names"));
+        }
         return unseen;
     };
     match volume_at(view.container, directory) {
@@ -1265,5 +1283,42 @@ mod tests {
             Relaxed::default(),
         );
         assert_eq!(findings[0].level, Level::Error, "{findings:?}");
+    }
+
+    #[test]
+    fn a_secrets_directory_set_from_a_secret_is_unknown_rather_than_absent() {
+        let container = json!({"name": "app", "env": [
+            {"name": "P_SECRETS_DIR", "valueFrom": {"secretKeyRef": {"name": "s", "key": "dir"}}}
+        ], "volumeMounts": [{"name": "creds", "mountPath": "/"}]});
+        let spec = json!({"volumes": [{"name": "creds", "secret": {"secretName": "creds",
+            "items": [{"key": "token", "path": "auth__token"}]}}]});
+        let manifests: &[Json] = &[];
+        let carried: BTreeSet<String> = BTreeSet::new();
+        let findings = check_container(
+            manifests,
+            &spec,
+            &container,
+            &token_contract(),
+            Some(&carried),
+            Relaxed::default(),
+        )
+        .expect("the contract is readable");
+
+        // The mount at `/` is not mistaken for the directory, which would have read the empty
+        // opaque value as its path, and it is not reported as unread either, because it may be
+        // the directory. The required key is a warning naming the directory's variable.
+        let messages: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(findings.len(), 1, "{messages:?}");
+        assert_eq!(findings[0].level, Level::Warning);
+        assert!(
+            messages[0].ends_with(
+                "; unless the secrets directory P_SECRETS_DIR names supplies it, which the render \
+                 does not show"
+            ),
+            "{messages:?}"
+        );
     }
 }
