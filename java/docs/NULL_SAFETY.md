@@ -6,20 +6,22 @@ the annotations reach Lombok's generated code.
 
 ## The default
 
-Every library package under `src/main/java` carries a `package-info.java` with jspecify's
+Every library package under `src/main/java` carries a `package-info.java` with JSpecify's
 `@NullMarked` (`org.jspecify.annotations`): every field, parameter and return type in the package is
 non-null unless annotated `@Nullable`. The example modules' packages carry documentation only.
 
-## Why jspecify, and what JetBrains annotations are for
+## Why JSpecify, and what JetBrains annotations are for
 
-Both jspecify and `org.jetbrains.annotations` define nullness annotations, and using both for the
-same purpose would give one audience two vocabularies. jspecify is the vendor-neutral standard
-([jspecify.dev](https://jspecify.dev)) that IntelliJ, the Checker Framework, NullAway and Error
-Prone read, so nullness is jspecify's alone. javac records the annotations but enforces nothing, and
+Both JSpecify and `org.jetbrains.annotations` define nullness annotations, and using both for the
+same purpose would give one audience two vocabularies. JSpecify is the vendor-neutral standard
+([jspecify.dev](https://jspecify.dev)), so nullness is JSpecify's alone. Tool support differs:
+IntelliJ and NullAway read `@NullMarked` as this page describes, while the Checker Framework reads
+`@Nullable` and `@NonNull` but not `@NullMarked` or `@NullUnmarked`, so it does not apply this
+build's package-level default. See [JSpecify's compatibility notes](https://jspecify.dev/docs/whether/). javac records the annotations but enforces nothing, and
 this build runs no nullness checker, so a violation surfaces in an IDE or an external checker rather
 than as a compile error.
 
-`org.jetbrains.annotations` is declared for the inspection vocabulary jspecify does not cover:
+`org.jetbrains.annotations` is declared for the inspection vocabulary JSpecify does not cover:
 
 - `@Contract(pure = true)` on `ContractAssembler.deriveConstraint`, written by its qualified name
   because the codebase's own `Contract` model type would collide with the simple name;
@@ -40,7 +42,7 @@ than as a compile error.
 
 ## Lombok
 
-jspecify's `@Nullable` is `TYPE_USE`-only and is written on the field's type
+JSpecify's `@Nullable` is `TYPE_USE`-only and is written on the field's type
 (`@Nullable String foo;`). On its own it stops at the field and never reaches the getter return
 type, builder setter parameter or constructor parameter Lombok generates, which are the API those
 classes expose. `java/lombok.config` lists `org.jspecify.annotations.Nullable` under
@@ -64,7 +66,7 @@ Two exceptions are deliberate:
   constructor, are non-null by convention. That is the initializer-method exemption NullAway grants
   framework lifecycle methods; the package's `package-info.java` documents it.
 - `lombok.NonNull` is not used. It is a runtime guard, which is a different concern from
-  jspecify's static contract, and a required field is non-null by its package's `@NullMarked`
+  JSpecify's static contract, and a required field is non-null by its package's `@NullMarked`
   default alone.
 
 `ContainerShape.element()` is `@Nullable` because the `NONE` sentinel holds `null`.

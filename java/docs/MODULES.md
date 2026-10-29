@@ -14,7 +14,10 @@ depend on and how to use it.
 
 ## The shared pipeline
 
-Both producers run the same three steps, and only the dialect differs:
+Both producers run the same three steps. What they feed into them differs: the dialect, and the
+loader variables, which `-loader` publishes under `schema.loader` and `-spring-boot` leaves empty
+because Spring's `Binder` takes its layers from its own property sources, not from a variable read
+first.
 
 1. The processor reads a `@TerraceConfig` type at compile time and generates a dialect-agnostic
    `TypeDescriptor`.
@@ -34,9 +37,9 @@ The document model (`de.timscho.config.core.model`) and the twelve build-time re
 builds no `ObjectMapper`; see [JACKSON.md](JACKSON.md) for the codecs.
 
 - **The model** is one Lombok `@Value @Builder @Jacksonized` class per meta-schema object
-  (`Producer`, `App`, `Schema`, `Dialect`, `LoaderVar`, `Key`, `External`, `ExternalVar`), four
-  enums for the closed vocabularies (`LoaderRole`, `TextForm`, `UnreachableReason`,
-  `ExternalUnknownPolicy`), and an open, order-preserving `JsonSchemaDocument` for the
+  (`Contract`, `Producer`, `App`, `Schema`, `Dialect`, `LoaderVar`, `Key`, `ReloadSupport`,
+  `External`, `ExternalVar`), seven enums for the closed vocabularies (`LoaderRole`, `TextForm`,
+  `UnreachableReason`, `Reload`, `ReloadLayer`, `ReloadMode`, `ExternalUnknownPolicy`), and an open, order-preserving `JsonSchemaDocument` for the
   `json_schema` half, which has no closed shape. Every class carries an explicit
   `@JsonPropertyOrder` and a `@JsonProperty` per field, because a class-level `@JsonNaming` is
   understood only by Jackson 2's `databind`. `Key` and `ExternalVar` set `@JsonInclude` per field:
@@ -205,8 +208,8 @@ the product.
   `Terrace::load_watched` does. `watchPaths()` collects the parent directory of every file-backed
   input, not the file, because a Kubernetes volume update renames a new `..data` directory over
   the old one and a watch on the old inode never fires again. `Sources.differsFrom` compares the
-  merged map structurally, comparing `Double` and `Float` by raw bits so a configuration holding
-  `NaN` equals itself. `Sources.toString()` never prints the fingerprint, which holds every value,
+  merged map structurally, comparing `Double` and `Float` through `doubleToLongBits` and `floatToIntBits`, which collapse
+  every `NaN` to one canonical pattern, so a configuration holding `NaN` equals itself. `Sources.toString()` never prints the fingerprint, which holds every value,
   secrets included.
 - **`ContractMain`** emits a service's contract at build time without starting it. Given the root
   type's binary name, the prefix and `app.name`, it builds the schema with the `TerraceLoader`
@@ -214,9 +217,9 @@ the product.
   `--config-var`, `--secrets-dir-var`, `--default-config-path`), fills in defaults from a
   default-constructed instance converted through Jackson, and writes the contract to `--out` or
   standard output. Build identity (`app.version`, `revision`, `created`, `source`) is not an
-  option: it is `terrace-contract stamp`'s, so the emission depends only on the types and the
-  defaults their initializers and constructors produce. It can be compared with a committed copy
-  as long as those defaults are deterministic: one read from the clock or the environment changes
+  option: it is `terrace-contract stamp`'s, so the emission depends only on the types, the
+  arguments above and the defaults their initializers and constructors produce. It can be compared
+  with a committed copy as long as the arguments are fixed and the defaults are deterministic: one read from the clock or the environment changes
   the contract between builds. The Gradle plugin runs it; by hand:
 
   ```bash
