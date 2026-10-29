@@ -11,7 +11,7 @@ import lombok.extern.jackson.Jacksonized;
  *
  * <p>This is the model {@code -loader} and {@code -spring-boot} build and {@code -spec-tck}
  * compares against the corpus; it knows nothing about either binder (see {@code
- * java/README.md}'s "Separation of concerns").
+ * java/docs/MODULES.md}).
  *
  * <p>The document is the whole of what this model renders. The image labels, the Dockerfile
  * block and their read-back are renderings of the published document and belong to {@code

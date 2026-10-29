@@ -33,6 +33,8 @@ build/
 # Gradle's per-project cache. The wrapper jar under gradle/wrapper/ is committed: it is how CI
 # and a fresh clone get the pinned Gradle version without a local install.
 .gradle/
+# The Kotlin compiler's session data, written when buildSrc's Kotlin DSL plugins compile.
+.kotlin/
 
 # ---------------------------------------------------------------------------
 # Python

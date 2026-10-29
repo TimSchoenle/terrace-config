@@ -1,51 +1,50 @@
 #!/usr/bin/env bash
 #
-# Emits this repository's half of the README render payload as strict JSON on stdout.
+# Emits the one README fact readme-variables cannot derive, as strict JSON on stdout: the release
+# series an image tag pins.
 #
-# It is the `extra` input of the `readme-variables` action in docs.yml, deep-merged over what that
-# action derives. The keys below are top-level and so collide with nothing it emits, which sits
-# under `repo`, `release`, `toolchain` and `docs`.
+# It is the `extra` input of the `readme-variables` step that renders cli/README.md in docs.yml,
+# deep-merged over what that action derives. Its only key, `image`, collides with nothing the
+# action emits (`repo`, `release`, `toolchain` and `docs`).
 #
-# `Cargo.toml` is the single source of truth for both numbers the README quotes: the tag its
-# install snippet pins, and the MSRV its badge advertises. The action reads both from the same
-# manifest, as `release.tag` and `toolchain.msrv`, and the template reads them from there — so
-# this script currently duplicates two facts rather than adding any. It stays because it is the
-# hook a real generator plugs into, and because deleting it would take the `extra` wiring with it.
+# The release workflow tags the image with the full version, `major.minor` and `major`. Below 1.0 a
+# minor release may break, so the tag a README tells a build to pin is `0.minor`; from 1.0 it is the
+# major alone. Handlebars has no helper that splits a version, so the series is computed here.
 #
 # Run it yourself to see what CI will render with:
 #
-#     bash .github/scripts/readme-variables.sh
+#     bash .github/scripts/readme-variables.sh cli/Cargo.toml
 #
-# Deliberately POSIX tools only, no `jq`: it is not present in a default Git for Windows shell,
-# and a script that only runs on the CI runner is a script nobody checks their edit against.
+# POSIX tools only, no `jq`: it is not present in a default Git for Windows shell, and a script
+# that only runs on the CI runner is a script nobody checks their edit against.
 set -euo pipefail
 
-manifest="${1:-rust/Cargo.toml}"
+manifest="${1:?usage: readme-variables.sh <Cargo.toml>}"
 
-# Reads a top-level `key = "value"` from the manifest and rejects anything that would need JSON
-# escaping. Both fields are version strings, so the accepted alphabet is the whole contract —
-# and constraining it is what makes the `printf` at the bottom safe without a JSON encoder.
-#
-# Only `[package]` keys can match: a dependency's version sits inside an inline table
-# (`figment = { version = "0.10", … }`) and never starts a line, so anchoring is enough.
-field() {
-    local key="$1" pattern="$2" value
-    value="$(sed -n "s/^${key} = \"\([^\"]*\)\".*/\1/p" "${manifest}" | head -n1)"
+# The first line that starts `version = "..."` is the `[package]` version: a dependency's version
+# sits inside an inline table and never starts a line.
+version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "${manifest}" | head -n1)"
 
-    if [ -z "${value}" ]; then
-        echo "readme-variables: no top-level '${key}' in ${manifest}" >&2
-        return 1
-    fi
+if [ -z "${version}" ]; then
+    echo "readme-variables: no top-level 'version' in ${manifest}" >&2
+    exit 1
+fi
 
-    if ! printf '%s' "${value}" | grep -Eq "${pattern}"; then
-        echo "readme-variables: '${key} = \"${value}\"' is not a version string" >&2
-        return 1
-    fi
+# Constraining the alphabet to digits and dots is what makes the `printf` below safe without a
+# JSON encoder.
+if ! printf '%s' "${version}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "readme-variables: 'version = \"${version}\"' is not a release version" >&2
+    exit 1
+fi
 
-    printf '%s' "${value}"
-}
+major="${version%%.*}"
+rest="${version#*.}"
+minor="${rest%%.*}"
 
-version="$(field version '^[0-9A-Za-z][0-9A-Za-z.+-]*$')"
-msrv="$(field rust-version '^[0-9]+(\.[0-9]+){0,2}$')"
+if [ "${major}" = "0" ]; then
+    series="0.${minor}"
+else
+    series="${major}"
+fi
 
-printf '{"version":"%s","tag":"v%s","msrv":"%s"}\n' "${version}" "${version}" "${msrv}"
+printf '{"image":{"series":"%s"}}\n' "${series}"

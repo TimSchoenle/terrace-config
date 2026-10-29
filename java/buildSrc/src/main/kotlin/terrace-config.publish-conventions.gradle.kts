@@ -1,8 +1,7 @@
 // Applied by every module that ships a publishable artefact: -annotations, -core,
 // -core-jackson2, -core-jackson3, -processor, -loader, -spring-boot, -gradle-plugin. Deliberately
 // not applied to -spec-tck or either example module: those are internal tooling and demo
-// services, not something a consumer's build should depend on. See java/README.md's "Publishing
-// to JitPack" section.
+// services, not something a consumer's build should depend on. See java/docs/PUBLISHING.md.
 //
 // Maven Central is deliberately not configured: no `publishToMavenCentral(...)`, no
 // `signAllPublications()`, and so no Central Portal account, user token or GPG key is needed for
@@ -11,13 +10,12 @@
 // JitPack's build exercises; see jitpack.yml at the repository root. Publishing to Central would
 // add `publishToMavenCentral`/`signAllPublications`, four secrets and a release workflow.
 //
-// GAV coordinates are never set here: group and version come from the `allprojects {}` block in
-// the root java/build.gradle.kts, and the plugin defaults artifactId to the Gradle project name,
-// which already matches (`terrace-config-core`, ...), so there is no `coordinates(...)` call to
-// keep in step with settings.gradle.kts. Only what is identical for every published module
-// (licence, developer, SCM) lives here; `pom.name`/`pom.description` are filled from the
-// module's own `description` property, already declared per module in its own build.gradle.kts
-// for exactly this purpose.
+// GAV coordinates are never set here: group and version come from java/gradle.properties, and
+// the plugin defaults artifactId to the Gradle project name, which already matches
+// (`terrace-config-core`, ...), so there is no `coordinates(...)` call to keep in step with
+// settings.gradle.kts. Only what is identical for every published module (licence, developer,
+// SCM) lives here; `pom.name`/`pom.description` are filled from the `description` each module
+// declares in its own build.gradle.kts.
 import com.vanniktech.maven.publish.GradlePlugin
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar

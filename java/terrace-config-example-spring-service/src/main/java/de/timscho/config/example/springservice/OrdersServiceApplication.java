@@ -32,8 +32,8 @@ import org.springframework.context.ConfigurableApplicationContext;
  * and {@code terraceContractCheck}, part of {@code check}, fails when {@code contract.json} in this
  * module's directory no longer matches.
  */
-// Deliberately not `final`, unlike every other concrete class under java/ (see java/README.md's
-// "Static analysis" section): `@SpringBootApplication` includes `@Configuration` with
+// Deliberately not `final`, unlike every other concrete class under java/ (see java/docs/BUILD.md's
+// "Conventions" section): `@SpringBootApplication` includes `@Configuration` with
 // `proxyBeanMethods` defaulting to `true`, so Spring CGLIB-subclasses this class at startup to
 // enforce singleton semantics on its own `@Bean` methods, and a final class here fails with
 // "Cannot subclass final class" the moment the context refreshes.

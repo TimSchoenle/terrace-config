@@ -1,18 +1,16 @@
 <!--
-Generated from .github/templates/README.md.hbs — edit that file, not this one.
+Generated from .github/templates/README.md.hbs. Edit that file, not this one.
 
 CI renders it on every pull request and commits the result back to the branch. A push to `main`
 whose rust/README.md does not match its template fails the `readme` job in
 .github/workflows/docs.yml, which is a required check.
 
 The payload is collected by TimSchoenle/actions/actions/common/readme-variables, which reads
-rust/Cargo.toml and walks rust/docs/, merged over the output of one command:
+rust/Cargo.toml and walks rust/docs/.
 
-    bash .github/scripts/readme-variables.sh
-
-Every number this page quotes about itself — the tag its install snippets pin, the MSRV its badge
-shows, the licence its last section names — comes from that payload, so the release pull request
-is the commit that corrects them.
+Every number this page quotes about itself comes from that payload: the tag its install snippets
+pin, the MSRV its badge shows and the licence its last section names. The release pull request is
+therefore the commit that corrects them.
 
 Nothing in this comment may contain a mustache that is not a real reference.
 -->
@@ -149,9 +147,9 @@ All five spell the same field the same way: `__` separates nesting levels and ca
 
 Layer 3 carries only the variables that are *values*. `$MYAPP_CONFIG`, `$MYAPP_SECRETS_DIR`,
 anything [reserved](#reserving-keys-the-program-reads-itself) and every `MYAPP_<KEY>_FILE` are this
-loader's own mechanism rather than configuration, and none of them is offered to your type — so a
-root deriving `#[serde(deny_unknown_fields)]` loads rather than failing on a field it never
-declared.
+loader's own mechanism rather than configuration, and none of them is offered to your type. A
+root deriving `#[serde(deny_unknown_fields)]` therefore loads rather than failing on a field it
+never declared.
 
 If `$MYAPP_CONFIG` names a **directory**, every `*.toml` directly inside it is merged in sorted
 order, so a mounted `ConfigMap` containing `10-base.toml` and `20-overrides.toml` merges the way
@@ -278,7 +276,7 @@ for everything this crate does at runtime should not link a test harness.
 | [The config contract: image-embedded configuration schemas, validated by the charts](../rust/docs/config-contract-plan.md) | A design for shipping each service's configuration surface with its image. helm-charts can then prove — before anything reaches a cluster — that the config.toml it renders is one the pinned image… |
 
 Outside that table, [fuzz/README.md](fuzz/README.md) covers the oracles, the seed corpus and how
-to run a campaign, and [spec/](../spec/) is the contract format itself — normative, language-neutral,
+to run a campaign. [spec/](../spec/) is the contract format itself: normative, language-neutral,
 and what an implementation in another language conforms to.
 
 ## Contributing

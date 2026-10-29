@@ -24,6 +24,7 @@ reviews:
     - "!README.md" # rendered from .github/templates/root-README.md.hbs
     - "!rust/README.md" # rendered from .github/templates/README.md.hbs
     - "!java/README.md" # rendered from .github/templates/java-README.md.hbs
+    - "!cli/README.md" # rendered from .github/templates/cli-README.md.hbs
     # Contracts emitted by the producers and drift-checked in CI.
     - "!rust/examples/service/contract.json"
     - "!java/terrace-config-example-*/contract.json"

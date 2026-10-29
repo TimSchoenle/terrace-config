@@ -1,8 +1,7 @@
 // Hosts the convention plugins under src/main/kotlin/ (terrace-config.java-conventions,
 // terrace-config.lombok-conventions, terrace-config.publish-conventions) that every module's own
 // build.gradle.kts applies, instead of each one repeating the same
-// `java`/toolchain/test-framework/Lombok/publishing wiring; see java/README.md's "buildSrc"
-// section for why.
+// `java`/toolchain/test-framework/Lombok/publishing wiring; see java/docs/BUILD.md.
 plugins {
     `kotlin-dsl`
 }

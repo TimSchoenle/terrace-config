@@ -7,7 +7,7 @@ description = "The envelope model, the build-time refusals, and the JSON Schema 
 
 // Applying the plugin (rather than hand-rolled `compileOnly`/`annotationProcessor` lines) wires
 // main *and* test sources, and points `javadoc` at delomboked sources automatically; see
-// java/README.md's Lombok section and the root java/lombok.config.
+// java/docs/BUILD.md's Lombok section and the root java/lombok.config.
 plugins {
     id("terrace-config.lombok-conventions")
     id("terrace-config.publish-conventions")
@@ -18,7 +18,7 @@ plugins {
 // java/lombok.config to target both Jackson majors) still needs both databind artifacts'
 // `@JsonDeserialize`/`@JsonPOJOBuilder` annotation types resolvable at compile time, so both are
 // declared `compileOnly` here, never `implementation`, since neither is a runtime requirement of
-// the model by itself. See java/README.md's "Dual Jackson 2 / 3 support" section.
+// the model by itself. See java/docs/JACKSON.md.
 dependencies {
     compileOnly(libs.jackson.databind)
     compileOnly(libs.jackson.databind.v3)

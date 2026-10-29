@@ -31,6 +31,7 @@ Each implementation documents its own commands in its own README. Today:
 |---|---|---|
 | Rust | [`rust/README.md`](../rust/README.md#contributing) | `cargo fmt`, `cargo clippy`, `cargo test`, `cargo deny check`, the fuzz suite |
 | Java | [`java/README.md`](../java/README.md#contributing) | `./gradlew check` |
+| `terrace-contract` | [`cli/README.md`](../cli/README.md#contributing) | `cargo test`, `cargo clippy --all-targets --no-default-features` |
 
 ## Root-level files
 
@@ -38,6 +39,7 @@ Each implementation documents its own commands in its own README. Today:
   Edit the template, not the file; CI renders it on every pull request.
 - `rust/README.md` is generated the same way, from [`.github/templates/README.md.hbs`](../.github/templates/README.md.hbs).
 - `java/README.md` is generated the same way, from [`.github/templates/java-README.md.hbs`](../.github/templates/java-README.md.hbs).
+- `cli/README.md` is generated the same way, from [`.github/templates/cli-README.md.hbs`](../.github/templates/cli-README.md.hbs).
 - `docs/` at the root holds repository-level documents only — this file and the migration plan
   and progress notes. Documents about a specific implementation live under that implementation's
   own `docs/` directory instead (for example `rust/docs/`).

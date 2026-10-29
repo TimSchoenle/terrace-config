@@ -1,6 +1,6 @@
 // The Jackson-3-based codec for the document model in `terrace-config-core`.
 // Mirrors `terrace-config-core-jackson2` field for field, built on `tools.jackson.*` instead;
-// see that module's own comment and java/README.md's "Dual Jackson 2 / 3 support" section.
+// see that module's own comment and java/docs/JACKSON.md.
 description = "The byte-stable JSON codec for the contract model, built on Jackson 3.x " +
     "(`tools.jackson.databind`). See java/README.md."
 

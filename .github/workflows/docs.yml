@@ -1,20 +1,21 @@
 name: docs
 
-# `README.md` is generated from `.github/templates/README.md.hbs`. This workflow is what makes
-# that claim true in both directions.
+# Four READMEs are generated from `.github/templates/`: `README.md`, `rust/README.md`,
+# `java/README.md` and `cli/README.md`. This workflow is what makes that claim true in both
+# directions.
 #
-# On a pull request it renders the template and commits the result to the branch, so nothing the
-# README quotes about itself is edited by hand: the tag its install snippets pin, the MSRV its
-# badge shows, the licence its last section names, and the table of everything under `docs/`.
-# The case that matters is the release-please pull request: that
-# commit is the one which changes `version` in `Cargo.toml`, so it is also the one where the
-# README would otherwise start advertising the previous tag. Rendering here means the released
-# README already points at the tag the merge is about to create.
+# Each component's README renders from a payload read off its own manifest, so nothing a README
+# quotes about itself is edited by hand: the tag its install snippets pin, the toolchain its badge
+# shows, the licence its last section names, and the table of everything under its `docs/`. The
+# case that matters is a release-please pull request: that commit is the one which changes the
+# component's version, so it is also the one where the README would otherwise start advertising
+# the previous tag. Rendering here means the released README already points at the tag the merge
+# is about to create.
 #
 # On every event, including those pull requests, it also renders in `check` mode, writing nothing
-# and failing if the committed `README.md` is stale. That job is the required check.
-# Without it, editing `README.md` directly would appear to work right up until the next pull
-# request silently reverted it.
+# and failing if a committed README is stale. That job is the required check. Without it, editing
+# a README directly would appear to work right up until the next pull request silently reverted
+# it.
 
 on:
   pull_request:
@@ -38,7 +39,7 @@ jobs:
   # workflow. `render` runs the pull request's own script and templates, so it holds no secret
   # and a read-only `GITHUB_TOKEN`, and hands on only a patch artifact. `render-commit` holds the
   # maintenance App's private key and the write token minted from it, runs nothing from the
-  # checkout, and `allowed_paths` refuses any path other than the three READMEs.
+  # checkout, and `allowed_paths` refuses any path other than the four READMEs.
   render:
     name: render
     # A fork's branch is not in this repository, so there would be nothing to commit to.
@@ -56,7 +57,7 @@ jobs:
         with:
           egress-policy: audit
 
-      # The head of the branch, not the merge commit: the render has to read the `Cargo.toml`
+      # The head of the branch, not the merge commit: the render has to read the manifests
       # the pull request proposes, and the patch has to apply on top of the commit the branch
       # points at, which is the one `commit-patch` checks it against.
       - name: Checkout
@@ -65,35 +66,55 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      # Invoked through `bash` rather than executed: the repository is authored on Windows, where
-      # git does not record the executable bit.
-      - name: Generate the configuration payload
-        id: config
-        run: |
-          set -euo pipefail
-          json="$(bash .github/scripts/readme-variables.sh)"
-          echo "json=${json}" >> "$GITHUB_OUTPUT"
-
       # `branch` is the default branch rather than the action's `github.ref_name` default, which
       # on a pull_request event is `<number>/merge`. Left alone, the badge URL rendered here and
       # the one rendered by `check` on `main` differ, and the gate fails on every merge for a
-      # reason absent from the diff.
-      - name: Collect the README payload
-        id: variables
+      # reason absent from the diff. The same holds for every payload below.
+      - name: Collect the Rust payload
+        id: rust_variables
         uses: TimSchoenle/actions/actions/common/readme-variables@421289db958b620e2772ba46d11d014bf25a371b # tag=actions-common-readme-variables-v2.1.0
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: rust/Cargo.toml
           docs-dir: rust/docs
-          extra: ${{ steps.config.outputs.json }}
 
-      - name: Render the README
+      # Each component is released under its own tag prefix, so `release.tag` is only right with
+      # the prefix release-please-config.json gives that component.
+      - name: Collect the Java payload
+        id: java_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@421289db958b620e2772ba46d11d014bf25a371b # tag=actions-common-readme-variables-v2.1.0
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: java/gradle.properties
+          docs-dir: java/docs
+          tag-prefix: terrace-config-java-v
+
+      # Invoked through `bash` rather than executed: the repository is authored on Windows, where
+      # git does not record the executable bit.
+      - name: Generate the cli image series
+        id: cli_config
+        run: |
+          set -euo pipefail
+          json="$(bash .github/scripts/readme-variables.sh cli/Cargo.toml)"
+          echo "json=${json}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect the cli payload
+        id: cli_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@421289db958b620e2772ba46d11d014bf25a371b # tag=actions-common-readme-variables-v2.1.0
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: cli/Cargo.toml
+          docs-dir: cli/docs
+          tag-prefix: terrace-contract-v
+          extra: ${{ steps.cli_config.outputs.json }}
+
+      - name: Render the Rust README
         id: readme
         uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
-          variables: ${{ steps.variables.outputs.variables }}
+          variables: ${{ steps.rust_variables.outputs.variables }}
 
       - name: Render the Java README
         id: java_readme
@@ -101,33 +122,41 @@ jobs:
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
-          variables: ${{ steps.variables.outputs.variables }}
+          variables: ${{ steps.java_variables.outputs.variables }}
 
-      # The repository's front door, rendered from the same payload. It quotes none of the
-      # crate-specific fields (MSRV, the docs table), so the manifest/docs-directory inputs above
-      # only matter to the crate render; this one only reads `repo`.
+      - name: Render the cli README
+        id: cli_readme
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
+        with:
+          template: .github/templates/cli-README.md.hbs
+          output: cli/README.md
+          variables: ${{ steps.cli_variables.outputs.variables }}
+
+      # The repository root has no manifest. Its template reads only `repo`, which is the same in
+      # every payload, so it renders from the Rust one.
       - name: Render the root README
         id: root_readme
         uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
-          variables: ${{ steps.variables.outputs.variables }}
+          variables: ${{ steps.rust_variables.outputs.variables }}
 
       - name: Create Patch
         id: patch
         uses: TimSchoenle/actions/actions/common/create-patch@bbc2c5e2a0f9345cb2e84946846736f047a6eae3 # tag=actions-common-create-patch-v1.1.0
         with:
           artifact_name: docs-readmes
-          paths: 'README.md rust/README.md java/README.md'
+          paths: 'README.md rust/README.md java/README.md cli/README.md'
 
       - name: Summarise
         env:
           CHANGED: ${{ steps.readme.outputs.changed }}
           JAVA_CHANGED: ${{ steps.java_readme.outputs.changed }}
+          CLI_CHANGED: ${{ steps.cli_readme.outputs.changed }}
           ROOT_CHANGED: ${{ steps.root_readme.outputs.changed }}
         run: |
-          for entry in "rust/README.md:${CHANGED}" "java/README.md:${JAVA_CHANGED}" "README.md:${ROOT_CHANGED}"; do
+          for entry in "rust/README.md:${CHANGED}" "java/README.md:${JAVA_CHANGED}" "cli/README.md:${CLI_CHANGED}" "README.md:${ROOT_CHANGED}"; do
             if [ "${entry#*:}" = "true" ]; then
               echo "${entry%%:*} re-rendered; render-commit commits it." >> "$GITHUB_STEP_SUMMARY"
             else
@@ -188,8 +217,8 @@ jobs:
         with:
           token: ${{ steps.generate_token.outputs.token }}
           artifact_name: docs-readmes
-          # The three files the templates render to. Any other path fails this job.
-          allowed_paths: 'README.md rust/README.md java/README.md'
+          # The four files the templates render to. Any other path fails this job.
+          allowed_paths: 'README.md rust/README.md java/README.md cli/README.md'
           commit_message: 'docs: render READMEs from templates'
 
       - name: Summarise
@@ -223,29 +252,47 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Generate the configuration payload
-        id: config
-        run: |
-          set -euo pipefail
-          json="$(bash .github/scripts/readme-variables.sh)"
-          echo "json=${json}" >> "$GITHUB_OUTPUT"
-
-      - name: Collect the README payload
-        id: variables
+      - name: Collect the Rust payload
+        id: rust_variables
         uses: TimSchoenle/actions/actions/common/readme-variables@421289db958b620e2772ba46d11d014bf25a371b # tag=actions-common-readme-variables-v2.1.0
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: rust/Cargo.toml
           docs-dir: rust/docs
-          extra: ${{ steps.config.outputs.json }}
 
-      # Writes nothing; fails with the first differing line when README.md is stale.
+      - name: Collect the Java payload
+        id: java_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@421289db958b620e2772ba46d11d014bf25a371b # tag=actions-common-readme-variables-v2.1.0
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: java/gradle.properties
+          docs-dir: java/docs
+          tag-prefix: terrace-config-java-v
+
+      - name: Generate the cli image series
+        id: cli_config
+        run: |
+          set -euo pipefail
+          json="$(bash .github/scripts/readme-variables.sh cli/Cargo.toml)"
+          echo "json=${json}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect the cli payload
+        id: cli_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@421289db958b620e2772ba46d11d014bf25a371b # tag=actions-common-readme-variables-v2.1.0
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: cli/Cargo.toml
+          docs-dir: cli/docs
+          tag-prefix: terrace-contract-v
+          extra: ${{ steps.cli_config.outputs.json }}
+
+      # Each step writes nothing and fails with the first differing line when its README is stale.
       - name: Verify rust/README.md is current
         uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
-          variables: ${{ steps.variables.outputs.variables }}
+          variables: ${{ steps.rust_variables.outputs.variables }}
           check: true
 
       - name: Verify java/README.md is current
@@ -253,7 +300,15 @@ jobs:
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
-          variables: ${{ steps.variables.outputs.variables }}
+          variables: ${{ steps.java_variables.outputs.variables }}
+          check: true
+
+      - name: Verify cli/README.md is current
+        uses: TimSchoenle/actions/actions/common/render-template@495fd50fd4a5ae3d9fb1496c96eada74c6f2529a # tag=actions-common-render-template-v3.0.0
+        with:
+          template: .github/templates/cli-README.md.hbs
+          output: cli/README.md
+          variables: ${{ steps.cli_variables.outputs.variables }}
           check: true
 
       - name: Verify README.md is current
@@ -261,5 +316,5 @@ jobs:
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
-          variables: ${{ steps.variables.outputs.variables }}
+          variables: ${{ steps.rust_variables.outputs.variables }}
           check: true

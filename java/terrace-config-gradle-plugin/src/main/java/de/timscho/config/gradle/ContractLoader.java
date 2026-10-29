@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
  * producer.loader} it writes.
  *
  * <p>Each carries the build-time entry point the emission runs, the tier the producer claims in
- * {@code java/README.md}, and the module whose presence on the runtime classpath identifies it.
+ * {@code java/README.md}'s module table, and the module whose presence on the runtime classpath identifies it.
  */
 enum ContractLoader {
 
