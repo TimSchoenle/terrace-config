@@ -1,4 +1,4 @@
-//! Gates 2 and 3, over hand-built containers rather than over a render.
+//! Gates 2, 2b and 3, over hand-built containers rather than over a render.
 //!
 //! Ported from the suite that held the implementation this was taken from, and kept in its shape
 //! because the shape was already right: each gate is a function of manifests and a contract
@@ -52,13 +52,25 @@ fn container(env: &[(&str, &str)], mounts: &[Json]) -> Json {
     })
 }
 
+/// Every gate but 2b, for the tests about one variable.
+///
+/// The fixture requires a credential, and a test about whether `PORT` is classified would otherwise
+/// have to supply it to say nothing about it. Gate 2b has tests of its own below.
+fn not_requiredness() -> Relaxed {
+    Relaxed {
+        required: true,
+        ..Relaxed::default()
+    }
+}
+
 fn check(env: &[(&str, &str)], merged: &Union) -> Vec<Finding> {
     check_container(
         &[],
         &json!({}),
         &container(env, &[]),
         merged,
-        Relaxed::default(),
+        None,
+        not_requiredness(),
     )
     .expect("the fixture is readable")
 }
@@ -208,9 +220,40 @@ fn a_value_from_entry_is_classified_but_not_value_checked() {
         "name": "app",
         "env": [{"name": "PORT", "valueFrom": {"fieldRef": {"fieldPath": "x"}}}],
     });
-    let findings = check_container(&[], &json!({}), &held, &merged, Relaxed::default())
+    let findings = check_container(&[], &json!({}), &held, &merged, None, not_requiredness())
         .expect("the fixture is readable");
     assert_eq!(findings, Vec::new());
+}
+
+#[test]
+fn a_required_credential_no_layer_supplies_is_reported_and_any_layer_silences_it() {
+    let merged = union(&["api"]);
+    let required = |env: &[(&str, &str)]| -> Vec<Finding> {
+        check_container(
+            &[],
+            &json!({}),
+            &container(env, &[]),
+            &merged,
+            Some(&std::collections::BTreeSet::new()),
+            Relaxed::default(),
+        )
+        .expect("the fixture is readable")
+        .into_iter()
+        .filter(|finding| finding.message.starts_with("required:"))
+        .collect()
+    };
+
+    let missing = required(&[]);
+    assert_eq!(missing.len(), 1, "{missing:?}");
+    assert_eq!(missing[0].level, Level::Error);
+    assert!(
+        missing[0].message.contains("the key 'database.url'"),
+        "{missing:?}"
+    );
+    assert_eq!(
+        required(&[("FIXTURE_DATABASE__URL", "postgres://db/app")]),
+        Vec::new()
+    );
 }
 
 #[test]
@@ -225,6 +268,7 @@ fn an_exemption_relaxes_the_gate() {
         &json!({}),
         &container(&[("FIXTURE_NOPE", "1")], &[]),
         &merged,
+        None,
         relaxed,
     )
     .expect("the fixture is readable");
@@ -280,6 +324,7 @@ fn run_files(
         &spec,
         &container(env, mounts),
         &merged,
+        None,
         Relaxed::default(),
     )
     .expect("the fixture is readable")

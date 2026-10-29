@@ -72,9 +72,8 @@ use serde_json::Value as Json;
 use crate::classify::{Kind, classify};
 use crate::error::Error;
 use crate::gate::container::ContainerView;
-use crate::k8s::{
-    containers_of, digest_of, load_manifests, pod_spec, secret_file_names, select_source,
-};
+use crate::gate::document_keys;
+use crate::k8s::{containers_of, digest_of, load_manifests, pod_spec, secret_file_names};
 use crate::report::{Report, error, warning};
 use crate::union::{Merged, Union};
 
@@ -584,28 +583,9 @@ struct Where<'a> {
 
 /// Records the keys the rendered plaintext document sets, as one delivery channel.
 fn scan_document(document: &Document, binding: &Binding, manifests: &[Json], ledger: &mut Ledger) {
-    let matched = select_source(
-        manifests,
-        &document.source.kind,
-        &document.source.selector,
-        &document.source.key,
-    );
-    if matched.len() != 1 {
-        return;
-    }
-    let Some(text) = matched[0]
-        .get("data")
-        .and_then(|data| data.get(&document.source.key))
-        .and_then(Json::as_str)
-    else {
+    let Some(present) = document_keys(manifests, &document.source) else {
         return;
     };
-    let Ok(instance) = document.source.format.read(text) else {
-        return;
-    };
-
-    let mut present = BTreeSet::new();
-    document_paths(&instance, "", &mut present);
     for union in binding.by_digest.values() {
         let label = union.sources.first().map_or("", String::as_str);
         for path in union.keys.names() {
@@ -634,7 +614,7 @@ fn scan_container(
     surface: &mut Surface,
 ) {
     let label = mine.sources.first().map_or("", String::as_str);
-    let view = ContainerView::read(container, mine);
+    let view = ContainerView::read(manifests, container, mine);
     let secrets_dir = view
         .secrets_dir
         .as_deref()
@@ -1008,25 +988,6 @@ pub fn by_container(mounts: &[Mount]) -> Vec<Container> {
 // ------------------------------------------------------------------------------------------------
 // The pieces the walks are built from
 // ------------------------------------------------------------------------------------------------
-
-/// Every dotted path the parsed configuration document sets, leaves and tables alike.
-///
-/// Tables are included so a `structured` key supplied as a whole table counts as supplied, which is
-/// what the loader sees.
-fn document_paths(instance: &Json, prefix: &str, into: &mut BTreeSet<String>) {
-    let Some(fields) = instance.as_object() else {
-        return;
-    };
-    for (name, value) in fields {
-        let full = if prefix.is_empty() {
-            name.clone()
-        } else {
-            format!("{prefix}.{name}")
-        };
-        document_paths(value, &full, into);
-        into.insert(full);
-    }
-}
 
 /// Whether any contract this chart vendors claims the file name, exactly or as a map leaf.
 ///

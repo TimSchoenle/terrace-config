@@ -220,7 +220,7 @@ cli/src/
   diff/         findings between two documents, and their impact
   oci/          the registry, by delegation to `oras` and `cosign`
   k8s.rs        manifests, workloads, containers, mounts
-  gate/         the document and container gates
+  gate/         the document, container and requiredness gates
   helm/         the chart repository's conventions
   bin/          argument parsing, dispatch and exit codes
 ```
@@ -371,17 +371,29 @@ some layer must supply the key rather than that the document carries it: a secre
 mounted file is correct and absent from the document.
 
 **Gate 2, the environment.** Per container, against that container's own image's contract, because a
-variable only a sibling image reads is the defect this gate exists for. Every variable is
-classified by an ordered list, first match wins, and the step rejecting an unaccounted prefixed
-variable sits above both external lists. A value the manifest carries is checked against
-`text_constraint`. When the build has a measured read table for `producer.loader`, the value is then
-parsed as `text_form` says and checked against `constraint`; for any other loader that step is
-reported as skipped, never as passed. A `valueFrom`
-entry is classified by its name, but its value exists only when the pod runs, so it is not
-checked. The gate also finds a key supplied by two
-layers at once, aliases included, which the loader refuses at boot, and names both spellings. When
-an unaccounted variable looks like a service link and the pod does not set
-`enableServiceLinks: false`, the message says so.
+variable only a sibling image reads is the defect this gate exists for. Every variable is classified
+by an ordered list, first match wins, and the step rejecting an unaccounted prefixed variable sits
+above both external lists. The variables include every key an `envFrom` source hands over, followed
+to the `ConfigMap` or Secret the render holds; a Secret's values are never read, and a source naming
+an object the render does not hold is recorded rather than guessed at. A value the manifest carries
+is checked against `text_constraint`. When the build has a measured read table for
+`producer.loader`, the value is then parsed as `text_form` says and checked against `constraint`;
+for any other loader that step is reported as skipped, never as passed. A `valueFrom` entry is
+classified by its name, but its value exists only when the pod runs, so it is not checked. The gate
+also finds a key supplied by two layers at once, aliases included, which the loader refuses at boot,
+and names both spellings. When an unaccounted variable looks like a service link and the pod does
+not set `enableServiceLinks: false`, the message says so.
+
+**Gate 2b, requiredness.** Per container, against the keys that container's image marks
+`required`. Each must be supplied by some layer: an environment spelling (`env`, `valueFrom` and
+`envFrom` all count), a `_FILE` variable, a file in the secrets directory, or the rendered document.
+A secret is never supplied by the document, and a reserved key only by the environment. The finding
+names every layer that could supply the key, which tells an operator there is a choice where a
+`required` list would tell them to put a credential in a ConfigMap. A source the render does not
+show (an `envFrom` object or a secrets-directory Secret it does not hold, a volume of another type)
+could carry the key, so the finding is a warning naming it. The gate does not run for a values file
+exempt from gate 2 or 3, and treats non-secret keys as undecided when the document cannot be read,
+because in both cases a layer it did not read may supply the key.
 
 **Gate 3, file spellings.** Per container. File names are read from the `Secret` and `ConfigMap`
 sources of each mounted volume, as far as the render shows them; other volume types present nothing
@@ -434,12 +446,6 @@ compatibility statement is the envelope versions it reads, `terrace_contract: 1`
   the document differs.
 - **The image's own `ENV` block.** A Dockerfile `ENV` supplies a key on every run, which the
   contract's `default` cannot know; reading it is one `crane config` away.
-- **Requiredness.** Every `required` key supplied by some layer: a non-secret by the rendered
-  document, one of its environment spellings or a mounted file named for it; a secret by an
-  environment spelling or a mounted file only, since the rendered document never carries one. Naming
-  every permitted layer tells an operator there is a choice, where a `required` list would tell them
-  to put a credential in a ConfigMap. `conform::required_keys` is the consumer's starting point; no
-  gate calls it yet.
 - **Secret values, not only names.** A rendered Secret carries its values, so gate 3 could hold them
   to `constraint` with the file layers' one read rule.
 - **A drift report.** The same union across every published chart version and image digest answers

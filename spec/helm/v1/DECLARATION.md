@@ -54,7 +54,7 @@ gate without a message.
 | `source` | `{kind?, selector?, key?, format?}` | The rendered object holding the document, and the key under its `data`. `selector` is a non-empty mapping of labels, matched instead of the rendered name because a name override moves the name. When the labels match more than one object of the kind, the one holding `key` under `data` or `stringData` is the source. `format` is `toml`, `json` or `yaml`. |
 | `images` | non-empty list of `{values, contract?}` | The images that read the document. `values` is the values path the chart pins the image at; `contract` is the vendored contract, relative to the chart directory. |
 | `consumers` | list of `{workload: {kind, selector?}, containers}` | The workloads that mount the document and their containers that read it. An empty list is a written decision to check no workload. |
-| `exempt` | list of `{values?, gates, reason}` | A rendered values file (or `*` for every one) that is not held to some gates. `gates` are `closed`, `document`, `env` and `files`. |
+| `exempt` | list of `{values?, gates, reason}` | A rendered values file (or `*` for every one) that is not held to some gates. `gates` are `closed`, `document`, `env`, `files` and `required`. |
 | `restart` | list of `{keys, reason}` | Keys the chart rolls its pods for although an image applies them live. The only direction in which a chart overrides an image. |
 | `tests` | [suite block](#the-suite-block) | How this document's round-trip suite is generated. |
 
