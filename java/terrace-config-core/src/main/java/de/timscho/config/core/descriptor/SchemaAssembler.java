@@ -377,8 +377,10 @@ public class SchemaAssembler {
 
         // Walked with no reserved names: an element's fields have no environment spelling that the
         // loader could read ahead of the layers, and only their constraints survive into the result.
+        // Walked outside every optional section too: an element's fields are required of each
+        // element present, whatever section holds the key.
         final List<Key> keys = new ArrayList<>();
-        walk(element.nestedKeys(), "", keys, dialect, Set.of());
+        walk(element.nestedKeys(), "", false, keys, dialect, Set.of());
         final Set<String> closed = new HashSet<>();
         if (field.closed()) {
             closed.add("");
