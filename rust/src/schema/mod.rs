@@ -579,8 +579,9 @@ impl Sink {
     /// What a `#[config(nested)]` field the loader can leave out becomes: one with
     /// `#[serde(default)]` or `#[serde(default = "…")]`, one inside a `#[serde(default)]`
     /// container, or an `Option`. The derive wraps that field's `nested` call in one of these. A
-    /// `#[serde(flatten)]` field gets none: serde reads its keys from the parent's own map and
-    /// refuses a missing one whatever `default` the field carries.
+    /// `#[serde(flatten)]` field gets one only when it is an `Option`, which serde leaves `None`
+    /// when its keys are missing: any other flattened field reads its keys from the parent's own
+    /// map and is refused when one is missing, whatever `default` it carries.
     ///
     /// [`Leaf::required`] is a property of the field inside its own type, and a type does not know
     /// where it is used. `RateLimitPolicy { per_minute: u32 }` reports `per_minute` as required,

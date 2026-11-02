@@ -368,6 +368,26 @@ fn a_flattened_section_keeps_its_own_required_keys() {
     assert!(key(&schema, "per_minute").required);
 }
 
+/// A flattened `Option` is the exception: serde leaves it `None` when its keys are missing, so the
+/// keys are not required.
+#[test]
+fn a_flattened_option_requires_none_of_its_keys() {
+    #[derive(Deserialize, Describe)]
+    struct Outer {
+        #[config(nested)]
+        #[serde(flatten)]
+        policy: Option<Policy>,
+    }
+
+    let empty: Outer = Figment::new()
+        .extract()
+        .expect("a flattened `Option` with no keys is `None`");
+    assert!(empty.policy.is_none());
+    let schema = Schema::describe::<Outer>(&Terrace::new("T_").dialect());
+    assert!(!key(&schema, "per_minute").required);
+    assert!(!key(&schema, "burst").required);
+}
+
 /// The scope covers everything under it, including a section that has no default of its own.
 #[test]
 fn a_section_inside_a_defaulted_section_is_optional_too() {

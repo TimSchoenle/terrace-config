@@ -21,7 +21,14 @@ that would have told an operator what they get instead.
 **The rule.** A key is required only when its own field is and every section above it is too. A
 section is optional when the loader accepts a document leaving it out: it has a default of its own,
 the type holding it supplies defaults for its fields, or it is optional in the language's own
-sense. A flattened section has no table of its own and opens no scope: its keys are the parent's.
+sense. A flattened section has no table of its own and opens no scope, so its keys keep their own
+answer, unless the language leaves the whole flattened section unset when its keys are missing, as
+serde does for a flattened `Option`.
+
+**A section supplied in part.** The default is the section's, and it applies when the section is
+absent whole. A document that sets `global.per_minute` alone supplies a `global` table without
+`burst`, which the loader refuses: `required: false` says no layer has to supply the key, not that
+the key can be supplied without its siblings.
 
 **In `rendered/`.** `schema.json` carries no `required` entry for `global` or `auth` and one for
 `store`, so a values file that leaves out either optional section validates.

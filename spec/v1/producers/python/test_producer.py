@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import orders
-from terrace_producer import Dialect, contract, required, setting
+from terrace_producer import Dialect, contract, required, setting, table
 
 HERE = Path(__file__).resolve().parent
 CORPUS = HERE.parents[1] / "conformance"
@@ -93,6 +93,41 @@ class Requiredness(unittest.TestCase):
         api_base, token = document["schema"]["keys"]
         self.assertEqual((api_base["required"], api_base["default_value"]), (True, None))
         self.assertEqual((token["required"], token["ty"], token["secret"]), (False, "str", True))
+
+
+    def test_no_key_under_a_table_that_may_be_left_out_is_required(self) -> None:
+        @dataclasses.dataclass
+        class Bucket:
+            per_minute: int = required("Requests allowed per minute.")
+            burst: int = required("The most requests a client may spend back-to-back.")
+
+        @dataclasses.dataclass
+        class Store:
+            url: str = required("Connection URL of the counter store.")
+
+        @dataclasses.dataclass
+        class Limiter:
+            store: Store = required("Where the shared counters live.")
+            global_: Bucket = table(lambda: Bucket(per_minute=300, burst=60), "Every route.")
+            auth: Bucket | None = setting(None, "Credential-handling routes.")
+
+        expected = json.loads(
+            (CORPUS / "optional-sections" / "contract.json").read_text(encoding="utf-8")
+        )
+        ours = contract(
+            Limiter,
+            Limiter(store=Store(url="")),
+            app=expected["app"],
+            dialect=Dialect(prefix="LIMITER_"),
+        )
+
+        def flags(document: dict[str, Any]) -> dict[str, tuple[bool, Any]]:
+            return {
+                key["path"].replace("global_", "global"): (key["required"], key["default_value"])
+                for key in document["schema"]["keys"]
+            }
+
+        self.assertEqual(flags(ours), flags(expected))
 
 
 class Refusals(unittest.TestCase):

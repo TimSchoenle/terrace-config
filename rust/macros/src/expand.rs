@@ -198,10 +198,16 @@ pub(crate) fn field_body(
             quote! { sink.nested(#name, <#target as #krate::schema::Describe>::describe); }
         };
         // A section the loader can leave out requires none of its keys, whatever `Inner` says
-        // about them on its own: serde fills the whole section in, or leaves it `None`. Not a
-        // flattened one: serde reads its fields from the parent's map and refuses a missing one
-        // whatever `default` the field carries, so `Inner`'s own answer still holds.
-        return Ok(if !opts.flatten && may_be_absent(opts, container, ty) {
+        // about them on its own: serde fills the whole section in, or leaves it `None`. A
+        // flattened one only when it is an `Option`, which serde leaves `None` when its keys are
+        // missing. Any other flattened field reads its keys from the parent's map and is refused
+        // when one is missing, whatever `default` it carries, so `Inner`'s own answer holds.
+        let absent = if opts.flatten {
+            is_option(ty)
+        } else {
+            may_be_absent(opts, container, ty)
+        };
+        return Ok(if absent {
             quote! { sink.optional(|sink| { #keys }); }
         } else {
             keys

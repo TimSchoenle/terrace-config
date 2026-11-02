@@ -213,9 +213,19 @@ it to the file", which for a credential is the wrong advice.
 loader refuses a configuration that leaves it out. A section the loader fills in whole when it is
 missing, or leaves unset, requires none of the keys inside it, even those its own type requires: a
 field with a default, a field of a type that defaults its fields, or an optional field. A producer
-reading `required` off the field alone publishes keys the image never asks for, drops their
-observed defaults, and makes every consumer that checks `required` reject a correct deployment
-([`optional-sections`](conformance/optional-sections/)).
+MUST publish `required: true` only for a key whose own field is required and every section above
+which is too. A flattened field has no table of its own and opens no section, unless the loader
+leaves the whole flattened field unset when its keys are missing. A producer reading `required` off
+the field alone publishes keys the image never asks for, drops their observed defaults, and makes
+every consumer that checks `required` reject a correct deployment
+([`optional-sections`](conformance/optional-sections/)). The rule changes values, not the shape of
+the document, so it holds within `v1`.
+
+The defaults and the `required: false` of the keys inside such a section describe the section left
+out whole. A section a document supplies in part is the loader's to complete or refuse, and one
+whose type requires a key the document leaves out is usually refused. `required` cannot say
+"required once a sibling is supplied": a consumer MUST NOT read `required: false` under a section as
+"safe to supply alone".
 
 **A `secret` MUST NOT carry a default**, in either field, anywhere in the document. This is the
 point the document crosses into a public registry, and a producer MUST refuse to build one rather

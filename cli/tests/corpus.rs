@@ -33,6 +33,7 @@ const CASES: &[&str] = &[
     "element-patterns",
     "conditions",
     "reload",
+    "optional-sections",
 ];
 
 /// The file each format is stored under.
