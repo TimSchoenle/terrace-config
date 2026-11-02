@@ -6,6 +6,7 @@ import de.timscho.config.core.descriptor.KeyDescriptor.ContainerKind;
 import de.timscho.config.core.model.Dialect;
 import de.timscho.config.core.model.Key;
 import de.timscho.config.core.model.TextForm;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -309,6 +310,75 @@ class SchemaAssemblerTest {
                                 List.of(
                                         Map.of("required", List.of("user")),
                                         Map.of("required", List.of("username"))))));
+    }
+
+    /** A required field of a section, as {@code RateLimitPolicy.perMinute} is of a policy. */
+    private static List<KeyDescriptor> policy() {
+        return List.of(leaf("per_minute", "int", false), leaf("burst", "int", false));
+    }
+
+    private static KeyDescriptor section(
+            final String name,
+            final ContainerKind container,
+            final boolean hasDefault,
+            final List<KeyDescriptor> keys) {
+        return field(name, "test.Section", container, null, keys, false, hasDefault, List.of());
+    }
+
+    private static List<Key> assembled(final List<KeyDescriptor> fields) {
+        return SchemaAssembler.assemble(
+                        new TypeDescriptor("test.Config", TypeDescriptor.Kind.STRUCT, fields, List.of(), false),
+                        dialect(),
+                        Set.of())
+                .getKeys();
+    }
+
+    private static Map<String, Boolean> requiredByPath(final KeyDescriptor... fields) {
+        final Map<String, Boolean> required = new LinkedHashMap<>();
+        assembled(List.of(fields)).forEach(key -> required.put(key.getPath(), key.isRequired()));
+        return required;
+    }
+
+    /** A section with an initializer is filled in whole when a document leaves it out. */
+    @Test
+    void aDefaultedSectionRequiresNoneOfItsKeys() {
+        assertThat(requiredByPath(section("global", ContainerKind.NONE, true, policy())))
+                .containsExactly(Map.entry("global.per_minute", false), Map.entry("global.burst", false));
+    }
+
+    /** An {@code Optional} section may be absent whole. */
+    @Test
+    void anOptionalSectionRequiresNoneOfItsKeys() {
+        assertThat(requiredByPath(section("global", ContainerKind.OPTIONAL, false, policy())))
+                .containsExactly(Map.entry("global.per_minute", false), Map.entry("global.burst", false));
+    }
+
+    @Test
+    void aSectionADocumentMustCarryKeepsItsKeysRequired() {
+        assertThat(requiredByPath(section("strict", ContainerKind.NONE, false, policy())))
+                .containsExactly(Map.entry("strict.per_minute", true), Map.entry("strict.burst", true));
+    }
+
+    /** The scope covers everything under it, including a section with no default of its own. */
+    @Test
+    void aSectionInsideADefaultedSectionIsOptionalToo() {
+        final KeyDescriptor inner = section("inner", ContainerKind.NONE, false, policy());
+        assertThat(requiredByPath(section("middle", ContainerKind.NONE, true, List.of(inner))))
+                .containsExactly(
+                        Map.entry("middle.inner.per_minute", false), Map.entry("middle.inner.burst", false));
+    }
+
+    /** An element's fields are required of each element present, whatever section holds the key. */
+    @Test
+    void anElementInsideADefaultedSectionKeepsItsRequiredFields() {
+        final ElementDescriptor element = struct("Policy", policy());
+        final KeyDescriptor routes = field(
+                "routes", "List<Policy>", ContainerKind.LIST, element, List.of(), false, true, List.of());
+        final List<Key> keys = assembled(List.of(section("limits", ContainerKind.NONE, true, List.of(routes))));
+        assertThat(keys).hasSize(1);
+        assertThat(keys.getFirst().isRequired()).isFalse();
+        assertThat(element(keys.getFirst().getConstraint(), "items"))
+                .containsEntry("required", List.of("per_minute", "burst"));
     }
 
     @SuppressWarnings("unchecked")

@@ -110,6 +110,7 @@ renderers that can each rewrite the expectation agree by construction and prove 
 | [`element-patterns`](conformance/element-patterns/) | Tightenings inside a key: a string key's `pattern`, and entry names, a pattern and required entries at positions inside every element of a map, each rendered with its position. |
 | [`conditions`](conformance/conditions/) | Conditions between the fields of every element: `allOf` members carrying `description`, one exactly-one rule and one conditional rule nesting another, and the document published at `schema_version: 4`. |
 | [`reload`](conformance/reload/) | A binary that rebuilds on a change: `schema.reload`, a `reload` class on every key, `restart` winning wherever it is written, and a reserved key that is `restart` whatever it was annotated. |
+| [`optional-sections`](conformance/optional-sections/) | Sections the loader fills in when a document leaves them out: keys their own type requires published `required: false` under a defaulted or optional section, with the section's observed defaults, beside a section the document has to carry. |
 
 ### Consumer cases
 

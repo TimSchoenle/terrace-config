@@ -169,6 +169,13 @@ pub(crate) fn within_reload(
     quote! { sink.reload(#class, |sink| { #body }); }
 }
 
+/// Whether serde accepts a document that leaves this field out: it has a `#[serde(default)]` of
+/// its own or from its container, or it is an `Option`. For a key that is what `required: false`
+/// means, and for a nested section it is why none of the keys inside are required.
+fn may_be_absent(opts: &FieldOpts, container: &Container, ty: &syn::Type) -> bool {
+    opts.has_serde_default || container.field_default || is_option(ty)
+}
+
 /// A field's keys, before any `#[config(reload = "…")]` scope is put around them.
 pub(crate) fn field_body(
     field: &Field,
@@ -182,13 +189,22 @@ pub(crate) fn field_body(
         // `Option<Inner>` recurses into `Inner`: the keys underneath exist either way, and
         // `Option` itself has no fields to describe.
         let target = unwrap_option(ty).unwrap_or(ty);
-        return Ok(if opts.flatten {
+        let keys = if opts.flatten {
             // A flattened field contributes its keys at the current level, so no segment is
             // pushed. This is the one case where a field name never appears in a key path.
             quote! { <#target as #krate::schema::Describe>::describe(sink); }
         } else {
             let name = opts.name(field, container)?;
             quote! { sink.nested(#name, <#target as #krate::schema::Describe>::describe); }
+        };
+        // A section the loader can leave out requires none of its keys, whatever `Inner` says
+        // about them on its own: serde fills the whole section in, or leaves it `None`. Not a
+        // flattened one: serde reads its fields from the parent's map and refuses a missing one
+        // whatever `default` the field carries, so `Inner`'s own answer still holds.
+        return Ok(if !opts.flatten && may_be_absent(opts, container, ty) {
+            quote! { sink.optional(|sink| { #keys }); }
+        } else {
+            keys
         });
     }
 
@@ -211,7 +227,7 @@ pub(crate) fn field_body(
 
     let name = opts.name(field, container)?;
     let docs = doc_comment(&field.attrs);
-    let required = !(opts.has_serde_default || container.field_default || is_option(ty));
+    let required = !may_be_absent(opts, container, ty);
     let secret = opts.secret;
     let note = if let Some(text) = &opts.note {
         quote! { ::core::option::Option::Some(#text) }

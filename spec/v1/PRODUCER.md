@@ -112,7 +112,7 @@ by the meta-schema except `constraint`, `text_constraint`, `unreachable` and `re
 | `unreachable` | `unnameable` when no spelling names the key. Required whenever `env` is `null`. |
 | `default`, `default_value` | The default instance: as display text, and as a JSON value. `null` for a secret, whatever the type holds. |
 | `note` | Prose qualifying a default, or `null`. |
-| `required` | Whether some layer must supply the key; in practice, no default and not optional. Not JSON Schema's `required`. |
+| `required` | Whether some layer must supply the key; in practice, no default and not optional, on the field and on every section above it. Not JSON Schema's `required`. |
 | `secret`, `reserved` | Whether the value is a credential; whether the loader reads it before the layers exist. |
 | `reload` | Only with `schema.reload`. Absent means undeclared, which reads as `restart`. |
 

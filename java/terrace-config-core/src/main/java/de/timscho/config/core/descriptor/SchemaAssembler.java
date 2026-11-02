@@ -36,6 +36,11 @@ import org.jspecify.annotations.Nullable;
  * Schema::with_defaults_from_value}, which a caller runs against a default-constructed instance
  * converted to a nested map.
  *
+ * <p>The same holds for a section. A {@code @Nested} field that is {@code Optional}-wrapped or has a
+ * default is filled in whole, or left empty, when a document leaves it out, so no key under it is
+ * required, whatever its own type says about it. That is the Rust derive's {@code Sink::optional}
+ * scope: a key is required only when its own field is and every section above it is too.
+ *
  * <p>A container key's {@link Key#getConstraint()} carries the shape of one element, as the Rust
  * crate's {@code rust_type::interpret_with} does: {@code items} for a {@code List}/{@code Set},
  * {@code additionalProperties} for a {@code Map}. A scalar element is its type's own constraint; an
@@ -86,7 +91,7 @@ public class SchemaAssembler {
         }
 
         final List<Key> keys = new ArrayList<>();
-        walk(descriptor.keys(), root, keys, dialect, reservedUpper);
+        walk(descriptor.keys(), root, false, keys, dialect, reservedUpper);
 
         return Schema.builder()
                 .schemaVersion(SCHEMA_VERSION)
@@ -95,10 +100,15 @@ public class SchemaAssembler {
                 .build();
     }
 
-    /** Walks {@code fields}, appending one {@link Key} per leaf/container field to {@code out}. */
+    /**
+     * Walks {@code fields}, appending one {@link Key} per leaf/container field to {@code out}.
+     * {@code optional} is whether a section above {@code fields} may be absent, which makes every
+     * key under it not required.
+     */
     private static void walk(
             final List<KeyDescriptor> fields,
             final String prefix,
+            final boolean optional,
             final List<Key> out,
             final Dialect dialect,
             final Set<String> reservedUpper) {
@@ -108,11 +118,20 @@ public class SchemaAssembler {
                 // `#[config(nested)]`: the field opens a level rather than becoming a key of its
                 // own, bare or behind an `Optional`. Neither carries a key of its own in Rust
                 // either, since a struct field has no scalar value to bind directly.
-                walk(field.nestedKeys(), path, out, dialect, reservedUpper);
+                walk(field.nestedKeys(), path, optional || mayBeAbsent(field), out, dialect, reservedUpper);
             } else {
-                out.add(leaf(field, prefix, path, dialect, reservedUpper));
+                out.add(leaf(field, prefix, path, optional, dialect, reservedUpper));
             }
         }
+    }
+
+    /**
+     * Whether a document may leave {@code field} out: it is {@code Optional}-wrapped or carries a
+     * default. For a key that is what {@code required: false} means, and for a {@code @Nested}
+     * section it is why none of the keys under it is required.
+     */
+    private static boolean mayBeAbsent(final KeyDescriptor field) {
+        return field.container() == KeyDescriptor.ContainerKind.OPTIONAL || field.hasDefault();
     }
 
     /** Whether {@code field} opens a level of its own rather than becoming a key: {@code @Nested},
@@ -123,11 +142,15 @@ public class SchemaAssembler {
                         || field.container() == KeyDescriptor.ContainerKind.OPTIONAL);
     }
 
-    /** One field as a leaf {@link Key}: the whole of a container field, structured or not. */
+    /**
+     * One field as a leaf {@link Key}: the whole of a container field, structured or not. {@code
+     * optional} is whether a section above it may be absent.
+     */
     private static Key leaf(
             final KeyDescriptor field,
             final String prefix,
             final String path,
+            final boolean optional,
             final Dialect dialect,
             final Set<String> reservedUpper) {
         final boolean container = field.container() != KeyDescriptor.ContainerKind.NONE
@@ -156,7 +179,7 @@ public class SchemaAssembler {
                 .secret(field.secret())
                 .note(field.note())
                 // Syntactic, matching the Rust derive macro exactly; see the class-level note.
-                .required(field.container() != KeyDescriptor.ContainerKind.OPTIONAL && !field.hasDefault());
+                .required(!optional && !mayBeAbsent(field));
 
         if (textConstraint != null) {
             builder.textConstraint(textConstraint);

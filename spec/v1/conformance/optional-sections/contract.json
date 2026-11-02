@@ -1,0 +1,236 @@
+{
+  "terrace_contract": 1,
+  "producer": {
+    "name": "terrace-config",
+    "version": "0.0.0-conformance",
+    "loader": "figment"
+  },
+  "app": {
+    "name": "limiter",
+    "version": "1.0.0"
+  },
+  "schema": {
+    "schema_version": 2,
+    "dialect": {
+      "prefix": "LIMITER_",
+      "nesting_separator": "__",
+      "indirection_suffix": "_FILE"
+    },
+    "loader": [
+      {
+        "env": "LIMITER_CONFIG",
+        "role": "config",
+        "docs": "Names the TOML layer: a file, or a directory whose `*.toml` files are all merged in name order.",
+        "default": "config.toml"
+      },
+      {
+        "env": "LIMITER_SECRETS_DIR",
+        "role": "secrets_dir",
+        "docs": "Names a directory of key-named files — a mounted Kubernetes `Secret` volume. Each file supplies the key its name spells.",
+        "default": null
+      }
+    ],
+    "keys": [
+      {
+        "path": "global.per_minute",
+        "env": "LIMITER_GLOBAL__PER_MINUTE",
+        "env_file": "LIMITER_GLOBAL__PER_MINUTE_FILE",
+        "secrets_file": "global__per_minute",
+        "docs": "Requests allowed per minute, which is the bucket's refill rate.",
+        "ty": "u32",
+        "values": [],
+        "constraint": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "300",
+        "default_value": 300,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "global.burst",
+        "env": "LIMITER_GLOBAL__BURST",
+        "env_file": "LIMITER_GLOBAL__BURST_FILE",
+        "secrets_file": "global__burst",
+        "docs": "The most requests a client may spend back-to-back.",
+        "ty": "u32",
+        "values": [],
+        "constraint": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": "60",
+        "default_value": 60,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "auth.per_minute",
+        "env": "LIMITER_AUTH__PER_MINUTE",
+        "env_file": "LIMITER_AUTH__PER_MINUTE_FILE",
+        "secrets_file": "auth__per_minute",
+        "docs": "Requests allowed per minute, which is the bucket's refill rate.",
+        "ty": "u32",
+        "values": [],
+        "constraint": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "auth.burst",
+        "env": "LIMITER_AUTH__BURST",
+        "env_file": "LIMITER_AUTH__BURST_FILE",
+        "secrets_file": "auth__burst",
+        "docs": "The most requests a client may spend back-to-back.",
+        "ty": "u32",
+        "values": [],
+        "constraint": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text_constraint": {
+          "pattern": "^\\s*\\+?[0-9]+\\s*$",
+          "type": "string"
+        },
+        "text_form": "integer",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": false,
+        "secret": false,
+        "reserved": false
+      },
+      {
+        "path": "store.url",
+        "env": "LIMITER_STORE__URL",
+        "env_file": "LIMITER_STORE__URL_FILE",
+        "secrets_file": "store__url",
+        "docs": "Connection URL of the counter store.",
+        "ty": "String",
+        "values": [],
+        "constraint": {
+          "type": "string"
+        },
+        "text_form": "text",
+        "aliases": [],
+        "env_aliases": [],
+        "env_file_aliases": [],
+        "secrets_file_aliases": [],
+        "default": null,
+        "default_value": null,
+        "note": null,
+        "required": true,
+        "secret": false,
+        "reserved": false
+      }
+    ]
+  },
+  "json_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "auth": {
+        "additionalProperties": false,
+        "properties": {
+          "burst": {
+            "description": "The most requests a client may spend back-to-back.",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "per_minute": {
+            "description": "Requests allowed per minute, which is the bucket's refill rate.",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "global": {
+        "additionalProperties": false,
+        "properties": {
+          "burst": {
+            "default": 60,
+            "description": "The most requests a client may spend back-to-back.",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "per_minute": {
+            "default": 300,
+            "description": "Requests allowed per minute, which is the bucket's refill rate.",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "store": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "description": "Connection URL of the counter store.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "title": "limiter configuration",
+    "type": "object"
+  },
+  "external": {
+    "env": [],
+    "ignore": [],
+    "unknown": "reject"
+  }
+}

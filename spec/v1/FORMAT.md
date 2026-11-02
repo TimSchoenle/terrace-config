@@ -209,6 +209,14 @@ way, or by the environment, and never by the rendered document, which does not c
 per key across every layer it can see, and can then say "no layer supplies this" rather than "add
 it to the file", which for a credential is the wrong advice.
 
+**`required` is decided through every section above the key.** A key is required only when the
+loader refuses a configuration that leaves it out. A section the loader fills in whole when it is
+missing, or leaves unset, requires none of the keys inside it, even those its own type requires: a
+field with a default, a field of a type that defaults its fields, or an optional field. A producer
+reading `required` off the field alone publishes keys the image never asks for, drops their
+observed defaults, and makes every consumer that checks `required` reject a correct deployment
+([`optional-sections`](conformance/optional-sections/)).
+
 **A `secret` MUST NOT carry a default**, in either field, anywhere in the document. This is the
 point the document crosses into a public registry, and a producer MUST refuse to build one rather
 than emit it.
