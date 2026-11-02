@@ -102,13 +102,13 @@ The tag is the release series. Below `1.0` a minor release may break, so the ser
 `major.minor` and takes every fix and nothing else; from `1.0` it is the major alone.
 
 Each release also attaches four binaries, named
-`terrace-contract-0.13.0-<target>.tar.gz` (`.zip` on Windows), with `SHA256SUMS`
+`terrace-contract-0.13.1-<target>.tar.gz` (`.zip` on Windows), with `SHA256SUMS`
 and its signature beside them:
 
 ```bash
-curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.0/terrace-contract-0.13.0-x86_64-unknown-linux-musl.tar.gz
-curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.0/SHA256SUMS
-curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.0/SHA256SUMS.sigstore.json
+curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.1/terrace-contract-0.13.1-x86_64-unknown-linux-musl.tar.gz
+curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.1/SHA256SUMS
+curl -fsSLO https://github.com/TimSchoenle/terrace-config/releases/download/terrace-contract-v0.13.1/SHA256SUMS.sigstore.json
 cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
   --certificate-identity 'https://github.com/TimSchoenle/terrace-config/.github/workflows/release-cli.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
