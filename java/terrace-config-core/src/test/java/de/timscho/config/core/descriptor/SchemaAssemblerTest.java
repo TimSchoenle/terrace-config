@@ -364,16 +364,15 @@ class SchemaAssemblerTest {
     void aSectionInsideADefaultedSectionIsOptionalToo() {
         final KeyDescriptor inner = section("inner", ContainerKind.NONE, false, policy());
         assertThat(requiredByPath(section("middle", ContainerKind.NONE, true, List.of(inner))))
-                .containsExactly(
-                        Map.entry("middle.inner.per_minute", false), Map.entry("middle.inner.burst", false));
+                .containsExactly(Map.entry("middle.inner.per_minute", false), Map.entry("middle.inner.burst", false));
     }
 
     /** An element's fields are required of each element present, whatever section holds the key. */
     @Test
     void anElementInsideADefaultedSectionKeepsItsRequiredFields() {
         final ElementDescriptor element = struct("Policy", policy());
-        final KeyDescriptor routes = field(
-                "routes", "List<Policy>", ContainerKind.LIST, element, List.of(), false, true, List.of());
+        final KeyDescriptor routes =
+                field("routes", "List<Policy>", ContainerKind.LIST, element, List.of(), false, true, List.of());
         final List<Key> keys = assembled(List.of(section("limits", ContainerKind.NONE, true, List.of(routes))));
         assertThat(keys).hasSize(1);
         assertThat(keys.getFirst().isRequired()).isFalse();
