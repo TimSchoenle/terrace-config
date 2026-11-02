@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.0...terrace-config-java-v0.8.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* stop requiring the keys of a section the loader can leave out ([#357](https://github.com/TimSchoenle/terrace-config/issues/357)) ([0aa01d2](https://github.com/TimSchoenle/terrace-config/commit/0aa01d22def33feb578b94987b127dd3ab32e15c))
+
 ## [0.8.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.7.1...terrace-config-java-v0.8.0) (2026-10-29)
 
 
