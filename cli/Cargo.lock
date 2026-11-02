@@ -917,7 +917,7 @@ dependencies = [
 
 [[package]]
 name = "terrace-contract"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clap",
  "flate2",

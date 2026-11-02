@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.13.0...terrace-contract-v0.13.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* stop requiring the keys of a section the loader can leave out ([#357](https://github.com/TimSchoenle/terrace-config/issues/357)) ([0aa01d2](https://github.com/TimSchoenle/terrace-config/commit/0aa01d22def33feb578b94987b127dd3ab32e15c))
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.60.2 ([#354](https://github.com/TimSchoenle/terrace-config/issues/354)) ([c3ed2fa](https://github.com/TimSchoenle/terrace-config/commit/c3ed2fa9f9d85790e58bc1569c19230d7db55eb9))
+
 ## [0.13.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.12.0...terrace-contract-v0.13.0) (2026-10-29)
 
 
