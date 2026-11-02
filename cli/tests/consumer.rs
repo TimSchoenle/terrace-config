@@ -34,6 +34,7 @@ const PRODUCER_CASES: &[&str] = &[
     "element-patterns",
     "conditions",
     "reload",
+    "optional-sections",
 ];
 
 /// The cases only a consumer meets, which carry none and are held by this file.

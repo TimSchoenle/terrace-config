@@ -87,7 +87,7 @@ table). Python keeps no field docstrings at runtime, so the prose travels in the
 | `path` | field names, `.`-joined through tables, in declaration order |
 | `env`, `env_file`, `secrets_file`, `unreachable` | the path and the dialect; `env: null` and `unreachable: unnameable` when the path does not survive the case fold |
 | `default`, `default_value` | the default instance passed in, except for a secret, which publishes none |
-| `required` | no default on the field and not `X \| None` |
+| `required` | no default on the field and not `X \| None`, nor on any table above it |
 | `json_schema` | the same keys, closed at every level, members in name order |
 
 ## Deliberately absent

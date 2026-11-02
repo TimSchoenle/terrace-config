@@ -346,6 +346,9 @@ pub struct Sink {
     /// The [`Self::reload`] scopes currently open, which decide [`Key::reload`] for every key
     /// recorded inside them.
     reload: reload::Scopes,
+    /// How many [`Self::optional`] scopes are open. Inside any of them no key is
+    /// [`required`](Key::required), whatever its own [`Leaf::required`] says.
+    optional: usize,
 }
 
 /// What one element of a container-typed key holds.
@@ -416,6 +419,7 @@ impl Sink {
             closed: BTreeSet::new(),
             depth,
             reload: reload::Scopes::default(),
+            optional: 0,
         }
     }
 
@@ -492,7 +496,7 @@ impl Sink {
             default: None,
             default_value: None,
             note: leaf.note.map(str::to_owned),
-            required: leaf.required,
+            required: leaf.required && self.optional == 0,
             secret: leaf.secret,
             reserved: false,
             reload: self.reload.resolve(),
@@ -568,6 +572,60 @@ impl Sink {
         self.reload.open(class);
         describe(self);
         self.reload.close(class);
+    }
+
+    /// Records every key `describe` reports as one no layer has to supply.
+    ///
+    /// What a `#[config(nested)]` field the loader can leave out becomes: one with
+    /// `#[serde(default)]` or `#[serde(default = "…")]`, one inside a `#[serde(default)]`
+    /// container, or an `Option`. The derive wraps that field's `nested` call in one of these. A
+    /// `#[serde(flatten)]` field gets one only when it is an `Option`, which serde leaves `None`
+    /// when its keys are missing: any other flattened field reads its keys from the parent's own
+    /// map and is refused when one is missing, whatever `default` it carries.
+    ///
+    /// [`Leaf::required`] is a property of the field inside its own type, and a type does not know
+    /// where it is used. `RateLimitPolicy { per_minute: u32 }` reports `per_minute` as required,
+    /// and that is true of a policy someone writes. It is not true of `rate_limit.global` when the
+    /// parent fills a missing `global` with a whole default policy: no layer has to supply
+    /// `rate_limit.global.per_minute`, and a contract saying one must sends every consumer
+    /// checking [`Key::required`] after a key the image never asks for. So a scope overrides the
+    /// leaf, and only in that direction: a key is required when its own field is and every
+    /// section above it is too.
+    ///
+    /// Scopes nest; the keys inside any open one are optional. An element sink
+    /// ([`Self::repeated`]) starts outside every scope, because an element's fields are required
+    /// of each element that is there, not of the key holding them.
+    ///
+    /// ```
+    /// use terrace_config::schema::{Describe, Leaf, Schema, Sink};
+    /// # use terrace_config::Dialect;
+    ///
+    /// struct Policy;
+    /// impl Describe for Policy {
+    ///     fn describe(sink: &mut Sink) {
+    ///         sink.leaf(Leaf { name: "per_minute", docs: "", ty: Some("u32"), values: None,
+    ///             bounds: None, aliases: &[], note: None, required: true, secret: false });
+    ///     }
+    /// }
+    ///
+    /// struct Config;
+    /// impl Describe for Config {
+    ///     fn describe(sink: &mut Sink) {
+    ///         sink.nested("strict", <Policy as Describe>::describe);
+    ///         sink.optional(|sink| sink.nested("global", <Policy as Describe>::describe));
+    ///     }
+    /// }
+    ///
+    /// let schema = Schema::describe::<Config>(&Dialect::new("MYAPP_"));
+    /// assert_eq!(schema.keys[0].path, "strict.per_minute");
+    /// assert!(schema.keys[0].required);
+    /// assert_eq!(schema.keys[1].path, "global.per_minute");
+    /// assert!(!schema.keys[1].required);
+    /// ```
+    pub fn optional(&mut self, describe: impl FnOnce(&mut Self)) {
+        self.optional += 1;
+        describe(self);
+        self.optional -= 1;
     }
 
     /// Records a subtree under `segment`.

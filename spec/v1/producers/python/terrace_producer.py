@@ -131,25 +131,37 @@ def as_json(value: object) -> Json:
     return value.value if isinstance(value, enum.Enum) else value
 
 
-def keys(cls: type, defaults: object, dialect: Dialect, at: str = "") -> list[dict[str, Json]]:
-    """Every key of `cls`, depth first in declaration order, with defaults read from `defaults`."""
+def keys(
+    cls: type, defaults: object, dialect: Dialect, at: str = "", optional_section: bool = False
+) -> list[dict[str, Json]]:
+    """Every key of `cls`, depth first in declaration order, with defaults read from `defaults`.
+
+    `optional_section` is whether a table above `cls` may be left out: it has a default or is
+    `X | None`. A loader fills such a table in whole, or leaves it unset, so no key under it is
+    required, whatever its own field says. `defaults` is `None` when that table is unset.
+    """
     out: list[dict[str, Json]] = []
     hints = typing.get_type_hints(cls)
     for field in dataclasses.fields(cls):
         path = at + field.name
         tp, optional = strip_optional(hints[field.name])
         doc = field.metadata.get("doc", "")
-        if dataclasses.is_dataclass(tp) and isinstance(tp, type):
-            out.extend(keys(tp, getattr(defaults, field.name), dialect, path + "."))
-            continue
-        leaf = describe(tp)
-        secret = bool(field.metadata.get("secret", False))
         has_default = (
             field.default is not dataclasses.MISSING
             or field.default_factory is not dataclasses.MISSING
         )
-        # A secret's default is a credential in a public registry: published as no default.
-        value = as_json(getattr(defaults, field.name)) if has_default and not secret else None
+        if dataclasses.is_dataclass(tp) and isinstance(tp, type):
+            section = None if defaults is None else getattr(defaults, field.name)
+            absent = optional_section or has_default or optional
+            out.extend(keys(tp, section, dialect, path + ".", absent))
+            continue
+        leaf = describe(tp)
+        secret = bool(field.metadata.get("secret", False))
+        is_required = not has_default and not optional and not optional_section
+        # A secret's default is a credential in a public registry: published as no default. A key
+        # under an optional table takes its default from the table's, which may be unset.
+        observed = (has_default or optional_section) and not secret and defaults is not None
+        value = as_json(getattr(defaults, field.name)) if observed else None
         env = dialect.env(path)
         key: dict[str, Json] = {
             "path": path,
@@ -172,7 +184,7 @@ def keys(cls: type, defaults: object, dialect: Dialect, at: str = "") -> list[di
             "default": display(value),
             "default_value": value,
             "note": None,
-            "required": not has_default and not optional,
+            "required": is_required,
             "secret": secret,
             "reserved": False,
         }

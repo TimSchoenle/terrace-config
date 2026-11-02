@@ -518,6 +518,59 @@ struct Upstream {
     token: Option<String>,
 }
 
+/// A limiter whose sections the loader fills in when a document leaves them out.
+///
+/// Every way a section can be absent beside one that cannot: a `default` function supplying the
+/// whole section, an `Option` leaving it unset, and a plain section a document has to carry. The
+/// first two hold keys their own type requires; none of them is required here.
+#[derive(Deserialize, Serialize, Describe)]
+struct Limiter {
+    /// Applies to every route without a stricter class.
+    #[config(nested)]
+    #[serde(default = "Bucket::generous")]
+    global: Bucket,
+    /// Credential-handling routes. Unlimited when unset.
+    #[config(nested)]
+    auth: Option<Bucket>,
+    /// Where the shared counters live.
+    #[config(nested)]
+    store: Store,
+}
+
+impl Default for Limiter {
+    fn default() -> Self {
+        Self {
+            global: Bucket::generous(),
+            auth: None,
+            store: Store { url: String::new() },
+        }
+    }
+}
+
+/// A token bucket. Both fields are required of a bucket someone writes.
+#[derive(Deserialize, Serialize, Describe)]
+struct Bucket {
+    /// Requests allowed per minute, which is the bucket's refill rate.
+    per_minute: u32,
+    /// The most requests a client may spend back-to-back.
+    burst: u32,
+}
+
+impl Bucket {
+    fn generous() -> Self {
+        Self {
+            per_minute: 300,
+            burst: 60,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Describe)]
+struct Store {
+    /// Connection URL of the counter store.
+    url: String,
+}
+
 fn default_filter() -> String {
     "info".to_owned()
 }
@@ -544,6 +597,7 @@ fn cases() -> Vec<(&'static str, Contract)> {
         ("element-patterns", element_patterns()),
         ("conditions", conditions()),
         ("reload", reload()),
+        ("optional-sections", optional_sections()),
     ]
 }
 
@@ -648,6 +702,16 @@ fn reload() -> Contract {
         .with_defaults_from(&Rebuilding::default())
         .expect("the default config serialises")
         .into_contract(App::new("relay").version("1.0.0"))
+        .build()
+        .expect("the contract has nothing to refuse")
+}
+
+fn optional_sections() -> Contract {
+    Terrace::new("LIMITER_")
+        .schema::<Limiter>()
+        .with_defaults_from(&Limiter::default())
+        .expect("the default config serialises")
+        .into_contract(App::new("limiter").version("1.0.0"))
         .build()
         .expect("the contract has nothing to refuse")
 }

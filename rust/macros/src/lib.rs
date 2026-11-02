@@ -49,6 +49,13 @@ use crate::expand::{expand_enum, expand_struct};
 /// implemented), `alias`, `skip`, `skip_deserializing`, `default`, and `flatten`. Annotating a
 /// field twice is how the documentation drifts from the loader.
 ///
+/// `default` and `Option` decide whether a key is required: it is when serde refuses a document
+/// that leaves it out. That holds for a section too. A `#[config(nested)]` field with a `default`,
+/// inside a `#[serde(default)]` container, or wrapped in `Option` can be left out whole, so none of
+/// the keys under it is required, whatever its own type says about them. A `flatten`ed field is
+/// the exception unless it is an `Option`: serde refuses a missing flattened key whatever
+/// `default` the field carries, and leaves a flattened `Option` `None` instead.
+///
 /// `#[serde(deny_unknown_fields)]` on the container is read for the same reason and reported the
 /// same way, as [Closed structs](#closed-structs) describes.
 ///

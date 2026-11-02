@@ -225,6 +225,220 @@ fn serde_decides_which_keys_are_required() {
     assert!(!key(&schema, "github.token").required);
 }
 
+/// A required field of a section serde fills in when it is missing, as `RateLimitConfig` fills
+/// `global` with a whole default policy.
+#[derive(Deserialize, Serialize, Describe)]
+struct Policy {
+    /// Sustained requests per minute.
+    per_minute: u32,
+    /// Most requests back-to-back.
+    burst: u32,
+}
+
+impl Policy {
+    fn generous() -> Self {
+        Self {
+            per_minute: 300,
+            burst: 60,
+        }
+    }
+}
+
+/// Two ways a section can be left out, beside one that cannot. The third, a container-level
+/// `#[serde(default)]`, is [`ByContainer`].
+#[derive(Deserialize, Serialize, Describe)]
+struct Sections {
+    #[config(nested)]
+    #[serde(default = "Policy::generous")]
+    by_function: Policy,
+    #[config(nested)]
+    by_option: Option<Policy>,
+    #[config(nested)]
+    strict: Policy,
+}
+
+/// A section left out because the struct holding it is `#[serde(default)]`.
+#[derive(Deserialize, Serialize, Describe)]
+#[serde(default)]
+struct ByContainer {
+    #[config(nested)]
+    inner: Policy,
+}
+
+impl Default for ByContainer {
+    fn default() -> Self {
+        Self {
+            inner: Policy::generous(),
+        }
+    }
+}
+
+fn sections() -> Schema {
+    Schema::describe::<Sections>(&Terrace::new("T_").dialect())
+}
+
+#[test]
+fn a_section_serde_can_leave_out_requires_none_of_its_keys() {
+    let schema = sections();
+    // `#[serde(default = "…")]` on the section's own field.
+    assert!(!key(&schema, "by_function.per_minute").required);
+    assert!(!key(&schema, "by_function.burst").required);
+    // `Option<_>`: the whole section may be absent.
+    assert!(!key(&schema, "by_option.per_minute").required);
+}
+
+#[test]
+fn a_section_serde_cannot_leave_out_keeps_its_keys_required() {
+    let schema = sections();
+    assert!(key(&schema, "strict.per_minute").required);
+    assert!(key(&schema, "strict.burst").required);
+}
+
+/// What the flag claims, checked against the loader: a document carrying only the one section that
+/// has no default loads, so no other key had to be supplied.
+#[test]
+fn the_keys_a_defaulted_section_holds_need_no_layer_to_load() {
+    let loaded: Sections = Figment::from(Toml::string("[strict]\nper_minute = 1\nburst = 1\n"))
+        .extract()
+        .expect("every section but `strict` has a default");
+    assert_eq!(loaded.by_function.per_minute, 300);
+    assert!(loaded.by_option.is_none());
+
+    let empty: ByContainer = Figment::new()
+        .extract()
+        .expect("the container default fills `inner`");
+    assert_eq!(empty.inner.burst, 60);
+    let schema = Schema::describe::<ByContainer>(&Terrace::new("T_").dialect());
+    assert!(!key(&schema, "inner.per_minute").required);
+    assert!(!key(&schema, "inner.burst").required);
+
+    let schema = sections();
+    let unsupplied: Vec<&str> = schema
+        .keys
+        .iter()
+        .filter(|key| key.required && !key.path.starts_with("strict."))
+        .map(|key| key.path.as_str())
+        .collect();
+    assert!(
+        unsupplied.is_empty(),
+        "required without being needed: {unsupplied:?}"
+    );
+}
+
+/// A required key keeps no default, so the flag decided whether the section's default was
+/// published at all. Now that the keys are optional, it is.
+#[test]
+fn a_defaulted_section_publishes_its_observed_default() {
+    let defaults = Sections {
+        by_function: Policy::generous(),
+        by_option: None,
+        strict: Policy {
+            per_minute: 1,
+            burst: 1,
+        },
+    };
+    let schema = sections()
+        .with_defaults_from(&defaults)
+        .expect("the defaults serialise");
+    assert_eq!(
+        key(&schema, "by_function.per_minute").default.as_deref(),
+        Some("300")
+    );
+    assert_eq!(
+        key(&schema, "by_function.burst").default.as_deref(),
+        Some("60")
+    );
+    // Required, so whatever the value happened to hold is not a default.
+    assert_eq!(key(&schema, "strict.per_minute").default, None);
+}
+
+/// serde reads a flattened field's keys from the parent's own map and refuses a missing one even
+/// when the field carries a `default`, so flattening opens no optional scope.
+#[test]
+fn a_flattened_section_keeps_its_own_required_keys() {
+    #[derive(Deserialize, Describe)]
+    struct Outer {
+        #[config(nested)]
+        #[serde(flatten, default = "Policy::generous")]
+        policy: Policy,
+    }
+
+    assert!(Figment::new().extract::<Outer>().is_err());
+    let schema = Schema::describe::<Outer>(&Terrace::new("T_").dialect());
+    assert!(key(&schema, "per_minute").required);
+}
+
+/// A flattened `Option` is the exception: serde leaves it `None` when its keys are missing, so the
+/// keys are not required.
+#[test]
+fn a_flattened_option_requires_none_of_its_keys() {
+    #[derive(Deserialize, Describe)]
+    struct Outer {
+        #[config(nested)]
+        #[serde(flatten)]
+        policy: Option<Policy>,
+    }
+
+    let empty: Outer = Figment::new()
+        .extract()
+        .expect("a flattened `Option` with no keys is `None`");
+    assert!(empty.policy.is_none());
+    let schema = Schema::describe::<Outer>(&Terrace::new("T_").dialect());
+    assert!(!key(&schema, "per_minute").required);
+    assert!(!key(&schema, "burst").required);
+}
+
+/// The scope covers everything under it, including a section that has no default of its own.
+#[test]
+fn a_section_inside_a_defaulted_section_is_optional_too() {
+    #[derive(Describe)]
+    struct Outer {
+        #[config(nested)]
+        #[serde(default)]
+        middle: Middle,
+    }
+
+    #[derive(Describe)]
+    struct Middle {
+        #[config(nested)]
+        inner: Policy,
+    }
+
+    let schema = Schema::describe::<Outer>(&Terrace::new("T_").dialect());
+    assert!(!key(&schema, "middle.inner.per_minute").required);
+}
+
+/// An element's fields are required of each element that is present, which a defaulted section
+/// around the key holding them does not change.
+#[test]
+fn an_element_inside_a_defaulted_section_keeps_its_required_fields() {
+    #[derive(Describe)]
+    struct Outer {
+        #[config(nested)]
+        #[serde(default)]
+        limits: Limits,
+    }
+
+    #[derive(Describe)]
+    struct Limits {
+        #[config(element)]
+        #[serde(default)]
+        routes: Vec<Policy>,
+    }
+
+    let schema = Schema::describe::<Outer>(&Terrace::new("T_").dialect());
+    let routes = key(&schema, "limits.routes");
+    assert!(!routes.required);
+    let constraint = routes
+        .constraint
+        .as_ref()
+        .expect("an array of described policies");
+    assert_eq!(
+        constraint["items"]["required"],
+        json!(["per_minute", "burst"])
+    );
+}
+
 #[test]
 fn config_skip_omits_a_key_without_touching_deserialisation() {
     assert!(!paths(&schema()).contains(&"internal"));
