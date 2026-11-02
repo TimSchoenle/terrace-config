@@ -36,10 +36,14 @@ import org.jspecify.annotations.Nullable;
  * Schema::with_defaults_from_value}, which a caller runs against a default-constructed instance
  * converted to a nested map.
  *
- * <p>The same holds for a section. A {@code @Nested} field that is {@code Optional}-wrapped or has a
- * default is filled in whole, or left empty, when a document leaves it out, so no key under it is
- * required, whatever its own type says about it. That is the Rust derive's {@code Sink::optional}
- * scope: a key is required only when its own field is and every section above it is too.
+ * <p>The same holds for an {@code Optional}-wrapped {@code @Nested} section: a document that leaves
+ * it out leaves it empty, so no key under it is required, whatever its own type says about it. That
+ * is the Rust derive's {@code Sink::optional} scope: a key is required only when its own field is
+ * and every section above it is too. An initializer on a {@code @Nested} field opens no such scope,
+ * unlike a Rust {@code #[serde(default)]}: {@code private Database database = new Database();} is
+ * how a Java section avoids being {@code null}, and the instance it builds supplies only what
+ * {@code Database}'s own fields initialise. A key without an initializer is as unset inside it as
+ * anywhere else, so it keeps its own answer.
  *
  * <p>A container key's {@link Key#getConstraint()} carries the shape of one element, as the Rust
  * crate's {@code rust_type::interpret_with} does: {@code items} for a {@code List}/{@code Set},
@@ -118,7 +122,7 @@ public class SchemaAssembler {
                 // `#[config(nested)]`: the field opens a level rather than becoming a key of its
                 // own, bare or behind an `Optional`. Neither carries a key of its own in Rust
                 // either, since a struct field has no scalar value to bind directly.
-                walk(field.nestedKeys(), path, optional || mayBeAbsent(field), out, dialect, reservedUpper);
+                walk(field.nestedKeys(), path, optional || isOptional(field), out, dialect, reservedUpper);
             } else {
                 out.add(leaf(field, prefix, path, optional, dialect, reservedUpper));
             }
@@ -127,11 +131,18 @@ public class SchemaAssembler {
 
     /**
      * Whether a document may leave {@code field} out: it is {@code Optional}-wrapped or carries a
-     * default. For a key that is what {@code required: false} means, and for a {@code @Nested}
-     * section it is why none of the keys under it is required.
+     * default. That is what {@code required: false} means for a key.
      */
     private static boolean mayBeAbsent(final KeyDescriptor field) {
-        return field.container() == KeyDescriptor.ContainerKind.OPTIONAL || field.hasDefault();
+        return isOptional(field) || field.hasDefault();
+    }
+
+    /**
+     * Whether {@code field} is {@code Optional}-wrapped: for a {@code @Nested} section, the one shape
+     * that opens an optional scope; see the class-level note.
+     */
+    private static boolean isOptional(final KeyDescriptor field) {
+        return field.container() == KeyDescriptor.ContainerKind.OPTIONAL;
     }
 
     /** Whether {@code field} opens a level of its own rather than becoming a key: {@code @Nested},

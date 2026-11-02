@@ -339,11 +339,14 @@ class SchemaAssemblerTest {
         return required;
     }
 
-    /** A section with an initializer is filled in whole when a document leaves it out. */
+    /**
+     * An initializer on a section is how a Java section avoids being {@code null}; the instance it
+     * builds leaves a field without an initializer unset, so that key stays required.
+     */
     @Test
-    void aDefaultedSectionRequiresNoneOfItsKeys() {
-        assertThat(requiredByPath(section("global", ContainerKind.NONE, true, policy())))
-                .containsExactly(Map.entry("global.per_minute", false), Map.entry("global.burst", false));
+    void anInitializedSectionKeepsItsKeysRequired() {
+        assertThat(requiredByPath(section("database", ContainerKind.NONE, true, policy())))
+                .containsExactly(Map.entry("database.per_minute", true), Map.entry("database.burst", true));
     }
 
     /** An {@code Optional} section may be absent whole. */
@@ -359,21 +362,21 @@ class SchemaAssemblerTest {
                 .containsExactly(Map.entry("strict.per_minute", true), Map.entry("strict.burst", true));
     }
 
-    /** The scope covers everything under it, including a section with no default of its own. */
+    /** The scope covers everything under it, including a section that is not optional itself. */
     @Test
-    void aSectionInsideADefaultedSectionIsOptionalToo() {
+    void aSectionInsideAnOptionalSectionIsOptionalToo() {
         final KeyDescriptor inner = section("inner", ContainerKind.NONE, false, policy());
-        assertThat(requiredByPath(section("middle", ContainerKind.NONE, true, List.of(inner))))
+        assertThat(requiredByPath(section("middle", ContainerKind.OPTIONAL, false, List.of(inner))))
                 .containsExactly(Map.entry("middle.inner.per_minute", false), Map.entry("middle.inner.burst", false));
     }
 
     /** An element's fields are required of each element present, whatever section holds the key. */
     @Test
-    void anElementInsideADefaultedSectionKeepsItsRequiredFields() {
+    void anElementInsideAnOptionalSectionKeepsItsRequiredFields() {
         final ElementDescriptor element = struct("Policy", policy());
         final KeyDescriptor routes =
                 field("routes", "List<Policy>", ContainerKind.LIST, element, List.of(), false, true, List.of());
-        final List<Key> keys = assembled(List.of(section("limits", ContainerKind.NONE, true, List.of(routes))));
+        final List<Key> keys = assembled(List.of(section("limits", ContainerKind.OPTIONAL, false, List.of(routes))));
         assertThat(keys).hasSize(1);
         assertThat(keys.getFirst().isRequired()).isFalse();
         assertThat(element(keys.getFirst().getConstraint(), "items"))
