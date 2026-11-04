@@ -162,7 +162,7 @@ jobs:
         uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
         if: matrix.workspace == 'cli'
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/rust/coverage-codecov@9d5cb31939ace7a3d3d7f452052724337c65f153 # tag=actions-rust-coverage-codecov-v2.0.4
+        uses: TimSchoenle/actions/actions/rust/coverage-codecov@e4229b81c3c3c880b9561dc4d53bd87ccf49eaf3 # tag=actions-rust-coverage-codecov-v2.0.5
         env:
           ORAS_BIN: ${{ steps.oras.outputs.path }}
         with:
@@ -263,7 +263,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
-      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+      - uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
         with:
           tool: cargo-fuzz
       - name: Replay the corpus
@@ -430,7 +430,7 @@ jobs:
           "$bin" --version
           echo "TERRACE_CONTRACT_BIN=$bin" >> "$GITHUB_ENV"
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-java-gradle-coverage-codecov-v1.1.3
+        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@e4229b81c3c3c880b9561dc4d53bd87ccf49eaf3 # tag=actions-java-gradle-coverage-codecov-v1.1.4
         with:
           source_directory: java
           java_version: "25"
