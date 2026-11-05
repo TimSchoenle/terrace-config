@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.1...terrace-config-java-v0.8.2) (2026-11-05)
+
+
+### Dependencies
+
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.8.3 ([#361](https://github.com/TimSchoenle/terrace-config/issues/361)) ([cf8d495](https://github.com/TimSchoenle/terrace-config/commit/cf8d4952f31773e1f8bfdb797f424355296dc2e5))
+
 ## [0.8.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.0...terrace-config-java-v0.8.1) (2026-11-02)
 
 
