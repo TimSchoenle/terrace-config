@@ -5,12 +5,11 @@ name: update-files
 on:
   pull_request:
 
-# Shared with docs.yml. See the note there: both workflows commit to the pull request branch,
-# and serialising them is what keeps the second one from failing on a moved parent.
+# A newer push supersedes the run on the older head. Nothing here writes to the branch: the
+# commit happens in update-files-commit.yaml, which queues with the other writers to this branch.
 concurrency:
-  group: branch-writes-${{ github.event.pull_request.head.repo.full_name || github.repository }}:${{ github.event.pull_request.head.ref || github.ref_name }}
-  queue: max
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions: {}
 
@@ -20,10 +19,11 @@ permissions: {}
 # both of those are the pull request's to choose. It holds no secret and a read-only
 # `GITHUB_TOKEN`, and hands on only a patch artifact.
 #
-# `lockfiles-commit` holds the maintenance App's private key and the write token minted from it,
-# and runs nothing from the checkout: it commits that patch, and `allowed_paths` refuses any path
-# other than the two lockfiles. Were both halves one job, anything the first ran could read the key
-# out of the runner or leave a process behind to collect the token once it was minted.
+# `lockfiles-commit` in update-files-commit.yaml (a workflow_run workflow the pull request cannot
+# edit) holds the maintenance App's private key and the write token minted from it, and runs nothing
+# from the checkout: it commits that patch, and `allowed_paths` refuses any path other than the two
+# lockfiles. Were both halves one job, anything the first ran could read the key out of the runner
+# or leave a process behind to collect the token once it was minted.
 jobs:
   lockfiles:
     name: lockfiles
@@ -33,8 +33,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read # to fetch code
-    outputs:
-      has_changes: ${{ steps.patch.outputs.has_changes }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -68,58 +66,3 @@ jobs:
         with:
           artifact_name: update-files-lockfiles
           paths: 'rust/Cargo.lock rust/fuzz/Cargo.lock'
-
-  lockfiles-commit:
-    name: lockfiles-commit
-    needs: lockfiles
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      needs.lockfiles.outputs.has_changes == 'true'
-    environment:
-      name: ci
-      deployment: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read # to fetch the commit the patch applies to; the write uses the App token
-    steps:
-      # Checkout, the token mint, the artifact download and the GraphQL commit, and nothing else.
-      - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            objects.githubusercontent.com:443
-            *.actions.githubusercontent.com:443
-            *.blob.core.windows.net:443
-
-      # Only git's objects are needed: the patch is applied on top of this commit's tree. Nothing
-      # in this checkout is executed.
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
-      # An App installation token, so the commit is verified and, unlike one made with
-      # `GITHUB_TOKEN`, re-triggers the checks on the branch it lands on.
-      - name: Generate Bot Token
-        id: generate_token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: ${{ secrets.ACTIONS_MAINTENANCE_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_MAINTENANCE_PRIVATE_KEY }}
-          permission-contents: write
-
-      # The artifact name is a literal, not the first job's output: that job ran the pull
-      # request's code.
-      - name: Commit the lockfiles
-        uses: TimSchoenle/actions/actions/common/commit-patch@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-commit-patch-v1.1.1
-        with:
-          token: ${{ steps.generate_token.outputs.token }}
-          artifact_name: update-files-lockfiles
-          # The two files `cargo fetch` writes. Any other path fails this job.
-          allowed_paths: 'rust/Cargo.lock rust/fuzz/Cargo.lock'
-          commit_message: 'build: update lockfiles'
