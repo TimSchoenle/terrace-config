@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          workspaces: rust
+          cache-workspaces: rust
       - name: Build the image
         working-directory: rust
         run: |

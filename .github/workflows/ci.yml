@@ -286,6 +286,7 @@ jobs:
       - name: Short campaign
         working-directory: rust
         run: |
+          set -o pipefail
           host="$(rustc -vV | sed -n 's/^host: //p')"
           for target in env_load secrets_dir toml_layers schema explain; do
             cargo fuzz run --target "$host" "$target" \
@@ -346,7 +347,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          workspaces: cli
+          cache-workspaces: cli
       - run: cargo build --release --locked
         working-directory: cli
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -521,7 +522,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           components: rustfmt, clippy
-          workspaces: cli
+          cache-workspaces: cli
       - name: fmt
         run: cargo fmt --check
         working-directory: cli
@@ -619,7 +620,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          workspaces: cli
+          cache-workspaces: cli
       - name: build the toolchain
         run: cargo build
         working-directory: cli
