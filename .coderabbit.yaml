@@ -148,7 +148,7 @@ reviews:
         components (terrace-config, terrace-contract, terrace-config-java) from this title.
 
   tools:
-    # Both already run in CI (ci.yml clippy per feature set, security.yml zizmor); duplicating
+    # Both already run in CI (ci.yml clippy per feature set, security.yml jactionlint); duplicating
     # them adds noise. Java style is gated by spotless and checkstyle, which CodeRabbit lacks.
     clippy:
       enabled: false

@@ -286,6 +286,7 @@ jobs:
       - name: Short campaign
         working-directory: rust
         run: |
+          set -o pipefail
           host="$(rustc -vV | sed -n 's/^host: //p')"
           for target in env_load secrets_dir toml_layers schema explain; do
             cargo fuzz run --target "$host" "$target" \
