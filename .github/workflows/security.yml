@@ -7,9 +7,11 @@ name: security
 #
 # jactionlint keeps every check of actionlint and has a rule for every zizmor audit. The
 # `pedantic` profile on purpose: the default reports only what is provably exploitable today,
-# pedantic reports the shape that becomes exploitable after one careless edit. It runs offline,
-# so the result depends on the change alone; .github/jactionlint.yaml holds the turned-off rules
-# and accepted findings, and the SARIF goes to code scanning under the category jactionlint.
+# pedantic reports the shape that becomes exploitable after one careless edit. It runs online, so
+# it also asks GitHub about the actions in use (impostor commits, vulnerable versions, moved tags,
+# archived repositories), and strict-exit fails it on findings of every level.
+# .github/jactionlint.yaml holds the turned-off rules and accepted findings, and the SARIF goes to
+# code scanning under the category jactionlint.
 #
 # Dependency advisories are not here. `cargo deny check` in ci.yml already covers them against
 # the committed `Cargo.lock`, and ci.yml runs on the same weekly schedule so an advisory
@@ -21,21 +23,21 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Weekly, alongside CI's scheduled run: jactionlint's rule set grows between releases.
+    # Weekly, alongside CI's scheduled run: advisories published since the last change are reported.
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   action-lint:
     name: Action Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read # to check out the workflows
       security-events: write # to upload the SARIF findings to code scanning
@@ -52,3 +54,6 @@ jobs:
 
       - name: Run jactionlint
         uses: TimSchoenle/actions/actions/security/jactionlint@e2799424abd778c41e7f6d1547fd402386ef398e # tag=actions-security-jactionlint-v1.1.0
+        with:
+          online: 'true'
+          strict-exit: 'true'
