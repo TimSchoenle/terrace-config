@@ -72,5 +72,5 @@ jobs:
       - name: Fail while the patch is uncommitted
         if: steps.patch.outputs.has_changes == 'true'
         run: |
-          echo "::error::rust/Cargo.lock rust/fuzz/Cargo.lock changed; update-files-commit.yaml commits them and the run on that commit decides. If no bot commit appears, regenerate them locally and push."
+          echo "::error::rust/Cargo.lock rust/fuzz/Cargo.lock changed; update-files-commit.yaml commits the patch and the run on that commit decides. If no bot commit appears, regenerate the files locally and push."
           exit 1
