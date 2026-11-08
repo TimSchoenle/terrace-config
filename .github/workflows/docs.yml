@@ -22,24 +22,21 @@ on:
   push:
     branches: [main]
 
-# Shared with update-files.yaml, not scoped to this workflow: both commit to the pull request
-# branch, and the API call that makes a verified commit rejects one whose parent has moved. Two
-# renders of the same branch racing would leave one of them failing for no reason a reader could
-# act on, so they queue instead. `cancel-in-progress: false` for the same reason: a cancelled
-# run here means a branch left holding a half-generated file.
+# A newer push supersedes the run on the older head. Nothing here writes to the branch: the
+# commit happens in docs-commit.yml, which queues with the other writers to this branch.
 concurrency:
-  group: branch-writes-${{ github.event.pull_request.head.repo.full_name || github.repository }}:${{ github.event.pull_request.head.ref || github.ref_name }}
-  queue: max
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  # `render` and `render-commit` are two halves, and the split is the security boundary of this
-  # workflow. `render` runs the pull request's own script and templates, so it holds no secret
-  # and a read-only `GITHUB_TOKEN`, and hands on only a patch artifact. `render-commit` holds the
-  # maintenance App's private key and the write token minted from it, runs nothing from the
-  # checkout, and `allowed_paths` refuses any path other than the four READMEs.
+  # `render` and `render-commit` in docs-commit.yml (a workflow_run workflow the pull request cannot
+  # edit) are two halves, and the split is the security boundary of this workflow. `render` runs the
+  # pull request's own script and templates, so it holds no secret and a read-only `GITHUB_TOKEN`,
+  # and hands on only a patch artifact. `render-commit` in docs-commit.yml holds the maintenance
+  # App's private key and the write token minted from it, runs nothing from the checkout, and
+  # `allowed_paths` refuses any path other than the four READMEs.
   render:
     name: render
     # A fork's branch is not in this repository, so there would be nothing to commit to.
@@ -49,8 +46,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read # to fetch code
-    outputs:
-      has_changes: ${{ steps.patch.outputs.has_changes }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -158,85 +153,25 @@ jobs:
         run: |
           for entry in "rust/README.md:${CHANGED}" "java/README.md:${JAVA_CHANGED}" "cli/README.md:${CLI_CHANGED}" "README.md:${ROOT_CHANGED}"; do
             if [ "${entry#*:}" = "true" ]; then
-              echo "${entry%%:*} re-rendered; render-commit commits it." >> "$GITHUB_STEP_SUMMARY"
+              echo "${entry%%:*} re-rendered; docs-commit.yml commits it." >> "$GITHUB_STEP_SUMMARY"
             else
               echo "${entry%%:*} already matched its template." >> "$GITHUB_STEP_SUMMARY"
             fi
           done
 
-  render-commit:
-    name: render-commit
-    needs: render
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      needs.render.outputs.has_changes == 'true'
-    environment:
-      name: ci
-      deployment: false
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read # to fetch the commit the patch applies to; the write uses the App token
-    steps:
-      # Checkout, the token mint, the artifact download and the GraphQL commit, and nothing else.
-      - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            objects.githubusercontent.com:443
-            *.actions.githubusercontent.com:443
-            *.blob.core.windows.net:443
-
-      # Only git's objects are needed: the patch is applied on top of this commit's tree. Nothing
-      # in this checkout is executed.
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
-      # An App installation token, so the commit is verified and, unlike one made with
-      # `GITHUB_TOKEN`, re-triggers the checks on the branch it lands on.
-      - name: Generate Bot Token
-        id: generate_token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: ${{ secrets.ACTIONS_MAINTENANCE_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_MAINTENANCE_PRIVATE_KEY }}
-          permission-contents: write
-
-      # The artifact name is a literal, not the render job's output: that job ran the pull
-      # request's code.
-      - name: Commit the READMEs
-        id: commit
-        uses: TimSchoenle/actions/actions/common/commit-patch@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-commit-patch-v1.1.1
-        with:
-          token: ${{ steps.generate_token.outputs.token }}
-          artifact_name: docs-readmes
-          # The four files the templates render to. Any other path fails this job.
-          allowed_paths: 'README.md rust/README.md java/README.md cli/README.md'
-          commit_message: 'docs: render READMEs from templates'
-
-      - name: Summarise
-        env:
-          OUTCOME: ${{ steps.commit.outputs.outcome }}
-          COMMIT_URL: ${{ steps.commit.outputs.commit_url }}
+      # The patch is committed by docs-commit.yml after this run has finished. While it is
+      # non-empty this head is not the one to merge: the run on the bot commit decides.
+      - name: Fail while the patch is uncommitted
+        if: steps.patch.outputs.has_changes == 'true'
         run: |
-          if [ "${OUTCOME}" = "committed" ]; then
-            echo "READMEs re-rendered: ${COMMIT_URL}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Nothing committed (${OUTCOME})." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "::error::README.md rust/README.md java/README.md cli/README.md changed; docs-commit.yml commits the patch and the run on that commit decides. If no bot commit appears, regenerate the files locally and push."
+          exit 1
 
   check:
     name: readme
     # Runs on every event so that branch protection can require it. On a same-repository pull
-    # request whose READMEs are stale it fails on that commit; `render-commit` then pushes the
-    # rendered files with the App token, which starts a new run where it passes.
+    # request whose READMEs are stale it fails on that commit; `render-commit` in docs-commit.yml
+    # then pushes the rendered files with the App token, which starts a new run where it passes.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
