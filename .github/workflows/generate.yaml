@@ -1,0 +1,202 @@
+name: Generate
+
+# Every file a tool writes rather than a person. Each generator job runs on the pull request's head
+# and uploads a patch; the Generated Files job is a required check and fails while a patch is not
+# committed yet or a generator failed.
+# generate-commit.yaml, a workflow_run workflow the pull request cannot edit, commits the merged
+# patch to the branch, and the run on that commit decides.
+#
+# Both generators run the pull request's code, so they hold no secret and no write permission and
+# hand on only a patch. The reverse gates stay in build.yaml and the docs workflow, which run on
+# every event and therefore also cover the default branch and forks.
+#
+# No `paths` filter: the Generated Files check has to report on every pull request to be required.
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: { }
+
+jobs:
+  # Renders the four READMEs. It runs the pull request's own script and templates, so it holds no
+  # secret and a read-only `GITHUB_TOKEN`, and hands on only a patch artifact. generate-commit.yaml
+  # holds the maintenance App's private key, runs nothing from the checkout, and commits the patch.
+  render:
+    name: Render READMEs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # to fetch code
+    outputs:
+      has_changes: ${{ steps.patch.outputs.has_changes }}
+      artifact_name: ${{ steps.patch.outputs.artifact_name }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      # The head of the branch, not the merge commit: the render has to read the manifests
+      # the pull request proposes, and the patch has to apply on top of the commit the branch
+      # points at, which is the one `commit-patch` checks it against.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      # `branch` is the default branch rather than the action's `github.ref_name` default, which
+      # on a pull_request event is `<number>/merge`. Left alone, the badge URL rendered here and
+      # the one rendered by `check` on `main` differ, and the gate fails on every merge for a
+      # reason absent from the diff. The same holds for every payload below.
+      - name: Collect the Rust payload
+        id: rust_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: rust/Cargo.toml
+          docs-dir: rust/docs
+
+      # Each component is released under its own tag prefix, so `release.tag` is only right with
+      # the prefix release-please-config.json gives that component.
+      - name: Collect the Java payload
+        id: java_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: java/gradle.properties
+          docs-dir: java/docs
+          tag-prefix: terrace-config-java-v
+
+      # Invoked through `bash` rather than executed: the repository is authored on Windows, where
+      # git does not record the executable bit.
+      - name: Generate the cli image series
+        id: cli_config
+        run: |
+          set -euo pipefail
+          json="$(bash .github/scripts/readme-variables.sh cli/Cargo.toml)"
+          echo "json=${json}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect the cli payload
+        id: cli_variables
+        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          manifest: cli/Cargo.toml
+          docs-dir: cli/docs
+          tag-prefix: terrace-contract-v
+          extra: ${{ steps.cli_config.outputs.json }}
+
+      - name: Render the Rust README
+        id: readme
+        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        with:
+          template: .github/templates/README.md.hbs
+          output: rust/README.md
+          variables: ${{ steps.rust_variables.outputs.variables }}
+
+      - name: Render the Java README
+        id: java_readme
+        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        with:
+          template: .github/templates/java-README.md.hbs
+          output: java/README.md
+          variables: ${{ steps.java_variables.outputs.variables }}
+
+      - name: Render the cli README
+        id: cli_readme
+        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        with:
+          template: .github/templates/cli-README.md.hbs
+          output: cli/README.md
+          variables: ${{ steps.cli_variables.outputs.variables }}
+
+      # The repository root has no manifest. Its template reads only `repo`, which is the same in
+      # every payload, so it renders from the Rust one.
+      - name: Render the root README
+        id: root_readme
+        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        with:
+          template: .github/templates/root-README.md.hbs
+          output: README.md
+          variables: ${{ steps.rust_variables.outputs.variables }}
+
+      - name: Create Patch
+        id: patch
+        uses: TimSchoenle/actions/actions/common/create-patch@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-create-patch-v1.1.1
+        with:
+          artifact_name: docs-readmes
+          paths: 'README.md rust/README.md java/README.md cli/README.md'
+
+  lockfiles:
+    name: Lockfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # to fetch code
+    outputs:
+      has_changes: ${{ steps.patch.outputs.has_changes }}
+      artifact_name: ${{ steps.patch.outputs.artifact_name }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      # The pull request head, not the default merge commit: the patch is committed to the branch,
+      # so it has to be computed against the commit the branch points at, and that is the commit
+      # `commit-patch` checks it against.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Install pinned toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@a188e68d0fd2bd36ad51dccb2b07ba6e75105f30 # v2.0.1
+
+      # Both from the repository root. `fuzz/rust-toolchain.toml` pins nightly for anyone working
+      # *inside* that directory, but rustup selects on the working directory rather than on
+      # `--manifest-path`, so resolution here runs on the root pin, which is all dependency
+      # resolution needs, and one toolchain fewer to install.
+      - name: Resolve both lockfiles
+        run: |
+          cargo fetch --manifest-path rust/Cargo.toml
+          cargo fetch --manifest-path rust/fuzz/Cargo.toml
+
+      - name: Create Patch
+        id: patch
+        uses: TimSchoenle/actions/actions/common/create-patch@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-create-patch-v1.1.1
+        with:
+          artifact_name: update-files-lockfiles
+          paths: 'rust/Cargo.lock rust/fuzz/Cargo.lock'
+
+  # The required check. It needs every generator above and runs whatever their result, so it
+  # reports on every pull request.
+  verdict:
+    name: Generated Files
+    needs: [ render, lockfiles ]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # to check out the commit the merged patch is made from
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Generated Files Verdict
+        uses: TimSchoenle/actions/actions/common/generated-files-verdict@ad314497a72ffde698037b8547e0aedcceff7475 # tag=actions-common-generated-files-verdict-v1.1.0
+        with:
+          needs: ${{ toJSON(needs) }}
