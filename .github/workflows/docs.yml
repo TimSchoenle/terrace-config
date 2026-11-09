@@ -1,29 +1,19 @@
 name: docs
 
 # Four READMEs are generated from `.github/templates/`: `README.md`, `rust/README.md`,
-# `java/README.md` and `cli/README.md`. This workflow is what makes that claim true in both
-# directions.
+# `java/README.md` and `cli/README.md`. On a pull request the `render` job in generate.yaml renders
+# them and generate-commit.yaml commits the result, so nothing a README quotes about itself is
+# edited by hand.
 #
-# Each component's README renders from a payload read off its own manifest, so nothing a README
-# quotes about itself is edited by hand: the tag its install snippets pin, the toolchain its badge
-# shows, the licence its last section names, and the table of everything under its `docs/`. The
-# case that matters is a release-please pull request: that commit is the one which changes the
-# component's version, so it is also the one where the README would otherwise start advertising
-# the previous tag. Rendering here means the released README already points at the tag the merge
-# is about to create.
-#
-# On every event, including those pull requests, it also renders in `check` mode, writing nothing
-# and failing if a committed README is stale. That job is the required check. Without it, editing
-# a README directly would appear to work right up until the next pull request silently reverted
-# it.
+# This workflow is the other direction. On every event it renders in `check` mode, writing nothing
+# and failing if a committed README is stale. Without it, editing a README directly would appear to
+# work right up until the next pull request silently reverted it.
 
 on:
   pull_request:
   push:
     branches: [main]
 
-# A newer push supersedes the run on the older head. Nothing here writes to the branch: the
-# commit happens in docs-commit.yml, which queues with the other writers to this branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -31,147 +21,11 @@ concurrency:
 permissions: {}
 
 jobs:
-  # `render` and `render-commit` in docs-commit.yml (a workflow_run workflow the pull request cannot
-  # edit) are two halves, and the split is the security boundary of this workflow. `render` runs the
-  # pull request's own script and templates, so it holds no secret and a read-only `GITHUB_TOKEN`,
-  # and hands on only a patch artifact. `render-commit` in docs-commit.yml holds the maintenance
-  # App's private key and the write token minted from it, runs nothing from the checkout, and
-  # `allowed_paths` refuses any path other than the four READMEs.
-  render:
-    name: render
-    # A fork's branch is not in this repository, so there would be nothing to commit to.
-    # `check` below picks those pull requests up instead.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read # to fetch code
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: audit
-
-      # The head of the branch, not the merge commit: the render has to read the manifests
-      # the pull request proposes, and the patch has to apply on top of the commit the branch
-      # points at, which is the one `commit-patch` checks it against.
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-
-      # `branch` is the default branch rather than the action's `github.ref_name` default, which
-      # on a pull_request event is `<number>/merge`. Left alone, the badge URL rendered here and
-      # the one rendered by `check` on `main` differ, and the gate fails on every merge for a
-      # reason absent from the diff. The same holds for every payload below.
-      - name: Collect the Rust payload
-        id: rust_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
-        with:
-          branch: ${{ github.event.repository.default_branch }}
-          manifest: rust/Cargo.toml
-          docs-dir: rust/docs
-
-      # Each component is released under its own tag prefix, so `release.tag` is only right with
-      # the prefix release-please-config.json gives that component.
-      - name: Collect the Java payload
-        id: java_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
-        with:
-          branch: ${{ github.event.repository.default_branch }}
-          manifest: java/gradle.properties
-          docs-dir: java/docs
-          tag-prefix: terrace-config-java-v
-
-      # Invoked through `bash` rather than executed: the repository is authored on Windows, where
-      # git does not record the executable bit.
-      - name: Generate the cli image series
-        id: cli_config
-        run: |
-          set -euo pipefail
-          json="$(bash .github/scripts/readme-variables.sh cli/Cargo.toml)"
-          echo "json=${json}" >> "$GITHUB_OUTPUT"
-
-      - name: Collect the cli payload
-        id: cli_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
-        with:
-          branch: ${{ github.event.repository.default_branch }}
-          manifest: cli/Cargo.toml
-          docs-dir: cli/docs
-          tag-prefix: terrace-contract-v
-          extra: ${{ steps.cli_config.outputs.json }}
-
-      - name: Render the Rust README
-        id: readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
-        with:
-          template: .github/templates/README.md.hbs
-          output: rust/README.md
-          variables: ${{ steps.rust_variables.outputs.variables }}
-
-      - name: Render the Java README
-        id: java_readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
-        with:
-          template: .github/templates/java-README.md.hbs
-          output: java/README.md
-          variables: ${{ steps.java_variables.outputs.variables }}
-
-      - name: Render the cli README
-        id: cli_readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
-        with:
-          template: .github/templates/cli-README.md.hbs
-          output: cli/README.md
-          variables: ${{ steps.cli_variables.outputs.variables }}
-
-      # The repository root has no manifest. Its template reads only `repo`, which is the same in
-      # every payload, so it renders from the Rust one.
-      - name: Render the root README
-        id: root_readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
-        with:
-          template: .github/templates/root-README.md.hbs
-          output: README.md
-          variables: ${{ steps.rust_variables.outputs.variables }}
-
-      - name: Create Patch
-        id: patch
-        uses: TimSchoenle/actions/actions/common/create-patch@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-create-patch-v1.1.1
-        with:
-          artifact_name: docs-readmes
-          paths: 'README.md rust/README.md java/README.md cli/README.md'
-
-      - name: Summarise
-        env:
-          CHANGED: ${{ steps.readme.outputs.changed }}
-          JAVA_CHANGED: ${{ steps.java_readme.outputs.changed }}
-          CLI_CHANGED: ${{ steps.cli_readme.outputs.changed }}
-          ROOT_CHANGED: ${{ steps.root_readme.outputs.changed }}
-        run: |
-          for entry in "rust/README.md:${CHANGED}" "java/README.md:${JAVA_CHANGED}" "cli/README.md:${CLI_CHANGED}" "README.md:${ROOT_CHANGED}"; do
-            if [ "${entry#*:}" = "true" ]; then
-              echo "${entry%%:*} re-rendered; docs-commit.yml commits it." >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "${entry%%:*} already matched its template." >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-
-      # The patch is committed by docs-commit.yml after this run has finished. While it is
-      # non-empty this head is not the one to merge: the run on the bot commit decides.
-      - name: Fail while the patch is uncommitted
-        if: steps.patch.outputs.has_changes == 'true'
-        run: |
-          echo "::error::README.md rust/README.md java/README.md cli/README.md changed; docs-commit.yml commits the patch and the run on that commit decides. If no bot commit appears, regenerate the files locally and push."
-          exit 1
-
   check:
     name: readme
-    # Runs on every event so that branch protection can require it. On a same-repository pull
-    # request whose READMEs are stale it fails on that commit; `render-commit` in docs-commit.yml
-    # then pushes the rendered files with the App token, which starts a new run where it passes.
+    # Runs on every event. On a same-repository pull request whose READMEs are stale it fails on
+    # that commit; generate-commit.yaml then pushes the rendered files with the App token, which
+    # starts a new run where it passes.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

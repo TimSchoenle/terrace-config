@@ -16,7 +16,7 @@ name: release-please
 # and their checksums keylessly, and builds the multi-architecture image from those same bytes.
 # Nothing goes to crates.io from either.
 #
-# The version the README advertises is not maintained here. `docs.yml` re-renders
+# The version the README advertises is not maintained here. `generate.yaml` re-renders
 # `.github/templates/README.md.hbs` on every pull request from the version in `Cargo.toml`, so
 # the release pull request, which is the commit that changes that version, carries the updated
 # `README.md` with it, rather than leaving the install snippet pointing at the previous tag.

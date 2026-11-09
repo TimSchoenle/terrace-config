@@ -3,8 +3,8 @@
 # Emits the one README fact readme-variables cannot derive, as strict JSON on stdout: the release
 # series an image tag pins.
 #
-# It is the `extra` input of the `readme-variables` step that renders cli/README.md in docs.yml,
-# deep-merged over what that action derives. Its only key, `image`, collides with nothing the
+# It is the `extra` input of the `readme-variables` step that renders cli/README.md in
+# generate.yaml and docs.yml, deep-merged over what that action derives. Its only key, `image`, collides with nothing the
 # action emits (`repo`, `release`, `toolchain` and `docs`).
 #
 # The release workflow tags the image with the full version, `major.minor` and `major`. Below 1.0 a
