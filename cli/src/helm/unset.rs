@@ -138,7 +138,7 @@ pub fn sentence(published: &[Published]) -> String {
     }
 }
 
-/// The annotation line for `sentence`, at `indent`.
+/// The annotation line for a [`sentence`], at `indent`.
 pub fn line(sentence: &str, indent: &str) -> String {
     format!("{indent}{ANNOTATION}{sentence}")
 }
@@ -146,6 +146,16 @@ pub fn line(sentence: &str, indent: &str) -> String {
 /// Whether a values-file line is a default override, whoever wrote it.
 pub fn is_annotation(line: &str) -> bool {
     line.trim_start().starts_with(ANNOTATION)
+}
+
+/// Whether a values-file line is a default override this module wrote.
+///
+/// Every [`sentence`] opens with the same words, which is what lets the writer that owns these
+/// lines tell its own from one a person wrote, and leave the person's alone.
+pub fn is_generated(line: &str) -> bool {
+    line.trim_start()
+        .strip_prefix(ANNOTATION)
+        .is_some_and(|rest| rest.starts_with(LEFT_OUT))
 }
 
 /// One default as a Markdown code span that survives a README table cell.
@@ -193,7 +203,7 @@ fn prose(text: &str) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::{Published, is_annotation, line, sentence};
+    use super::{Published, is_annotation, is_generated, line, sentence};
 
     fn published(document: Option<&str>, fields: &serde_json::Value) -> Published {
         Published::of(
@@ -288,5 +298,14 @@ mod tests {
         assert!(is_annotation(&written));
         assert!(!is_annotation("  # -- @default -- x"));
         assert!(!is_annotation("  # @defaults -- x"));
+    }
+
+    #[test]
+    fn a_hand_written_override_is_told_apart_from_a_generated_one() {
+        let generated = line(&sentence(&[]), "  ");
+        assert!(is_generated(&generated));
+        assert!(is_annotation("  # @default -- computed from `bindAddr`"));
+        assert!(!is_generated("  # @default -- computed from `bindAddr`"));
+        assert!(!is_generated("  # @default -- `null` means off"));
     }
 }

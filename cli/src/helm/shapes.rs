@@ -558,8 +558,10 @@ impl Chart {
     ///
     /// The override is wanted for an optional binding whose value is `null`, and is otherwise
     /// absent: a value that is set shows itself in the README's Default column, and a stale override
-    /// would hide it. Any override already in the run is replaced, whoever wrote it, because the
-    /// line states a fact the contract owns and two of them would be two answers to one question.
+    /// would hide it. Only a generated override ([`super::unset::is_generated`]) is replaced or
+    /// removed. A hand-written one is the chart author's and is never deleted; where a generated
+    /// one is also wanted, the two would be two answers to one question, so that is reported and
+    /// the run is left as it is.
     ///
     /// [`None`] when there is nothing to compare: the value does not resolve to a contract key (the
     /// schema half reports that), or the run is not directly above the value's key.
@@ -605,9 +607,22 @@ impl Chart {
             .iter()
             .map(|line| (*line).to_owned())
             .collect();
+        let hand_written = current
+            .iter()
+            .any(|line| super::unset::is_annotation(line) && !super::unset::is_generated(line));
+        if hand_written && wanted.is_some() {
+            self.problems.push(format!(
+                "{}: '{}' is left at `null` and its description already ends on a hand-written \
+                 `@default` line, which this writer does not delete. Remove that line so the \
+                 generated one can say what `null` leaves in effect, or set the value",
+                shape.at(),
+                shape.values_path
+            ));
+            return None;
+        }
         let target: Vec<String> = current
             .iter()
-            .filter(|line| !super::unset::is_annotation(line))
+            .filter(|line| !super::unset::is_generated(line))
             .cloned()
             .chain(wanted)
             .collect();
@@ -715,6 +730,10 @@ pub fn rewrite(chart: &mut Chart) -> (String, usize) {
     let shapes: Vec<Shape> = chart.shapes.clone();
 
     let mut pending: Vec<(std::ops::Range<usize>, Vec<String>)> = Vec::new();
+    // One value can carry two shape markers, which `check_markers` reports. Its annotation edit is
+    // still queued once: a second splice over a range the first already rewrote would remove
+    // whatever lines had moved into it, the value's own key line included.
+    let mut annotated = std::collections::BTreeSet::new();
     for shape in &shapes {
         if !shape.handwritten
             && let Some(target) = chart.target(shape)
@@ -728,7 +747,8 @@ pub fn rewrite(chart: &mut Chart) -> (String, usize) {
                 ));
             }
         }
-        if let Some(annotation) = chart.annotation(shape)
+        if annotated.insert(shape.values_path.clone())
+            && let Some(annotation) = chart.annotation(shape)
             && annotation.current != annotation.target
         {
             pending.push((annotation.run, annotation.target));
@@ -789,7 +809,11 @@ pub fn check(chart: &mut Chart) {
     }
 
     let every: Vec<Shape> = chart.shapes.clone();
+    let mut annotated = std::collections::BTreeSet::new();
     for shape in &every {
+        if !annotated.insert(shape.values_path.clone()) {
+            continue;
+        }
         let Some(annotation) = chart.annotation(shape) else {
             continue;
         };

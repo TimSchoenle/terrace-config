@@ -108,7 +108,9 @@ copies into `values.schema.json`.
 
 `shapes` owns the line for every value bound by a `projection`, `structured` or `external` marker,
 including a hand-transcribed one: it is written for an `optional` binding whose value is `null`,
-and removed otherwise, replacing any `@default` line already there. When the contract's default
+and removed otherwise. Only a line `shapes` wrote is replaced or removed; it recognises its own by
+the `` `null` (unset): `` they all open with. A hand-written `@default` line is never deleted, and a
+`null` value that already carries one is reported, since the two would contradict each other. When the contract's default
 changes, `shapes` rewrites the line and `shapes --check` fails until it has. `adopt` and
 `helm init` write it when they create the value.
 

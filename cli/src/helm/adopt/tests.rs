@@ -1809,3 +1809,68 @@ fn the_default_line_keeps_the_files_line_endings() {
     );
     assert!(!text.replace("\r\n", "").contains('\n'), "{text:?}");
 }
+
+#[test]
+fn a_hand_written_default_line_is_never_deleted() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    let own = "  # @default -- one hour, the session cookie's lifetime";
+    chart.values(
+        &chart
+            .text()
+            .replace("# type: integer", "# type: [integer, 'null']")
+            .replace("sessionTtl: null", "sessionTtl: 60")
+            .replace(
+                "  # -- How long a session lives.\n",
+                &format!("  # -- How long a session lives.\n{own}\n"),
+            ),
+    );
+    let before = chart.text();
+    assert_eq!(regenerate(&chart), 0);
+    assert_eq!(chart.text(), before);
+    assert_eq!(shape_problems(&chart), "");
+}
+
+#[test]
+fn a_null_value_with_a_hand_written_default_line_is_reported_not_rewritten() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    chart.values(
+        &chart
+            .text()
+            .replace("# type: integer", "# type: [integer, 'null']")
+            .replace(
+                "  # -- How long a session lives.\n",
+                "  # -- How long a session lives.\n  # @default -- whatever the image says\n",
+            ),
+    );
+    let before = chart.text();
+    let mut read = shapes::Chart::read(&chart.dir).expect("the chart reads");
+    let (text, _) = shapes::rewrite(&mut read);
+    assert_eq!(
+        text, before,
+        "the hand-written line stays and nothing is added"
+    );
+    let problems = read.problems.join("\n");
+    assert!(
+        problems.contains("hand-written `@default` line"),
+        "{problems}"
+    );
+}
+
+/// Two shape markers on one value queued its annotation edit twice, and the second splice ran
+/// over lines the first had already moved, deleting the value's own key line.
+#[test]
+fn a_value_with_two_shape_markers_is_annotated_once() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    let marker = "  # @config-shape auth.sessionTtl handwritten v1 SessionTtl\n";
+    chart.values(&chart.text().replace(
+        "  # @schema\n  # # @config",
+        &format!("{marker}{marker}  # @schema\n  # # @config"),
+    ));
+    let mut read = shapes::Chart::read(&chart.dir).expect("the chart reads");
+    let (text, _) = shapes::rewrite(&mut read);
+    assert!(text.contains("\n  sessionTtl: null\n"), "{text}");
+    assert_eq!(text.matches("# @default -- ").count(), 1, "{text}");
+}
