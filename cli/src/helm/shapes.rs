@@ -38,6 +38,13 @@
 //! whose element the producer has not described, where a block built from `{"type": "array"}` alone
 //! would type-check nothing, and a key the producer publishes no constraint for at all, where the
 //! derived block would name all six JSON types and check nothing.
+//!
+//! # The `@default` line is generated the same way
+//!
+//! A bound value left at `null` says nothing about what the image does instead. The writer owns one
+//! more line per bound value, below the block rather than inside it: the helm-docs default override
+//! that ends the description, naming the default the contract publishes. [`Chart::annotation`]
+//! decides it and [`super::unset`] words it.
 
 mod divergences;
 mod expected;
@@ -53,6 +60,7 @@ use crate::error::Error;
 
 use super::declaration::Bound;
 use super::markers::{Block, Class, MARKER, Marker};
+use super::unset::Published;
 
 pub use self::divergences::{Added, apply_divergences};
 use self::expected::scalar_name;
@@ -211,6 +219,8 @@ pub struct Resolved {
     pub ty: String,
     /// Every document that carries the key, paired with the release its image was built at.
     pub publishers: Vec<Publisher>,
+    /// What each document that carries the key publishes as its default, in document order.
+    pub defaults: Vec<Published>,
 }
 
 impl Resolved {
@@ -273,6 +283,22 @@ pub struct Chart {
     pub app_version: String,
     /// Every shape: the generated ones, then the transcribed.
     pub shapes: Vec<Shape>,
+    /// The values file, parsed: what decides whether a value is left at `null`.
+    pub values: Json,
+}
+
+/// The description run below one value's `@schema` block, and the run it should be.
+///
+/// The two differ only in the default override line, which [`Chart::annotation`] owns for every
+/// bound value; see [`super::unset`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Annotation {
+    /// The run's lines, zero-based and half-open: the closing delimiter's next line up to the key.
+    pub run: std::ops::Range<usize>,
+    /// The run as the file holds it.
+    pub current: Vec<String>,
+    /// The run with the override the contract calls for, and no other.
+    pub target: Vec<String>,
 }
 
 impl Chart {
@@ -327,6 +353,7 @@ impl Chart {
 
         let mut shapes = generated(&name, &by_value, &blocks, &transcribed);
         shapes.extend(transcribed.iter().cloned());
+        let parsed = super::declaration::read_yaml(&text, &values)?;
 
         let mut chart = Self {
             name,
@@ -339,6 +366,7 @@ impl Chart {
             bound,
             app_version,
             shapes,
+            values: parsed,
         };
         chart.check_markers();
         Ok(chart)
@@ -526,6 +554,85 @@ impl Chart {
         Some(render(&settled, block.indent, &added))
     }
 
+    /// The description run below one value's block, and the default override it should end on.
+    ///
+    /// The override is wanted for an optional binding whose value is `null`, and is otherwise
+    /// absent: a value that is set shows itself in the README's Default column, and a stale override
+    /// would hide it. Only a generated override ([`super::unset::is_generated`]) is replaced or
+    /// removed. A hand-written one is the chart author's and is never deleted; where a generated
+    /// one is also wanted, the two would be two answers to one question, so that is reported and
+    /// the run is left as it is.
+    ///
+    /// [`None`] when there is nothing to compare: the value does not resolve to a contract key (the
+    /// schema half reports that), or the run is not directly above the value's key.
+    pub fn annotation(&mut self, shape: &Shape) -> Option<Annotation> {
+        let resolved = self.constraint_for(shape, false)?;
+        let block = self.blocks.get(&shape.values_path)?.clone();
+        let indent = " ".repeat(block.indent);
+
+        let unset = super::dig(&self.values, &shape.values_path).is_some_and(Json::is_null);
+        let wanted = (resolved.optional && unset)
+            .then(|| super::unset::line(&super::unset::sentence(&resolved.defaults), &indent));
+
+        let lines: Vec<&str> = self.text.lines().collect();
+        // `end` is the closing delimiter's one-based line, so as an index it is the line after it.
+        let from = block.end;
+        let to = from
+            + lines
+                .get(from..)
+                .unwrap_or(&[])
+                .iter()
+                .take_while(|line| line.trim_start().starts_with('#'))
+                .count();
+        let leaf = shape.values_path.rsplit('.').next().unwrap_or_default();
+        let spellings = [
+            format!("{leaf}:"),
+            format!("\"{leaf}\":"),
+            format!("'{leaf}':"),
+        ];
+        let keyed = lines.get(to).is_some_and(|line| {
+            line.strip_prefix(indent.as_str()).is_some_and(|rest| {
+                spellings
+                    .iter()
+                    .any(|spelling| rest.starts_with(spelling.as_str()))
+            })
+        });
+        if !keyed {
+            // Unreachable through `Chart::read`, whose marker reader refuses a block that does not
+            // run into its value. Kept so a run that is not the value's is never edited.
+            return None;
+        }
+
+        let current: Vec<String> = lines[from..to]
+            .iter()
+            .map(|line| (*line).to_owned())
+            .collect();
+        let hand_written = current
+            .iter()
+            .any(|line| super::unset::is_annotation(line) && !super::unset::is_generated(line));
+        if hand_written && wanted.is_some() {
+            self.problems.push(format!(
+                "{}: '{}' is left at `null` and its description already ends on a hand-written \
+                 `@default` line, which this writer does not delete. Remove that line so the \
+                 generated one can say what `null` leaves in effect, or set the value",
+                shape.at(),
+                shape.values_path
+            ));
+            return None;
+        }
+        let target: Vec<String> = current
+            .iter()
+            .filter(|line| !super::unset::is_generated(line))
+            .cloned()
+            .chain(wanted)
+            .collect();
+        Some(Annotation {
+            run: from..to,
+            current,
+            target,
+        })
+    }
+
     /// The older marker: a copy of a struct, held against the release it was copied at.
     ///
     /// Reached from the checker only. Every other problem here is one the writer repairs on the
@@ -614,27 +721,40 @@ impl Chart {
     }
 }
 
-/// The chart's values file with every generated block written from its contract.
+/// The chart's values file with every generated block, and every bound value's default override,
+/// written from its contract. The count is of the edits made.
 ///
-/// Blocks are replaced from the bottom up so that an earlier replacement cannot move the line
-/// numbers a later one was read at.
+/// Edits are applied from the bottom up so that an earlier one cannot move the line numbers a
+/// later one was read at. A value's override sits below its block, so the two never overlap.
 pub fn rewrite(chart: &mut Chart) -> (String, usize) {
-    let shapes: Vec<Shape> = chart
-        .shapes
-        .iter()
-        .filter(|shape| !shape.handwritten)
-        .cloned()
-        .collect();
+    let shapes: Vec<Shape> = chart.shapes.clone();
 
-    let mut pending: Vec<(Block, Vec<String>)> = Vec::new();
+    let mut pending: Vec<(std::ops::Range<usize>, Vec<String>)> = Vec::new();
+    // One value can carry two shape markers, which `check_markers` reports. Its annotation edit is
+    // still queued once: a second splice over a range the first already rewrote would remove
+    // whatever lines had moved into it, the value's own key line included.
+    let mut annotated = std::collections::BTreeSet::new();
     for shape in &shapes {
-        if let Some(target) = chart.target(shape)
+        if !shape.handwritten
+            && let Some(target) = chart.target(shape)
             && let Some(block) = chart.blocks.get(&shape.values_path)
         {
-            pending.push((block.clone(), target));
+            let (markers, current) = split_block(block);
+            if current != target {
+                pending.push((
+                    block.start..block.end - 1,
+                    markers.into_iter().chain(target).collect(),
+                ));
+            }
+        }
+        if annotated.insert(shape.values_path.clone())
+            && let Some(annotation) = chart.annotation(shape)
+            && annotation.current != annotation.target
+        {
+            pending.push((annotation.run, annotation.target));
         }
     }
-    pending.sort_by_key(|(block, _)| std::cmp::Reverse(block.start));
+    pending.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
 
     let ending = if chart.text.contains("\r\n") {
         "\r\n"
@@ -642,26 +762,21 @@ pub fn rewrite(chart: &mut Chart) -> (String, usize) {
         "\n"
     };
     let mut lines: Vec<String> = split_keeping_ends(&chart.text);
-    let mut written = 0;
+    let written = pending.len();
 
-    for (block, target) in pending {
-        let (markers, current) = split_block(&block);
-        if current == target {
-            continue;
-        }
-        let body: Vec<String> = markers
+    for (range, body) in pending {
+        let body: Vec<String> = body
             .into_iter()
-            .chain(target)
             .map(|line| format!("{line}{ending}"))
             .collect();
-        lines.splice(block.start..block.end - 1, body);
-        written += 1;
+        lines.splice(range, body);
     }
 
     (lines.concat(), written)
 }
 
-/// Every generated block against what its contract calls for, reported onto the chart.
+/// Every generated block, and every bound value's default override, against what its contract
+/// calls for, reported onto the chart.
 pub fn check(chart: &mut Chart) {
     let shapes: Vec<Shape> = chart
         .shapes
@@ -690,6 +805,27 @@ pub fn check(chart: &mut Chart) {
             shape.at(),
             shape.values_path,
             difference(&current, &target)
+        ));
+    }
+
+    let every: Vec<Shape> = chart.shapes.clone();
+    let mut annotated = std::collections::BTreeSet::new();
+    for shape in &every {
+        if !annotated.insert(shape.values_path.clone()) {
+            continue;
+        }
+        let Some(annotation) = chart.annotation(shape) else {
+            continue;
+        };
+        if annotation.current == annotation.target {
+            continue;
+        }
+        chart.problems.push(format!(
+            "{}: the description of '{}' does not end on the `@default` line its contract calls \
+             for; regenerate it\n{}",
+            shape.at(),
+            shape.values_path,
+            difference(&annotation.current, &annotation.target)
         ));
     }
 }

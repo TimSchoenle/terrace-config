@@ -1627,3 +1627,250 @@ fn a_write_keeps_each_files_permissions() {
     assert_eq!(mode & 0o777, 0o640);
     assert!(chart.text().contains("log:"));
 }
+
+// --------------------------------------------------------------------------------------
+// The `@default` line: what a value left at `null` leaves in effect
+// --------------------------------------------------------------------------------------
+
+/// The line the shapes writer and the scaffold both write for a value left at `null`.
+fn unset_line(indent: &str, sentence: &str) -> String {
+    format!("{indent}# @default -- `null` (unset): {sentence}")
+}
+
+#[test]
+fn an_adopted_value_left_at_null_says_what_that_leaves_in_effect() {
+    let text = adopted().text();
+    let annotation = unset_line(
+        "  ",
+        "the key is left out and the image decides; its contract publishes no default.",
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    for value in ["  level: null", "  maxEvents: null"] {
+        assert_eq!(lines[line_of(&text, value) - 1], annotation, "{text}");
+    }
+    // A value written as its published default shows that default itself.
+    let above = line_of(&text, "  environment: \"production\"") - 1;
+    assert!(
+        !text
+            .lines()
+            .nth(above)
+            .unwrap_or_default()
+            .contains("@default"),
+        "{text}"
+    );
+}
+
+/// A chart whose one bound value is optional and left at `null`, with no `@default` line yet.
+fn unset_chart(declaration: &str) -> Chart {
+    let chart = Chart::new();
+    chart.declaration(declaration);
+    chart.values(
+        "\
+# @schema
+# additionalProperties: true
+# @schema
+# -- The authentication settings.
+auth:
+  # @schema
+  # # @config projection auth.session_ttl optional
+  # type: integer
+  # @schema
+  # -- How long a session lives.
+  sessionTtl: null
+",
+    );
+    chart
+}
+
+fn ttl_defaulting_to(default: Option<i64>) -> Json {
+    key(
+        "auth.session_ttl",
+        &json!({
+            "text_form": "integer",
+            "constraint": {"type": "integer"},
+            "default": default.map(|held| held.to_string()),
+            "default_value": default,
+        }),
+    )
+}
+
+/// One pass of the shapes writer, returning how many edits it made.
+fn regenerate(chart: &Chart) -> usize {
+    let mut read = shapes::Chart::read(&chart.dir).expect("the chart reads");
+    let (text, count) = shapes::rewrite(&mut read);
+    assert!(read.problems.is_empty(), "{:?}", read.problems);
+    chart.values(&text);
+    count
+}
+
+fn shape_problems(chart: &Chart) -> String {
+    let mut read = shapes::Chart::read(&chart.dir).expect("the chart reads");
+    shapes::check(&mut read);
+    read.problems.join("\n")
+}
+
+#[test]
+fn the_shapes_writer_names_the_published_default_and_follows_it() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+
+    let problems = shape_problems(&chart);
+    assert!(problems.contains("`@default` line"), "{problems}");
+
+    assert!(regenerate(&chart) > 0);
+    let text = chart.text();
+    let fifteen = unset_line(
+        "  ",
+        "the key is left out and the image default applies, `15`.",
+    );
+    assert_eq!(
+        line_of(&text, &fifteen) + 1,
+        line_of(&text, "  sessionTtl: null"),
+        "{text}"
+    );
+    assert_eq!(regenerate(&chart), 0, "a second pass changes nothing");
+    assert_eq!(shape_problems(&chart), "");
+
+    // The image moves its default: the line moves with it, and the gate fails until it has.
+    chart.contract("api", &[ttl_defaulting_to(Some(30))]);
+    assert!(shape_problems(&chart).contains("`@default` line"));
+    assert_eq!(regenerate(&chart), 1);
+    let text = chart.text();
+    assert!(!text.contains(&fifteen), "{text}");
+    assert!(
+        text.contains(&unset_line(
+            "  ",
+            "the key is left out and the image default applies, `30`."
+        )),
+        "{text}"
+    );
+
+    // The image stops publishing it: the line says so rather than keeping the last answer.
+    chart.contract("api", &[ttl_defaulting_to(None)]);
+    assert_eq!(regenerate(&chart), 1);
+    assert!(chart.text().contains(&unset_line(
+        "  ",
+        "the key is left out and the image decides; its contract publishes no default."
+    )));
+}
+
+#[test]
+fn a_value_that_is_set_carries_no_default_line() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    regenerate(&chart);
+    chart.values(&chart.text().replace("sessionTtl: null", "sessionTtl: 60"));
+
+    assert!(shape_problems(&chart).contains("`@default` line"));
+    assert_eq!(regenerate(&chart), 1);
+    let text = chart.text();
+    assert!(!text.contains("@default"), "{text}");
+    assert_eq!(
+        line_of(&text, "  # -- How long a session lives.") + 1,
+        line_of(&text, "  sessionTtl: 60")
+    );
+}
+
+#[test]
+fn a_required_binding_left_at_null_gets_no_default_line() {
+    let chart = unset_chart(DECLARATION);
+    chart.values(&chart.text().replace(" optional\n", "\n"));
+    chart.contract("api", &[ttl_defaulting_to(None)]);
+    regenerate(&chart);
+    assert!(!chart.text().contains("@default"), "{}", chart.text());
+}
+
+#[test]
+fn documents_that_disagree_about_the_default_are_each_named() {
+    let chart = unset_chart(&two_documents());
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    chart.contract("worker", &[ttl_defaulting_to(None)]);
+    regenerate(&chart);
+    let text = chart.text();
+    assert!(
+        text.contains(&unset_line(
+            "  ",
+            "the key is left out and each image decides: api default `15`; worker no published default."
+        )),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_default_line_keeps_the_files_line_endings() {
+    let chart = unset_chart(DECLARATION);
+    chart.values(&chart.text().replace('\n', "\r\n"));
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    regenerate(&chart);
+    let text = chart.text();
+    assert!(
+        text.contains("# @default -- `null` (unset): the key is left out and the image default applies, `15`.\r\n  sessionTtl: null\r\n"),
+        "{text:?}"
+    );
+    assert!(!text.replace("\r\n", "").contains('\n'), "{text:?}");
+}
+
+#[test]
+fn a_hand_written_default_line_is_never_deleted() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    let own = "  # @default -- one hour, the session cookie's lifetime";
+    chart.values(
+        &chart
+            .text()
+            .replace("# type: integer", "# type: [integer, 'null']")
+            .replace("sessionTtl: null", "sessionTtl: 60")
+            .replace(
+                "  # -- How long a session lives.\n",
+                &format!("  # -- How long a session lives.\n{own}\n"),
+            ),
+    );
+    let before = chart.text();
+    assert_eq!(regenerate(&chart), 0);
+    assert_eq!(chart.text(), before);
+    assert_eq!(shape_problems(&chart), "");
+}
+
+#[test]
+fn a_null_value_with_a_hand_written_default_line_is_reported_not_rewritten() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    chart.values(
+        &chart
+            .text()
+            .replace("# type: integer", "# type: [integer, 'null']")
+            .replace(
+                "  # -- How long a session lives.\n",
+                "  # -- How long a session lives.\n  # @default -- whatever the image says\n",
+            ),
+    );
+    let before = chart.text();
+    let mut read = shapes::Chart::read(&chart.dir).expect("the chart reads");
+    let (text, _) = shapes::rewrite(&mut read);
+    assert_eq!(
+        text, before,
+        "the hand-written line stays and nothing is added"
+    );
+    let problems = read.problems.join("\n");
+    assert!(
+        problems.contains("hand-written `@default` line"),
+        "{problems}"
+    );
+}
+
+/// Two shape markers on one value queued its annotation edit twice, and the second splice ran
+/// over lines the first had already moved, deleting the value's own key line.
+#[test]
+fn a_value_with_two_shape_markers_is_annotated_once() {
+    let chart = unset_chart(DECLARATION);
+    chart.contract("api", &[ttl_defaulting_to(Some(15))]);
+    let marker = "  # @config-shape auth.sessionTtl handwritten v1 SessionTtl\n";
+    chart.values(&chart.text().replace(
+        "  # @schema\n  # # @config",
+        &format!("{marker}{marker}  # @schema\n  # # @config"),
+    ));
+    let mut read = shapes::Chart::read(&chart.dir).expect("the chart reads");
+    let (text, _) = shapes::rewrite(&mut read);
+    assert!(text.contains("\n  sessionTtl: null\n"), "{text}");
+    assert_eq!(text.matches("# @default -- ").count(), 1, "{text}");
+}

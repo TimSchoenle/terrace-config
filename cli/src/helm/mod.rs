@@ -39,6 +39,7 @@ pub mod secrets;
 pub mod shapes;
 pub mod suites;
 pub mod testgen;
+pub mod unset;
 
 pub use bindings::{Bindings, check as check_bindings};
 pub use check::{Checked, check};

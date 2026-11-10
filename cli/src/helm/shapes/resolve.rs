@@ -7,6 +7,7 @@ use crate::union::Merged;
 
 use crate::helm::declaration::Bound;
 use crate::helm::markers::{Block, MARKER, Marker};
+use crate::helm::unset::Published;
 
 use super::expected::{describes_element, describing};
 use super::{Publisher, Resolved, Shape, derives, ordinal};
@@ -144,6 +145,11 @@ pub fn resolve(
         })
         .collect();
 
+    let defaults = carried
+        .iter()
+        .map(|(name, entry)| Published::of(Some((*name).clone()), &entry.fields))
+        .collect();
+
     Some(Resolved {
         constraint: first.filter(|held| !held.is_null()).cloned(),
         optional: marker.optional,
@@ -154,6 +160,7 @@ pub fn resolve(
             String::new()
         },
         publishers,
+        defaults,
     })
 }
 
