@@ -55,9 +55,9 @@ use super::super::declaration::{
 use super::super::shapes::quoted;
 use super::super::testgen::VALUES_ROOT;
 use super::{
-    Key, Placement, Plan, WIDTH, branch_placeholder, branches, credential_entries_for, derived_for,
-    plan_keys, render_tree, secrets_file_name, tree_at, values_scalar, wrap, write_off_groups,
-    write_off_lines,
+    Key, Placement, Plan, Run, WIDTH, branch_placeholder, branches, credential_entries_for,
+    derived_for, plan_keys, render_tree, secrets_file_name, tree_at, values_scalar, wrap,
+    write_off_groups, write_off_lines,
 };
 
 /// The only document format these renderers write.
@@ -517,7 +517,7 @@ pub fn render_helpers(chart: &str, surface: &Surface) -> Result<String, Error> {
 
     let mut parts: Vec<String> = Vec::new();
 
-    let derived = derived_for(&plan.projected, "", None, ".Values");
+    let derived = derived_for(&[Run::everywhere(plan.projected.clone())], "", ".Values");
     parts.push(format!(
         "{}{{{{- define \"{chart}.derivedConfig\" -}}}}\n{}{{{{- end -}}}}\n",
         comment(&[

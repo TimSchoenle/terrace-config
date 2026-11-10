@@ -1,6 +1,6 @@
 //! Building the schema a value's block is expected to carry from the contract key's constraint.
 
-use serde_json::{Map, Value as Json};
+use serde_json::{Map, Value as Json, json};
 
 use super::ORDER;
 
@@ -40,15 +40,22 @@ pub fn describes_element(constraint: Option<&Json>) -> bool {
 
 /// The `@schema` mapping one contract key's constraint calls for.
 ///
-/// Two shapes are not a straight copy, and both were measured against the schema generator rather
-/// than reasoned about:
+/// Four shapes are not a straight copy, and each was measured against the schema generator the
+/// chart repositories pin (helm-schema 0.18.1) rather than reasoned about:
 ///
-/// **An `enum` is the whole block.** The generator refuses one carrying both `enum` and `type`, and
-/// exits fatally, leaving every chart in the repository without a generated schema. So a key whose
-/// constraint names an `enum` emits its members alone, with `null` joining them where the value is
-/// optional. Measured again for `schema_version: 2`: the refusal applies to the *top level only*. A
-/// nested subschema carrying both passes through, and that is what makes a generated element schema
-/// possible at all: every enum inside a struct is an `enum` beside a `type`.
+/// **A value list is never beside `type`.** The generator refuses a subschema carrying `enum` or
+/// `const` together with `type`, and exits fatally, leaving every chart in the repository without a
+/// generated schema. It holds that rule wherever its validator walks, which is not everywhere; see
+/// `settle` for the positions. So a key whose constraint names an `enum` or a `const` emits the
+/// list alone, and every element schema copied below is settled the same way.
+///
+/// **An optional value list is wrapped rather than extended.** The generator reads `enum` as a list
+/// of *strings*, so a `null` member does not survive into `values.schema.json`, and the value's own
+/// default (`null`, which is what an unset optional value is written as) then fails every render.
+/// So "the members, or unset" is spelt `anyOf: [{type: 'null'}, {enum: [...]}]`, which the
+/// generator carries through intact. Writing `""` as the unset member instead was rejected: it is
+/// a setting the contract does not accept, it is only harmless while the template happens to guard
+/// with `with`, and it cannot be spelt at all for a list of numbers.
 ///
 /// **A `structured` key whose element is undescribed is opened rather than described.** Such a
 /// constraint says the value is a table and nothing about what is in it, so the block accepts any
@@ -62,14 +69,8 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
     let empty = Map::new();
     let held = constraint.and_then(Json::as_object).unwrap_or(&empty);
 
-    if let Some(Json::Array(members)) = held.get("enum") {
-        let mut members = members.clone();
-        if optional && !members.contains(&Json::Null) {
-            members.push(Json::Null);
-        }
-        let mut schema = Map::new();
-        schema.insert("enum".to_owned(), Json::Array(members));
-        return Json::Object(schema);
+    if let Some(listed) = listing(held, optional) {
+        return listed;
     }
 
     let declared = held.get("type");
@@ -112,7 +113,7 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
         );
     } else {
         for keyword in ORDER {
-            if keyword == "type" || keyword == "enum" {
+            if keyword == "type" {
                 continue;
             }
             if let Some(value) = held.get(keyword) {
@@ -148,7 +149,85 @@ pub fn expected(constraint: Option<&Json>, optional: bool, structured: bool) -> 
     for (name, value) in schema {
         out.insert(name, value);
     }
-    Json::Object(out)
+    let mut out = Json::Object(out);
+    settle(&mut out);
+    out
+}
+
+/// The block for a constraint that lists its legal values, or [`None`] when it lists none.
+///
+/// `enum` wins over `const` when a constraint carries both, because it is what the rest of this
+/// toolchain reads a choice from. `null` is never kept as a member: the generator cannot carry it
+/// (see [`expected`]), so a list that includes it, or a value that is optional, accepts it through
+/// a `type: 'null'` alternative instead.
+fn listing(held: &Map<String, Json>, optional: bool) -> Option<Json> {
+    let (keyword, listed): (&str, Vec<Json>) = match (held.get("enum"), held.get("const")) {
+        (Some(Json::Array(members)), _) => ("enum", members.clone()),
+        (_, Some(value)) => ("const", vec![value.clone()]),
+        _ => return None,
+    };
+    let nullable = optional || listed.contains(&Json::Null);
+    let members: Vec<Json> = listed.into_iter().filter(|held| !held.is_null()).collect();
+
+    let unset = json!({"type": "null"});
+    if members.is_empty() {
+        // `enum: [null]` or `const: null`: the one legal value is the absence of one.
+        return Some(unset);
+    }
+    let mut list = Map::new();
+    list.insert(
+        keyword.to_owned(),
+        if keyword == "const" {
+            members.into_iter().next().unwrap_or(Json::Null)
+        } else {
+            Json::Array(members)
+        },
+    );
+    let list = Json::Object(list);
+    Some(if nullable {
+        json!({"anyOf": [unset, list]})
+    } else {
+        list
+    })
+}
+
+/// The subschema keywords holding one schema that the generator validates, as it does the block.
+const VALIDATED_ONE: [&str; 5] = ["items", "not", "if", "then", "else"];
+
+/// The subschema keywords holding a list of schemas that the generator validates.
+const VALIDATED_MANY: [&str; 3] = ["anyOf", "allOf", "oneOf"];
+
+/// A block with every `type` the generator would refuse beside a value list removed.
+///
+/// helm-schema 0.18.1 checks each block with `Schema.Validate`, which refuses `enum` or `const`
+/// beside `type` at the block itself and then recurses into exactly the positions in
+/// [`VALIDATED_ONE`] and [`VALIDATED_MANY`], each held to the same rule, so `items.items` is
+/// refused as surely as `items`. It does *not* recurse into `properties` or `additionalProperties`:
+/// an `enum` beside a `type` on a struct field passes, at any depth below one of those. That is
+/// what keeps every enumerated field of a generated element schema typed, and it is why this walks
+/// the generator's positions rather than every subschema: settling a field the generator accepts
+/// would rewrite blocks that are correct today, for nothing.
+///
+/// The value list wins because it is the stricter of the two, so dropping `type` loses no value the
+/// contract refuses.
+pub(super) fn settle(schema: &mut Json) {
+    let Json::Object(fields) = schema else {
+        return;
+    };
+    if fields.contains_key("type") && (fields.contains_key("enum") || fields.contains_key("const"))
+    {
+        fields.remove("type");
+    }
+    for keyword in VALIDATED_ONE {
+        if let Some(inner) = fields.get_mut(keyword) {
+            settle(inner);
+        }
+    }
+    for keyword in VALIDATED_MANY {
+        if let Some(Json::Array(members)) = fields.get_mut(keyword) {
+            members.iter_mut().for_each(settle);
+        }
+    }
 }
 
 /// One JSON scalar as the name a `type` keyword spells it with.

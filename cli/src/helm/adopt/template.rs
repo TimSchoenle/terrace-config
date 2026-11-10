@@ -10,7 +10,7 @@ use crate::error::Error;
 
 use crate::helm::regions::split_lines;
 use crate::helm::scaffold::{
-    Placement, Plan, credential_entries_for, derived_for, secrets_file_name,
+    Placement, Plan, Run, credential_entries_for, derived_for, secrets_file_name,
 };
 
 use super::{FileEdit, read_text};
@@ -161,59 +161,115 @@ pub(super) fn find_define(
     Ok(None)
 }
 
-/// Brand-new roots split into what can be written and what must be printed, with each written
-/// root's `$service` guard.
+/// Placements of one or more roots, partitioned into the `$service` runs that render them.
 ///
-/// A single-document chart's roots always come back writable and unguarded. A multi-document
-/// chart's `derivedConfig` takes a `$service` argument: a root every document declares renders the
-/// same way for all of them, and a root only some declare needs the matching guard.
+/// What a multi-document chart's `derivedConfig` has to say about a root is decided by which
+/// documents declare each key under it, and that is a fact in the contracts, not a guess:
 ///
-/// That guard is written only when it cannot be wrong. Every key under the root has to agree which
-/// documents declare it (a root with keys split across scopes is two settings sharing a table
-/// name), and every one of those documents has to resolve to a real `$service` value. Either
-/// failure sends the whole root to the printed-for-a-person pile, the same one an occupied root
-/// lands in.
-pub(super) fn scope_new_roots(
-    candidates: Vec<Placement>,
+/// - **Every key under the root is declared by every document**: one unguarded run. It renders
+///   the same way for all of them, which is also every root of a one-document chart.
+/// - **Otherwise**: one run per distinct set of keys a service declares under the root, gated on
+///   the services that declare exactly that set. A service sees exactly the keys its own contract
+///   declares, and since every service lands in exactly one run per root, no two runs naming the
+///   root ever render for the same service: nothing is shadowed by `fromYaml`.
+///
+/// A document whose image path does not name a `$service` value (see
+/// [`service_key_for`](crate::helm::scaffold::service_key_for)) cannot be gated on, so its share of
+/// the root comes back in [`Scoped::unresolved`] instead, with the documents that declare it, and
+/// the rest of the root is written regardless. Its keys reach the services that *can* be named
+/// either way.
+pub(super) fn scope(
+    placements: &[Placement],
     all_documents: &BTreeSet<String>,
     service_key_of: &BTreeMap<String, String>,
-) -> (Vec<Placement>, BTreeMap<String, Vec<String>>) {
-    let mut by_root: Vec<(String, Vec<Placement>)> = Vec::new();
-    for item in candidates {
-        let root = root_of(&item).to_owned();
-        match by_root.iter_mut().find(|(held, _)| *held == root) {
-            Some((_, members)) => members.push(item),
-            None => by_root.push((root, vec![item])),
-        }
+) -> Scoped {
+    let mut by_root: BTreeMap<&str, Vec<&Placement>> = BTreeMap::new();
+    for item in placements {
+        by_root.entry(root_of(item)).or_default().push(item);
     }
 
-    let mut writable = Vec::new();
-    let mut scoped = BTreeMap::new();
-    for (root, items) in by_root {
-        let declaring: BTreeSet<Option<&Vec<String>>> =
-            items.iter().map(|item| item.documents.as_ref()).collect();
-        let [documents] = declaring.into_iter().collect::<Vec<_>>()[..] else {
-            continue;
+    let mut scoped = Scoped::default();
+    for items in by_root.into_values() {
+        let declared_by = |item: &Placement, document: &str| {
+            item.documents
+                .as_ref()
+                .is_none_or(|named| named.iter().any(|held| held == document))
         };
-        let everywhere = documents
-            .is_none_or(|named| named.iter().cloned().collect::<BTreeSet<_>>() == *all_documents);
-        if everywhere {
-            writable.extend(items);
+        let everywhere = items.iter().all(|item| {
+            all_documents
+                .iter()
+                .all(|document| declared_by(item, document))
+        });
+        if all_documents.len() <= 1 || everywhere {
+            scoped
+                .runs
+                .push(Run::everywhere(items.into_iter().cloned().collect()));
             continue;
         }
 
-        let named = documents.map_or(&[][..], Vec::as_slice);
-        let service_keys: Vec<String> = named
-            .iter()
-            .filter_map(|name| service_key_of.get(name).cloned())
-            .collect();
-        if service_keys.len() != named.len() {
-            continue;
+        // Grouped by the exact keys a document declares under this root, in document order, so
+        // the runs and their gates come out the same way every time.
+        let mut runs: Vec<(Vec<&str>, Run)> = Vec::new();
+        let mut unresolved: Vec<(Vec<&str>, Unresolved)> = Vec::new();
+        for document in all_documents {
+            let mine: Vec<&Placement> = items
+                .iter()
+                .copied()
+                .filter(|item| declared_by(item, document))
+                .collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let paths: Vec<&str> = mine.iter().map(|item| item.path()).collect();
+            if let Some(service) = service_key_of.get(document) {
+                match runs.iter_mut().find(|(held, _)| *held == paths) {
+                    Some((_, run)) => run.services.push(service.clone()),
+                    None => runs.push((
+                        paths,
+                        Run {
+                            services: vec![service.clone()],
+                            placements: mine.into_iter().cloned().collect(),
+                        },
+                    )),
+                }
+            } else {
+                match unresolved.iter_mut().find(|(held, _)| *held == paths) {
+                    Some((_, held)) => held.documents.push(document.clone()),
+                    None => unresolved.push((
+                        paths,
+                        Unresolved {
+                            documents: vec![document.clone()],
+                            placements: mine.into_iter().cloned().collect(),
+                        },
+                    )),
+                }
+            }
         }
-        writable.extend(items);
-        scoped.insert(root, service_keys);
+        scoped.runs.extend(runs.into_iter().map(|(_, run)| run));
+        scoped
+            .unresolved
+            .extend(unresolved.into_iter().map(|(_, held)| held));
     }
-    (writable, scoped)
+    scoped
+}
+
+/// What [`scope`] makes of some placements.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct Scoped {
+    /// The runs that can be rendered, by root and then in document order.
+    pub(super) runs: Vec<Run>,
+    /// The shares of a root declared by documents no `$service` value names.
+    pub(super) unresolved: Vec<Unresolved>,
+}
+
+/// The keys under one root that some documents declare, where none of those documents names a
+/// `$service` value to gate them on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Unresolved {
+    /// The documents.
+    pub(super) documents: Vec<String>,
+    /// The keys they declare under the root.
+    pub(super) placements: Vec<Placement>,
 }
 
 /// A placement's top-level contract segment, which is the root it is projected under.
@@ -224,8 +280,12 @@ pub(super) fn root_of(placement: &Placement) -> &str {
 /// The template lines an adoption appends, and the ones it prints instead.
 pub(super) struct Projections {
     pub(super) edits: Vec<FileEdit>,
-    pub(super) owed_projected: Vec<Placement>,
+    pub(super) owed_projected: Vec<Withheld>,
     pub(super) owed_credentials: Vec<Placement>,
+    /// The file that opens `derivedConfig`, when one does.
+    pub(super) derived_define: Option<PathBuf>,
+    /// The file that opens `secretData`, when one does.
+    pub(super) secret_define: Option<PathBuf>,
 }
 
 /// The `derivedConfig` and `secretData` lines to append, and the ones that must be printed.
@@ -237,8 +297,14 @@ pub(super) struct Projections {
 /// first. The values file parses, the chart renders, and a setting has vanished. So a key whose
 /// root is already in the define is printed for a person to place, and only a new root is written.
 ///
-/// On a multi-document chart, [`scope_new_roots`] draws a second such line, and anything it leaves
-/// uncertain joins the same printed pile, never a guess.
+/// Three more things send lines to the printed pile, each recorded as its own [`Withholding`] so
+/// the report can say which one it was: there is no define to write into, a multi-document chart's
+/// define does not provably unwrap the `(dict "ctx" ... "service" ...)` convention, or a document
+/// declaring the key names no `$service` value to gate it on (see [`scope`]).
+///
+/// Printed lines are rendered exactly as an appended block would be, in the define's own dialect
+/// and with the same `$service` gates, so they can be pasted as they stand. Where the define could
+/// not be read, they assume `.` is the root context and carry no gate, and the report says so.
 pub(super) fn projection_edits(
     chart_dir: &Path,
     chart: &str,
@@ -247,45 +313,66 @@ pub(super) fn projection_edits(
     service_key_of: &BTreeMap<String, String>,
 ) -> Result<Projections, Error> {
     let mut edits = Vec::new();
+    let mut owed_projected = Vec::new();
+    let multi_document = all_documents.len() > 1;
 
-    let mut projected: Vec<Placement> = Vec::new();
-    if let Some((path, derived)) = find_define(chart_dir, &format!("{chart}.derivedConfig"))? {
-        let multi_document = all_documents.len() > 1;
-        let mut values_prefix = ".Values";
-        let mut scoped = BTreeMap::new();
-        // A multi-document chart's define is unusable here unless it is provably shaped the one
-        // way this knows how to address; refusing is the same posture as finding no define.
-        if !multi_document || derived.wraps_context {
-            projected = plan
+    let found = find_define(chart_dir, &format!("{chart}.derivedConfig"))?;
+    let derived_define = found.as_ref().map(|(path, _)| path.clone());
+    match found {
+        _ if plan.projected.is_empty() => {}
+        None => owed_projected.push(Withheld::unscoped(Withholding::NoDefine, &plan.projected)),
+        Some((_, derived)) if multi_document && !derived.wraps_context => owed_projected.push(
+            Withheld::unscoped(Withholding::UnknownConvention, &plan.projected),
+        ),
+        Some((path, derived)) => {
+            let values_prefix = if multi_document {
+                "$ctx.Values"
+            } else {
+                ".Values"
+            };
+            let (occupied, free): (Vec<Placement>, Vec<Placement>) = plan
                 .projected
                 .iter()
-                .filter(|item| !derived.roots.contains(root_of(item)))
                 .cloned()
-                .collect();
-            if multi_document {
-                values_prefix = "$ctx.Values";
-                (projected, scoped) = scope_new_roots(projected, all_documents, service_key_of);
+                .partition(|item| derived.roots.contains(root_of(item)));
+
+            let writable = scope(&free, all_documents, service_key_of);
+            if !writable.runs.is_empty() {
+                edits.push(FileEdit {
+                    path,
+                    after: derived.end - 1,
+                    lines: derived_for(&writable.runs, "", values_prefix),
+                    what: "derivedConfig".to_owned(),
+                });
+            }
+
+            let placed = scope(&occupied, all_documents, service_key_of);
+            if !placed.runs.is_empty() {
+                let roots: BTreeSet<String> = occupied
+                    .iter()
+                    .map(|item| root_of(item).to_owned())
+                    .collect();
+                owed_projected.push(Withheld {
+                    lines: derived_for(&placed.runs, "", values_prefix),
+                    reason: Withholding::RootWritten(roots.into_iter().collect()),
+                    runs: placed.runs,
+                });
+            }
+            for share in writable.unresolved.into_iter().chain(placed.unresolved) {
+                let run = Run::everywhere(share.placements);
+                owed_projected.push(Withheld {
+                    lines: derived_for(std::slice::from_ref(&run), "", values_prefix),
+                    reason: Withholding::NoService(share.documents),
+                    runs: vec![run],
+                });
             }
         }
-        if !projected.is_empty() {
-            edits.push(FileEdit {
-                path,
-                after: derived.end - 1,
-                lines: derived_for(&projected, "", Some(&scoped), values_prefix),
-                what: "derivedConfig".to_owned(),
-            });
-        }
     }
-    let written: BTreeSet<&str> = projected.iter().map(Placement::path).collect();
-    let owed_projected = plan
-        .projected
-        .iter()
-        .filter(|item| !written.contains(item.path()))
-        .cloned()
-        .collect();
 
     let mut owed_credentials = plan.credentials.clone();
-    if let Some((path, secrets)) = find_define(chart_dir, &format!("{chart}.secretData"))? {
+    let found = find_define(chart_dir, &format!("{chart}.secretData"))?;
+    let secret_define = found.as_ref().map(|(path, _)| path.clone());
+    if let Some((path, secrets)) = found {
         let mut delivered = Vec::new();
         owed_credentials.clear();
         for item in &plan.credentials {
@@ -309,5 +396,50 @@ pub(super) fn projection_edits(
         edits,
         owed_projected,
         owed_credentials,
+        derived_define,
+        secret_define,
     })
+}
+
+/// Why some `derivedConfig` lines are printed for a person rather than appended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Withholding {
+    /// No file under `templates/` opens the define, so there is nowhere to append.
+    NoDefine,
+    /// The chart renders several documents, and its define does not unwrap the
+    /// `(dict "ctx" ... "service" ...)` argument this knows how to address.
+    UnknownConvention,
+    /// The define already writes these roots at its top level, and a second block of the same
+    /// name would shadow the first.
+    RootWritten(Vec<String>),
+    /// These documents declare the keys, and none of them names a `$service` value to gate on.
+    NoService(Vec<String>),
+}
+
+/// `derivedConfig` lines withheld from the template, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Withheld {
+    /// Why.
+    pub reason: Withholding,
+    /// What the lines render, by `$service` gate.
+    pub runs: Vec<Run>,
+    /// The lines, rendered as an appended block would be.
+    pub lines: Vec<String>,
+}
+
+impl Withheld {
+    /// Lines for a define whose calling convention is unknown: `.` as the root context, no gate.
+    fn unscoped(reason: Withholding, placements: &[Placement]) -> Self {
+        let run = Run::everywhere(placements.to_vec());
+        Self {
+            lines: derived_for(std::slice::from_ref(&run), "", ".Values"),
+            reason,
+            runs: vec![run],
+        }
+    }
+
+    /// Every placement withheld, in the order the lines render them.
+    pub fn placements(&self) -> impl Iterator<Item = &Placement> {
+        self.runs.iter().flat_map(|run| &run.placements)
+    }
 }

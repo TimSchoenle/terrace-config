@@ -6,11 +6,9 @@ use std::path::Path;
 
 use crate::error::Error;
 
-use crate::helm::scaffold::{
-    credential_entries_for, default_for, derived_for, invented, values_scalar,
-};
+use crate::helm::scaffold::{credential_entries_for, default_for, invented, values_scalar, wrap};
 
-use super::{Adoption, posix};
+use super::{Adoption, Withholding, posix};
 
 /// One chart's result: what was inserted, what was refused, and what is still owed.
 ///
@@ -51,6 +49,57 @@ pub fn report(adoption: &Adoption, written: bool) -> Result<String, Error> {
     Ok(out)
 }
 
+/// Where withheld lines go: the file that opens the define, or the define nobody has written yet.
+///
+/// Named from where [`find_define`](super::template::find_define) actually found it, since a chart
+/// is free to keep its partials in any `templates/*.tpl`.
+fn define_heading(found: Option<&Path>, chart: &str, define: &str) -> String {
+    match found {
+        Some(path) => format!("{}, in `{define}`", posix(path)),
+        None => {
+            format!("a `{chart}.{define}` define, which no file under {chart}/templates/ opens")
+        }
+    }
+}
+
+/// Why withheld `derivedConfig` lines were not appended, as the lines printed under them.
+fn withholding_note(reason: &Withholding) -> Vec<String> {
+    let text = match reason {
+        Withholding::NoDefine => "There is no define to append to. These assume it is included \
+             with `.` as the root context; a chart rendering several documents also gates each \
+             root on `$service`."
+            .to_owned(),
+        Withholding::UnknownConvention => "This chart renders several documents, and the define \
+             does not unwrap `(dict \"ctx\" ... \"service\" ...)` with `$ctx := .ctx`, so how it \
+             addresses values and services could not be read. These assume `.` is the root \
+             context and carry no `$service` gate: address them and gate each root the way the \
+             define does."
+            .to_owned(),
+        Withholding::RootWritten(roots) => format!(
+            "The define already writes {}, and a second block of the same name would shadow the \
+             first — `fromYaml` keeps the last. Place these in the block that exists.",
+            listed(roots)
+        ),
+        Withholding::NoService(documents) => format!(
+            "Declared by {}, whose image is not at `services.<name>.image`, so there is no \
+             `$service` value to gate these on. The documents that do name one are handled above; \
+             deliver these wherever this one's configuration is rendered.",
+            listed(documents)
+        ),
+    };
+    wrap(&text, "", 86)
+}
+
+/// Names as `` `a` ``, `` `a` and `b` `` or `` `a`, `b` and `c` ``.
+fn listed(names: &[String]) -> String {
+    let quoted: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+    match quoted.as_slice() {
+        [] => String::new(),
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// Lines under a report heading, four spaces in, a blank line staying blank.
 pub(super) fn indented(out: &mut String, lines: &[String]) {
     for line in lines {
@@ -75,24 +124,24 @@ pub(super) fn still_owed(
     let plan = adoption.placed();
     let chart = &adoption.chart;
 
-    if !adoption.owed_projected.is_empty() {
+    for withheld in &adoption.owed_projected {
         let _ = writeln!(
             out,
-            "\n  still owed — {chart}/templates/_helpers.tpl, in `derivedConfig`:\n"
+            "\n  still owed — {}:\n",
+            define_heading(adoption.derived_define.as_deref(), chart, "derivedConfig")
         );
-        for line in derived_for(&adoption.owed_projected, "  ", None, ".Values") {
-            let _ = writeln!(out, "  {line}");
+        indented(out, &withheld.lines);
+        out.push('\n');
+        for line in withholding_note(&withheld.reason) {
+            let _ = writeln!(out, "    {line}");
         }
-        out.push_str(
-            "\n    The define already writes this key's root, and a second one would shadow\n    \
-             the first — `fromYaml` keeps the last. Place these in the block that exists.\n",
-        );
     }
 
     if !adoption.owed_credentials.is_empty() {
         let _ = writeln!(
             out,
-            "\n  still owed — {chart}/templates/_helpers.tpl, in `secretData`:\n"
+            "\n  still owed — {}:\n",
+            define_heading(adoption.secret_define.as_deref(), chart, "secretData")
         );
         for line in credential_entries_for(&adoption.owed_credentials)? {
             let _ = writeln!(out, "    {line}");
