@@ -42,7 +42,7 @@ jobs:
       contents: read # to fetch code, and to list terrace-contract releases
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -58,7 +58,7 @@ jobs:
           docker build -f examples/service/Dockerfile -t orders-service:ci .
           docker save orders-service:ci --output "${RUNNER_TEMP}/orders-service.tar"
       - name: Check the image
-        uses: TimSchoenle/actions/actions/terrace/image@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-terrace-image-v1.1.0
+        uses: TimSchoenle/actions/actions/terrace/image@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-terrace-image-v1.1.2
         with:
           version: ${{ env.TERRACE_CONTRACT_VERSION }}
           working_directory: rust
@@ -89,7 +89,7 @@ jobs:
             tier: '1'
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -109,7 +109,7 @@ jobs:
           docker build -f "${EXAMPLE}/Dockerfile" -t "${EXAMPLE}:ci" .
           docker save "${EXAMPLE}:ci" --output "${RUNNER_TEMP}/${EXAMPLE}.tar"
       - name: Check the committed contract
-        uses: TimSchoenle/actions/actions/terrace/image@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-terrace-image-v1.1.0
+        uses: TimSchoenle/actions/actions/terrace/image@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-terrace-image-v1.1.2
         with:
           version: ${{ env.TERRACE_CONTRACT_VERSION }}
           working_directory: java
@@ -126,7 +126,7 @@ jobs:
           EXAMPLE: ${{ matrix.example }}
         run: ./gradlew -q --console=plain ":${EXAMPLE}:terraceContract"
       - name: Check the image
-        uses: TimSchoenle/actions/actions/terrace/image@ea4465fbe2bec98efad19b63849f8d1ac67b5c88 # tag=actions-terrace-image-v1.1.0
+        uses: TimSchoenle/actions/actions/terrace/image@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-terrace-image-v1.1.2
         with:
           version: ${{ env.TERRACE_CONTRACT_VERSION }}
           working_directory: java

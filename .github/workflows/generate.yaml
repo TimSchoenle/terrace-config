@@ -36,7 +36,7 @@ jobs:
       artifact_name: ${{ steps.patch.outputs.artifact_name }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -55,7 +55,7 @@ jobs:
       # reason absent from the diff. The same holds for every payload below.
       - name: Collect the Rust payload
         id: rust_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
+        uses: TimSchoenle/actions/actions/common/readme-variables@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-readme-variables-v2.1.3
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: rust/Cargo.toml
@@ -65,7 +65,7 @@ jobs:
       # the prefix release-please-config.json gives that component.
       - name: Collect the Java payload
         id: java_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
+        uses: TimSchoenle/actions/actions/common/readme-variables@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-readme-variables-v2.1.3
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: java/gradle.properties
@@ -83,7 +83,7 @@ jobs:
 
       - name: Collect the cli payload
         id: cli_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-readme-variables-v2.1.1
+        uses: TimSchoenle/actions/actions/common/readme-variables@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-readme-variables-v2.1.3
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: cli/Cargo.toml
@@ -93,7 +93,7 @@ jobs:
 
       - name: Render the Rust README
         id: readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        uses: TimSchoenle/actions/actions/common/render-template@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-render-template-v3.0.3
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
@@ -101,7 +101,7 @@ jobs:
 
       - name: Render the Java README
         id: java_readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        uses: TimSchoenle/actions/actions/common/render-template@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-render-template-v3.0.3
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
@@ -109,7 +109,7 @@ jobs:
 
       - name: Render the cli README
         id: cli_readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        uses: TimSchoenle/actions/actions/common/render-template@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-render-template-v3.0.3
         with:
           template: .github/templates/cli-README.md.hbs
           output: cli/README.md
@@ -119,7 +119,7 @@ jobs:
       # every payload, so it renders from the Rust one.
       - name: Render the root README
         id: root_readme
-        uses: TimSchoenle/actions/actions/common/render-template@dc5b395636dc1954383f11af4062a08814e9b15a # tag=actions-common-render-template-v3.0.1
+        uses: TimSchoenle/actions/actions/common/render-template@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-render-template-v3.0.3
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
@@ -143,7 +143,7 @@ jobs:
       artifact_name: ${{ steps.patch.outputs.artifact_name }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -187,7 +187,7 @@ jobs:
       contents: read # to check out the commit the merged patch is made from
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -197,6 +197,6 @@ jobs:
             *.blob.core.windows.net:443
 
       - name: Generated Files Verdict
-        uses: TimSchoenle/actions/actions/common/generated-files-verdict@927daf80ad493b627b7384abf496d83abbac5f43 # tag=actions-common-generated-files-verdict-v1.2.0
+        uses: TimSchoenle/actions/actions/common/generated-files-verdict@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-common-generated-files-verdict-v1.2.2
         with:
           needs: ${{ toJSON(needs) }}
