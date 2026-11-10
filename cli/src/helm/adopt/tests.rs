@@ -1007,6 +1007,38 @@ fn printed_lines_are_in_the_define_s_dialect_behind_the_same_gate() {
 }
 
 #[test]
+fn every_root_the_define_already_writes_is_named() {
+    let chart = Chart::new();
+    chart.template(
+        "_helpers.tpl",
+        &HELPERS.replace(
+            "{{- end -}}\n\n{{- define \"fixture.secretData\"",
+            "log:\n  x: 1\nqueue:\n  y: 1\nzone:\n  z: 1\n{{- end -}}\n\n{{- define \"fixture.secretData\"",
+        ),
+    );
+    chart.contract(
+        "api",
+        &[
+            session_ttl(),
+            key("log.level", &json!({})),
+            key("queue.size", &json!({})),
+            key("zone.name", &json!({})),
+        ],
+    );
+    let planned = chart.plan();
+
+    assert_eq!(
+        planned.owed_projected[0].reason,
+        super::Withholding::RootWritten(vec!["log".into(), "queue".into(), "zone".into()])
+    );
+    let shown = super::report(&planned, false).expect("a report");
+    assert!(
+        shown.contains("The define already writes `log`, `queue` and `zone`"),
+        "{shown}"
+    );
+}
+
+#[test]
 fn a_credential_owed_its_line_names_the_file_that_opens_secret_data() {
     let chart = Chart::new();
     chart.template(
@@ -1078,6 +1110,18 @@ auth:
 
     assert_eq!(owed_projected(&planned), ["queue.workers"]);
     assert!(!chart.helper_text().contains("queue:"));
+    assert_eq!(
+        planned.owed_projected[0].reason,
+        super::Withholding::UnknownConvention
+    );
+    // The lines cannot be in the define's dialect when that dialect could not be read, so the
+    // report says what they assume instead of passing them off as paste-ready.
+    let shown = super::report(&planned, true).expect("a report");
+    assert!(
+        shown.contains("This chart renders several documents, and the define"),
+        "{shown}"
+    );
+    assert!(!shown.contains("$service \""), "{shown}");
 }
 
 #[test]
@@ -1434,6 +1478,26 @@ fn a_chart_with_no_helper_prints_every_line() {
     chart.contract("api", &[session_ttl(), key("log.level", &json!({}))]);
     let planned = chart.write();
     assert_eq!(owed_projected(&planned), ["log.level"]);
+    assert_eq!(
+        planned.owed_projected[0].reason,
+        super::Withholding::NoDefine
+    );
+
+    // Nothing to name a file after, so the heading names the define nobody has written, and
+    // the lines say which calling convention they assume.
+    let shown = super::report(&planned, true).expect("a report");
+    assert!(
+        shown.contains(
+            "still owed — a `fixture.derivedConfig` define, which no file under \
+             fixture/templates/ opens:"
+        ),
+        "{shown}"
+    );
+    assert!(shown.contains("{{- with .Values.log.level }}"), "{shown}");
+    assert!(
+        shown.contains("There is no define to append to."),
+        "{shown}"
+    );
 }
 
 #[test]
