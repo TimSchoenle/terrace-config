@@ -38,7 +38,7 @@ pub(crate) fn bindings_command(
     ))
 }
 
-/// Writes or checks every generated `@schema` block.
+/// Writes or checks every generated `@schema` block, and every bound value's `@default` line.
 ///
 /// One walk, two endings. The writer replaces a block that does not match; the checker reports it
 /// and adds the one assertion the writer deliberately does not make (that a hand transcription is
@@ -90,7 +90,7 @@ pub(crate) fn shapes_command(
                     .map_err(|e| Error::io(chart_dir.join("values.yaml").display(), e))?;
                 written += count;
                 if format != Output::Json {
-                    println!("wrote: {} ({count} block(s))", chart.name);
+                    println!("wrote: {} ({count} edit(s))", chart.name);
                 }
             }
         }
@@ -109,7 +109,9 @@ pub(crate) fn shapes_command(
                 "==> {derived} generated and {transcriptions} hand-transcribed config shape(s), all current"
             );
         } else if !check && written == 0 && !report.failed() {
-            println!("==> every generated `@schema` block already matches its contract");
+            println!(
+                "==> every generated `@schema` block and `@default` line already matches its contract"
+            );
         }
     }
 
@@ -117,7 +119,8 @@ pub(crate) fn shapes_command(
         &report,
         format,
         "Derived value schemas",
-        "Every bound value's `@schema` block is the one its contract describes.",
+        "Every bound value's `@schema` block, and the `@default` line of one left at `null`, is the \
+         one its contract describes.",
     ))
 }
 

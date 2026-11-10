@@ -86,6 +86,36 @@ reports everything. The exit code is `0` when every step passed, `1` when a step
 and `2` when a step could not run. `--format github` puts each step in a collapsible log group and
 writes the findings into the job summary.
 
+## What a value left at `null` does
+
+An optional key is written as `null` when the chart leaves it to the image: the projection's guard
+keeps it out of the configuration document, and the image applies its own default. `shapes` writes
+that fact as the last line of the value's description, in the form helm-docs reads as the README's
+Default column:
+
+```yaml
+  # -- How long an access token stays valid (`auth.access_ttl_minutes`).
+  # @default -- `null` (unset): the key is left out and the image default applies, `15`.
+  accessTtlMinutes: null
+```
+
+The default is the contract's `default`, qualified by its `note`. A contract that publishes none
+gets `` `null` (unset): the key is left out and the image decides; its contract publishes no
+default. `` rather than a claim that a default exists: an `Option` key that unset turns off and a
+default the producer did not publish look the same in a contract. A key several documents declare
+with different defaults names each document's. helm-schema strips the line from the description it
+copies into `values.schema.json`.
+
+`shapes` owns the line for every value bound by a `projection`, `structured` or `external` marker,
+including a hand-transcribed one: it is written for an `optional` binding whose value is `null`,
+and removed otherwise, replacing any `@default` line already there. When the contract's default
+changes, `shapes` rewrites the line and `shapes --check` fails until it has. `adopt` and
+`helm init` write it when they create the value.
+
+The line is only as good as the contract. A producer publishes a key's default when it fills the
+key's `default` from the value its configuration type takes with nothing supplied; in the Rust
+implementation that is `Schema::with_defaults_from`.
+
 ## Markers a template never renders
 
 `bindings` holds every `# @config` marker in an enrolled chart (`bindings: true` in

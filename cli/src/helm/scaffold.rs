@@ -392,7 +392,8 @@ pub fn schema_lines(key: &Merged, indent: &str) -> Vec<String> {
 ///
 /// **Optional, with no default.** `null`, and the projection wraps the key in a guard, so nothing
 /// is written into the document and the binary falls back to its compiled default. That is what
-/// "unset" has to mean; writing an empty string instead would *supply* the key.
+/// "unset" has to mean; writing an empty string instead would *supply* the key. [`unset_line`]
+/// writes the description line that says so.
 ///
 /// **Required, with no default.** The image demands a value and names none, so one has to be
 /// invented and every invented value is wrong. What it must not be is *invalid*: a required integer
@@ -531,6 +532,23 @@ pub fn description_lines(placement: &Placement, indent: &str) -> Result<Vec<Stri
     Ok(described(&text, indent))
 }
 
+/// The line saying what a value written as `null` leaves in effect, when it is one.
+///
+/// Written for an optional key bound by a marker and left unset, which is the one case where the
+/// value on the page says nothing about what the image will do. The shapes writer owns the line
+/// from then on and rewrites it when the contract's default moves; see [`super::unset`].
+pub fn unset_line(placement: &Placement, value: &Json, indent: &str) -> Option<String> {
+    if placement.destination != Destination::Projected || !placement.optional() || !value.is_null()
+    {
+        return None;
+    }
+    let published = super::unset::Published::of(None, &placement.key.fields);
+    Some(super::unset::line(
+        &super::unset::sentence(&[published]),
+        indent,
+    ))
+}
+
 /// One contract key as the `values.yaml` block that feeds it.
 ///
 /// No `@config-shape` marker is written, and none is needed: a block belonging to a value that
@@ -562,6 +580,9 @@ pub fn value_block(placement: &Placement, indent: &str) -> Result<Vec<String>, E
     } else {
         default_for(&placement.key)
     };
+    if let Some(annotation) = unset_line(placement, &value, indent) {
+        lines.push(annotation);
+    }
     lines.push(format!("{indent}{leaf}: {}", values_scalar(&value)));
     Ok(lines)
 }

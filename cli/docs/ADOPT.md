@@ -7,7 +7,9 @@ When an image release adds a setting, `bindings` fails because no chart value re
 writes the repair for the cases that need no judgement:
 
 - an ordinary key gets a chart value, with its type, default and description taken from the
-  contract, and the marker that binds it;
+  contract, and the marker that binds it. An optional key with no published default is written as
+  `null`, and its description ends on the `@default` line saying what `null` leaves in effect
+  (see [REPOSITORY.md](REPOSITORY.md#what-a-value-left-at-null-does));
 - a credential gets a value delivered as a file, with no marker, plus its `unbound` write-off and
   its `credentials` row;
 - a reserved key gets its write-off and no value.
