@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.14.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.13.1...terrace-contract-v0.14.0) (2026-11-10)
+
+
+### Features
+
+* say what a chart value left at null leaves in effect ([#381](https://github.com/TimSchoenle/terrace-config/issues/381)) ([dffc119](https://github.com/TimSchoenle/terrace-config/commit/dffc1194aeeb5d4bdcf74bb4c66d85bea2054642))
+
+
+### Bug Fixes
+
+* generate schemas helm-schema 0.18.1 keeps and projections that never null a table ([#382](https://github.com/TimSchoenle/terrace-config/issues/382)) ([a216b96](https://github.com/TimSchoenle/terrace-config/commit/a216b96e3dccde3f0746a95be74fe47e66993209))
+
+
+### Dependencies
+
+* **deps:** lock file maintenance ([#370](https://github.com/TimSchoenle/terrace-config/issues/370)) ([d6131a0](https://github.com/TimSchoenle/terrace-config/commit/d6131a051a312b7fe5a4ef98f3a6407c4483118a))
+* **deps:** lock file maintenance ([#380](https://github.com/TimSchoenle/terrace-config/issues/380)) ([562caa6](https://github.com/TimSchoenle/terrace-config/commit/562caa6c0589bd0d1f418145343abd4cb8877a37))
+* **deps:** update rust crate toml to v1.2.0 ([#369](https://github.com/TimSchoenle/terrace-config/issues/369)) ([83e81ac](https://github.com/TimSchoenle/terrace-config/commit/83e81ac3f9a9fae8198a2494801b875075c4496b))
+* **deps:** update rust crate toml to v1.2.1 ([#377](https://github.com/TimSchoenle/terrace-config/issues/377)) ([86ed2f7](https://github.com/TimSchoenle/terrace-config/commit/86ed2f75942a8953bfb703c5d5d157829661a528))
+
 ## [0.13.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.13.0...terrace-contract-v0.13.1) (2026-11-02)
 
 
