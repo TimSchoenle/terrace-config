@@ -47,9 +47,116 @@ fn an_enum_is_the_whole_block() {
 }
 
 #[test]
-fn an_optional_enum_gains_null_as_a_member() {
-    let held = expected(Some(&json!({"enum": ["a"]})), true, false);
-    assert_eq!(held, json!({"enum": ["a", null]}));
+fn an_optional_enum_accepts_null_through_an_alternative_rather_than_a_member() {
+    // helm-schema 0.18.1 reads `enum` as a list of strings and drops a `null` member, so the
+    // value's own `null` default failed every render with "value must be one of ...". The
+    // `anyOf` spelling is one it writes through intact.
+    let held = expected(
+        Some(&json!({"type": "string", "enum": ["local_wins", "ask_me"]})),
+        true,
+        false,
+    );
+    assert_eq!(
+        held,
+        json!({"anyOf": [{"type": "null"}, {"enum": ["local_wins", "ask_me"]}]})
+    );
+    assert_eq!(
+        render(&held, 0, &Added::default()),
+        [
+            "# anyOf:",
+            "#   - type: 'null'",
+            "#   - enum: [\"local_wins\", \"ask_me\"]",
+        ]
+    );
+}
+
+#[test]
+fn a_null_member_the_contract_lists_becomes_the_same_alternative() {
+    // Required, but the producer itself lists `null` as legal: still not a member the generator
+    // can carry.
+    let held = expected(Some(&json!({"enum": ["a", null]})), false, false);
+    assert_eq!(held, json!({"anyOf": [{"type": "null"}, {"enum": ["a"]}]}));
+    assert_eq!(
+        expected(Some(&json!({"enum": [null]})), false, false),
+        json!({"type": "null"})
+    );
+}
+
+#[test]
+fn a_const_is_held_to_the_rule_an_enum_is() {
+    // The generator refuses `const` beside `type` with the same check, and drops nothing from it,
+    // so it takes the same two shapes.
+    assert_eq!(
+        expected(
+            Some(&json!({"type": "string", "const": "v1"})),
+            false,
+            false
+        ),
+        json!({"const": "v1"})
+    );
+    assert_eq!(
+        expected(Some(&json!({"type": "string", "const": "v1"})), true, false),
+        json!({"anyOf": [{"type": "null"}, {"const": "v1"}]})
+    );
+}
+
+#[test]
+fn an_enum_inside_items_is_not_beside_a_type() {
+    // helm-schema 0.18.1, on `items: {type: string, enum: [...]}`: "invalid items schema: cannot
+    // use both 'enum' and 'type' in the same schema", fatally, so no chart in the repository got a
+    // generated schema. `metadata.priority.content_type` in TankoVault is the case.
+    let held = expected(
+        Some(&json!({
+            "type": ["array", "null"],
+            "items": {"type": "string", "enum": ["anilist", "adapter"]},
+        })),
+        true,
+        false,
+    );
+    assert_eq!(held["type"], json!(["array", "null"]));
+    assert_eq!(held["items"], json!({"enum": ["anilist", "adapter"]}));
+}
+
+#[test]
+fn every_position_the_generator_validates_is_settled_and_no_other() {
+    // Measured against helm-schema 0.18.1's `Schema.Validate`: it recurses into `items` and the
+    // combinators, and never into `properties` or `additionalProperties`, where an enumerated
+    // field keeps its `type`.
+    let typed = json!({"type": "string", "enum": ["a"]});
+    let held = expected(
+        Some(&json!({
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": typed,
+                "anyOf": [typed],
+                "not": typed,
+            },
+        })),
+        false,
+        false,
+    );
+    let settled = json!({"enum": ["a"]});
+    assert_eq!(held["items"]["items"], settled);
+    assert_eq!(held["items"]["anyOf"], json!([settled]));
+    assert_eq!(held["items"]["not"], settled);
+    assert_eq!(held["items"]["type"], json!("array"));
+
+    let held = expected(
+        Some(&json!({
+            "type": "array",
+            "items": {"type": "object", "properties": {"mode": typed}},
+        })),
+        false,
+        false,
+    );
+    assert_eq!(held["items"]["properties"]["mode"], typed);
+    let held = expected(
+        Some(&json!({"type": "object", "additionalProperties": typed})),
+        false,
+        true,
+    );
+    assert_eq!(held["additionalProperties"], typed);
 }
 
 #[test]
@@ -225,6 +332,20 @@ fn a_narrowing_that_reintroduces_an_enum_beside_a_type_settles_on_the_enum() {
     let (result, _added, problems) = apply_divergences(&generated, &present, &[&kept]);
     assert!(problems.is_empty(), "{problems:?}");
     assert_eq!(result, json!({"enum": ["debug", "info"]}));
+}
+
+#[test]
+fn a_narrowing_that_enumerates_an_element_settles_inside_items_too() {
+    // The same reintroduction one level down, where the generator refuses it just as fatally.
+    let generated = json!({"type": "array", "items": {"type": "string"}});
+    let present = json!({"type": "array", "items": {"type": "string", "enum": ["a", "b"]}});
+    let kept = divergence("items.enum", Departure::Narrowing);
+    let (result, _added, problems) = apply_divergences(&generated, &present, &[&kept]);
+    assert!(problems.is_empty(), "{problems:?}");
+    assert_eq!(
+        result,
+        json!({"type": "array", "items": {"enum": ["a", "b"]}})
+    );
 }
 
 #[test]

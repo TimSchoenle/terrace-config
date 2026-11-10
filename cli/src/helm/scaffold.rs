@@ -820,11 +820,22 @@ fn document_tree(placements: &[Placement]) -> Tree {
 ///
 /// An optional setting must not reach the document at all when it is unset, and that distinction
 /// is the whole reason the helper is generated rather than left to a per-chart hand. Two guards say
-/// "unset", because one of them is wrong half the time: `with` treats every falsy value as absent,
-/// which is right for a string or a structured value and wrong for a number or a boolean, where `0`
-/// and `false` are settings in their own right. Those are guarded with `kindIs "invalid"` instead, a
-/// nil test that only catches the value actually being absent. Getting this backwards silently drops
-/// every deliberate zero an operator writes.
+/// "unset", because one of them is wrong half the time; see [`Unset`].
+///
+/// **A table is guarded too, on any of its contents being set.** A table written unconditionally
+/// with every child guarded renders as `audit:` and nothing under it when nothing is set, which
+/// parses as `audit: null`, or, one level down, as an empty mapping that leaves a bare `[security]`
+/// header in TOML. A chart that merges this layer over the operator's own `config` tree (the
+/// ordinary layering: `config` under the derived values under a service's own overrides) then
+/// replaces the operator's whole table with that null. So a table whose contents can all be absent
+/// is wrapped in the disjunction of its leaves' own guards, built from the same [`Unset`] the leaf
+/// guards are, so the two cannot disagree. A table holding a required leaf always has content and
+/// is written bare.
+///
+/// The guard repeats the leaf guards rather than pruning the rendered map afterwards, because a
+/// pruning pass is a define the chart would have to carry, and an adoption cannot assume one exists
+/// or add one without rewriting how the chart merges its layers. A guard is local: what renders is
+/// readable off the lines themselves.
 ///
 /// `values_prefix` is `.Values` where the define is included with `.` set to the root context, and
 /// `$ctx.Values` where it is included with `(dict "ctx" $ctx "service" $service)`, where `.Values`
@@ -834,58 +845,159 @@ fn derived_lines(tree: &Tree, indent: &str, values_prefix: &str) -> Vec<String> 
     for (name, node) in tree {
         let placement = match node {
             Node::Branch(children) => {
+                let guard = presence(children, values_prefix);
+                if let Some(condition) = &guard {
+                    lines.push(format!("{indent}{{{{- if {condition} }}}}"));
+                }
                 lines.push(format!("{indent}{name}:"));
                 lines.extend(derived_lines(
                     children,
                     &format!("{indent}  "),
                     values_prefix,
                 ));
+                if guard.is_some() {
+                    lines.push(format!("{indent}{{{{- end }}}}"));
+                }
                 continue;
             }
             Node::Leaf(placement) => placement,
         };
 
-        let reference = format!("{values_prefix}.{}", placement.values_path);
+        let reference = reference_to(placement, values_prefix);
         let structured = placement.key.text("text_form") == Some("structured");
-        let bare = constraint_types(&placement.key)
-            .iter()
-            .any(|name| matches!(name.as_str(), "integer" | "number" | "boolean"));
         let nested = indent.len() + 2;
 
-        match (placement.optional(), structured, bare) {
-            (true, _, true) => {
+        match (Unset::of(placement), structured) {
+            (Unset::Nil, _) => {
                 lines.push(format!(
                     "{indent}{{{{- if not (kindIs \"invalid\" {reference}) }}}}"
                 ));
                 lines.push(format!("{indent}{name}: {{{{ {reference} }}}}"));
                 lines.push(format!("{indent}{{{{- end }}}}"));
             }
-            (true, true, false) => {
+            (Unset::Falsy, true) => {
                 lines.push(format!("{indent}{{{{- with {reference} }}}}"));
                 lines.push(format!("{indent}{name}:"));
                 lines.push(format!("{indent}  {{{{- toYaml . | nindent {nested} }}}}"));
                 lines.push(format!("{indent}{{{{- end }}}}"));
             }
-            (true, false, false) => {
+            (Unset::Falsy, false) => {
                 lines.push(format!("{indent}{{{{- with {reference} }}}}"));
                 lines.push(format!("{indent}{name}: {{{{ . | quote }}}}"));
                 lines.push(format!("{indent}{{{{- end }}}}"));
             }
-            (false, true, _) => {
+            (Unset::Never, true) => {
                 lines.push(format!("{indent}{name}:"));
                 lines.push(format!(
                     "{indent}  {{{{- toYaml {reference} | nindent {nested} }}}}"
                 ));
             }
-            (false, false, true) => {
+            (Unset::Never, false) if bare(placement) => {
                 lines.push(format!("{indent}{name}: {{{{ {reference} }}}}"));
             }
-            (false, false, false) => {
+            (Unset::Never, false) => {
                 lines.push(format!("{indent}{name}: {{{{ {reference} | quote }}}}"));
             }
         }
     }
     lines
+}
+
+/// When a projected value counts as unset, and so is left out of the document.
+///
+/// `with` treats every falsy value as absent, which is right for a string or a structured value and
+/// wrong for a number or a boolean, where `0` and `false` are settings in their own right. Those
+/// are tested with `kindIs "invalid"` instead, a nil test that only catches the value actually
+/// being absent. Getting this backwards silently drops every deliberate zero an operator writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Unset {
+    /// Required: always written.
+    Never,
+    /// An optional number or boolean: unset only when it is null.
+    Nil,
+    /// Any other optional value: unset when it is falsy, as `with` reads it.
+    Falsy,
+}
+
+impl Unset {
+    fn of(placement: &Placement) -> Self {
+        if !placement.optional() {
+            Self::Never
+        } else if bare(placement) {
+            Self::Nil
+        } else {
+            Self::Falsy
+        }
+    }
+
+    /// The template condition that holds when the value at `reference` is set; [`None`] for a
+    /// value that is never unset.
+    fn set(self, reference: &str) -> Option<String> {
+        match self {
+            Self::Never => None,
+            Self::Nil => Some(format!("not (kindIs \"invalid\" {reference})")),
+            Self::Falsy => Some(reference.to_owned()),
+        }
+    }
+}
+
+/// Whether a key's value is written into the document bare rather than quoted: a number or a
+/// boolean.
+fn bare(placement: &Placement) -> bool {
+    constraint_types(&placement.key)
+        .iter()
+        .any(|name| matches!(name.as_str(), "integer" | "number" | "boolean"))
+}
+
+/// The template reference to one placement's chart value.
+fn reference_to(placement: &Placement, values_prefix: &str) -> String {
+    format!("{values_prefix}.{}", placement.values_path)
+}
+
+/// The condition under which a table renders anything, or [`None`] when it always does.
+///
+/// One leaf's own guard where the table holds one, and `or` over all of them otherwise, each
+/// parenthesised where it is more than a reference. A table with a required leaf anywhere beneath
+/// it always has content, so it needs no guard at all.
+fn presence(tree: &Tree, values_prefix: &str) -> Option<String> {
+    let mut terms = Vec::new();
+    if !collect_presence(tree, values_prefix, &mut terms) {
+        return None;
+    }
+    if let [only] = terms.as_slice() {
+        return Some(only.clone());
+    }
+    let parenthesised: Vec<String> = terms
+        .iter()
+        .map(|term| {
+            if term.contains(' ') {
+                format!("({term})")
+            } else {
+                term.clone()
+            }
+        })
+        .collect();
+    Some(format!("or {}", parenthesised.join(" ")))
+}
+
+/// Every leaf guard under a table, in tree order; `false` as soon as a leaf needs none.
+fn collect_presence(tree: &Tree, values_prefix: &str, terms: &mut Vec<String>) -> bool {
+    for node in tree.values() {
+        match node {
+            Node::Branch(children) => {
+                if !collect_presence(children, values_prefix, terms) {
+                    return false;
+                }
+            }
+            Node::Leaf(placement) => {
+                match Unset::of(placement).set(&reference_to(placement, values_prefix)) {
+                    Some(term) => terms.push(term),
+                    None => return false,
+                }
+            }
+        }
+    }
+    true
 }
 
 /// The type names a key's constraint declares, as a list whether it was published as one or not.
@@ -907,34 +1019,46 @@ fn constraint_types(key: &Merged) -> Vec<String> {
     }
 }
 
-/// The `derivedConfig` lines for some placements, at a caller's indent.
+/// Some placements, and the `$service` values they are rendered for.
 ///
-/// `scoped` names, by top-level root, the `$service` values a root is guarded on, for a root only
-/// some of a multi-document chart's documents declare. A root it says nothing about renders
-/// unguarded. Deciding which roots qualify is the caller's job, and the caller is expected to
-/// refuse to guess rather than pass a scope it is unsure of.
-///
-/// `values_prefix` applies to every root alike, guarded or not: it is a fact about how the *define*
-/// is included, not about any one root.
-pub fn derived_for(
-    placements: &[Placement],
-    indent: &str,
-    scoped: Option<&BTreeMap<String, Vec<String>>>,
-    values_prefix: &str,
-) -> Vec<String> {
-    let tree = document_tree(placements);
-    let Some(scoped) = scoped.filter(|scoped| !scoped.is_empty()) else {
-        return derived_lines(&tree, indent, values_prefix);
-    };
+/// A multi-document chart's `derivedConfig` is included once per service and gated by hand on
+/// `$service`, and a run is one such gate: the placements in it render only where `$service` is
+/// one of `services`. A run with no services renders for every service, unguarded, which is also
+/// what every run of a one-document chart is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Run {
+    /// The `$service` values the run is gated on; empty for every service.
+    pub services: Vec<String>,
+    /// What renders there.
+    pub placements: Vec<Placement>,
+}
 
+impl Run {
+    /// A run rendered for every service, unguarded.
+    pub fn everywhere(placements: Vec<Placement>) -> Self {
+        Self {
+            services: Vec::new(),
+            placements,
+        }
+    }
+}
+
+/// The `derivedConfig` lines for some runs, at a caller's indent, each inside its `$service` gate.
+///
+/// The runs are rendered in the order given, each as one document tree. Two runs naming the same
+/// root must never both render for one service, or `fromYaml` keeps the second and drops the
+/// first in silence; ordering and partitioning them is the caller's job.
+///
+/// `values_prefix` applies to every run alike, gated or not: it is a fact about how the *define* is
+/// included, not about any one root.
+pub fn derived_for(runs: &[Run], indent: &str, values_prefix: &str) -> Vec<String> {
     let mut lines = Vec::new();
-    for (root, node) in tree {
-        let body = derived_lines(&Tree::from([(root.clone(), node)]), indent, values_prefix);
-        match scoped.get(&root) {
-            Some(service_keys) if !service_keys.is_empty() => {
-                lines.extend(guarded(body, service_keys, indent));
-            }
-            _ => lines.extend(body),
+    for run in runs {
+        let body = derived_lines(&document_tree(&run.placements), indent, values_prefix);
+        if run.services.is_empty() {
+            lines.extend(body);
+        } else {
+            lines.extend(guarded(body, &run.services, indent));
         }
     }
     lines

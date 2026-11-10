@@ -5,14 +5,12 @@
 //! write-off groups. The cases about a whole rendered chart stay with the renderers that are
 //! not ported yet.
 
-use std::collections::BTreeMap;
-
 use serde_json::{Map, Value as Json, json};
 
 use super::{
-    Destination, Key, Node, Placement, Plan, check_chart_name, credential_entries_for, default_for,
-    derived_for, env_prefix, invented, plan_keys, schema_lines, service_key_for, tree_at,
-    value_block, values_path_for, write_off_groups,
+    Destination, Key, Node, Placement, Plan, Run, check_chart_name, credential_entries_for,
+    default_for, derived_for, env_prefix, invented, plan_keys, schema_lines, service_key_for,
+    tree_at, value_block, values_path_for, write_off_groups,
 };
 use crate::helm::declaration::read_yaml;
 use crate::union::Merged;
@@ -369,7 +367,12 @@ fn an_enum_is_the_whole_block() {
     );
     let found = block(&entry);
     assert!(found.get("type").is_none(), "{found}");
-    assert_eq!(found["enum"], json!(["sqlite", "postgres", null]));
+    // Optional, so "unset" is an alternative beside the members rather than a `null` member,
+    // which helm-schema would drop.
+    assert_eq!(
+        found["anyOf"],
+        json!([{"type": "null"}, {"enum": ["sqlite", "postgres"]}])
+    );
 }
 
 #[test]
@@ -446,7 +449,7 @@ fn a_bounded_scalar_still_copies_its_bounds() {
 
 fn derived(keys: Vec<Key>) -> String {
     let plan = plan_of(keys);
-    derived_for(&plan.projected, "", None, ".Values").join("\n")
+    derived_for(&[Run::everywhere(plan.projected)], "", ".Values").join("\n")
 }
 
 #[test]
@@ -494,8 +497,17 @@ fn an_optional_number_or_boolean_is_guarded_against_null_not_falsy() {
 #[test]
 fn a_root_only_some_documents_declare_is_guarded_by_service() {
     let plan = plan_of(vec![key("queue.workers", &json!({"required": true}))]);
-    let scoped = BTreeMap::from([("queue".to_owned(), vec!["worker".to_owned()])]);
-    let lines = derived_for(&plan.projected, "", Some(&scoped), "$ctx.Values");
+    let gated = |services: &[&str]| {
+        derived_for(
+            &[Run {
+                services: services.iter().map(|name| (*name).to_owned()).collect(),
+                placements: plan.projected.clone(),
+            }],
+            "",
+            "$ctx.Values",
+        )
+    };
+    let lines = gated(&["worker"]);
     assert_eq!(
         lines.first().map(String::as_str),
         Some("{{- if eq $service \"worker\" }}")
@@ -503,15 +515,52 @@ fn a_root_only_some_documents_declare_is_guarded_by_service() {
     assert_eq!(lines.last().map(String::as_str), Some("{{- end }}"));
     assert!(lines.contains(&"  workers: {{ $ctx.Values.queue.workers | quote }}".to_owned()));
 
-    let both = BTreeMap::from([(
-        "queue".to_owned(),
-        vec!["api".to_owned(), "worker".to_owned()],
-    )]);
-    let lines = derived_for(&plan.projected, "", Some(&both), "$ctx.Values");
+    let lines = gated(&["api", "worker"]);
     assert_eq!(
         lines[0],
         "{{- if or (eq $service \"api\") (eq $service \"worker\") }}"
     );
+}
+
+#[test]
+fn a_table_whose_contents_can_all_be_absent_is_guarded_on_any_of_them() {
+    // Unguarded, every value unset rendered `audit:` alone, which is `audit: null`, and a chart
+    // merging this layer over its operator's `config` tree lost the operator's whole table.
+    let text = derived(vec![
+        key("audit.enabled", &json!({"constraint": {"type": "boolean"}})),
+        key("audit.sink", &json!({})),
+        key("security.cors.origin", &json!({})),
+    ]);
+    assert!(
+        text.starts_with(
+            "{{- if or (not (kindIs \"invalid\" .Values.audit.enabled)) .Values.audit.sink }}\n\
+             audit:\n"
+        ),
+        "{text}"
+    );
+    // One level down, a table with one leaf takes that leaf's own guard, and so does the root
+    // above it.
+    assert!(
+        text.contains(
+            "{{- if .Values.security.cors.origin }}\nsecurity:\n  \
+             {{- if .Values.security.cors.origin }}\n  cors:\n"
+        ),
+        "{text}"
+    );
+    assert_eq!(
+        text.matches("{{- if").count() + text.matches("{{- with").count(),
+        text.matches("{{- end }}").count(),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_table_holding_a_required_value_is_never_guarded() {
+    let text = derived(vec![
+        key("db.url", &json!({"required": true})),
+        key("db.pool", &json!({})),
+    ]);
+    assert!(text.starts_with("db:\n"), "{text}");
 }
 
 #[test]
@@ -540,7 +589,8 @@ fn the_template_braces_are_balanced() {
         key("a.n", &json!({"constraint": {"type": "integer"}})),
         key("c.token", &json!({"secret": true, "required": true})),
     ]);
-    let mut text = derived_for(&plan.projected, "", None, ".Values").join("\n");
+    let mut text =
+        derived_for(&[Run::everywhere(plan.projected.clone())], "", ".Values").join("\n");
     text.push_str(
         &credential_entries_for(&plan.credentials)
             .expect("lines")

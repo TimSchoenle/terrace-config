@@ -21,6 +21,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value as Json, json};
 
+mod render;
+
 use super::{Adoption, Refusal, adopt, splices, write};
 use crate::helm::declaration::{Selection, load_declaration, read_yaml};
 use crate::helm::{bindings, shapes};
@@ -325,6 +327,7 @@ fn owed_projected(planned: &Adoption) -> Vec<&str> {
     planned
         .owed_projected
         .iter()
+        .flat_map(super::Withheld::placements)
         .map(super::Placement::path)
         .collect()
 }
@@ -400,7 +403,7 @@ fn a_new_key_becomes_a_value_with_its_marker_type_and_description() {
     );
     assert_eq!(
         blocks(&chart.text())["level"],
-        json!({"enum": ["debug", "info", null]})
+        json!({"anyOf": [{"type": "null"}, {"enum": ["debug", "info"]}]})
     );
 }
 
@@ -713,7 +716,7 @@ fn a_key_only_one_document_declares_is_guarded_by_service() {
     chart.contract("worker", &[session_ttl(), integer("queue.workers", 4)]);
     let planned = chart.write();
 
-    assert_eq!(planned.owed_projected, [] as [super::Placement; 0]);
+    assert_eq!(owed_projected(&planned), [] as [&str; 0]);
     let body = chart.helper_text();
     assert!(body.contains("{{- if eq $service \"worker\" }}"), "{body}");
     assert!(body.contains("queue:"), "{body}");
@@ -770,29 +773,280 @@ workers: {{ .Values.queue.workers }}
 }
 
 #[test]
-fn new_keys_sharing_a_root_with_different_scopes_are_printed_not_guessed() {
+fn new_keys_sharing_a_root_with_different_scopes_are_partitioned_by_service() {
+    // `api` declares `queue.retries` and `worker` declares `queue.workers`. Each service gets one
+    // `queue:` holding exactly what its own contract declares; the two never render for the same
+    // `$service`, so neither shadows the other. Printing them instead sent TankoVault's
+    // `metadata.*` to a person with the wrong reason attached.
     let chart = Chart::new();
     chart.declaration(SCOPED_DOCUMENTS);
     chart.template("_helpers.tpl", SCOPED_HELPERS);
-    chart.contract("api", &[session_ttl(), integer("queue.retries", 3)]);
-    chart.contract("worker", &[session_ttl(), integer("queue.workers", 4)]);
+    chart.contract(
+        "api",
+        &[
+            session_ttl(),
+            integer("queue.retries", 3),
+            integer("queue.size", 9),
+        ],
+    );
+    chart.contract(
+        "worker",
+        &[
+            session_ttl(),
+            integer("queue.workers", 4),
+            integer("queue.size", 9),
+        ],
+    );
     let planned = chart.write();
 
-    let mut owed = owed_projected(&planned);
-    owed.sort_unstable();
-    assert_eq!(owed, ["queue.retries", "queue.workers"]);
-    assert!(!chart.helper_text().contains("queue:"));
+    assert_eq!(owed_projected(&planned), [] as [&str; 0]);
+    let body = chart.helper_text();
+    let api = body
+        .split("{{- if eq $service \"api\" }}")
+        .nth(1)
+        .and_then(|rest| rest.split("{{- if eq $service \"worker\" }}").next())
+        .expect("an `api` run precedes the `worker` run");
+    let worker = body
+        .split("{{- if eq $service \"worker\" }}")
+        .nth(1)
+        .expect("a `worker` run");
+    assert!(api.contains("retries:") && api.contains("size:"), "{body}");
+    assert!(!api.contains("workers:"), "{body}");
+    assert!(
+        worker.contains("workers:") && worker.contains("size:"),
+        "{body}"
+    );
+    assert!(!worker.contains("retries:"), "{body}");
+    assert_eq!(body.matches("queue:").count(), 2, "{body}");
+}
+
+#[test]
+fn a_projection_whose_values_are_all_unset_renders_nothing() {
+    // Rendered unguarded, every value unset gave `audit:` and `security:\n  cors:`, which parse as
+    // a null and an empty table. A chart merging this layer over its operator's `config` tree
+    // lost the operator's whole `audit` table, and TOML kept a bare `[security.cors]` header.
+    let chart = Chart::new();
+    chart.declaration(SCOPED_DOCUMENTS);
+    chart.template("_helpers.tpl", SCOPED_HELPERS);
+    let flag = |path: &str| {
+        key(
+            path,
+            &json!({"text_form": "boolean", "constraint": {"type": "boolean"}}),
+        )
+    };
+    let count = |path: &str| {
+        key(
+            path,
+            &json!({"text_form": "integer", "constraint": {"type": "integer"}}),
+        )
+    };
+    chart.contract(
+        "api",
+        &[
+            session_ttl(),
+            flag("audit.enabled"),
+            key("audit.sink", &json!({})),
+            key("security.cors.origin", &json!({})),
+        ],
+    );
+    chart.contract(
+        "worker",
+        &[
+            session_ttl(),
+            key("security.cors.origin", &json!({})),
+            count("security.cors.max_age"),
+        ],
+    );
+    let planned = chart.write();
+    assert_eq!(owed_projected(&planned), [] as [&str; 0]);
+
+    let helpers = chart.helper_text();
+    let body = render::define_body(&helpers, "fixture.derivedConfig");
+    let rendered = |values: &Json, service: &str| {
+        let text = render::render(body, values, service);
+        read_yaml(&text, Path::new("derivedConfig")).expect("the rendering is YAML")
+    };
+    let untouched = json!({"auth": {"session_ttl": 3600}});
+
+    let unset = chart.parsed();
+    assert_eq!(unset["audit"]["enabled"], Json::Null, "{helpers}");
+    for service in ["api", "worker"] {
+        assert_eq!(
+            rendered(&unset, service),
+            untouched,
+            "{service}:\n{helpers}"
+        );
+    }
+
+    // The control: one value set, and only that value arrives, only where it is declared. A
+    // deliberate `0` is a setting, not an absence.
+    let mut set = unset.clone();
+    set["security"]["cors"]["maxAge"] = json!(0);
+    set["audit"]["sink"] = json!("syslog");
+    assert_eq!(
+        rendered(&set, "worker"),
+        json!({"auth": {"session_ttl": 3600}, "security": {"cors": {"max_age": 0}}})
+    );
+    assert_eq!(
+        rendered(&set, "api"),
+        json!({"auth": {"session_ttl": 3600}, "audit": {"sink": "syslog"}})
+    );
+}
+
+#[test]
+fn services_declaring_the_same_keys_share_one_run() {
+    let chart = Chart::new();
+    chart.declaration(&format!(
+        "{SCOPED_DOCUMENTS}  - name: sync
+    source:
+      kind: ConfigMap
+      selector: {{ app.kubernetes.io/component: sync }}
+      key: config.toml
+    images:
+      - values: services.sync.image
+        contract: contracts/sync.json
+"
+    ));
+    chart.template("_helpers.tpl", SCOPED_HELPERS);
+    chart.contract("api", &[session_ttl()]);
+    chart.contract("worker", &[session_ttl(), integer("queue.workers", 4)]);
+    chart.contract("sync", &[session_ttl(), integer("queue.workers", 4)]);
+    chart.write();
+
+    let body = chart.helper_text();
+    assert!(
+        body.contains("{{- if or (eq $service \"sync\") (eq $service \"worker\") }}"),
+        "{body}"
+    );
+    assert_eq!(body.matches("queue:").count(), 1, "{body}");
+}
+
+#[test]
+fn a_document_with_no_service_value_is_owed_its_share_and_the_rest_is_written() {
+    // TankoVault's `database.*` is declared by every service and by `bootstrap`, whose image is at
+    // `bootstrap.image`. The whole root was printed, explained as a root the define already
+    // writes, which it did not.
+    let chart = Chart::new();
+    chart.declaration(&format!(
+        "{SCOPED_DOCUMENTS}  - name: bootstrap
+    source:
+      kind: ConfigMap
+      selector: {{ app.kubernetes.io/component: bootstrap }}
+      key: config.toml
+    images:
+      - values: bootstrap.image
+        contract: contracts/bootstrap.json
+"
+    ));
+    chart.template("_helpers.tpl", SCOPED_HELPERS);
+    let pool = integer("database.max_connections", 10);
+    chart.contract("api", &[session_ttl(), pool.clone()]);
+    chart.contract("worker", &[session_ttl()]);
+    chart.contract("bootstrap", &[pool]);
+    let planned = chart.write();
+
+    let body = chart.helper_text();
+    assert!(body.contains("{{- if eq $service \"api\" }}\n"), "{body}");
+    assert!(body.contains("database:"), "{body}");
+    assert_eq!(owed_projected(&planned), ["database.max_connections"]);
+    assert_eq!(
+        planned.owed_projected[0].reason,
+        super::Withholding::NoService(vec!["bootstrap".to_owned()])
+    );
+    let shown = super::report(&planned, true).expect("a report");
+    assert!(shown.contains("Declared by `bootstrap`"), "{shown}");
+    assert!(!shown.contains("already writes"), "{shown}");
+}
+
+#[test]
+fn printed_lines_are_in_the_define_s_dialect_behind_the_same_gate() {
+    // Printed as `.Values.x` with no gate, a line pasted into a define whose dot is a dict fails
+    // to render, and one pasted without its `$service` gate reaches a service whose contract
+    // does not declare the key.
+    let chart = Chart::new();
+    chart.declaration(SCOPED_DOCUMENTS);
+    chart.template(
+        "_config.tpl",
+        &SCOPED_HELPERS.replace(
+            "{{- end -}}\n\n{{- define \"fixture.secretData\"",
+            "{{- if eq $service \"worker\" }}\nqueue:\n  workers: 1\n{{- end }}\n{{- end -}}\n\n\
+             {{- define \"fixture.unused\"",
+        ),
+    );
+    chart.template(
+        "_helpers.tpl",
+        "{{- define \"fixture.secretData\" -}}\n{{- end -}}\n",
+    );
+    chart.contract("api", &[session_ttl()]);
+    chart.contract("worker", &[session_ttl(), integer("queue.retries", 3)]);
+    let planned = chart.write();
+
+    assert_eq!(owed_projected(&planned), ["queue.retries"]);
+    let shown = super::report(&planned, true).expect("a report");
+    let config = super::posix(&chart.dir.join("templates").join("_config.tpl"));
+    assert!(
+        shown.contains(&format!("still owed — {config}, in `derivedConfig`:")),
+        "{shown}"
+    );
+    assert!(
+        !shown.contains("_helpers.tpl, in `derivedConfig`"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains(
+            "    {{- if eq $service \"worker\" }}\n    \
+             {{- if not (kindIs \"invalid\" $ctx.Values.queue.retries) }}\n    queue:\n"
+        ),
+        "{shown}"
+    );
+    assert!(!shown.contains(" .Values.queue"), "{shown}");
+    assert!(
+        shown.contains("The define already writes `queue`"),
+        "{shown}"
+    );
+}
+
+#[test]
+fn a_credential_owed_its_line_names_the_file_that_opens_secret_data() {
+    let chart = Chart::new();
+    chart.template(
+        "_helpers.tpl",
+        "{{- define \"fixture.derivedConfig\" -}}\nauth:\n  session_ttl: 1\n{{- end -}}\n",
+    );
+    chart.template(
+        "_secrets.tpl",
+        "{{- define \"fixture.secretData\" -}}\ndatabase__url: x\n{{- end -}}\n",
+    );
+    chart.contract(
+        "api",
+        &[session_ttl(), key("database.url", &json!({"secret": true}))],
+    );
+    let planned = chart.plan();
+
+    let shown = super::report(&planned, false).expect("a report");
+    let secrets = super::posix(&chart.dir.join("templates").join("_secrets.tpl"));
+    assert!(
+        shown.contains(&format!("still owed — {secrets}, in `secretData`:")),
+        "{shown}"
+    );
 }
 
 #[test]
 fn a_scoped_key_with_no_resolvable_service_is_printed_not_guessed() {
+    // A define unwrapping `$ctx`, so what is left to decide is the gate, and `two_documents`' flat
+    // `image` paths name no `$service` value for it.
     let chart = Chart::new();
     chart.declaration(&two_documents());
+    chart.template("_helpers.tpl", SCOPED_HELPERS);
     chart.contract("api", &[session_ttl(), integer("queue.workers", 4)]);
     chart.contract("worker", &[session_ttl()]);
     let planned = chart.write();
 
     assert_eq!(owed_projected(&planned), ["queue.workers"]);
+    assert_eq!(
+        planned.owed_projected[0].reason,
+        super::Withholding::NoService(vec!["api".to_owned()])
+    );
     assert!(!chart.helper_text().contains("queue:"));
 }
 
@@ -1167,7 +1421,7 @@ fn a_derived_config_split_into_another_file_is_still_found() {
     );
     let planned = chart.write();
 
-    assert_eq!(planned.owed_projected, [] as [super::Placement; 0]);
+    assert_eq!(owed_projected(&planned), [] as [&str; 0]);
     assert!(chart.read("templates/_config.tpl").contains("log:"));
     assert!(!chart.helper_text().contains("log:"));
 }

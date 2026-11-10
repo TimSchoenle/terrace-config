@@ -67,7 +67,13 @@
 //! inside a hand-written block is a person's question), a credential's `note:` (when a release needs
 //! it is the chart's knowledge), a better sentence for a grouping block (a contract says nothing
 //! about the blocks a chart groups keys into), and a chosen default for a required key whose image
-//! publishes none.
+//! publishes none. A printed projection is rendered as the appended lines would be, in the
+//! define's own dialect and behind the same `$service` gates, and headed by the file the define is
+//! in and the reason it was not appended.
+//!
+//! A table in the appended lines is guarded on any of its contents being set, so a run of unset
+//! values renders nothing rather than a null table that would replace the operator's own; see
+//! [`derived_for`](super::scaffold::derived_for).
 //!
 //! So a written run leaves the chart binding, rendering and testing the new settings. Two generated
 //! files it does *not* touch are owed immediately afterwards, and the closing output leads with
@@ -176,6 +182,7 @@ pub use self::apply::{Splice, splices, write, write_all};
 use self::placement::insertions_for;
 pub use self::report::{closing, counted, report};
 use self::template::projection_edits;
+pub use self::template::{Withheld, Withholding};
 use self::write_offs::declaration_edits;
 
 /// The fields of a contract key that decide what its chart value looks like.
@@ -267,10 +274,15 @@ pub struct Adoption {
     /// it, rather than the bindings gate's own findings, which decides what the report says will
     /// find it again.
     pub by_hand: bool,
-    /// The projections that could not be appended, printed for a person to place.
-    pub owed_projected: Vec<Placement>,
+    /// The projections that could not be appended, printed for a person to place, each group with
+    /// the reason it was withheld.
+    pub owed_projected: Vec<Withheld>,
     /// The credentials whose `secretData` line could not be appended, printed likewise.
     pub owed_credentials: Vec<Placement>,
+    /// The template file that opens `derivedConfig`, which is where a withheld projection goes.
+    pub derived_define: Option<PathBuf>,
+    /// The template file that opens `secretData`.
+    pub secret_define: Option<PathBuf>,
 }
 
 impl Adoption {
@@ -286,6 +298,8 @@ impl Adoption {
             by_hand: false,
             owed_projected: Vec::new(),
             owed_credentials: Vec::new(),
+            derived_define: None,
+            secret_define: None,
         }
     }
 
@@ -476,6 +490,8 @@ pub fn adopt(chart_dir: &Path, wanted: &BTreeSet<String>) -> Result<Option<Adopt
     adoption.edits.extend(projections.edits);
     adoption.owed_projected = projections.owed_projected;
     adoption.owed_credentials = projections.owed_credentials;
+    adoption.derived_define = projections.derived_define;
+    adoption.secret_define = projections.secret_define;
     Ok(Some(adoption))
 }
 

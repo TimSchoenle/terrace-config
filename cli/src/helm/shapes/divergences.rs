@@ -3,6 +3,7 @@
 
 use serde_json::Value as Json;
 
+use super::expected::settle;
 use super::{Departure, Divergence, EXCEPT_MARKER, NARROW_MARKER};
 
 /// The generated schema with each declared position taken from the chart's own block.
@@ -86,7 +87,12 @@ pub fn apply_divergences(
         put(&mut result, &parts, kept);
     }
 
-    (settle(result), added, problems)
+    // A narrowing can reintroduce the pair the generator refuses: a chart enumerating the members
+    // of a key the contract only types as a string is the ordinary case, at the top level or inside
+    // `items`. So the rule [`expected`](super::expected) applies before the departures is applied
+    // again after them.
+    settle(&mut result);
+    (result, added, problems)
 }
 
 /// The struct fields a narrowing put into the generated schema, by the position they sit at.
@@ -119,24 +125,6 @@ impl Added {
         };
         self.positions.contains(&full)
     }
-}
-
-/// One assembled block, with the pair a schema generator refuses resolved in the enum's favour.
-///
-/// [`expected`] never emits `enum` beside `type` at the top level, because a generator exits
-/// fatally on it and leaves every chart without a schema. A narrowing can reintroduce the pair (a
-/// chart that enumerates the members of a key the contract only types as a string is the ordinary
-/// case), so the same rule is applied after the departures rather than only before. The enum wins
-/// because it is the stricter of the two and because it is the half somebody wrote down
-/// deliberately.
-pub(super) fn settle(schema: Json) -> Json {
-    let Json::Object(mut fields) = schema else {
-        return schema;
-    };
-    if fields.contains_key("enum") && fields.contains_key("type") {
-        fields.remove("type");
-    }
-    Json::Object(fields)
 }
 
 /// One position inside a schema, by a dotted walk of keywords.
