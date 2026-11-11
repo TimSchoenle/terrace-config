@@ -58,7 +58,7 @@ jobs:
           docker build -f examples/service/Dockerfile -t orders-service:ci .
           docker save orders-service:ci --output "${RUNNER_TEMP}/orders-service.tar"
       - name: Check the image
-        uses: TimSchoenle/actions/actions/terrace/image@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-terrace-image-v1.1.2
+        uses: TimSchoenle/actions/actions/terrace/image@0701d3b35ad7e10e3159471c82f4743b67fdc01f # tag=actions-terrace-image-v1.1.3
         with:
           version: ${{ env.TERRACE_CONTRACT_VERSION }}
           working_directory: rust
@@ -109,7 +109,7 @@ jobs:
           docker build -f "${EXAMPLE}/Dockerfile" -t "${EXAMPLE}:ci" .
           docker save "${EXAMPLE}:ci" --output "${RUNNER_TEMP}/${EXAMPLE}.tar"
       - name: Check the committed contract
-        uses: TimSchoenle/actions/actions/terrace/image@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-terrace-image-v1.1.2
+        uses: TimSchoenle/actions/actions/terrace/image@0701d3b35ad7e10e3159471c82f4743b67fdc01f # tag=actions-terrace-image-v1.1.3
         with:
           version: ${{ env.TERRACE_CONTRACT_VERSION }}
           working_directory: java
@@ -126,7 +126,7 @@ jobs:
           EXAMPLE: ${{ matrix.example }}
         run: ./gradlew -q --console=plain ":${EXAMPLE}:terraceContract"
       - name: Check the image
-        uses: TimSchoenle/actions/actions/terrace/image@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-terrace-image-v1.1.2
+        uses: TimSchoenle/actions/actions/terrace/image@0701d3b35ad7e10e3159471c82f4743b67fdc01f # tag=actions-terrace-image-v1.1.3
         with:
           version: ${{ env.TERRACE_CONTRACT_VERSION }}
           working_directory: java
