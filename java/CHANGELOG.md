@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.1...terrace-config-java-v0.8.2) (2026-11-12)
+
+
+### Dependencies
+
+* **deps:** update dependency com.diffplug.spotless:spotless-plugin-gradle to v8.11.0 ([#368](https://github.com/TimSchoenle/terrace-config/issues/368)) ([7da990e](https://github.com/TimSchoenle/terrace-config/commit/7da990e139ce33e3a31b0e215389698606f6f085))
+* **deps:** update dependency com.networknt:json-schema-validator to v3.0.9 ([#367](https://github.com/TimSchoenle/terrace-config/issues/367)) ([814f42b](https://github.com/TimSchoenle/terrace-config/commit/814f42be219454254cfb2122edd8d8135a94a745))
+* **deps:** update dependency io.freefair.gradle:lombok-plugin to v9.8.3 ([#361](https://github.com/TimSchoenle/terrace-config/issues/361)) ([cf8d495](https://github.com/TimSchoenle/terrace-config/commit/cf8d4952f31773e1f8bfdb797f424355296dc2e5))
+* **deps:** update gradle to v9.9.0 ([#378](https://github.com/TimSchoenle/terrace-config/issues/378)) ([36f9c56](https://github.com/TimSchoenle/terrace-config/commit/36f9c56f1d412bb83d3257b047de8a530a197200))
+* **deps:** update jackson monorepo ([723c92f](https://github.com/TimSchoenle/terrace-config/commit/723c92f66a999b05b5a399092f54629fbc97caf8))
+* **deps:** update jackson monorepo ([#385](https://github.com/TimSchoenle/terrace-config/issues/385)) ([723c92f](https://github.com/TimSchoenle/terrace-config/commit/723c92f66a999b05b5a399092f54629fbc97caf8))
+
 ## [0.8.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.0...terrace-config-java-v0.8.1) (2026-11-02)
 
 
