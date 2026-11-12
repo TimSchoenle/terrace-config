@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.14.0...terrace-contract-v0.14.1) (2026-11-12)
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.61.0 ([#386](https://github.com/TimSchoenle/terrace-config/issues/386)) ([004ca38](https://github.com/TimSchoenle/terrace-config/commit/004ca3840c35d2deea366fa08c206fde0d06a92f))
+
 ## [0.14.0](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.13.1...terrace-contract-v0.14.0) (2026-11-10)
 
 
