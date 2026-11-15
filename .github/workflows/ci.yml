@@ -96,7 +96,7 @@ jobs:
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: TimSchoenle/actions/actions/rust/clippy@be7a69175612d9de514acc14bf55dda8e7ad2e57 # tag=actions-rust-clippy-v1.1.14
+      - uses: TimSchoenle/actions/actions/rust/clippy@49acdef9979f343817ec2a85ddd25e5f34befc8b # tag=actions-rust-clippy-v2.0.0
         with:
           source_directory: rust
           clippy_arguments: --workspace ${{ matrix.features }} --all-targets
@@ -116,7 +116,7 @@ jobs:
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: TimSchoenle/actions/actions/rust/test@daf766fd1ab9d48129210afc63b1a7353f6064fd # tag=actions-rust-test-v1.1.5
+      - uses: TimSchoenle/actions/actions/rust/test@49acdef9979f343817ec2a85ddd25e5f34befc8b # tag=actions-rust-test-v2.0.0
         with:
           source_directory: rust
           # `--workspace`, not just `--all-features`: the derive's parser is tested in
@@ -162,7 +162,7 @@ jobs:
         uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
         if: matrix.workspace == 'cli'
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/rust/coverage-codecov@daf766fd1ab9d48129210afc63b1a7353f6064fd # tag=actions-rust-coverage-codecov-v2.0.9
+        uses: TimSchoenle/actions/actions/rust/coverage-codecov@49acdef9979f343817ec2a85ddd25e5f34befc8b # tag=actions-rust-coverage-codecov-v2.1.0
         env:
           ORAS_BIN: ${{ steps.oras.outputs.path }}
         with:
@@ -196,7 +196,7 @@ jobs:
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: TimSchoenle/actions/actions/rust/cargo-check@be7a69175612d9de514acc14bf55dda8e7ad2e57 # tag=actions-rust-cargo-check-v1.1.8
+      - uses: TimSchoenle/actions/actions/rust/cargo-check@49acdef9979f343817ec2a85ddd25e5f34befc8b # tag=actions-rust-cargo-check-v2.0.0
         with:
           source_directory: rust
           check_arguments: --lib ${{ matrix.features }}
@@ -431,7 +431,7 @@ jobs:
           "$bin" --version
           echo "TERRACE_CONTRACT_BIN=$bin" >> "$GITHUB_ENV"
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@6a49261c7bbd756b4ceca9b1c168dfc7dc095e64 # tag=actions-java-gradle-coverage-codecov-v1.1.6
+        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@49acdef9979f343817ec2a85ddd25e5f34befc8b # tag=actions-java-gradle-coverage-codecov-v1.2.0
         with:
           source_directory: java
           java_version: "25"
