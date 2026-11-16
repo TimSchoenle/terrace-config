@@ -117,7 +117,7 @@ jobs:
           fi
 
       # Full history and every tag, so both the tag and `origin/main` are local refs to compare.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -184,7 +184,7 @@ jobs:
       # The tag by its full name, so no branch of the same name can win, and then held to the
       # commit `resolve` verified, so a tag moved between the two jobs fails here instead of being
       # built. See the note there.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
@@ -407,7 +407,7 @@ jobs:
       # The tag by its full name, so no branch of the same name can win, and then held to the
       # commit `resolve` verified, so a tag moved between the two jobs fails here instead of being
       # built. See the note there.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
