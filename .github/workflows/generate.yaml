@@ -44,7 +44,7 @@ jobs:
       # the pull request proposes, and the patch has to apply on top of the commit the branch
       # points at, which is the one `commit-patch` checks it against.
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
@@ -151,7 +151,7 @@ jobs:
       # so it has to be computed against the commit the branch points at, and that is the commit
       # `commit-patch` checks it against.
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
