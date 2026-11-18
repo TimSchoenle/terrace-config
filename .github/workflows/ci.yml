@@ -320,6 +320,9 @@ jobs:
           cargo new --bin /tmp/consumer-smoke-test
           cd /tmp/consumer-smoke-test
           cargo add terrace-config --git "file://${GITHUB_WORKSPACE}"
+          # Name the crate from the code, or Cargo reports the dependency as unused, which the
+          # denied warnings turn into a failed build. Linking it is all this job asserts.
+          printf 'use terrace_config as _;\n\nfn main() {}\n' > src/main.rs
           cargo build
 
   # Gated on the `changes` job: a pure-Rust commit never has anything for Gradle to build, and

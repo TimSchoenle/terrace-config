@@ -37,7 +37,7 @@ publish = false
 # it does not.
 [features]
 default = ["loader"]
-loader = ["dep:figment", "dep:serde"]
+loader = ["dep:figment", "dep:serde", "dep:thiserror"]
 # `schema` is an *add-on to* `loader`, not a third independent half. Every spelling it reports is
 # derived from a `Dialect`, and the defaults column is read out of a serialised figment `Value`;
 # there is no audience for it that is not already loading configuration this way.
@@ -82,6 +82,7 @@ testing = ["loader", "figment/test", "tokio?/rt"]
 explain = ["loader"]
 reload = [
     "dep:notify",
+    "dep:thiserror",
     "dep:notify-debouncer-full",
     "dep:tokio",
     "dep:tokio-util",
@@ -90,7 +91,8 @@ reload = [
 full = ["loader", "reload", "schema", "schema-cli", "explain"]
 
 [dependencies]
-thiserror = "2"
+# Every error type sits behind `loader` or `reload`; with neither, the crate is empty.
+thiserror = { version = "2", optional = true }
 
 # --- loader ---
 figment = { version = "0.10", features = ["toml", "env"], optional = true }
