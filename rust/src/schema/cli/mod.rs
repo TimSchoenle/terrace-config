@@ -161,7 +161,6 @@ macro_rules! cargo_app {
 ///
 /// This is [`Cli::new`]`(app)`[`.run::<C>(loader)`](Cli::run), for the service that needs nothing
 /// else from [`Cli`].
-#[must_use]
 pub fn main<C: Describe + Default + Serialize>(loader: &Terrace, app: App) -> ExitCode {
     Cli::new(app).run::<C>(loader)
 }
@@ -319,7 +318,6 @@ impl<'a> Cli<'a> {
     /// printed. A shell redirect truncates its target before this runs, so a step that
     /// regenerates a committed file should write to a temporary file and replace the target only
     /// on success.
-    #[must_use]
     pub fn main(&self, schema: Schema) -> ExitCode {
         let request = match Request::from_env() {
             Ok(request) => request,
@@ -343,7 +341,6 @@ impl<'a> Cli<'a> {
     ///
     /// A configuration whose `Default` is not its compiled default, or that has none, builds the
     /// [`Schema`] itself and calls [`Self::main`].
-    #[must_use]
     pub fn run<C: Describe + Default + Serialize>(&self, loader: &Terrace) -> ExitCode {
         match loader.schema::<C>().with_defaults_from(&C::default()) {
             Ok(schema) => self.main(schema),
