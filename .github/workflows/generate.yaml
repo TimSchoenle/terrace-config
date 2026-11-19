@@ -55,7 +55,7 @@ jobs:
       # reason absent from the diff. The same holds for every payload below.
       - name: Collect the Rust payload
         id: rust_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-readme-variables-v2.1.6
+        uses: TimSchoenle/actions/actions/common/readme-variables@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-readme-variables-v2.1.7
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: rust/Cargo.toml
@@ -65,7 +65,7 @@ jobs:
       # the prefix release-please-config.json gives that component.
       - name: Collect the Java payload
         id: java_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-readme-variables-v2.1.6
+        uses: TimSchoenle/actions/actions/common/readme-variables@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-readme-variables-v2.1.7
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: java/gradle.properties
@@ -83,7 +83,7 @@ jobs:
 
       - name: Collect the cli payload
         id: cli_variables
-        uses: TimSchoenle/actions/actions/common/readme-variables@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-readme-variables-v2.1.6
+        uses: TimSchoenle/actions/actions/common/readme-variables@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-readme-variables-v2.1.7
         with:
           branch: ${{ github.event.repository.default_branch }}
           manifest: cli/Cargo.toml
@@ -93,7 +93,7 @@ jobs:
 
       - name: Render the Rust README
         id: readme
-        uses: TimSchoenle/actions/actions/common/render-template@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-render-template-v3.0.6
+        uses: TimSchoenle/actions/actions/common/render-template@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-render-template-v3.0.7
         with:
           template: .github/templates/README.md.hbs
           output: rust/README.md
@@ -101,7 +101,7 @@ jobs:
 
       - name: Render the Java README
         id: java_readme
-        uses: TimSchoenle/actions/actions/common/render-template@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-render-template-v3.0.6
+        uses: TimSchoenle/actions/actions/common/render-template@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-render-template-v3.0.7
         with:
           template: .github/templates/java-README.md.hbs
           output: java/README.md
@@ -109,7 +109,7 @@ jobs:
 
       - name: Render the cli README
         id: cli_readme
-        uses: TimSchoenle/actions/actions/common/render-template@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-render-template-v3.0.6
+        uses: TimSchoenle/actions/actions/common/render-template@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-render-template-v3.0.7
         with:
           template: .github/templates/cli-README.md.hbs
           output: cli/README.md
@@ -119,7 +119,7 @@ jobs:
       # every payload, so it renders from the Rust one.
       - name: Render the root README
         id: root_readme
-        uses: TimSchoenle/actions/actions/common/render-template@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-render-template-v3.0.6
+        uses: TimSchoenle/actions/actions/common/render-template@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-render-template-v3.0.7
         with:
           template: .github/templates/root-README.md.hbs
           output: README.md
@@ -127,7 +127,7 @@ jobs:
 
       - name: Create Patch
         id: patch
-        uses: TimSchoenle/actions/actions/common/create-patch@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-create-patch-v2.1.1
+        uses: TimSchoenle/actions/actions/common/create-patch@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-create-patch-v2.1.2
         with:
           artifact_name: docs-readmes
           paths: 'README.md rust/README.md java/README.md cli/README.md'
@@ -170,7 +170,7 @@ jobs:
 
       - name: Create Patch
         id: patch
-        uses: TimSchoenle/actions/actions/common/create-patch@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-create-patch-v2.1.1
+        uses: TimSchoenle/actions/actions/common/create-patch@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-create-patch-v2.1.2
         with:
           artifact_name: update-files-lockfiles
           paths: 'rust/Cargo.lock rust/fuzz/Cargo.lock'
@@ -197,6 +197,6 @@ jobs:
             *.blob.core.windows.net:443
 
       - name: Generated Files Verdict
-        uses: TimSchoenle/actions/actions/common/generated-files-verdict@0b3967d3d992d12aa88da1f8facf412b162d5ab2 # tag=actions-common-generated-files-verdict-v1.2.6
+        uses: TimSchoenle/actions/actions/common/generated-files-verdict@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-common-generated-files-verdict-v1.2.7
         with:
           needs: ${{ toJSON(needs) }}
