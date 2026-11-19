@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.2](https://github.com/TimSchoenle/terrace-config/compare/v0.18.1...v0.18.2) (2026-11-19)
+
+
+### Dependencies
+
+* **deps:** update rust crate jsonschema to v0.61.0 ([#386](https://github.com/TimSchoenle/terrace-config/issues/386)) ([004ca38](https://github.com/TimSchoenle/terrace-config/commit/004ca3840c35d2deea366fa08c206fde0d06a92f))
+* **deps:** update rust crate jsonschema to v0.61.2 ([#398](https://github.com/TimSchoenle/terrace-config/issues/398)) ([4ced33e](https://github.com/TimSchoenle/terrace-config/commit/4ced33e0f52145f5ac3890f66c521b8c41011e87))
+* **deps:** update rust crate saphyr-parser to v0.3.4 ([86cd3f2](https://github.com/TimSchoenle/terrace-config/commit/86cd3f237afd441439bb2c103f56a0080a16c6c9))
+* **deps:** update rust crate saphyr-parser to v0.3.4 ([#399](https://github.com/TimSchoenle/terrace-config/issues/399)) ([86cd3f2](https://github.com/TimSchoenle/terrace-config/commit/86cd3f237afd441439bb2c103f56a0080a16c6c9))
+* **deps:** update rust to v1.100.0 ([#401](https://github.com/TimSchoenle/terrace-config/issues/401)) ([1ec7207](https://github.com/TimSchoenle/terrace-config/commit/1ec72078f62bbbcf07b3780fe871fb00e2587a5e))
+
 ## [0.18.1](https://github.com/TimSchoenle/terrace-config/compare/v0.18.0...v0.18.1) (2026-11-02)
 
 
