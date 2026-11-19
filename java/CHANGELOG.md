@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.3](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.2...terrace-config-java-v0.8.3) (2026-11-19)
+
+
+### Build System
+
+* **gradle:** pin the Gradle wrapper distribution by checksum ([#391](https://github.com/TimSchoenle/terrace-config/issues/391)) ([f9cb4d0](https://github.com/TimSchoenle/terrace-config/commit/f9cb4d0fedd7f39c9ce8f032685cd71393be93da))
+
+
+### Dependencies
+
+* **deps:** update gradle to v9.9.1 ([#397](https://github.com/TimSchoenle/terrace-config/issues/397)) ([41ac235](https://github.com/TimSchoenle/terrace-config/commit/41ac235ea058896fed44125a146e72d21a4917a2))
+* **deps:** update rust crate saphyr-parser to v0.3.4 ([86cd3f2](https://github.com/TimSchoenle/terrace-config/commit/86cd3f237afd441439bb2c103f56a0080a16c6c9))
+* **deps:** update rust crate saphyr-parser to v0.3.4 ([#399](https://github.com/TimSchoenle/terrace-config/issues/399)) ([86cd3f2](https://github.com/TimSchoenle/terrace-config/commit/86cd3f237afd441439bb2c103f56a0080a16c6c9))
+
 ## [0.8.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.1...terrace-config-java-v0.8.2) (2026-11-12)
 
 
