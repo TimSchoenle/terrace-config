@@ -43,3 +43,12 @@ which is what `cosign sign` then signs. It is safe to re-run: a referrer already
 document byte for byte is reported rather than attached twice, and one holding a different document
 is refused. With `--oci-layout` the layout must be a directory, since the referrer is written into
 it.
+
+A registry's referrers index can lag behind an attach, so a release re-run moments after the first
+can still find nothing and attach the same document again. Readers accept that: several referrers
+carrying byte-identical documents are one contract (the lowest referrer digest is the one reported),
+and only referrers that disagree are refused. Such duplicates are harmless; leave them in place, since
+the index lags deletions the same way and a reader can then be listed a referrer that no longer
+exists. A signature covers one referrer manifest only, so with duplicates present only the referrer
+`image attach` reported is certain to be signed: a consumer checking a referrer's signature should
+check that one, the lowest digest.

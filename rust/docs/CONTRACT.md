@@ -489,7 +489,8 @@ is a constant here so the producer and the consumer cannot spell it differently.
 
 Nothing inside the document names the image, and that is deliberate. The tie is the attachment: ask
 a digest for its referrers of this artifact type and whatever comes back is that digest's contract,
-by construction, and the registry content-addresses those bytes. A field claiming a digest could
+by construction (several byte-identical copies being one contract, and copies that differ being
+refused), and the registry content-addresses those bytes. A field claiming a digest could
 only be written after the push, changing bytes that were already committed.
 
 What a consumer does check is that the image and the document belong together: the image's

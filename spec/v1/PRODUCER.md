@@ -276,6 +276,9 @@ repository's `pull` reads both and refuses an image whose two copies disagree. A
 the embedded file alone, and that is a complete publication: the file lives in a layer whose digest
 is in the manifest the chart pins, so it is provably inside the image, which an attached artifact
 merely pointing at the same digest is not. The referrer is the faster read, not the stronger one.
+Several referrers of that artifact type on one digest are accepted when they carry byte-identical
+documents, which is what a re-run release can leave behind while the registry's referrers index
+catches up; referrers that disagree are refused.
 
 None of this is per-language. The steps below are the same for every producer, and the only one
 that differs is the stage that runs your producer.
