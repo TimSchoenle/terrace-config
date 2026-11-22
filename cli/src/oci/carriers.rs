@@ -190,29 +190,59 @@ pub struct Attached {
 
 /// The referrer carrying a digest's contract, or [`None`] if nothing is attached.
 ///
+/// More than one referrer is accepted when every one of them carries the same bytes. A registry
+/// offers no atomic "attach unless already attached", and its referrers index may lag behind an
+/// attach by seconds or minutes, so a re-run or a concurrent release can leave the same document
+/// attached twice even when every producer checks first. Identical copies leave nothing to choose
+/// between; copies that disagree are refused rather than picked between. Every copy goes through
+/// the same proofs as a single one, so a duplicate cannot smuggle in a blob that fails them. Of
+/// identical copies, the one with the lowest digest is returned, so the answer does not depend on
+/// the order the registry lists them in. The copies are read one at a time and only the current
+/// selection is kept, so a listing padded with many large referrers costs two documents of memory,
+/// not all of them.
+///
 /// # Errors
-/// [`Error::Invalid`] when there is more than one, when its manifest is not one layer, or when the
-/// blob does not hash to the digest its descriptor claims.
+/// [`Error::Invalid`] when the referrers carry different documents, when one's manifest is not one
+/// layer, or when a blob does not hash to the digest its descriptor claims.
 pub fn fetch_referrer(
     registry: &dyn Registry,
     repository: &str,
     digest: &str,
 ) -> Result<Option<Attached>, Error> {
-    let referrers = discover_contract(registry, repository, digest)?;
-    let Some(first) = referrers.first() else {
-        return Ok(None);
-    };
-    if referrers.len() > 1 {
-        return Err(Error::Invalid(format!(
-            "{repository}@{digest} has {} referrers of type {ARTIFACT_TYPE}, expected one",
-            referrers.len()
-        )));
+    let mut selected: Option<Attached> = None;
+    for referrer in discover_contract(registry, repository, digest)? {
+        let attached = referrer
+            .get("digest")
+            .and_then(Json::as_str)
+            .unwrap_or_default();
+        let read = read_referrer(registry, repository, digest, attached)?;
+        match &selected {
+            Some(held) if held.payload != read.payload => {
+                let (low, high) = if held.digest <= read.digest {
+                    (&held.digest, &read.digest)
+                } else {
+                    (&read.digest, &held.digest)
+                };
+                return Err(Error::Invalid(format!(
+                    "{repository}@{digest} has referrers of type {ARTIFACT_TYPE} carrying \
+                     different documents ({low} and {high} disagree), expected one: a digest with \
+                     two contracts has none a consumer can trust"
+                )));
+            }
+            Some(held) if held.digest <= read.digest => {}
+            _ => selected = Some(read),
+        }
     }
+    Ok(selected)
+}
 
-    let attached = first
-        .get("digest")
-        .and_then(Json::as_str)
-        .unwrap_or_default();
+/// One referrer's document, proven to be the single blob its manifest describes.
+fn read_referrer(
+    registry: &dyn Registry,
+    repository: &str,
+    digest: &str,
+    attached: &str,
+) -> Result<Attached, Error> {
     let manifest = registry.manifest(&format!("{repository}@{attached}"))?;
     let layers: Vec<&Json> = manifest
         .get("layers")
@@ -239,10 +269,10 @@ pub fn fetch_referrer(
              descriptor claims {claimed}"
         )));
     }
-    Ok(Some(Attached {
+    Ok(Attached {
         digest: attached.to_owned(),
         payload,
-    }))
+    })
 }
 
 /// The document from inside the image, at the path the label names.
@@ -573,9 +603,12 @@ mod tests {
     use serde_json::{Value as Json, json};
 
     use super::testing::{
-        AMD64, ARM64, IMAGE, INDEX, Recorded, SIGNER, digest_of, published, tarball,
+        AMD64, ARM64, IMAGE, INDEX, Recorded, SIGNER, contract, digest_of, published, tarball,
     };
-    use super::{agreed_labels, fetch_attached, fetch_contract, fetch_embedded, read_from_layer};
+    use super::{
+        agreed_labels, fetch_attached, fetch_contract, fetch_embedded, fetch_referrer,
+        read_from_layer,
+    };
     use crate::document::{LABEL_PREFIX, LABEL_VERSION};
     use crate::oci::{ARTIFACT_TYPE, parse_referrers};
 
@@ -863,20 +896,81 @@ mod tests {
         );
     }
 
-    #[test]
-    fn more_than_one_attachment_is_refused_rather_than_picked_between() {
-        let mut registry = Recorded::of(&published());
-        registry.referrers.insert(
-            format!("{IMAGE}@{INDEX}"),
-            vec![
-                json!({"digest": "sha256:dd"}),
-                json!({"digest": "sha256:ff"}),
-            ],
+    /// Attaches `payload` to the index a second time, as the referrer `attached`, listed before or
+    /// after the one [`Recorded::of`] already holds.
+    fn attach_again(registry: &mut Recorded, attached: &str, payload: &[u8], listed_first: bool) {
+        registry.manifests.insert(
+            format!("{IMAGE}@{attached}"),
+            json!({"layers": [{"digest": digest_of(payload)}]}),
         );
+        registry
+            .blobs
+            .insert(format!("{IMAGE}@{}", digest_of(payload)), payload.to_vec());
+        let listing = registry
+            .referrers
+            .get_mut(&format!("{IMAGE}@{INDEX}"))
+            .expect("the index carries one already");
+        let entry = json!({"digest": attached, "artifactType": ARTIFACT_TYPE});
+        if listed_first {
+            listing.insert(0, entry);
+        } else {
+            listing.push(entry);
+        }
+    }
+
+    #[test]
+    fn attachments_that_disagree_are_refused_rather_than_picked_between() {
+        let mut registry = Recorded::of(&published());
+        let mut other = contract();
+        other["app"]["version"] = json!("2.0.0");
+        let other = serde_json::to_vec(&other).expect("it serialises");
+        attach_again(&mut registry, "sha256:ff", &other, false);
+
         let failure = fetch_attached(&registry, IMAGE, INDEX)
-            .expect_err("there are two")
+            .expect_err("the two disagree")
             .to_string();
         assert!(failure.contains("expected one"), "{failure}");
+        assert!(failure.contains("different documents"), "{failure}");
+    }
+
+    #[test]
+    fn the_same_document_attached_twice_is_one_contract() {
+        // What a re-run release leaves behind: the reproducible build pushes the same digest, and
+        // the registry's referrers index had not yet listed the first attach when it was checked.
+        for listed_first in [true, false] {
+            let mut registry = Recorded::of(&published());
+            attach_again(&mut registry, "sha256:0f", &published(), listed_first);
+
+            let held = fetch_referrer(&registry, IMAGE, INDEX)
+                .expect("identical copies are not ambiguous")
+                .expect("it is attached");
+            assert_eq!(held.payload, published());
+            assert_eq!(
+                held.digest, "sha256:0f",
+                "the lowest digest answers, whichever order they are listed in"
+            );
+        }
+    }
+
+    #[test]
+    fn every_duplicate_is_held_to_the_proofs_a_single_one_is() {
+        let mut registry = Recorded::of(&published());
+        attach_again(&mut registry, "sha256:ff", &published(), false);
+        registry.manifests.insert(
+            format!("{IMAGE}@sha256:ff"),
+            json!({"layers": [{"digest": "sha256:0000"}]}),
+        );
+        registry
+            .blobs
+            .insert(format!("{IMAGE}@sha256:0000"), published());
+
+        let failure = fetch_attached(&registry, IMAGE, INDEX)
+            .expect_err("one copy lies about its blob")
+            .to_string();
+        assert!(
+            failure.contains("descriptor claims sha256:0000"),
+            "{failure}"
+        );
     }
 
     #[test]

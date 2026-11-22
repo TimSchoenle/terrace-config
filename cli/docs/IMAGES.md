@@ -43,3 +43,14 @@ which is what `cosign sign` then signs. It is safe to re-run: a referrer already
 document byte for byte is reported rather than attached twice, and one holding a different document
 is refused. With `--oci-layout` the layout must be a directory, since the referrer is written into
 it.
+
+A registry's referrers index can lag behind an attach, so a release re-run moments after the first
+can still find nothing and attach the same document again. Readers accept that: several referrers
+carrying byte-identical documents are one contract (the lowest referrer digest is the one reported),
+and only referrers that disagree are refused. Such duplicates are harmless; leave them in place, since
+the index lags deletions the same way and a reader can then be listed a referrer that no longer
+exists. A signature covers one referrer manifest only, and an identical copy attached by a run that
+failed before signing carries none, so the lowest digest is not necessarily a signed one. `pull`
+does not depend on that: it verifies the image's signature and holds the referrer to the copy
+embedded in the image. A consumer that does verify referrer signatures should accept the contract
+when any one of the identical copies carries a valid signature from the expected signer.
