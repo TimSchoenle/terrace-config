@@ -197,7 +197,9 @@ pub struct Attached {
 /// between; copies that disagree are refused rather than picked between. Every copy goes through
 /// the same proofs as a single one, so a duplicate cannot smuggle in a blob that fails them. Of
 /// identical copies, the one with the lowest digest is returned, so the answer does not depend on
-/// the order the registry lists them in.
+/// the order the registry lists them in. The copies are read one at a time and only the current
+/// selection is kept, so a listing padded with many large referrers costs two documents of memory,
+/// not all of them.
 ///
 /// # Errors
 /// [`Error::Invalid`] when the referrers carry different documents, when one's manifest is not one
@@ -207,32 +209,31 @@ pub fn fetch_referrer(
     repository: &str,
     digest: &str,
 ) -> Result<Option<Attached>, Error> {
-    let mut held: Vec<Attached> = discover_contract(registry, repository, digest)?
-        .iter()
-        .map(|referrer| {
-            let attached = referrer
-                .get("digest")
-                .and_then(Json::as_str)
-                .unwrap_or_default();
-            read_referrer(registry, repository, digest, attached)
-        })
-        .collect::<Result<_, _>>()?;
-    held.sort_by(|left, right| left.digest.cmp(&right.digest));
-
-    let Some(first) = held.first() else {
-        return Ok(None);
-    };
-    if let Some(other) = held.iter().find(|other| other.payload != first.payload) {
-        return Err(Error::Invalid(format!(
-            "{repository}@{digest} has {} referrers of type {ARTIFACT_TYPE} carrying different \
-             documents ({} and {} disagree), expected one: a digest with two contracts has none \
-             a consumer can trust",
-            held.len(),
-            first.digest,
-            other.digest
-        )));
+    let mut selected: Option<Attached> = None;
+    for referrer in discover_contract(registry, repository, digest)? {
+        let attached = referrer
+            .get("digest")
+            .and_then(Json::as_str)
+            .unwrap_or_default();
+        let read = read_referrer(registry, repository, digest, attached)?;
+        match &selected {
+            Some(held) if held.payload != read.payload => {
+                let (low, high) = if held.digest <= read.digest {
+                    (&held.digest, &read.digest)
+                } else {
+                    (&read.digest, &held.digest)
+                };
+                return Err(Error::Invalid(format!(
+                    "{repository}@{digest} has referrers of type {ARTIFACT_TYPE} carrying \
+                     different documents ({low} and {high} disagree), expected one: a digest with \
+                     two contracts has none a consumer can trust"
+                )));
+            }
+            Some(held) if held.digest <= read.digest => {}
+            _ => selected = Some(read),
+        }
     }
-    Ok(held.into_iter().next())
+    Ok(selected)
 }
 
 /// One referrer's document, proven to be the single blob its manifest describes.

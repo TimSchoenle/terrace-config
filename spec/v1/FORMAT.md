@@ -743,7 +743,10 @@ A digest may carry several referrers of this type. A registry offers no atomic a
 its referrers index can lag behind an attach, so a re-run release can attach the same document
 twice. A consumer MUST treat several referrers whose documents are byte-identical as one contract,
 and MUST refuse referrers whose documents differ rather than pick between them. Each copy is held to
-the same checks a single one would be.
+the same checks a single one would be. This changes only what a consumer accepts, not the document
+or how it is attached, so it is backward compatible within `v1`; a consumer written before it
+refuses every digest with more than one referrer, including byte-identical duplicates, until it is
+updated.
 
 The embedded copy at `dev.terrace.config.contract.path` is what makes an image self-describing with
 no registry at all: an exported tarball, an air-gapped mirror, a running container being inspected.
