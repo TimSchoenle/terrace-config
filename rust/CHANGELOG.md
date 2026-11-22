@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3](https://github.com/TimSchoenle/terrace-config/compare/v0.18.2...v0.18.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **cli:** accept byte-identical duplicate contract referrers ([#404](https://github.com/TimSchoenle/terrace-config/issues/404)) ([0704e96](https://github.com/TimSchoenle/terrace-config/commit/0704e961b0a5d36eccae42ab47d3a00e9147e566))
+
 ## [0.18.2](https://github.com/TimSchoenle/terrace-config/compare/v0.18.1...v0.18.2) (2026-11-19)
 
 
