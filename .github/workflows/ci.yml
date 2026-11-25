@@ -116,7 +116,7 @@ jobs:
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
-      - uses: TimSchoenle/actions/actions/rust/test@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-rust-test-v2.0.1
+      - uses: TimSchoenle/actions/actions/rust/test@7594d1c64de290a99195e47fc6d7b5699243b951 # tag=actions-rust-test-v2.0.2
         with:
           source_directory: rust
           # `--workspace`, not just `--all-features`: the derive's parser is tested in
@@ -162,7 +162,7 @@ jobs:
         uses: ./.github/actions/install-oras # zizmor: ignore[self-repository] -- actionlint rejects the $/ syntax as an action without a ref.
         if: matrix.workspace == 'cli'
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/rust/coverage-codecov@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-rust-coverage-codecov-v2.1.1
+        uses: TimSchoenle/actions/actions/rust/coverage-codecov@7594d1c64de290a99195e47fc6d7b5699243b951 # tag=actions-rust-coverage-codecov-v2.1.2
         env:
           ORAS_BIN: ${{ steps.oras.outputs.path }}
         with:
@@ -263,7 +263,7 @@ jobs:
         with:
           toolchain: nightly
           components: clippy
-      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-fuzz
       - name: Replay the corpus
@@ -434,7 +434,7 @@ jobs:
           "$bin" --version
           echo "TERRACE_CONTRACT_BIN=$bin" >> "$GITHUB_ENV"
       - name: Run Coverage
-        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@54a4dc05fd351a9bf9e9638fa3ebbc572b5f2d7f # tag=actions-java-gradle-coverage-codecov-v1.2.1
+        uses: TimSchoenle/actions/actions/java-gradle/coverage-codecov@7594d1c64de290a99195e47fc6d7b5699243b951 # tag=actions-java-gradle-coverage-codecov-v1.2.2
         with:
           source_directory: java
           java_version: "25"
