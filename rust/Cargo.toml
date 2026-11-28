@@ -107,7 +107,7 @@ regex = { version = "1", optional = true }
 
 # --- reload ---
 notify = { version = "8.2", optional = true }
-notify-debouncer-full = { version = "0.7", optional = true }
+notify-debouncer-full = { version = "0.8", optional = true }
 tokio = { version = "1.43", features = ["macros", "sync", "time"], optional = true }
 tokio-util = { version = "0.7", optional = true }
 tracing = { version = "0.1", optional = true }
