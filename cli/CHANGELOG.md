@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.3](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.14.2...terrace-contract-v0.14.3) (2026-11-28)
+
+
+### Dependencies
+
+* **deps:** update rust crate clap to v4.6.10 ([#425](https://github.com/TimSchoenle/terrace-config/issues/425)) ([2c1bb6c](https://github.com/TimSchoenle/terrace-config/commit/2c1bb6c4b4e0e07a4f447b997821bc3c8e03c870))
+* **deps:** update rust crate clap to v4.6.9 ([#412](https://github.com/TimSchoenle/terrace-config/issues/412)) ([63e85f1](https://github.com/TimSchoenle/terrace-config/commit/63e85f1d15b4a88ccea7833579a581bedc9024ed))
+* **deps:** update rust crate jsonschema to v0.63.1 ([#418](https://github.com/TimSchoenle/terrace-config/issues/418)) ([48aedd6](https://github.com/TimSchoenle/terrace-config/commit/48aedd68ac285c21ad3b4d72f5808941a934a83e))
+* **deps:** update rust crate saphyr-parser to 0.4.0 ([#420](https://github.com/TimSchoenle/terrace-config/issues/420)) ([ec439c1](https://github.com/TimSchoenle/terrace-config/commit/ec439c1b013a1eba356e54d210ba923b0905a679))
+* **deps:** update rust crate toml to v1.2.2 ([#413](https://github.com/TimSchoenle/terrace-config/issues/413)) ([f25c08a](https://github.com/TimSchoenle/terrace-config/commit/f25c08a6a50da6fe63829529fd4f0cfc44477637))
+* **deps:** update rust crate toml to v1.2.2 ([#415](https://github.com/TimSchoenle/terrace-config/issues/415)) ([58896c0](https://github.com/TimSchoenle/terrace-config/commit/58896c0b30c9e11183a0f936a05cac8cc6ce09d4))
+* **deps:** update rust crate toml to v1.2.3 ([#426](https://github.com/TimSchoenle/terrace-config/issues/426)) ([b5a631a](https://github.com/TimSchoenle/terrace-config/commit/b5a631a381f626cffa56d383422b9efa67b61fc0))
+* **deps:** update rust crate toml to v1.2.3 ([#428](https://github.com/TimSchoenle/terrace-config/issues/428)) ([834ad81](https://github.com/TimSchoenle/terrace-config/commit/834ad8100106ca943b502e4e8c921786aaf3dd3e))
+
 ## [0.14.2](https://github.com/TimSchoenle/terrace-config/compare/terrace-contract-v0.14.1...terrace-contract-v0.14.2) (2026-11-22)
 
 
