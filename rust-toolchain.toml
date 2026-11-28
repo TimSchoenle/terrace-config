@@ -15,7 +15,7 @@
 # `rustup override` takes precedence over this file. `rust/fuzz/` and `cli/fuzz/` carry nightly
 # pins of their own, which win for anything run inside those directories.
 [toolchain]
-channel = "1.100.0"
+channel = "1.100.1"
 # What the `fmt` and `clippy` jobs run.
 components = ["rustfmt", "clippy"]
 # No `targets`: each `release-cli.yml` matrix leg adds the one triple it builds.
