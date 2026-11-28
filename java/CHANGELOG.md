@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.4](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.3...terrace-config-java-v0.8.4) (2026-11-28)
+
+
+### Dependencies
+
+* **deps:** update dependency com.diffplug.spotless:spotless-plugin-gradle to v8.12.0 ([#417](https://github.com/TimSchoenle/terrace-config/issues/417)) ([fee2e8b](https://github.com/TimSchoenle/terrace-config/commit/fee2e8b0f054a29e9bd2b550b2f681ce8e931b01))
+* **deps:** update eclipse-temurin docker tag ([#411](https://github.com/TimSchoenle/terrace-config/issues/411)) ([61599f2](https://github.com/TimSchoenle/terrace-config/commit/61599f2e9a8580d6572c4ff4739eef5823523331))
+* **deps:** update gradle to v9.9.2 ([#408](https://github.com/TimSchoenle/terrace-config/issues/408)) ([4bb01d5](https://github.com/TimSchoenle/terrace-config/commit/4bb01d5e0b7f4741d4ba4fa6048cc6840a521c99))
+* **deps:** update spring boot to v4.1.3 ([#416](https://github.com/TimSchoenle/terrace-config/issues/416)) ([992c613](https://github.com/TimSchoenle/terrace-config/commit/992c6133e9c5a4d020a3fcb72df40fb8b9e5450c))
+
 ## [0.8.3](https://github.com/TimSchoenle/terrace-config/compare/terrace-config-java-v0.8.2...terrace-config-java-v0.8.3) (2026-11-19)
 
 
